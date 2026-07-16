@@ -1,10 +1,21 @@
 ﻿# Playable Project Progress
 
+## Completed On 2026-07-16 - Level7 current-editor AppLovin rebuild
+
+- Applied the complete runtime tuning exported by the user: Level7, DualQueue3, install threshold 20, six parking spots, vehicle-area scale 0.84, and the current vehicle-89 guide/mask values.
+- Generated the Level7-only production payload with 83 vehicles and passenger queues 368+278.
+- Focused guide/catalog/collision tests pass 13/13 and the Vite production build passed with only the existing chunk-size warning.
+- Generated `artifacts/applovin/index.html` at 3,639,703 bytes; all AppLovin static checks and final single-level/config marker scans passed. SHA-256: `1AEC67487626C7E73EBB07DE00967344FA0EE6F47BCE61042274ECD8DD03DA5C`.
+- Automated local `file://` runtime QA was blocked by browser URL policy; AppLovin preview/upload play remains manual validation.
+
 ## Completed On 2026-07-16 - Vehicle 89 timed guide mask
 
 - Bound the guide hand to vehicle id 89.
 - Added an editor-tunable first-click guide mask that highlights vehicle 89, defaults to black opacity `0.8`, auto-hides after `2s`, and does not block other vehicle clicks.
 - Added editor controls for enable/disable, target id, duration, mask opacity, padding, and highlight block width/height scale.
+- Moved the timed guide hand into the DOM mask layer so it renders above the mask, flips horizontally, and disappears with the mask.
+- Adjusted the guide motion to start on the right, travel left toward vehicle 89, and shrink during the approach.
+- Added an editor saved-tuning migration so the previous vehicle `1`, base X `-0.38`, and start X `-0.62` defaults no longer override the vehicle `89` guide settings.
 - Synced source and exported scene tuning; focused guide-mask test passed.
 - Build/package intentionally skipped by request.
 

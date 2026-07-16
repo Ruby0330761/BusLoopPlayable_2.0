@@ -432,7 +432,7 @@ test('editor sizing, source background ratio, and passenger shadow anchor stay w
     appearSpeed: 1.45
   });
   assert.deepEqual(SCENE_TUNING.installGate, {
-    successfulOperationThreshold: 40
+    successfulOperationThreshold: 20
   });
   assert.deepEqual(SCENE_TUNING.gameOver, {
     failureDelaySeconds: 2,
@@ -1208,11 +1208,11 @@ test('main thread saves and restores scene tuning from localStorage', () => {
   assert.match(mainSource, /updateCtaPosition\(\)/);
 });
 
-test('successful operation store redirect defaults to 40 and remains editor-tunable', () => {
+test('successful operation store redirect uses the baked threshold and remains editor-tunable', () => {
   const mainSource = readFileSync(join('src', 'main.js'), 'utf8');
   const editorSource = readFileSync(join('src', 'scene-editor.js'), 'utf8');
 
-  assert.equal(SCENE_TUNING.installGate.successfulOperationThreshold, 40);
+  assert.equal(SCENE_TUNING.installGate.successfulOperationThreshold, 20);
   assert.match(editorSource, /installGate\.successfulOperationThreshold/);
   assert.match(mainSource, /SCENE_TUNING\.installGate\?\.successfulOperationThreshold/);
   assert.match(mainSource, /^\s*if \(result\?\.ok && markInstallVehicle\(vehicleId\)\) InstallFullGame\(\);/m);

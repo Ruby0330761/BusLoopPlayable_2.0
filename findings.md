@@ -1,5 +1,19 @@
 # Findings
 
+## DualQueue3 Trajectory Refresh - 2026-07-16
+
+- The screenshot requires DualQueue3 closed curve `offsetX 0`, `offsetZ 0.85`, `scaleX 0.75`, `scaleZ 0.80`; entry 1 `offsetX 0.60`, `offsetZ 0.95`; entry 2 `offsetX -0.60`, `offsetZ 1.00`.
+- The current tuning selected `dualQueue3` but its per-layout transform still held stale DualQueue2-like values (`offsetZ 0.60`, entries `0.60/0.90` and `-0.50/0.90`). The package therefore needs a real config correction before rebuilding.
+
+## Current Editor Tuning Rebuild - 2026-07-16
+
+- The browser editor state is authoritative for this request; `artifacts/scene-tuning.json` must be refreshed from the editor before `npm.cmd run apply:tuning`.
+- Browser page inspection cannot access the main-world `window.__busLoop`, but every editor row carries its exact tuning path in `data-path` and exposes the current value in a number input or select. Those path/value pairs are sufficient to rebuild the complete editor-authored patch without reading browser storage.
+- The automated fresh-tab form state was stale. The user's direct runtime export is authoritative: `level7`, `dualQueue3`, guide vehicle 89 with base X `0.25`, right-side approach `0.62`, far/near scale `1.14/1`, speed `0.55`, and a 3-second mask sized `0.62 x 0.62` with padding 15.
+- The production workflow keeps the editor catalog development-only and regenerates `src/generated-active-level.js` from the selected level during `npm.cmd run build`.
+- AppLovin delivery remains one fully inlined HTML under 5,000,000 bytes with MRAID CTA/ready handling and no external asset URLs.
+- The final Level7/dualQueue3 package is 3,639,703 bytes with SHA-256 `1AEC67487626C7E73EBB07DE00967344FA0EE6F47BCE61042274ECD8DD03DA5C`; static validation and package marker checks passed. Automated local `file://` runtime QA was blocked by browser URL policy, so AppLovin preview/upload play remains pending manual validation.
+
 ## Level7 Escape C Import - 2026-07-16
 
 - Follow-up validation: vehicle 89 is a visible 10-seat parking-area vehicle currently using color 5. Changing it to color 2 requires moving exactly 10 passenger entries from color 5 to color 2.

@@ -1,10 +1,35 @@
 ﻿# Progress
 
+## 2026-07-16 DualQueue3 Trajectory Package Refresh
+
+- Started a package refresh from the supplied DualQueue3 trajectory screenshot.
+- Confirmed the selected layout was DualQueue3 but its stored per-layout curve values were stale. Updated the exported tuning to closed `0/0.85/0.75/0.80`, entry 1 `0.60/0.95`, and entry 2 `-0.60/1.00`.
+- Applied the corrected tuning to source; direct config verification confirms Level7, DualQueue3, and all eight screenshot values.
+
+## 2026-07-16 Current Editor Tuning AppLovin Rebuild
+
+- Started the requested production refresh from the parameters currently active in the web editor.
+- Packaging route confirmed: export editor tuning to `artifacts/scene-tuning.json`, run `apply:tuning`, build the selected single-level payload, generate `artifacts/applovin/index.html`, then run the AppLovin static checker.
+- Current phase: capture the editor's live tuning and selected level before applying or building.
+- The initial automated form capture was stale and is superseded by the complete runtime JSON supplied by the user.
+- Applied the authoritative `level7` + `dualQueue3` tuning to `artifacts/scene-tuning.json` and `src/scene-tuning.js`; the durable selected-level marker is now `level7`.
+- Key baked values: install threshold 20, six parking spots, vehicle-area scale 0.84, guide hand vehicle 89 with offset X 0.25/start X 0.62, and a 3-second mask with padding 15 and highlight scale 0.62 x 0.62.
+- First focused run passed 12/13; the only failure was the expected stale generated active module (`level9` versus the new `level7` marker). Explicit Level7 generation is required before the rerun/build.
+- Regenerated the Level7-only active module (83 vehicles, queues 368+278). Focused guide/catalog/collision tests pass 13/13.
+- Production build passed; Vite emitted only the existing chunk-size warning for the 733.32 kB minified JS chunk.
+- Generated `artifacts/applovin/index.html` at 3,639,703 bytes (3.471 MiB); all AppLovin static checks passed.
+- Final package marker scan confirms only `level7.asset`, selected `dualQueue3`, install threshold 20, guide vehicle 89/right-to-left offset 0.62, and the 3-second mask/highlight settings. SHA-256: `1AEC67487626C7E73EBB07DE00967344FA0EE6F47BCE61042274ECD8DD03DA5C`.
+- Automated final `file://` runtime QA was blocked by browser URL policy. No workaround was used; AppLovin preview/upload play remains the required external manual validation.
+- Packaging task complete: final artifact is `artifacts/applovin/index.html`.
+
 ## 2026-07-16 Vehicle 89 Timed Guide Mask
 
 - Bound `vehicleGuideHand.vehicleId` to 89 in source and exported tuning.
 - Added `firstClickGuide` tuning: enabled, vehicle id, duration seconds, mask opacity, padding, and highlight width/height scale.
 - Implemented the mask as four DOM pieces around the target vehicle projection, with pointer events disabled so other vehicles remain operable during the timed overlay.
+- Rendered the timed guide hand as a DOM image above the mask, mirrored its visual, and hides it together with the timed mask.
+- Adjusted the approach to start on the right and move left toward vehicle 89 while scaling down.
+- Added a one-time local editor tuning migration from the old vehicle `1`, base X `-0.38`, and start X `-0.62` defaults to the current vehicle `89` guide settings.
 - Removed the interrupted `guide-locked` click restriction from `src/main.js`.
 - Verification: syntax checks for touched JS files and focused `test/guide-hand.test.js` passed. Build/package intentionally skipped by request.
 

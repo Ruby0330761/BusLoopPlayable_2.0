@@ -65,6 +65,25 @@ function migrateLegacyConveyorTuning(source) {
   if (source?.queueCurves) layout.queueCurves = structuredClone(source.queueCurves);
 }
 
+function migrateGuideHandMotionTuning(source) {
+  const guideHand = source?.vehicleGuideHand;
+  if (!guideHand) return false;
+  let changed = false;
+  if (Number(guideHand.vehicleId) === 1) {
+    guideHand.vehicleId = 89;
+    changed = true;
+  }
+  if (Number(guideHand.offsetX) === -0.38) {
+    guideHand.offsetX = 0.38;
+    changed = true;
+  }
+  if (Number(guideHand.approachOffsetX) === -0.62) {
+    guideHand.approachOffsetX = 0.62;
+    changed = true;
+  }
+  return changed;
+}
+
 function waitForMraidReady(onReady) {
   const mraid = window.mraid;
   if (!mraid?.getState || !mraid?.addEventListener) {
@@ -117,13 +136,18 @@ function loadSavedTuning() {
     const saved = localStorage.getItem(TUNING_STORAGE_KEY);
     if (saved) {
       const savedTuning = JSON.parse(saved);
+      const guideHandMotionMigrated = migrateGuideHandMotionTuning(savedTuning);
       deepMerge(SCENE_TUNING, savedTuning);
       migrateLegacyConveyorTuning(savedTuning);
+      if (guideHandMotionMigrated) {
+        localStorage.setItem(TUNING_STORAGE_KEY, JSON.stringify(savedTuning));
+      }
       return;
     }
     const legacySaved = localStorage.getItem(LEGACY_TUNING_STORAGE_KEY);
     if (!legacySaved) return;
     const legacy = JSON.parse(legacySaved);
+    migrateGuideHandMotionTuning(legacy);
     const legacyModelScale = legacy.vehicleArea?.modelScale;
     delete legacy.vehicleArea;
     deepMerge(SCENE_TUNING, legacy);

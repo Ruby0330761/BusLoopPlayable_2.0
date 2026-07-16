@@ -309,7 +309,7 @@ const FIELD_GROUPS = [
       ['\u5c0f\u624b X', 'vehicleGuideHand.offsetX', -3, 3, 0.01],
       ['\u5c0f\u624b\u9ad8\u5ea6', 'vehicleGuideHand.offsetY', 0, 3, 0.01],
       ['\u5c0f\u624b Z', 'vehicleGuideHand.offsetZ', -3, 3, 0.01],
-      ['\u8d77\u70b9 X \u504f\u79fb', 'vehicleGuideHand.approachOffsetX', -2, 2, 0.01],
+      ['\u8d77\u70b9 X \u504f\u79fb\uff08\u6b63=\u53f3\u4fa7\uff09', 'vehicleGuideHand.approachOffsetX', -2, 2, 0.01],
       ['\u8d77\u70b9 Z \u504f\u79fb', 'vehicleGuideHand.approachOffsetZ', -2, 2, 0.01],
       ['\u5c0f\u624b\u6574\u4f53\u5927\u5c0f', 'vehicleGuideHand.size', 0.1, 3, 0.01],
       ['\u5c0f\u624b\u5bbd\u5ea6', 'vehicleGuideHand.width', 0.1, 2, 0.01],

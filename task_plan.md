@@ -2,17 +2,32 @@
 
 ## Current Goal
 
-Bind the guide hand to vehicle id 89 and add an editor-tunable timed mask highlight that does not block other vehicle clicks.
+Apply the screenshot DualQueue3 passenger-trajectory values to the current Level7 tuning, rebuild, and regenerate the AppLovin package.
 
 ## Current Phase
 
-Implementation is complete and focused checks passed. Build and package generation were intentionally skipped by request.
+In progress: correct the stale DualQueue3 per-layout trajectory values, then rebuild and validate the refreshed package.
+
+## Current Trajectory Refresh Phases
+
+1. **Complete:** Set DualQueue3 closed and entry trajectory transforms to the screenshot values and apply the tuning.
+2. **In progress:** Verify the Level7/DualQueue3 production selection and focused regressions.
+3. **Pending:** Rebuild, regenerate the AppLovin single HTML, and run static/package marker checks.
+4. **Pending:** Record the new artifact size/hash and handoff.
+
+## Current Packaging Phases
+
+1. **Complete:** Export the current editor tuning and preserve its selected level.
+2. **Complete:** Apply exported tuning to source and synchronize the Level7 selection marker.
+3. **Complete:** Run focused tests plus the production build.
+4. **Complete:** Generate and statically validate the AppLovin single-HTML package.
+5. **Complete:** Record artifact size, selected level, verification results, and handoff. Local `file://` browser QA was blocked by browser URL policy; AppLovin preview/upload validation remains external manual QA.
 
 ## Implementation Phases
 
 1. **Complete:** Bind the guide hand target to vehicle id 89.
 2. **Complete:** Add first-click guide tuning for enable/disable, target id, duration, opacity, padding, and highlight width/height scale.
-3. **Complete:** Render the timed DOM mask around the target vehicle while leaving pointer input available for all vehicles.
+3. **Complete:** Render the timed DOM mask and DOM guide hand above it while leaving pointer input available for all vehicles.
 4. **Complete:** Add/update focused regression coverage and run lightweight verification only.
 
 ## Prior Level7 Import Phases
@@ -64,6 +79,12 @@ Implementation is complete and focused checks passed. Build and package generati
 
 | Error | Attempt | Resolution |
 | --- | --- | --- |
+| Browser Use blocked automated navigation to the final local `file://` package | 1 | Do not bypass the URL policy; rely on passed build/static package checks and record AppLovin preview/real-upload play as the remaining manual validation. |
+| Focused catalog test read the stale Level9 `generated-active-level.js` before the build pre-step regenerated it | 1 | Run `npm.cmd run level:generate` explicitly from the Level7 marker, then rerun focused tests before the production build. |
+| Combined test patch partially applied the guide expectations before failing on a later game-model context | 1 | Re-read both tests, confirmed the guide changes landed, and applied a separate narrow patch for the threshold assertions. |
+| Windows UI export was stopped because the automation could not verify the active browser URL with sufficient confidence | 1 | User supplied the complete `window.__busLoop.exportTuning()` JSON directly; use it as the authoritative build input. |
+| First tuning-verification snippet reused an undefined scratch variable in the browser helper | 1 | Retried with fresh declared verification variables; all 245 editor fields matched the exported artifact. |
+| Browser inspection cannot access `window.__busLoop` from its isolated page context even though the editor DOM is loaded | 1 | Export the authoritative editor state from each `[data-path]` control, then merge those path/value pairs into the existing tuning JSON. |
 | Focused test found generated active Level7 while the durable selection marker is currently Level9 | 1 | Preserve the user's current Level9 selection and rerun extraction/generation with `--selected=level9`; Level7 remains updated in the catalog. |
 | Final combined `rg` verification exited 1 because the stale-size search intentionally found no matches | 1 | Treat the no-match exit as the expected successful stale-constant check; preceding context output confirmed all requested edits. |
 | Combined completion-doc patch did not match the BOM-prefixed project progress heading | 1 | Retried once using the first dated section as an ASCII anchor; the completion record, plan, and progress update landed. |

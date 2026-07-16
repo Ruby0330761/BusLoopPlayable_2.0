@@ -589,8 +589,14 @@ export class SceneView {
     const hole = document.createElement('div');
     hole.className = 'first-click-guide-hole';
     root.append(hole);
+    const hand = document.createElement('img');
+    hand.className = 'first-click-guide-hand';
+    hand.alt = '';
+    hand.draggable = false;
+    hand.src = GUIDE_HAND_TEXTURE_URL;
+    root.append(hand);
     parent.append(root);
-    return { root, pieces, hole };
+    return { root, pieces, hole, hand };
   }
 
   buildWorld() {
@@ -1697,6 +1703,10 @@ export class SceneView {
 
   updateGuideHand(time = 0, snapshot = this.lastSnapshot) {
     if (!this.guideHand) return;
+    if (SCENE_TUNING.firstClickGuide?.enabled) {
+      this.guideHand.visible = false;
+      return;
+    }
     const tuning = SCENE_TUNING.vehicleGuideHand ?? {};
     const targetId = Math.round(tuning.vehicleId ?? 1);
     const target = this.vehicleViews.get(targetId);
@@ -1732,6 +1742,7 @@ export class SceneView {
     const guide = SCENE_TUNING.firstClickGuide ?? {};
     if (!guide.enabled) return false;
     const duration = Math.max(0, Number(guide.durationSeconds) || 0);
+    if (duration <= 0) return false;
     if ((snapshot?.time ?? 0) > duration) return false;
     const targetId = this.getFirstClickGuideTargetId();
     const target = this.vehicleViews.get(targetId);
@@ -1808,7 +1819,36 @@ export class SceneView {
     setRect(mask.pieces.right, right, top, rect.width - right, height);
     setRect(mask.pieces.bottom, 0, bottom, rect.width, rect.height - bottom);
     setRect(mask.hole, left, top, width, height);
+    this.updateFirstClickGuideHand(mask, target, snapshot);
     mask.root.hidden = false;
+  }
+
+  updateFirstClickGuideHand(mask, target, snapshot = this.lastSnapshot) {
+    if (!mask.hand || !target) return;
+    const tuning = SCENE_TUNING.vehicleGuideHand ?? {};
+    const time = snapshot?.time ?? 0;
+    const speed = Math.max(0.001, tuning.speed ?? 1);
+    const phase = (Math.sin(time * Math.PI * 2 * speed - Math.PI / 2) + 1) / 2;
+    const offsetX = (tuning.offsetX ?? 0) + (tuning.approachOffsetX ?? 0) * (1 - phase);
+    const offsetZ = (tuning.offsetZ ?? 0) + (tuning.approachOffsetZ ?? 0) * (1 - phase);
+    const projected = this.projectWorldToCanvas({
+      x: target.position.x + offsetX,
+      y: target.position.y + (tuning.offsetY ?? 0.5),
+      z: target.position.z + offsetZ
+    });
+    if (!projected) {
+      mask.hand.hidden = true;
+      return;
+    }
+    const scale = (tuning.size ?? 1) * THREE.MathUtils.lerp(tuning.farScale ?? 1.1, tuning.nearScale ?? 0.8, phase);
+    const rect = this.canvas.getBoundingClientRect();
+    const reference = Math.max(1, Math.min(rect.width, rect.height));
+    mask.hand.style.left = `${projected.x}px`;
+    mask.hand.style.top = `${projected.y}px`;
+    mask.hand.style.width = `${Math.max(1, (tuning.width ?? 0.46) * scale * reference * 0.08)}px`;
+    mask.hand.style.height = `${Math.max(1, (tuning.height ?? 0.56) * scale * reference * 0.08)}px`;
+    mask.hand.style.opacity = String(THREE.MathUtils.clamp(tuning.opacity ?? 1, 0, 1));
+    mask.hand.hidden = false;
   }
 
   getQueueSpacing() {

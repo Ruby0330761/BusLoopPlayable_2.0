@@ -29,6 +29,17 @@ body { user-select: none; overscroll-behavior: none; }
     0 0 18px rgba(71, 213, 255, .65);
   border-radius: 10px;
 }
+.first-click-guide-hand {
+  position: absolute;
+  z-index: 2;
+  display: block;
+  object-fit: contain;
+  pointer-events: none;
+  transform: translate(-50%, -50%) scaleX(-1);
+  transform-origin: center;
+  user-select: none;
+}
+.first-click-guide-hand[hidden] { display: none; }
 .loading-screen {
   position: absolute;
   z-index: 30;

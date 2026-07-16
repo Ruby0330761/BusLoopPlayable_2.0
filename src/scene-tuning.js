@@ -1,6 +1,6 @@
 export const SCENE_TUNING = {
   "level": {
-    "selected": "level5"
+    "selected": "level7"
   },
   "preview": {
     "enabled": 1,
@@ -12,9 +12,9 @@ export const SCENE_TUNING = {
     "fovDegrees": 2.2,
     "targetX": 0,
     "targetY": 0,
-    "targetZ": 1.8,
-    "fitWidth": 14.8,
-    "fitHeight": 14.9,
+    "targetZ": 1.85,
+    "fitWidth": 14.5,
+    "fitHeight": 15.9,
     "padding": 0.35
   },
   "sourceCrop": {
@@ -39,10 +39,11 @@ export const SCENE_TUNING = {
     "strokeWidth": 4.4,
     "pulseScale": 1.05,
     "pulseSpeed": 0.21,
-    "appearSpeed": 1.45
+    "appearSpeed": 1.45,
+    "bottom": 46
   },
   "installGate": {
-    "successfulOperationThreshold": 40
+    "successfulOperationThreshold": 20
   },
   "gameOver": {
     "failureDelaySeconds": 2,
@@ -94,8 +95,18 @@ export const SCENE_TUNING = {
         "scaleZ": 0.8
       },
       "queueCurves": [
-        { "offsetX": 0.6, "offsetZ": 0.9, "scaleX": 0.8, "scaleZ": 0.8 },
-        { "offsetX": -0.5, "offsetZ": 0.9, "scaleX": 0.7, "scaleZ": 0.7 }
+        {
+          "offsetX": 0.6,
+          "offsetZ": 0.9,
+          "scaleX": 0.8,
+          "scaleZ": 0.8
+        },
+        {
+          "offsetX": -0.5,
+          "offsetZ": 0.9,
+          "scaleX": 0.7,
+          "scaleZ": 0.7
+        }
       ]
     },
     "dualQueue3": {
@@ -114,8 +125,18 @@ export const SCENE_TUNING = {
         "scaleZ": 0.8
       },
       "queueCurves": [
-        { "offsetX": 0.6, "offsetZ": 0.95, "scaleX": 0.8, "scaleZ": 0.8 },
-        { "offsetX": -0.6, "offsetZ": 1, "scaleX": 0.7, "scaleZ": 0.7 }
+        {
+          "offsetX": 0.6,
+          "offsetZ": 0.95,
+          "scaleX": 0.8,
+          "scaleZ": 0.8
+        },
+        {
+          "offsetX": -0.6,
+          "offsetZ": 1,
+          "scaleX": 0.7,
+          "scaleZ": 0.7
+        }
       ]
     },
     "dualQueue5": {
@@ -129,13 +150,23 @@ export const SCENE_TUNING = {
       },
       "curve": {
         "offsetX": 0,
-        "offsetZ": 0.6,
+        "offsetZ": 0.85,
         "scaleX": 0.75,
         "scaleZ": 0.8
       },
       "queueCurves": [
-        { "offsetX": 0.6, "offsetZ": 0.9, "scaleX": 0.8, "scaleZ": 0.8 },
-        { "offsetX": -0.5, "offsetZ": 0.9, "scaleX": 0.7, "scaleZ": 0.7 }
+        {
+          "offsetX": 0.6,
+          "offsetZ": 0.95,
+          "scaleX": 0.8,
+          "scaleZ": 0.8
+        },
+        {
+          "offsetX": -0.6,
+          "offsetZ": 1,
+          "scaleX": 0.7,
+          "scaleZ": 0.7
+        }
       ]
     },
     "dualQueue10": {
@@ -154,8 +185,18 @@ export const SCENE_TUNING = {
         "scaleZ": 0.8
       },
       "queueCurves": [
-        { "offsetX": 0.6, "offsetZ": 0.9, "scaleX": 0.8, "scaleZ": 0.8 },
-        { "offsetX": -0.5, "offsetZ": 0.9, "scaleX": 0.7, "scaleZ": 0.7 }
+        {
+          "offsetX": 0.6,
+          "offsetZ": 0.9,
+          "scaleX": 0.8,
+          "scaleZ": 0.8
+        },
+        {
+          "offsetX": -0.5,
+          "offsetZ": 0.9,
+          "scaleX": 0.7,
+          "scaleZ": 0.7
+        }
       ]
     }
   },
@@ -174,7 +215,7 @@ export const SCENE_TUNING = {
     },
     {
       "offsetX": -0.5,
-      "offsetZ": 0.9,
+      "offsetZ": 0.85,
       "scaleX": 0.7,
       "scaleZ": 0.7
     }
@@ -254,8 +295,8 @@ export const SCENE_TUNING = {
     "opacity": 1
   },
   "parkingSpots": {
-    "count": 5,
-    "startX": -1.8,
+    "count": 6,
+    "startX": -2.3,
     "spacing": 0.95,
     "y": 0.035,
     "z": 0.55,
@@ -307,7 +348,7 @@ export const SCENE_TUNING = {
   },
   "vehicleArea": {
     "unityToWorldScale": 2,
-    "positionUnitScale": 0.75,
+    "positionUnitScale": 0.84,
     "sourceRootX": 0,
     "sourceRootZ": -2.92,
     "positionPivotX": 0,
@@ -339,7 +380,7 @@ export const SCENE_TUNING = {
   "vehicleGuideHand": {
     "enabled": 1,
     "vehicleId": 89,
-    "offsetX": 0.38,
+    "offsetX": 0.25,
     "offsetY": 0.38,
     "offsetZ": 0.46,
     "approachOffsetX": 0.62,
@@ -347,19 +388,19 @@ export const SCENE_TUNING = {
     "size": 2.52,
     "width": 0.47,
     "height": 0.5,
-    "nearScale": 0.84,
+    "nearScale": 1,
     "farScale": 1.14,
-    "speed": 0.63,
+    "speed": 0.55,
     "opacity": 1
   },
   "firstClickGuide": {
     "enabled": 1,
     "vehicleId": 89,
-    "durationSeconds": 2,
+    "durationSeconds": 3,
     "maskOpacity": 0.8,
-    "holePadding": 18,
-    "holeScaleX": 1,
-    "holeScaleY": 1
+    "holePadding": 15,
+    "holeScaleX": 0.62,
+    "holeScaleY": 0.62
   },
   "passengers": {
     "modelHeight": 0.48,
