@@ -452,7 +452,7 @@ test('editor sizing, source background ratio, and passenger shadow anchor stay w
   assert.equal(LEVEL_1.conveyorPathLength, 4.591284809513923);
   assert.deepEqual(SCENE_TUNING.vehicleBoardingPulse, { scale: 1.14, speed: 5 });
   assert.equal(SCENE_TUNING.vehicleGuideHand.enabled, 1);
-  assert.equal(SCENE_TUNING.vehicleGuideHand.vehicleId, 130);
+  assert.equal(SCENE_TUNING.vehicleGuideHand.vehicleId, 89);
   assert.equal(SCENE_TUNING.vehicleGuideHand.size, 1);
   assert.equal(SCENE_TUNING.vehicleGuideHand.speed, 1.15);
   assert.equal(SCENE_TUNING.vehicleGuideHand.nearScale, 0.78);

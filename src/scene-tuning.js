@@ -338,7 +338,7 @@ export const SCENE_TUNING = {
   },
   "vehicleGuideHand": {
     "enabled": 1,
-    "vehicleId": 130,
+    "vehicleId": 89,
     "offsetX": 0.38,
     "offsetY": 0.38,
     "offsetZ": 0.46,
@@ -351,6 +351,15 @@ export const SCENE_TUNING = {
     "farScale": 1.14,
     "speed": 0.63,
     "opacity": 1
+  },
+  "firstClickGuide": {
+    "enabled": 1,
+    "vehicleId": 89,
+    "durationSeconds": 2,
+    "maskOpacity": 0.8,
+    "holePadding": 18,
+    "holeScaleX": 1,
+    "holeScaleY": 1
   },
   "passengers": {
     "modelHeight": 0.48,

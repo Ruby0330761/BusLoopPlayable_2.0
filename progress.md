@@ -1,5 +1,38 @@
 ﻿# Progress
 
+## 2026-07-16 Vehicle 89 Timed Guide Mask
+
+- Bound `vehicleGuideHand.vehicleId` to 89 in source and exported tuning.
+- Added `firstClickGuide` tuning: enabled, vehicle id, duration seconds, mask opacity, padding, and highlight width/height scale.
+- Implemented the mask as four DOM pieces around the target vehicle projection, with pointer events disabled so other vehicles remain operable during the timed overlay.
+- Removed the interrupted `guide-locked` click restriction from `src/main.js`.
+- Verification: syntax checks for touched JS files and focused `test/guide-hand.test.js` passed. Build/package intentionally skipped by request.
+
+## 2026-07-16 Level7 vehicle/queue import
+
+- Follow-up: change vehicle 89 to color 2 and replace the Level7 right passenger queue with the revised user sequence; validation is in progress.
+- Confirmed vehicle 89 is a 10-seat color-5 vehicle; the revised right queue stays at 278 entries and replaces exactly ten color-5 passengers with color 2, preserving every per-color seat total.
+- Updated the extractor's general vehicle override map so Level7 vehicle 89 becomes color 2, replaced the exact right-queue run data, and extended the regression assertion.
+- Touched-file syntax checks passed and Level7 extraction regenerated all outputs successfully with 83 vehicles and 368+278 queues.
+- First focused run passed the new Level7 vehicle/queue assertion but failed only because active Level7 did not match the current durable Level9 selection; resynchronizing outputs to Level9 without changing the Level7 catalog data.
+- Resynchronized generated active/artifact selection to Level9. Focused tests pass 12/12 and direct Level7 checks confirm vehicle 89 color 2 plus exact revised right-queue and seat/passenger parity.
+- Production build passed with current Level9 selection and only the existing chunk-size warning; project progress and navigation now record the generalized vehicle/queue override behavior.
+- Started importing `D:\UnityProjects\BusLoop\Assets\BusJam\Game\Bundleables\Level_Escape_C\level7.asset` with user-supplied left/right passenger queues.
+- Next: validate vehicle seat/color totals against both queues, then extend the extractor/catalog and targeted tests.
+- Validated 83 vehicles/646 seats; the supplied left/right queues are 368+278 and match all per-color seat totals exactly.
+- Added Level7 to the default extraction sources, encoded the exact supplied queue order as a durable override, and added queue-order/catalog expectations.
+- Switched the durable active selection to Level7; syntax checks passed and extraction regenerated the catalog/artifact plus Level7-only active module (83 vehicles, queues 368+278).
+- Catalog/collision tests pass 12/12; direct verification confirms exact per-color queue totals, Level7 active selection, and zero initial vehicle-body overlaps. Production build remains.
+- Production build passed and regenerated the Level7 active payload; Vite emitted only the existing >500 kB chunk warning. Project progress and code navigation were updated for the sixth imported level.
+
+## 2026-07-16 Level8/Level9 collision-size parity
+
+- Reproduced 22 initial OBB overlaps in Level8 and 21 in Level9 with the current generated sizes.
+- Confirmed Unity gameplay uses centered `BusJamConfig.asset` sizes (`4: 0.27 x 0.47157902`, `6: 0.27 x 0.486`, `10: 0.27 x 0.6785897`); these remove all initial overlaps in all five imported levels.
+- Updated the Unity level extractor constants and added a focused Level8/Level9 no-overlap regression; generated data and verification are next.
+- Syntax checks passed, and the extractor regenerated `artifacts/unity-levels.json`, `src/level-catalog.js`, and the selected Level9 `src/generated-active-level.js` from the five supplied assets.
+- Focused catalog/collision tests pass 11/11; stale collision lengths are absent from the extractor and generated files. Full build/package was intentionally skipped for this data-only correction.
+
 ## 2026-07-15 Real-device Store Redirect Failure
 
 - User reported that the threshold redirect did not open the store during real-device testing.

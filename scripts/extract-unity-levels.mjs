@@ -6,14 +6,49 @@ const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const artifactPath = join(root, 'artifacts', 'unity-levels.json');
 const catalogPath = join(root, 'src', 'level-catalog.js');
 const activePath = join(root, 'src', 'generated-active-level.js');
-const defaultSources = [5, 8, 9, 10, 13].map((id) => `D:/备份/改文件名临时文件夹/level${id}.asset`);
+const defaultSources = [
+  'D:/备份/改文件名临时文件夹/level5.asset',
+  'D:/UnityProjects/BusLoop/Assets/BusJam/Game/Bundleables/Level_Escape_C/level7.asset',
+  ...[8, 9, 10, 13].map((id) => `D:/备份/改文件名临时文件夹/level${id}.asset`)
+];
 const sourcePaths = process.argv.slice(2).filter((value) => !value.startsWith('--'));
 const selectedArg = process.argv.find((value) => value.startsWith('--selected='))?.slice('--selected='.length);
-const vehiclePositionOverrides = {
+const unityVehicleCollisionSizes = {
+  4: { width: 0.27, length: 0.47157902 },
+  6: { width: 0.27, length: 0.486 },
+  10: { width: 0.27, length: 0.6785897 }
+};
+const passengerQueueOverrides = {
+  level7: [
+    expandPassengerQueue([
+      [4, 10], [6, 10], [1, 10], [7, 10], [0, 6], [3, 10], [4, 10], [6, 10],
+      [1, 4], [7, 10], [0, 10], [3, 4], [6, 10], [1, 4], [7, 10], [0, 4],
+      [3, 10], [5, 10], [1, 10], [7, 4], [3, 10], [4, 10], [6, 10], [1, 10],
+      [7, 6], [0, 4], [3, 10], [4, 4], [6, 6], [1, 10], [7, 4], [0, 10],
+      [4, 10], [1, 10], [7, 6], [0, 10], [4, 6], [5, 10], [1, 4], [7, 10],
+      [5, 10], [1, 10], [6, 6], [5, 6], [1, 10]
+    ]),
+    expandPassengerQueue([
+      [2, 10], [7, 10], [0, 10], [6, 6], [5, 6], [1, 4], [7, 4], [1, 10],
+      [7, 4], [6, 10], [5, 10], [6, 6], [5, 10], [1, 10], [5, 4], [7, 10],
+      [0, 6], [5, 10], [1, 10], [5, 10], [1, 4], [5, 10], [1, 6], [7, 6],
+      [5, 6], [7, 12], [0, 6], [7, 6], [0, 6], [7, 4], [0, 10], [7, 10],
+      [0, 10], [7, 4], [0, 18]
+    ])
+  ]
+};
+const vehicleOverrides = {
+  level7: {
+    89: { colorIndex: 2 }
+  },
   level13: {
     130: { z: 1.3369986 }
   }
 };
+
+function expandPassengerQueue(runs) {
+  return runs.flatMap(([colorIndex, count]) => Array(count).fill(colorIndex));
+}
 
 function section(source, name, nextName) {
   const start = source.indexOf(`  ${name}:`);
@@ -122,8 +157,8 @@ function validateLevel(level) {
   }
 }
 
-function applyVehiclePositionOverrides(level) {
-  const overrides = vehiclePositionOverrides[level.key];
+function applyVehicleOverrides(level) {
+  const overrides = vehicleOverrides[level.key];
   if (!overrides) return;
   for (const vehicle of level.vehicles) {
     const override = overrides[vehicle.id];
@@ -153,7 +188,9 @@ function parseUnityLevel(path, baseLevel) {
     z: container.position?.z ?? 0,
     yaw: yawFromQuaternion(container.rotation ?? {})
   }));
-  const passengerQueues = parsePassengerQueues(source);
+  const passengerQueues = structuredClone(
+    passengerQueueOverrides[key] ?? parsePassengerQueues(source)
+  );
   const mapScale = Number(scalar(source, 'mapScale', 1));
   const level = structuredClone(baseLevel);
   Object.assign(level, {
@@ -171,16 +208,12 @@ function parseUnityLevel(path, baseLevel) {
     passengerSequence: passengerQueues.flat(),
     vehicleSize: { width: 0.27 * mapScale, length: 0.6785897 * mapScale },
     collision: {
-      vehicleSizes: {
-        4: { width: 0.27, length: 0.4814318817567568 },
-        6: { width: 0.27, length: 0.5639630614864864 },
-        10: { width: 0.27, length: 0.6785897 }
-      },
+      vehicleSizes: structuredClone(unityVehicleCollisionSizes),
       maxVehicleSize: { width: 0.27, length: 0.6785897 },
       garageSize: { width: 0.95 / 1.5, length: 1.2 / 1.5 }
     }
   });
-  applyVehiclePositionOverrides(level);
+  applyVehicleOverrides(level);
   validateLevel(level);
   return level;
 }
@@ -207,14 +240,12 @@ function moduleSource(name, value, extra = '') {
 }
 
 const baseLevel = await loadBaseLevel();
-baseLevel.collision ??= {
-  vehicleSizes: {
-    4: { width: 0.27, length: 0.4814318817567568 },
-    6: { width: 0.27, length: 0.5639630614864864 },
-    10: { width: 0.27, length: 0.6785897 }
-  },
+baseLevel.collision = {
+  ...baseLevel.collision,
+  vehicleSizes: structuredClone(unityVehicleCollisionSizes),
   maxVehicleSize: { width: 0.27, length: 0.6785897 },
-  garageSize: { width: 0.95 / 1.5, length: 1.2 / 1.5 }
+  garageSize: baseLevel.collision?.garageSize
+    ?? { width: 0.95 / 1.5, length: 1.2 / 1.5 }
 };
 const requestedSources = sourcePaths.length > 0 ? sourcePaths : defaultSources;
 for (const path of requestedSources) {

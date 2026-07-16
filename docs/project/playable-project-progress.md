@@ -1,5 +1,34 @@
 ﻿# Playable Project Progress
 
+## Completed On 2026-07-16 - Vehicle 89 timed guide mask
+
+- Bound the guide hand to vehicle id 89.
+- Added an editor-tunable first-click guide mask that highlights vehicle 89, defaults to black opacity `0.8`, auto-hides after `2s`, and does not block other vehicle clicks.
+- Added editor controls for enable/disable, target id, duration, mask opacity, padding, and highlight block width/height scale.
+- Synced source and exported scene tuning; focused guide-mask test passed.
+- Build/package intentionally skipped by request.
+
+## Completed On 2026-07-16 - Level7 vehicle 89 color and right queue update
+
+- Changed Level7 vehicle id 89 from color 5 to color 2 through the reproducible vehicle override map; it remains a 10-seat vehicle.
+- Replaced the exact right queue order while keeping its length at 278. Right-side counts are now `{0:66,1:44,2:10,5:66,6:22,7:70}`, matching the ten seats moved from color 5 to color 2.
+- Regenerated the catalog/artifact and preserved the current durable Level9 selection; Level7 remains updated in editor/development options.
+- Verification: syntax checks, focused catalog/collision tests 12/12, direct per-color parity check, and `npm.cmd run build` passed. Vite retains the existing >500 kB chunk warning.
+
+## Completed On 2026-07-16 - Level7 Escape C import
+
+- Imported the 83-vehicle layout from `Level_Escape_C/level7.asset` and added Level7 to the editor/development catalog between Level5 and Level8.
+- Replaced the asset's stale fixed queues with the supplied exact left/right order (368+278 passengers). Combined per-color counts match all 646 vehicle seats exactly.
+- Selected Level7 for production, regenerated the full catalog/artifact and Level7-only active payload, and verified zero initial vehicle-body overlaps.
+- Verification: extractor/test syntax checks, focused catalog/collision tests 12/12, exact queue run-order check, direct active/count/overlap diagnostic, and `npm.cmd run build` passed. Vite retains the existing >500 kB chunk warning.
+
+## Completed On 2026-07-16 - Level8/Level9 collider parity
+
+- Replaced stale web 4-seat/6-seat collision lengths with the centered logical sizes from Unity `BusJamConfig.asset`; vehicle positions, yaw values, and SAT tolerance were unchanged.
+- Regenerated the full Unity level artifact/catalog and the selected Level9 production payload. The corrected sizes remove all initial vehicle-body overlaps in Level8 and Level9 (and all other imported levels).
+- Added a focused Level8/Level9 no-overlap regression. Catalog plus collision tests pass 11/11, and touched/generated JavaScript syntax checks pass.
+- No full build/package was run because the change is limited to generated level collision data; the selected level remains Level9.
+
 ## Completed On 2026-07-15 - Configurable successful-operation store redirect
 
 - Restored the prior unique successful-vehicle operation gate: the operation that reaches the configured threshold immediately opens the store, and later canvas clicks retain the install redirect.

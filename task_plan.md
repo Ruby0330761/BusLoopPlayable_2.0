@@ -2,13 +2,35 @@
 
 ## Current Goal
 
-Fix the successful-operation store redirect after real-device AppLovin testing showed that the threshold did not open the store, then rebuild and provide a new validated package.
+Bind the guide hand to vehicle id 89 and add an editor-tunable timed mask highlight that does not block other vehicle clicks.
 
 ## Current Phase
 
-Phase 4 comparison is complete: current `index.html` matches the working backup's redirect chain, while the stale descriptive `..._Hard.html` lacks the success gate. Awaiting confirmation of the exact uploaded filename/hash before changing runtime logic.
+Implementation is complete and focused checks passed. Build and package generation were intentionally skipped by request.
 
 ## Implementation Phases
+
+1. **Complete:** Bind the guide hand target to vehicle id 89.
+2. **Complete:** Add first-click guide tuning for enable/disable, target id, duration, opacity, padding, and highlight width/height scale.
+3. **Complete:** Render the timed DOM mask around the target vehicle while leaving pointer input available for all vehicles.
+4. **Complete:** Add/update focused regression coverage and run lightweight verification only.
+
+## Prior Level7 Import Phases
+
+1. **Complete:** Parse Level7 vehicles/containers and validate the supplied left/right queue lengths and color totals.
+2. **Complete:** Add Level7 plus its queue override to the reproducible extraction/catalog pipeline.
+3. **Complete:** Regenerate catalog/artifact and make Level7 the active selected payload unless project state requires preserving another explicit selection.
+4. **Complete:** Add focused catalog/queue/collision coverage and run targeted verification.
+5. **Complete:** Record durable project status and handoff.
+
+## Prior Level8/Level9 Collider Phases
+
+1. **Complete:** Reproduce and enumerate the Level8/Level9 initial overlap pairs from the current runtime collision graph.
+2. **Complete:** Compare those pairs against the source Unity transforms/colliders and isolate the parity error.
+3. **Complete:** Implement the narrow correction with focused regression coverage.
+4. **Complete:** Run targeted verification and record the durable result/remaining manual QA.
+
+## Prior Store Redirect Phases
 
 1. **Complete:** Inspected the supplied prior AppLovin HTML and current runtime/editor/test/package ownership for the success-count redirect.
 2. **Complete:** Added a default-40 editor-facing threshold and restored the redirect behavior with focused regression coverage.
@@ -42,6 +64,12 @@ Phase 4 comparison is complete: current `index.html` matches the working backup'
 
 | Error | Attempt | Resolution |
 | --- | --- | --- |
+| Focused test found generated active Level7 while the durable selection marker is currently Level9 | 1 | Preserve the user's current Level9 selection and rerun extraction/generation with `--selected=level9`; Level7 remains updated in the catalog. |
+| Final combined `rg` verification exited 1 because the stale-size search intentionally found no matches | 1 | Treat the no-match exit as the expected successful stale-constant check; preceding context output confirmed all requested edits. |
+| Combined completion-doc patch did not match the BOM-prefixed project progress heading | 1 | Retried once using the first dated section as an ASCII anchor; the completion record, plan, and progress update landed. |
+| Combined extractor/test patch did not match the default source path because the terminal's legacy decoding displayed mojibake | 1 | Re-read the file explicitly as UTF-8 and applied a smaller patch using ASCII anchors; the stored path was already correct. |
+| Combined plan/progress update did not match the BOM-prefixed `progress.md` header | 1 | Split the files and use the first dated section as the progress insertion anchor. |
+| Planning skill session-catchup could not run because `python` is not installed/on PATH | 1 | Read the existing planning files directly and continue from the current workspace state. |
 | Combined active-plan/progress patch did not match the BOM-prefixed `progress.md` header | 1 | Split the update by file and use narrow ASCII section anchors. |
 | Plan-only `apply_patch` helper stalled after the combined patch failure | 1 | Terminated the helper and continued with bounded inspection; the later source patch completed successfully. |
 | Sandboxed targeted planning-file rewrite was denied despite workspace write scope | 1 | Avoided broad rewriting and returned to `apply_patch` once the helper recovered. |

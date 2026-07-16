@@ -48,7 +48,7 @@ Use this file before code changes. Pick the closest change area, then read only 
 - `src/game-model.js`: Pure gameplay state machine. Owns vehicle click handling, blocker checks, station assignment, route progress, conveyor/queue passenger flow, boarding events, win/fail checks, snapshots, and subscriptions.
 - `src/vehicle-collision.js`: Unity-style runtime collision context. Owns per-vehicle collision sizes, current-pose oriented boxes, drive-out graph decisions, direct candidates, and edge contact points.
 - `src/level-data.js`: Small runtime boundary that exports colors and the mutable live `LEVEL_1` binding backed by the generated single active level.
-- `src/level-catalog.js`: Generated development-only catalog for the five supplied Unity levels plus the legacy baseline used as extraction/template data.
+- `src/level-catalog.js`: Generated development-only catalog for the six imported Unity levels plus the legacy baseline used as extraction/template data.
 - `src/generated-active-level.js`: Generated production payload containing exactly one selected level's vehicles and passenger queues.
 - `src/scene-view.js`: Main Three.js renderer. Owns scene construction, camera/background fit, texture/model/VAT loading, path curves, parking spots, vehicle/passenger visuals, shadows, arrows, seat boards, effects integration, picking, snapshot rendering, resize, and per-frame render.
 - `src/scene-tuning.js`: Single mutable tuning object. Owns editor-facing numeric values for preview/crop, camera, facing, path transforms, background, conveyor art, parking spots, seat boards, vehicle paths, vehicle area mapping, passengers, shadows, arrows, and effects.
@@ -64,7 +64,7 @@ Use this file before code changes. Pick the closest change area, then read only 
 - `test/scene-layout.test.js`: Unit tests for camera/layout helper math and curve transforms.
 - `test/vehicle-effects.test.js`: Unit tests for Effect_Ribbon, ParticleRibbon atlas behavior, ParticleSmoke, speed-over-lifetime, and editor-driven effect tuning.
 - `scripts/extract-unity-vat.mjs`: Node utility that reads Unity texture YAML `_typelessdata` and writes the top mip raw VAT texture bytes for the web runtime.
-- `scripts/extract-unity-levels.mjs`: Parses supplied Unity level YAML into the development catalog/artifact and validates per-color passenger totals against vehicle seats.
+- `scripts/extract-unity-levels.mjs`: Parses supplied Unity level YAML into the development catalog/artifact, applies authored vehicle/queue overrides, and validates per-color passenger totals against vehicle seats.
 - `scripts/generate-active-level.mjs`: Reads baked scene tuning and emits only the selected level into the production runtime module before Vite builds.
 - `test/level-catalog.test.js`: Imported level counts, queue pairing, single-level production boundary, and editor/build wiring regressions.
 - `test/vehicle-collision.test.js`: Focused geometry graph, vehicle-size, reset, station-ordering, contact, and blocked-click regressions.

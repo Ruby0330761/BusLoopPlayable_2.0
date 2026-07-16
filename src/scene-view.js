@@ -557,6 +557,7 @@ export class SceneView {
     this.vehicleEffects = null;
     this.guideHand = null;
     this.guideHandMaterial = null;
+    this.firstClickGuideMask = this.createFirstClickGuideMask();
     this.vehiclePathLines = [];
     this.vehicleDeparturePathLines = [];
     this.lastSnapshot = null;
@@ -570,6 +571,26 @@ export class SceneView {
       this.resizeObserver.observe(canvas);
     }
     canvas.addEventListener('pointerup', (event) => this.pick(event));
+  }
+
+  createFirstClickGuideMask() {
+    const parent = this.canvas.parentElement;
+    if (!parent) return null;
+    const root = document.createElement('div');
+    root.className = 'first-click-guide-mask';
+    root.hidden = true;
+    const pieces = {};
+    for (const side of ['top', 'right', 'bottom', 'left']) {
+      const piece = document.createElement('div');
+      piece.className = `first-click-guide-mask-piece is-${side}`;
+      pieces[side] = piece;
+      root.append(piece);
+    }
+    const hole = document.createElement('div');
+    hole.className = 'first-click-guide-hole';
+    root.append(hole);
+    parent.append(root);
+    return { root, pieces, hole };
   }
 
   buildWorld() {
@@ -1664,6 +1685,7 @@ export class SceneView {
     this.vehicleEffects?.update(snapshot);
     this.updateVehiclePathPreview(snapshot, game);
     this.updateGuideHand(snapshot.time, snapshot);
+    this.updateFirstClickGuideMask(snapshot);
   }
 
   updateGuideHandTuning() {
@@ -1699,6 +1721,94 @@ export class SceneView {
       1
     );
     this.guideHand.visible = true;
+  }
+
+  getFirstClickGuideTargetId() {
+    const guide = SCENE_TUNING.firstClickGuide ?? {};
+    return Math.round(guide.vehicleId ?? SCENE_TUNING.vehicleGuideHand?.vehicleId ?? 1);
+  }
+
+  isFirstClickGuideActive(snapshot = this.lastSnapshot) {
+    const guide = SCENE_TUNING.firstClickGuide ?? {};
+    if (!guide.enabled) return false;
+    const duration = Math.max(0, Number(guide.durationSeconds) || 0);
+    if ((snapshot?.time ?? 0) > duration) return false;
+    const targetId = this.getFirstClickGuideTargetId();
+    const target = this.vehicleViews.get(targetId);
+    return Boolean(target && target.visible);
+  }
+
+  getObjectCanvasBounds(object) {
+    object.updateWorldMatrix(true, true);
+    const box = new THREE.Box3().setFromObject(object);
+    if (box.isEmpty()) return null;
+    const rect = this.canvas.getBoundingClientRect();
+    const corners = [
+      [box.min.x, box.min.y, box.min.z],
+      [box.min.x, box.min.y, box.max.z],
+      [box.min.x, box.max.y, box.min.z],
+      [box.min.x, box.max.y, box.max.z],
+      [box.max.x, box.min.y, box.min.z],
+      [box.max.x, box.min.y, box.max.z],
+      [box.max.x, box.max.y, box.min.z],
+      [box.max.x, box.max.y, box.max.z]
+    ];
+    const bounds = { minX: Infinity, minY: Infinity, maxX: -Infinity, maxY: -Infinity };
+    const projected = new THREE.Vector3();
+    for (const [x, y, z] of corners) {
+      projected.set(x, y, z).project(this.camera);
+      if (!Number.isFinite(projected.x) || !Number.isFinite(projected.y)) return null;
+      const canvasX = (projected.x + 1) * rect.width / 2;
+      const canvasY = (1 - projected.y) * rect.height / 2;
+      bounds.minX = Math.min(bounds.minX, canvasX);
+      bounds.minY = Math.min(bounds.minY, canvasY);
+      bounds.maxX = Math.max(bounds.maxX, canvasX);
+      bounds.maxY = Math.max(bounds.maxY, canvasY);
+    }
+    return bounds;
+  }
+
+  updateFirstClickGuideMask(snapshot = this.lastSnapshot) {
+    const mask = this.firstClickGuideMask;
+    if (!mask) return;
+    if (!this.isFirstClickGuideActive(snapshot)) {
+      mask.root.hidden = true;
+      return;
+    }
+    const target = this.vehicleViews.get(this.getFirstClickGuideTargetId());
+    const bounds = this.getObjectCanvasBounds(target);
+    const rect = this.canvas.getBoundingClientRect();
+    if (!bounds || rect.width <= 0 || rect.height <= 0) {
+      mask.root.hidden = true;
+      return;
+    }
+
+    const guide = SCENE_TUNING.firstClickGuide ?? {};
+    const padding = Math.max(0, Number(guide.holePadding) || 0);
+    const baseCenterX = (bounds.minX + bounds.maxX) * 0.5;
+    const baseCenterY = (bounds.minY + bounds.maxY) * 0.5;
+    const scaledWidth = Math.max(0, (bounds.maxX - bounds.minX + padding * 2) * Math.max(0.01, Number(guide.holeScaleX) || 1));
+    const scaledHeight = Math.max(0, (bounds.maxY - bounds.minY + padding * 2) * Math.max(0.01, Number(guide.holeScaleY) || 1));
+    const left = Math.max(0, baseCenterX - scaledWidth * 0.5);
+    const top = Math.max(0, baseCenterY - scaledHeight * 0.5);
+    const right = Math.min(rect.width, baseCenterX + scaledWidth * 0.5);
+    const bottom = Math.min(rect.height, baseCenterY + scaledHeight * 0.5);
+    const width = Math.max(0, right - left);
+    const height = Math.max(0, bottom - top);
+    const setRect = (element, x, y, w, h) => {
+      element.style.left = `${x}px`;
+      element.style.top = `${y}px`;
+      element.style.width = `${Math.max(0, w)}px`;
+      element.style.height = `${Math.max(0, h)}px`;
+    };
+
+    mask.root.style.setProperty('--first-click-guide-opacity', String(THREE.MathUtils.clamp(guide.maskOpacity ?? 0.8, 0, 1)));
+    setRect(mask.pieces.top, 0, 0, rect.width, top);
+    setRect(mask.pieces.left, 0, top, left, height);
+    setRect(mask.pieces.right, right, top, rect.width - right, height);
+    setRect(mask.pieces.bottom, 0, bottom, rect.width, rect.height - bottom);
+    setRect(mask.hole, left, top, width, height);
+    mask.root.hidden = false;
   }
 
   getQueueSpacing() {
