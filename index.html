@@ -1,0 +1,35 @@
+﻿<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <meta name="theme-color" content="#d7f1ff" />
+    <title>Bus Fever - Car Jam Escape</title>
+  </head>
+  <body>
+    <div id="app">
+      <main id="stage" class="stage">
+        <canvas id="game-canvas" aria-label="Bus Fever - Car Jam Escape"></canvas>
+        <div id="loading-screen" class="loading-screen" role="status" aria-live="polite">
+          <img src="/assets/applovin/icon_q75.jpg" alt="Bus Fever - Car Jam Escape icon" />
+          <h1>Bus Fever - Car Jam Escape</h1>
+          <div class="loading-progress" role="progressbar" aria-label="Loading progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+            <div id="loading-progress-bar" class="loading-progress-bar"></div>
+          </div>
+          <p id="loading-progress-value" class="loading-progress-value">0%</p>
+        </div>
+        <div id="end-panel" class="end-panel" hidden>
+          <p id="end-kicker">LEVEL COMPLETE</p><h2 id="end-title">全部车辆已发车</h2>
+          <button id="end-reset-button" type="button">再玩一次</button>
+        </div>
+        <div id="game-over-overlay" class="game-over-overlay" hidden>
+          <div id="game-over-title" class="game-over-title">Game Over</div>
+          <img id="game-over-logo" class="game-over-logo" src="/assets/main-loading-icon.png" alt="Bus Fever logo" />
+          <button id="cta-button" class="cta-button" type="button" aria-label="Play Now" hidden>Play Now</button>
+        </div>
+      </main>
+      <aside id="scene-editor" class="scene-editor" aria-label="Scene editor"></aside>
+    </div>
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>

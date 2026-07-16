@@ -1,0 +1,550 @@
+{
+  "preview": {
+    "enabled": 1,
+    "width": 1080,
+    "height": 2160
+  },
+  "camera": {
+    "elevationDegrees": 61,
+    "fovDegrees": 2.2,
+    "targetX": 0,
+    "targetY": 0,
+    "targetZ": 1.8,
+    "fitWidth": 14.8,
+    "fitHeight": 14.9,
+    "padding": 0.35
+  },
+  "sourceCrop": {
+    "enabled": 1,
+    "width": 1080,
+    "height": 2160,
+    "offsetX": 0,
+    "offsetY": 211
+  },
+  "cta": {
+    "enabled": 1,
+    "x": 540,
+    "y": 1868,
+    "worldX": 0,
+    "worldY": 3.17,
+    "worldZ": 7.44,
+    "height": 137,
+    "stretchX": 3.18,
+    "fontSize": 63,
+    "fontHeight": 16,
+    "strokeColor": 1665799,
+    "strokeWidth": 4.4,
+    "pulseScale": 1.05,
+    "pulseSpeed": 0.21,
+    "appearSpeed": 1.45
+  },
+  "installGate": {
+    "successfulOperationThreshold": 40
+  },
+  "gameOver": {
+    "failureDelaySeconds": 2,
+    "maskOpacity": 0.6,
+    "titleFont": "rounded",
+    "titleFontSize": 96,
+    "titlePopSpeed": 1.12,
+    "titleFadeSpeed": 1.45,
+    "logoX": 533,
+    "logoY": 974,
+    "logoWidth": 645,
+    "logoHeight": 587,
+    "logoRadius": 30,
+    "logoAppearSpeed": 1.45
+  },
+  "facing": {
+    "passengerYawDegrees": 180,
+    "passengerModelYawDegrees": -90,
+    "passengerShadowYawDegrees": 90,
+    "vehicleYawOffsetDegrees": 0,
+    "parkingSpotYawDegrees": 16,
+    "arrowYawDegrees": 180
+  },
+  "path": {
+    "scaleX": 2,
+    "scaleZ": 2,
+    "centerZ": 15.28,
+    "offsetX": 0,
+    "offsetZ": -2.2,
+    "groundY": 0.025
+  },
+  "conveyorLayout": {
+    "selected": "dualQueue3"
+  },
+  "conveyorLayouts": {
+    "dualQueue2": {
+      "art": {
+        "x": 0,
+        "y": -0.045,
+        "z": -4.15,
+        "width": 13.55,
+        "depth": 7.95,
+        "opacity": 1
+      },
+      "curve": {
+        "offsetX": 0,
+        "offsetZ": 0.6,
+        "scaleX": 0.75,
+        "scaleZ": 0.8
+      },
+      "queueCurves": [
+        {
+          "offsetX": 0.6,
+          "offsetZ": 0.9,
+          "scaleX": 0.8,
+          "scaleZ": 0.8
+        },
+        {
+          "offsetX": -0.5,
+          "offsetZ": 0.9,
+          "scaleX": 0.7,
+          "scaleZ": 0.7
+        }
+      ]
+    },
+    "dualQueue3": {
+      "art": {
+        "x": 0,
+        "y": -0.045,
+        "z": -4.15,
+        "width": 13.55,
+        "depth": 7.95,
+        "opacity": 1
+      },
+      "curve": {
+        "offsetX": 0,
+        "offsetZ": 0.85,
+        "scaleX": 0.75,
+        "scaleZ": 0.8
+      },
+      "queueCurves": [
+        {
+          "offsetX": 0.6,
+          "offsetZ": 0.95,
+          "scaleX": 0.8,
+          "scaleZ": 0.8
+        },
+        {
+          "offsetX": -0.6,
+          "offsetZ": 1,
+          "scaleX": 0.7,
+          "scaleZ": 0.7
+        }
+      ]
+    },
+    "dualQueue5": {
+      "art": {
+        "x": 0,
+        "y": -0.045,
+        "z": -4.15,
+        "width": 13.55,
+        "depth": 7.95,
+        "opacity": 1
+      },
+      "curve": {
+        "offsetX": 0,
+        "offsetZ": 0.6,
+        "scaleX": 0.75,
+        "scaleZ": 0.8
+      },
+      "queueCurves": [
+        {
+          "offsetX": 0.6,
+          "offsetZ": 0.9,
+          "scaleX": 0.8,
+          "scaleZ": 0.8
+        },
+        {
+          "offsetX": -0.5,
+          "offsetZ": 0.9,
+          "scaleX": 0.7,
+          "scaleZ": 0.7
+        }
+      ]
+    },
+    "dualQueue10": {
+      "art": {
+        "x": 0,
+        "y": -0.045,
+        "z": -4.15,
+        "width": 13.55,
+        "depth": 7.95,
+        "opacity": 1
+      },
+      "curve": {
+        "offsetX": 0,
+        "offsetZ": 0.6,
+        "scaleX": 0.75,
+        "scaleZ": 0.8
+      },
+      "queueCurves": [
+        {
+          "offsetX": 0.6,
+          "offsetZ": 0.9,
+          "scaleX": 0.8,
+          "scaleZ": 0.8
+        },
+        {
+          "offsetX": -0.5,
+          "offsetZ": 0.9,
+          "scaleX": 0.7,
+          "scaleZ": 0.7
+        }
+      ]
+    }
+  },
+  "conveyorCurve": {
+    "offsetX": 0,
+    "offsetZ": 0.6,
+    "scaleX": 0.75,
+    "scaleZ": 0.8
+  },
+  "queueCurves": [
+    {
+      "offsetX": 0.6,
+      "offsetZ": 0.9,
+      "scaleX": 0.8,
+      "scaleZ": 0.8
+    },
+    {
+      "offsetX": -0.5,
+      "offsetZ": 0.9,
+      "scaleX": 0.7,
+      "scaleZ": 0.7
+    }
+  ],
+  "background": {
+    "offsetX": 0,
+    "offsetY": 0.11,
+    "distanceOffset": 7,
+    "width": 14.1,
+    "height": 22.708,
+    "sourceWidth": 2100,
+    "sourceHeight": 3382,
+    "opacity": 1
+  },
+  "lighting": {
+    "hemisphere": {
+      "skyColor": 16777215,
+      "groundColor": 7832207,
+      "intensity": 2.25
+    },
+    "directional": {
+      "enabled": 1,
+      "color": 16777215,
+      "intensity": 1.9,
+      "position": {
+        "x": -3.75,
+        "y": 11.7,
+        "z": -16.4
+      },
+      "eulerDegrees": {
+        "x": 101.5,
+        "y": -9.5,
+        "z": -99
+      },
+      "shadowType": 2,
+      "shadowStrength": 0.46
+    },
+    "realtimeShadows": {
+      "enabled": 0,
+      "mapSize": 1024,
+      "cameraSize": 18,
+      "cameraNear": 0.1,
+      "cameraFar": 40,
+      "shadowLightDistance": 21,
+      "bias": -0.0044,
+      "normalBias": 0.057,
+      "radius": 3.7,
+      "shadowColor": 0,
+      "receiverEnabled": 1,
+      "receiverX": -3.9,
+      "receiverY": -0.1,
+      "receiverZ": -1.05,
+      "receiverWidth": 40,
+      "receiverDepth": 50,
+      "receiverOpacity": 0.66,
+      "receiverDepthTest": 1,
+      "receiverDebugEnabled": 0,
+      "receiverDebugColor": 3528703,
+      "receiverDebugOpacity": 0.24,
+      "debugCasterEnabled": 0,
+      "debugCasterX": -2.45,
+      "debugCasterY": 0.6,
+      "debugCasterZ": 1.6,
+      "debugCasterSize": 0.6,
+      "debugCasterHeight": 1.2,
+      "vehiclesCast": 0,
+      "passengersCast": 0,
+      "parkingSpotsReceive": 1
+    }
+  },
+  "conveyorArt": {
+    "x": 0,
+    "y": -0.045,
+    "z": -4.15,
+    "width": 13.55,
+    "depth": 7.95,
+    "opacity": 1
+  },
+  "parkingSpots": {
+    "count": 5,
+    "startX": -1.8,
+    "spacing": 0.95,
+    "y": 0.035,
+    "z": 0.55,
+    "modelWidth": 0.78,
+    "modelDepth": 1.46,
+    "scaleX": 0.7,
+    "scaleZ": 0.65
+  },
+  "seatCountBoard": {
+    "x": -0.17,
+    "z": 1.37,
+    "width": 0.52,
+    "depth": 0.59,
+    "textScale": 1.47
+  },
+  "vehiclePath": {
+    "enabled": 0,
+    "showBlocked": 1,
+    "y": 0.145,
+    "color": 2160383,
+    "opacity": 0.88,
+    "lineWidth": 3,
+    "turnRadius": 0.5,
+    "turnInController": 0.1,
+    "turnOutController": 0.25,
+    "parkingBounds": {
+      "minX": -2.26,
+      "maxX": 2.25,
+      "minZ": -3.02,
+      "maxZ": 2.12
+    }
+  },
+  "vehicleDeparturePath": {
+    "enabled": 0,
+    "y": -1,
+    "color": 16762967,
+    "opacity": 0.88,
+    "lineWidth": 3,
+    "fullLoadDelay": 1,
+    "backDistance": 0.5,
+    "exitTurnOffsetX": -0.5,
+    "exitTargetX": 4.2,
+    "exitTargetZOffset": 0,
+    "backwardSpeed": 2.5,
+    "forwardSpeed": 10,
+    "turnRadius": 0.5,
+    "turnInController": 0.25,
+    "turnOutController": 0.25
+  },
+  "vehicleArea": {
+    "unityToWorldScale": 2,
+    "positionUnitScale": 0.75,
+    "sourceRootX": 0,
+    "sourceRootZ": -2.92,
+    "positionPivotX": 0,
+    "positionPivotZ": -0.45,
+    "sourceCube": {
+      "centerX": 0,
+      "centerZ": -0.5,
+      "width": 4,
+      "depth": 4.36
+    },
+    "offsetX": 0,
+    "offsetZ": 0,
+    "y": 0.035,
+    "mirrorZ": true,
+    "rotationDegrees": 0,
+    "pivotX": 0,
+    "pivotZ": 0,
+    "modelDepthBySeats": {
+      "4": 1.05,
+      "6": 1.23,
+      "10": 1.48
+    },
+    "modelScale": 0.7
+  },
+  "vehicleBoardingPulse": {
+    "scale": 1.09,
+    "speed": 11
+  },
+  "vehicleGuideHand": {
+    "enabled": 1,
+    "vehicleId": 130,
+    "offsetX": 0.38,
+    "offsetY": 0.38,
+    "offsetZ": 0.46,
+    "approachOffsetX": 0.62,
+    "approachOffsetZ": -0.11,
+    "size": 2.52,
+    "width": 0.47,
+    "height": 0.5,
+    "nearScale": 0.84,
+    "farScale": 1.14,
+    "speed": 0.63,
+    "opacity": 1
+  },
+  "passengers": {
+    "modelHeight": 0.48,
+    "modelScale": 1.12,
+    "heightAbovePath": 0.035,
+    "groupSpacing": 0.19,
+    "shadowScale": 0.168,
+    "aboardInterval": 0.05,
+    "aboardSpeed": 3.8,
+    "boardingTargetOffsetX": 0,
+    "boardingTargetOffsetY": 0,
+    "boardingTargetOffsetZ": 0
+  },
+  "passengerMaterial": {
+    "mode": "unityTexture",
+    "baseColorStrength": 1.1,
+    "emissionStrength": 0.6,
+    "brightness": 0.99,
+    "roughness": 0.83,
+    "metalness": 0,
+    "solidColors": [
+      35056,
+      3783936,
+      13911468,
+      8858341,
+      13109513,
+      14333963,
+      12541986,
+      1619180,
+      6958895,
+      4868682,
+      9141423
+    ],
+    "colors": [
+      {
+        "emissionColor": 3581695,
+        "baseColor": 14413311
+      },
+      {
+        "emissionColor": 12049816,
+        "baseColor": 16777215
+      },
+      {
+        "emissionColor": 14782156,
+        "baseColor": 14079702
+      },
+      {
+        "emissionColor": 10027263,
+        "baseColor": 15589631
+      },
+      {
+        "emissionColor": 11764868,
+        "baseColor": 14062997
+      },
+      {
+        "emissionColor": 11246988,
+        "baseColor": 16777215
+      },
+      {
+        "emissionColor": 10973810,
+        "baseColor": 16448250
+      },
+      {
+        "emissionColor": 5111807,
+        "baseColor": 16777215
+      },
+      {
+        "emissionColor": 10832458,
+        "baseColor": 16777215
+      },
+      {
+        "emissionColor": 4868682,
+        "baseColor": 16777215
+      },
+      {
+        "emissionColor": 9450129,
+        "baseColor": 16777215
+      }
+    ]
+  },
+  "passengerShadows": {
+    "conveyor": {
+      "offsetX": -0.05,
+      "offsetZ": 0,
+      "scaleX": 1,
+      "scaleZ": 1
+    },
+    "leftQueue": {
+      "offsetX": 0.01,
+      "offsetZ": -0.03,
+      "scaleX": 1,
+      "scaleZ": 1
+    },
+    "rightQueue": {
+      "offsetX": -0.01,
+      "offsetZ": 0,
+      "scaleX": 1,
+      "scaleZ": 1
+    }
+  },
+  "vehicleShadows": {
+    "y": 0.004,
+    "opacity": 0.72,
+    "scaleX": 1,
+    "scaleZ": 1,
+    "depthBySeats": {
+      "4": 1.05,
+      "6": 1.23,
+      "10": 2.05
+    },
+    "scaleBySeats": {
+      "4": {
+        "x": 1,
+        "z": 1
+      },
+      "6": {
+        "x": 1,
+        "z": 1
+      },
+      "10": {
+        "x": 0.8,
+        "z": 0.8
+      }
+    }
+  },
+  "vehicleArrow": {
+    "offsetX": 0,
+    "offsetY": 0.04,
+    "offsetZ": 0,
+    "outlineColor": 3619397,
+    "outlineScale": 1.05,
+    "outlineDepthTest": 0
+  },
+  "effects": {
+    "ribbon": {
+      "moveRange": 1.1,
+      "speedStart": 0.74,
+      "speedMidTime": 0.38,
+      "speedMid": 0.85,
+      "speedEnd": 0.27
+    },
+    "ribbonSmoke": {
+      "moveRange": 0.9,
+      "speedStart": 1,
+      "speedMidTime": 0.27,
+      "speedMid": 0.59,
+      "speedEnd": 0.72
+    },
+    "hit": {
+      "sizeScale": 2,
+      "particleHit2SizeScale": 1,
+      "particleHit1SizeScale": 1,
+      "particleHitSizeScale": 1
+    }
+  },
+  "shadows": {
+    "y": 0.006,
+    "opacity": 0.55
+  }
+}

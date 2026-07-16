@@ -1,0 +1,20 @@
+{
+  "name": "bus-loop-playable-prototype",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 127.0.0.1",
+    "prebuild": "node scripts/generate-active-level.mjs",
+    "build": "vite build",
+    "levels:extract": "node scripts/extract-unity-levels.mjs",
+    "level:generate": "node scripts/generate-active-level.mjs",
+    "apply:tuning": "node scripts/apply-scene-tuning.mjs",
+    "check:applovin": "node scripts/check-applovin-package.mjs",
+    "package:applovin": "node scripts/package-applovin-single-html.mjs",
+    "preview": "vite preview --host 127.0.0.1",
+    "test": "node --test"
+  },
+  "dependencies": { "three": "^0.180.0" },
+  "devDependencies": { "vite": "^7.1.7" }
+}
