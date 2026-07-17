@@ -1,5 +1,12 @@
 ﻿# Playable Project Progress
 
+## Completed On 2026-07-16 - Level7 vehicle 66/82 position sync
+
+- Synchronized the latest Unity Level7 coordinates for vehicle 66 (`x -0.15425447 / z 0.95464253`) and vehicle 82 (`x 0.77715284 / z 0.57091796`) through the reproducible level extraction pipeline.
+- Added focused coordinate/no-overlap regression coverage and regenerated the catalog, artifact, and selected Level7-only production payload.
+- Focused catalog/collision tests pass 12/12; production build passed with only the existing chunk-size warning.
+- Regenerated `artifacts/applovin/index.html` at 3,639,587 bytes; all AppLovin checks and final Level7/new-coordinate marker scans passed. SHA-256: `A02356D125E572954D6F9ECBB36218941C171206F713DBCAAFDC4E2F47716E1C`.
+
 ## Completed On 2026-07-16 - Level7 current-editor AppLovin rebuild
 
 - Applied the complete runtime tuning exported by the user: Level7, DualQueue3, install threshold 20, six parking spots, vehicle-area scale 0.84, and the current vehicle-89 guide/mask values.

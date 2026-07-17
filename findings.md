@@ -1,5 +1,18 @@
 # Findings
 
+## Level7 vehicle 66/82 coordinate sync - 2026-07-16
+
+- The authoritative input is `D:\UnityProjects\BusLoop\Assets\BusJam\Game\Bundleables\Level_Escape_C\level7.asset`.
+- Project navigation maps this change to `scripts/extract-unity-levels.mjs`, generated `src/level-catalog.js` / `src/generated-active-level.js`, and `test/level-catalog.test.js`.
+- Level7 is already the durable selected production level; the prior package contains 83 vehicles and queues 368+278.
+- Current Unity-authored coordinates are vehicle 66 `x=-0.15425447, z=0.95464253` and vehicle 82 `x=0.77715284, z=0.57091796`; both retain their existing rotations.
+- The extractor already has a per-level `vehicleOverrides` mechanism, while focused Level7 assertions currently cover vehicle 89 color plus exact queue order.
+- Level7 positions are parsed directly from the Unity asset by `parseUnityLevel`; no new hardcoded override is needed. The durable repo changes should be regenerated catalog/artifact/active-level data plus a focused coordinate regression.
+- Compared with the current generated Level7 payload, vehicle 66 moves from `(-0.14925447, 0.8996426)` to `(-0.15425447, 0.95464253)`, and vehicle 82 moves from `(0.78215283, 0.6409179)` to `(0.77715284, 0.57091796)` in web `x/z` coordinates.
+- The active generated level is already `level7`. Run the extractor with `--selected=level7`, then focused catalog/collision checks, `npm.cmd run build`, `package:applovin`, and `check:applovin`.
+- After regeneration, both the development catalog and single-level production payload contain the exact new coordinates, and the complete 83-vehicle Level7 collision scan still reports zero initial overlaps.
+- Vite strips leading zeros from decimal literals in the final package; Level7 markers appear as `id:66 ... x:-.15425447,z:.95464253` and `id:82 ... x:.77715284,z:.57091796`.
+
 ## DualQueue3 Trajectory Refresh - 2026-07-16
 
 - The screenshot requires DualQueue3 closed curve `offsetX 0`, `offsetZ 0.85`, `scaleX 0.75`, `scaleZ 0.80`; entry 1 `offsetX 0.60`, `offsetZ 0.95`; entry 2 `offsetX -0.60`, `offsetZ 1.00`.

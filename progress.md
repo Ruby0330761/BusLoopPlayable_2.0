@@ -1,5 +1,16 @@
 ﻿# Progress
 
+## 2026-07-16 Level7 vehicle 66/82 position sync
+
+- Read the updated Unity `level7.asset`: vehicle 66 is now `x -0.15425447 / z 0.95464253`; vehicle 82 is now `x 0.77715284 / z 0.57091796`.
+- Added focused coordinate assertions and regenerated the catalog, artifact, and active Level7 payload from the authoritative Unity asset.
+- Direct verification confirmed both generated catalog and production active module contain the new coordinates before focused verification and packaging.
+- Test-file syntax check and focused level catalog/collision regressions pass 12/12, including no-overlap checks for both moved vehicles.
+- Production build passed and regenerated the selected Level7-only payload (83 vehicles, queues 368+278); Vite emitted only the existing chunk-size warning.
+- Regenerated `artifacts/applovin/index.html` at 3,639,587 bytes (3.471 MiB); all AppLovin static package checks passed.
+- Final package scan confirms `level7.asset`, exact new vehicle 66/82 coordinates, and absence of both stale coordinate pairs. SHA-256: `A02356D125E572954D6F9ECBB36218941C171206F713DBCAAFDC4E2F47716E1C`.
+- Task complete; final artifact is `artifacts/applovin/index.html`.
+
 ## 2026-07-16 DualQueue3 Trajectory Package Refresh
 
 - Started a package refresh from the supplied DualQueue3 trajectory screenshot.

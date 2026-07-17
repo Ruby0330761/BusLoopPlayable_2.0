@@ -82,9 +82,31 @@ test('production active module contains the editor-selected level only', () => {
   }
 });
 
-test('level7 uses vehicle 89 color 2 and the supplied passenger queue order', () => {
-  assert.equal(LEVEL_CATALOG.level7.vehicles.find((vehicle) => vehicle.id === 89)?.colorIndex, 2);
-  assert.deepEqual(LEVEL_CATALOG.level7.passengerQueues.map(queueRuns), LEVEL7_QUEUE_RUNS);
+test('level7 uses the tuned vehicle data and supplied passenger queue order', () => {
+  const level = LEVEL_CATALOG.level7;
+  assert.deepEqual(
+    [66, 82].map((id) => {
+      const vehicle = level.vehicles.find((entry) => entry.id === id);
+      return [id, vehicle?.x, vehicle?.z];
+    }),
+    [
+      [66, -0.15425447, 0.95464253],
+      [82, 0.77715284, 0.57091796]
+    ]
+  );
+  for (const id of [66, 82]) {
+    const movedVehicle = level.vehicles.find((vehicle) => vehicle.id === id);
+    for (const otherVehicle of level.vehicles) {
+      if (otherVehicle.id === id) continue;
+      assert.equal(
+        boxesOverlap(collisionBox(level, movedVehicle), collisionBox(level, otherVehicle)),
+        false,
+        `level7 vehicles ${id} and ${otherVehicle.id}`
+      );
+    }
+  }
+  assert.equal(level.vehicles.find((vehicle) => vehicle.id === 89)?.colorIndex, 2);
+  assert.deepEqual(level.passengerQueues.map(queueRuns), LEVEL7_QUEUE_RUNS);
 });
 
 test('level13 vehicle 130 is nudged clear of vehicle 135 collision body', () => {
