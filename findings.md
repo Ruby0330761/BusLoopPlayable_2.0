@@ -1,5 +1,67 @@
 # Findings
 
+## Level7 vehicle 66/82 coordinate sync - 2026-07-16
+
+- The authoritative input is `D:\UnityProjects\BusLoop\Assets\BusJam\Game\Bundleables\Level_Escape_C\level7.asset`.
+- Project navigation maps this change to `scripts/extract-unity-levels.mjs`, generated `src/level-catalog.js` / `src/generated-active-level.js`, and `test/level-catalog.test.js`.
+- Level7 is already the durable selected production level; the prior package contains 83 vehicles and queues 368+278.
+- Current Unity-authored coordinates are vehicle 66 `x=-0.15425447, z=0.95464253` and vehicle 82 `x=0.77715284, z=0.57091796`; both retain their existing rotations.
+- The extractor already has a per-level `vehicleOverrides` mechanism, while focused Level7 assertions currently cover vehicle 89 color plus exact queue order.
+- Level7 positions are parsed directly from the Unity asset by `parseUnityLevel`; no new hardcoded override is needed. The durable repo changes should be regenerated catalog/artifact/active-level data plus a focused coordinate regression.
+- Compared with the current generated Level7 payload, vehicle 66 moves from `(-0.14925447, 0.8996426)` to `(-0.15425447, 0.95464253)`, and vehicle 82 moves from `(0.78215283, 0.6409179)` to `(0.77715284, 0.57091796)` in web `x/z` coordinates.
+- The active generated level is already `level7`. Run the extractor with `--selected=level7`, then focused catalog/collision checks, `npm.cmd run build`, `package:applovin`, and `check:applovin`.
+- After regeneration, both the development catalog and single-level production payload contain the exact new coordinates, and the complete 83-vehicle Level7 collision scan still reports zero initial overlaps.
+- Vite strips leading zeros from decimal literals in the final package; Level7 markers appear as `id:66 ... x:-.15425447,z:.95464253` and `id:82 ... x:.77715284,z:.57091796`.
+
+## DualQueue3 Trajectory Refresh - 2026-07-16
+
+- The screenshot requires DualQueue3 closed curve `offsetX 0`, `offsetZ 0.85`, `scaleX 0.75`, `scaleZ 0.80`; entry 1 `offsetX 0.60`, `offsetZ 0.95`; entry 2 `offsetX -0.60`, `offsetZ 1.00`.
+- The current tuning selected `dualQueue3` but its per-layout transform still held stale DualQueue2-like values (`offsetZ 0.60`, entries `0.60/0.90` and `-0.50/0.90`). The package therefore needs a real config correction before rebuilding.
+
+## Current Editor Tuning Rebuild - 2026-07-16
+
+- The browser editor state is authoritative for this request; `artifacts/scene-tuning.json` must be refreshed from the editor before `npm.cmd run apply:tuning`.
+- Browser page inspection cannot access the main-world `window.__busLoop`, but every editor row carries its exact tuning path in `data-path` and exposes the current value in a number input or select. Those path/value pairs are sufficient to rebuild the complete editor-authored patch without reading browser storage.
+- The automated fresh-tab form state was stale. The user's direct runtime export is authoritative: `level7`, `dualQueue3`, guide vehicle 89 with base X `0.25`, right-side approach `0.62`, far/near scale `1.14/1`, speed `0.55`, and a 3-second mask sized `0.62 x 0.62` with padding 15.
+- The production workflow keeps the editor catalog development-only and regenerates `src/generated-active-level.js` from the selected level during `npm.cmd run build`.
+- AppLovin delivery remains one fully inlined HTML under 5,000,000 bytes with MRAID CTA/ready handling and no external asset URLs.
+- The final Level7/dualQueue3 package is 3,639,703 bytes with SHA-256 `1AEC67487626C7E73EBB07DE00967344FA0EE6F47BCE61042274ECD8DD03DA5C`; static validation and package marker checks passed. Automated local `file://` runtime QA was blocked by browser URL policy, so AppLovin preview/upload play remains pending manual validation.
+
+## Level7 Escape C Import - 2026-07-16
+
+- Follow-up validation: vehicle 89 is a visible 10-seat parking-area vehicle currently using color 5. Changing it to color 2 requires moving exactly 10 passenger entries from color 5 to color 2.
+- The revised right queue remains length 278 and changes counts from `{0:66,1:44,5:76,6:22,7:70}` to `{0:66,1:44,2:10,5:66,6:22,7:70}`. Combined with the unchanged left queue, it exactly matches the projected vehicle seat totals after vehicle 89 becomes color 2, with zero per-color mismatch.
+- The durable override and revised queue were applied successfully; extraction regenerated the selected Level7 catalog/artifact/active payload with unchanged structural counts (83 vehicles, queues 368+278).
+- Verification exposed that `artifacts/selected-level.txt` is currently `level9`; generating active Level7 created a selection mismatch even though the Level7 catalog assertions passed. Preserve the existing Level9 selection and regenerate active/artifact selection as Level9 while retaining the updated Level7 catalog entry.
+- After resynchronizing to current selection Level9, focused catalog/collision tests pass 12/12. Direct Level7 verification confirms vehicle 89 `{seats:10,colorIndex:2}`, right queue length 278 with counts `{0:66,1:44,2:10,5:66,6:22,7:70}`, and exact combined seat/passenger color parity.
+- Production build passed with the current selected Level9 payload and only the existing Vite >500 kB chunk warning; Level7 changes remain in the generated development catalog/artifact.
+- Source: `D:\UnityProjects\BusLoop\Assets\BusJam\Game\Bundleables\Level_Escape_C\level7.asset` (42,234 bytes, Unity id 7, mapScale 1).
+- The asset contains 83 parking-area vehicles and 646 total seats. Seat totals by color are: `0:110`, `1:126`, `3:44`, `4:50`, `5:112`, `6:74`, `7:130`; vehicle seat types are 18 four-seat, 19 six-seat, and 46 ten-seat vehicles.
+- The asset's serialized fixed queues are not usable for this import: they total only 152+124 passengers and include color 8, which has no corresponding vehicle seat total. The user's supplied left/right queues must explicitly override the asset queues before `validateLevel()`.
+- Existing ownership is `scripts/extract-unity-levels.mjs` -> `artifacts/unity-levels.json` + `src/level-catalog.js` + selected `src/generated-active-level.js`, with catalog coverage in `test/level-catalog.test.js`.
+- The supplied queues parse cleanly as left/queue 0 length 368 and right/queue 1 length 278, totaling exactly 646 passengers. Combined color counts exactly match the 83 vehicles' seat totals for every color (`0,1,3,4,5,6,7`) with zero mismatch.
+- Queue-specific counts are left `{0:44,1:82,3:44,4:50,5:36,6:52,7:60}` and right `{0:66,1:44,5:76,6:22,7:70}`.
+- `artifacts/selected-level.txt` currently selects Level9 and is the production generator's authoritative selection. This import should update it to Level7 and regenerate the active payload; `src/scene-tuning.js` remains a fallback default of Level5.
+- Level7 was added between Level5 and Level8 in the default source order, `artifacts/selected-level.txt` now selects `level7`, and extraction succeeded with `83 vehicles, queues 368+278`; the generated active module is Level7.
+- Focused catalog/collision tests pass 12/12. Direct generated-data verification confirms options `[level5, level7, level8, level9, level10, level13]`, active key `level7`, exact passenger/seat color totals, and zero initial Level7 vehicle-body overlaps.
+
+## Level8/Level9 Initial Collider Parity - 2026-07-16
+
+- The imported vehicle positions and yaw values come directly from each Unity level asset; yaw is reconstructed from the serialized quaternion.
+- The extractor does not read per-prefab collider geometry. It assigns hard-coded web collision bodies by seat count: width `0.27` for all types and lengths `0.4814318817567568`, `0.5639630614864864`, and `0.6785897` for 4/6/10-seat vehicles.
+- Runtime collision uses centered oriented boxes and treats exact boundary contact as overlap (`<=` in all SAT axes). The next check is to enumerate the Level8/Level9 pairs and compare their authored prefab collider bounds/centers against these hard-coded dimensions.
+- A direct SAT diagnostic on the current catalog reproduced 22 initial overlap pairs in Level8 and 21 in Level9. The common Level8 straight-line spacing is about `0.51`, while two hard-coded 6-seat lengths sum to a required center spacing of `0.563963...`; penetrations commonly reach about `0.054`.
+- Level9's curved chains show the same pattern across rotated 6-seat vehicles, so the defect is systemic rather than a single bad imported pose. `D:\UnityProjects\BusLoop\Assets` is available for authoritative prefab inspection.
+- Authoritative prefab YAML confirms the web constants are wrong for 4-seat and 6-seat buses. After applying each collider object's local scale, Unity sizes are approximately: 4-seat `0.27000001 x 0.47157903` with local center Z `-0.02223980`; 6-seat `0.27 x 0.486` centered; 10-seat `0.27000002 x 0.67858938` centered.
+- All 33 normal color/seat prefabs under `BusAndPassenger` use the same values for their seat class. The current web lengths `0.48143188` (4-seat) and `0.56396306` (6-seat) do not match those prefabs; especially the 6-seat body is about `0.077963` too long.
+- Substituting the authoritative sizes removes every initial overlap in Level9 and reduces Level8 from 22 pairs to three very small 4/6-seat contacts. Level5 also becomes clean; Level10 and Level13 retain one small 4-seat-related pair each if the prefab's nonzero 4-seat collider center is applied literally.
+- Unity runtime sets `scene.VehicleScale = clamp(config.mapScale, 0.5, 1.8)` before borrowing vehicles, while the level asset stores raw vehicle transforms. The remaining question is how `VehiclePool` applies the inverse/scene scale and whether authored `position` denotes the vehicle transform or an adjusted collider reference point.
+- `BusJamConfig.asset` is the authoritative logical collision source and contains exactly: 4-seat `{x:0.27,z:0.47157902}`, 6-seat `{x:0.27,z:0.486}`, 10-seat `{x:0.27,z:0.6785897}`. `VehicleConfig.GetSize()` and `GameScene.GetVehicleSize()` use these centered sizes; the prefab BoxCollider's 4-seat center offset is not part of the gameplay geometry graph.
+- Unity scales both authored positions (about the parking-area anchor) and logical vehicle sizes by the same `VehicleScale`, so overlap relationships remain invariant in the raw level coordinate space used by the web runtime.
+- Using the centered `BusJamConfig.asset` sizes eliminates all initial oriented-box overlaps in all five imported levels, including Level8 and Level9. This identifies the root cause as stale/incorrect 4-seat and 6-seat web length constants, not position/yaw extraction or SAT tolerance.
+- The five supplied source assets are at `D:\备份\改文件名临时文件夹\level{5,8,9,10,13}.asset`; the extractor's current default path string is mojibake and should be corrected while regenerating.
+- `test/level-catalog.test.js` already owns an oriented collision-box helper and the prior Level13 overlap regression, making it the narrow test boundary for asserting the Unity size table and zero initial Level8/Level9 pair overlaps.
+
 ## Configurable Success Redirect - 2026-07-15
 
 ### Real-device failure comparison

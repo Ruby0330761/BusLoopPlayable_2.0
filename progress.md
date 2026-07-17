@@ -1,5 +1,74 @@
 ﻿# Progress
 
+## 2026-07-16 Level7 vehicle 66/82 position sync
+
+- Read the updated Unity `level7.asset`: vehicle 66 is now `x -0.15425447 / z 0.95464253`; vehicle 82 is now `x 0.77715284 / z 0.57091796`.
+- Added focused coordinate assertions and regenerated the catalog, artifact, and active Level7 payload from the authoritative Unity asset.
+- Direct verification confirmed both generated catalog and production active module contain the new coordinates before focused verification and packaging.
+- Test-file syntax check and focused level catalog/collision regressions pass 12/12, including no-overlap checks for both moved vehicles.
+- Production build passed and regenerated the selected Level7-only payload (83 vehicles, queues 368+278); Vite emitted only the existing chunk-size warning.
+- Regenerated `artifacts/applovin/index.html` at 3,639,587 bytes (3.471 MiB); all AppLovin static package checks passed.
+- Final package scan confirms `level7.asset`, exact new vehicle 66/82 coordinates, and absence of both stale coordinate pairs. SHA-256: `A02356D125E572954D6F9ECBB36218941C171206F713DBCAAFDC4E2F47716E1C`.
+- Task complete; final artifact is `artifacts/applovin/index.html`.
+
+## 2026-07-16 DualQueue3 Trajectory Package Refresh
+
+- Started a package refresh from the supplied DualQueue3 trajectory screenshot.
+- Confirmed the selected layout was DualQueue3 but its stored per-layout curve values were stale. Updated the exported tuning to closed `0/0.85/0.75/0.80`, entry 1 `0.60/0.95`, and entry 2 `-0.60/1.00`.
+- Applied the corrected tuning to source; direct config verification confirms Level7, DualQueue3, and all eight screenshot values.
+
+## 2026-07-16 Current Editor Tuning AppLovin Rebuild
+
+- Started the requested production refresh from the parameters currently active in the web editor.
+- Packaging route confirmed: export editor tuning to `artifacts/scene-tuning.json`, run `apply:tuning`, build the selected single-level payload, generate `artifacts/applovin/index.html`, then run the AppLovin static checker.
+- Current phase: capture the editor's live tuning and selected level before applying or building.
+- The initial automated form capture was stale and is superseded by the complete runtime JSON supplied by the user.
+- Applied the authoritative `level7` + `dualQueue3` tuning to `artifacts/scene-tuning.json` and `src/scene-tuning.js`; the durable selected-level marker is now `level7`.
+- Key baked values: install threshold 20, six parking spots, vehicle-area scale 0.84, guide hand vehicle 89 with offset X 0.25/start X 0.62, and a 3-second mask with padding 15 and highlight scale 0.62 x 0.62.
+- First focused run passed 12/13; the only failure was the expected stale generated active module (`level9` versus the new `level7` marker). Explicit Level7 generation is required before the rerun/build.
+- Regenerated the Level7-only active module (83 vehicles, queues 368+278). Focused guide/catalog/collision tests pass 13/13.
+- Production build passed; Vite emitted only the existing chunk-size warning for the 733.32 kB minified JS chunk.
+- Generated `artifacts/applovin/index.html` at 3,639,703 bytes (3.471 MiB); all AppLovin static checks passed.
+- Final package marker scan confirms only `level7.asset`, selected `dualQueue3`, install threshold 20, guide vehicle 89/right-to-left offset 0.62, and the 3-second mask/highlight settings. SHA-256: `1AEC67487626C7E73EBB07DE00967344FA0EE6F47BCE61042274ECD8DD03DA5C`.
+- Automated final `file://` runtime QA was blocked by browser URL policy. No workaround was used; AppLovin preview/upload play remains the required external manual validation.
+- Packaging task complete: final artifact is `artifacts/applovin/index.html`.
+
+## 2026-07-16 Vehicle 89 Timed Guide Mask
+
+- Bound `vehicleGuideHand.vehicleId` to 89 in source and exported tuning.
+- Added `firstClickGuide` tuning: enabled, vehicle id, duration seconds, mask opacity, padding, and highlight width/height scale.
+- Implemented the mask as four DOM pieces around the target vehicle projection, with pointer events disabled so other vehicles remain operable during the timed overlay.
+- Rendered the timed guide hand as a DOM image above the mask, mirrored its visual, and hides it together with the timed mask.
+- Adjusted the approach to start on the right and move left toward vehicle 89 while scaling down.
+- Added a one-time local editor tuning migration from the old vehicle `1`, base X `-0.38`, and start X `-0.62` defaults to the current vehicle `89` guide settings.
+- Removed the interrupted `guide-locked` click restriction from `src/main.js`.
+- Verification: syntax checks for touched JS files and focused `test/guide-hand.test.js` passed. Build/package intentionally skipped by request.
+
+## 2026-07-16 Level7 vehicle/queue import
+
+- Follow-up: change vehicle 89 to color 2 and replace the Level7 right passenger queue with the revised user sequence; validation is in progress.
+- Confirmed vehicle 89 is a 10-seat color-5 vehicle; the revised right queue stays at 278 entries and replaces exactly ten color-5 passengers with color 2, preserving every per-color seat total.
+- Updated the extractor's general vehicle override map so Level7 vehicle 89 becomes color 2, replaced the exact right-queue run data, and extended the regression assertion.
+- Touched-file syntax checks passed and Level7 extraction regenerated all outputs successfully with 83 vehicles and 368+278 queues.
+- First focused run passed the new Level7 vehicle/queue assertion but failed only because active Level7 did not match the current durable Level9 selection; resynchronizing outputs to Level9 without changing the Level7 catalog data.
+- Resynchronized generated active/artifact selection to Level9. Focused tests pass 12/12 and direct Level7 checks confirm vehicle 89 color 2 plus exact revised right-queue and seat/passenger parity.
+- Production build passed with current Level9 selection and only the existing chunk-size warning; project progress and navigation now record the generalized vehicle/queue override behavior.
+- Started importing `D:\UnityProjects\BusLoop\Assets\BusJam\Game\Bundleables\Level_Escape_C\level7.asset` with user-supplied left/right passenger queues.
+- Next: validate vehicle seat/color totals against both queues, then extend the extractor/catalog and targeted tests.
+- Validated 83 vehicles/646 seats; the supplied left/right queues are 368+278 and match all per-color seat totals exactly.
+- Added Level7 to the default extraction sources, encoded the exact supplied queue order as a durable override, and added queue-order/catalog expectations.
+- Switched the durable active selection to Level7; syntax checks passed and extraction regenerated the catalog/artifact plus Level7-only active module (83 vehicles, queues 368+278).
+- Catalog/collision tests pass 12/12; direct verification confirms exact per-color queue totals, Level7 active selection, and zero initial vehicle-body overlaps. Production build remains.
+- Production build passed and regenerated the Level7 active payload; Vite emitted only the existing >500 kB chunk warning. Project progress and code navigation were updated for the sixth imported level.
+
+## 2026-07-16 Level8/Level9 collision-size parity
+
+- Reproduced 22 initial OBB overlaps in Level8 and 21 in Level9 with the current generated sizes.
+- Confirmed Unity gameplay uses centered `BusJamConfig.asset` sizes (`4: 0.27 x 0.47157902`, `6: 0.27 x 0.486`, `10: 0.27 x 0.6785897`); these remove all initial overlaps in all five imported levels.
+- Updated the Unity level extractor constants and added a focused Level8/Level9 no-overlap regression; generated data and verification are next.
+- Syntax checks passed, and the extractor regenerated `artifacts/unity-levels.json`, `src/level-catalog.js`, and the selected Level9 `src/generated-active-level.js` from the five supplied assets.
+- Focused catalog/collision tests pass 11/11; stale collision lengths are absent from the extractor and generated files. Full build/package was intentionally skipped for this data-only correction.
+
 ## 2026-07-15 Real-device Store Redirect Failure
 
 - User reported that the threshold redirect did not open the store during real-device testing.
