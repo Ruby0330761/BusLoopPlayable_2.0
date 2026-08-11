@@ -162,6 +162,16 @@ test('level15 uses the supplied passenger queue order', () => {
   assert.deepEqual(level.passengerQueues.map(queueRuns), LEVEL15_QUEUE_RUNS);
 });
 
+test('level10 contains guide vehicle 39 and is the baked production selection', () => {
+  const level = LEVEL_CATALOG.level10;
+  const guideVehicle = level.vehicles.find((vehicle) => vehicle.id === 39);
+  assert.deepEqual(
+    guideVehicle && { seats: guideVehicle.seats, colorIndex: guideVehicle.colorIndex, isHidden: guideVehicle.isHidden },
+    { seats: 6, colorIndex: 0, isHidden: false }
+  );
+  assert.equal(SCENE_TUNING.level.selected, 'level10');
+});
+
 test('level16 uses the authored vehicle layout and passenger queue order', () => {
   const level = LEVEL_CATALOG.level16;
   assert.equal(level.unityId, 14);
@@ -169,7 +179,6 @@ test('level16 uses the authored vehicle layout and passenger queue order', () =>
   assert.equal(level.mapScale, 0.95);
   assert.equal(level.vehicles.some((vehicle) => vehicle.id === 45), true);
   assert.deepEqual(level.passengerQueues.map(queueRuns), LEVEL16_QUEUE_RUNS);
-  assert.equal(SCENE_TUNING.level.selected, 'level16');
   assert.equal(SCENE_TUNING.vehicleArea.positionUnitScale, 0.8);
   assert.equal(SCENE_TUNING.vehicleArea.modelScale, 0.7);
   assert.equal(SCENE_TUNING.vehiclePath.parkingBounds.minX, -2.2);

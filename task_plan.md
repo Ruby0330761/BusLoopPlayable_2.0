@@ -2,11 +2,18 @@
 
 ## Current Goal
 
-Add the supplied Sakura background to the editor selector and ensure production/AppLovin packaging embeds only the currently selected background.
+Bake Level10 with guide vehicle 39, CTA enabled, and successful-operation redirect threshold 10, then generate and validate the AppLovin package.
 
 ## Current Phase
 
-Complete: Sakura is editor-selectable, selected-background-only generation is enforced, and build/package/browser verification passes.
+Complete: Level10/39, CTA enabled, and threshold 10 are baked into a validated AppLovin single-HTML package.
+
+## Current Level10 Guide/CTA Package Phases
+
+1. **Complete:** Confirmed Level10 vehicle 39, exact tuning fields, saved-editor migration, package commands, and focused tests.
+2. **Complete:** Synchronized Level10, both guide scopes/targets, CTA enabled, and threshold 10 across exported/source/selection state and saved-cache migration.
+3. **Complete:** Regenerated the Level10-only payload and passed focused syntax/config/catalog/guide checks.
+4. **Complete:** Built, packaged, passed all 15 AppLovin checks and final marker scans, and recorded size/hash/status.
 
 ## Current Sakura Background Packaging Phases
 
@@ -203,6 +210,8 @@ Complete: Sakura is editor-selectable, selected-background-only generation is en
 | PowerShell passed the literal `dist/assets/*.js` wildcard to `rg`, producing Windows path error 123 | 1 | Resolve the generated JS file explicitly or verify the final package using Base64 byte fingerprints instead of a wildcard path. |
 | In-app browser load-state helper does not support `networkidle` | 1 | Wait for `domcontentloaded`, allow a short render interval, and inspect the fresh DOM snapshot. |
 | Final progress scan found the new durable completion entry duplicated at the document top | 1 | Removed the second identical block and rechecked the heading count. |
+| Initial combined plan/progress/findings patch did not match the BOM-prefixed progress heading | 1 | Split the update around the first dated section heading and applied the three planning-file changes successfully. |
+| Final multi-pattern `rg` command was split by PowerShell quoting into invalid path arguments | 1 | Keep the successful package/hash checks and rerun config location checks with literal `Select-String` patterns. |
 | First editor-cache synchronization targeted one of two localhost tabs; that tab disappeared on reload while the surviving tab retained old Level15 values | 1 | Synchronize the surviving current tab and verify its controls after reload; production source/package values are already correct. |
 | Focused config group included a stale camera assertion expecting elevation 55 while current authored tuning is 61 | 1 | Keep unrelated camera tuning unchanged; rerun the requested Level16/config checks through their focused catalog and threshold/background tests. |
 | Browser role lookup for hidden result-overlay elements exceeded its selector deadline | 1 | Used direct id locators for the hidden shared overlay DOM; title, CTA, and logo each resolve exactly once. |

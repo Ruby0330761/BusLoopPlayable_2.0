@@ -486,7 +486,7 @@ test('editor sizing, source background ratio, and passenger shadow anchor stay w
     appearSpeed: 1.45
   });
   assert.deepEqual(SCENE_TUNING.installGate, {
-    successfulOperationThreshold: 30
+    successfulOperationThreshold: 10
   });
   assert.deepEqual(SCENE_TUNING.gameOver, {
     failureDelaySeconds: 2,
@@ -506,8 +506,8 @@ test('editor sizing, source background ratio, and passenger shadow anchor stay w
   assert.equal(LEVEL_1.conveyorPathLength, 4.591284809513923);
   assert.deepEqual(SCENE_TUNING.vehicleBoardingPulse, { scale: 1.14, speed: 5 });
   assert.equal(SCENE_TUNING.vehicleGuideHand.enabled, 1);
-  assert.equal(SCENE_TUNING.vehicleGuideHand.levelKey, 'level16');
-  assert.equal(SCENE_TUNING.vehicleGuideHand.vehicleId, 45);
+  assert.equal(SCENE_TUNING.vehicleGuideHand.levelKey, 'level10');
+  assert.equal(SCENE_TUNING.vehicleGuideHand.vehicleId, 39);
   assert.equal(SCENE_TUNING.vehicleGuideHand.size, 2.12);
   assert.equal(SCENE_TUNING.vehicleGuideHand.speed, 1.15);
   assert.equal(SCENE_TUNING.vehicleGuideHand.nearScale, 0.78);
@@ -1136,12 +1136,18 @@ test('main thread saves and restores scene tuning from localStorage', () => {
   assert.match(mainSource, /function deepMerge/);
   assert.match(mainSource, /function migrateLegacyConveyorTuning/);
   assert.match(mainSource, /function migrateLevel16PackageTuning/);
+  assert.match(mainSource, /function migrateLevel10PackageTuning/);
   assert.match(mainSource, /source\.level\.selected = 'level16'/);
   assert.match(mainSource, /'successfulOperationThreshold', 40, 30/);
   assert.match(mainSource, /'minX', -2\.53, -2\.2/);
   assert.match(mainSource, /'maxX', 2\.53, 2\.2/);
   assert.match(mainSource, /'positionUnitScale', 0\.73, 0\.8/);
   assert.match(mainSource, /'modelScale', 0\.63, 0\.7/);
+  assert.match(mainSource, /source\.level\.selected = 'level10'/);
+  assert.match(mainSource, /'successfulOperationThreshold', 30, 10/);
+  assert.match(mainSource, /'enabled', 0, 1/);
+  assert.match(mainSource, /guide\.levelKey = 'level10'/);
+  assert.match(mainSource, /guide\.vehicleId = 39/);
   assert.match(mainSource, /SCENE_TUNING\.conveyorLayouts\?\.dualQueue2/);
   assert.match(mainSource, /classList\.toggle\('is-phone-preview', EDITOR_ENABLED && Boolean\(preview\?\.enabled\)\)/);
   assert.match(mainSource, /function loadSavedTuning\(\) \{\s+if \(!EDITOR_ENABLED\) return;/);
@@ -1273,7 +1279,7 @@ test('successful operation store redirect uses the baked threshold and remains e
   const mainSource = readFileSync(join('src', 'main.js'), 'utf8');
   const editorSource = readFileSync(join('src', 'scene-editor.js'), 'utf8');
 
-  assert.equal(SCENE_TUNING.installGate.successfulOperationThreshold, 30);
+  assert.equal(SCENE_TUNING.installGate.successfulOperationThreshold, 10);
   assert.match(editorSource, /installGate\.successfulOperationThreshold/);
   assert.match(mainSource, /SCENE_TUNING\.installGate\?\.successfulOperationThreshold/);
   assert.match(mainSource, /^\s*if \(result\?\.ok && markInstallVehicle\(vehicleId\)\) InstallFullGame\(\);/m);

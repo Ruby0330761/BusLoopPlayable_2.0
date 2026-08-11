@@ -1,5 +1,20 @@
 ﻿# Progress
 
+## 2026-08-11 Level10 guide-39 CTA package
+
+- Started from the current planning files, project progress, code navigation, and AppLovin platform reference.
+- Interpreted the request as Level10 production selection, both guide scopes targeting Level10 vehicle 39, CTA enabled, and successful-operation threshold 10; the current first-click mask enabled state will be preserved.
+- Current work is verifying Level10 vehicle 39 and the exact source/exported/editor-cache/test ownership before editing.
+- Confirmed the durable level marker is already Level10, while source/exported tuning remains Level16; CTA is already enabled and the remaining baked values are guides Level16/45 plus threshold 30.
+- Identified the existing saved-default migration and focused guide/config/catalog tests that must be updated with the new package defaults.
+- Confirmed Level10 vehicle 39 is a valid visible 6-seat target and mapped the exact five requested configuration areas.
+- Phase 1 is complete; next is updating exported tuning, saved-cache migration, and focused expectations, then applying the export to source.
+- Updated exported tuning, added the Level16/45/30 -> Level10/39/10 saved-default migration, synchronized paired tests, and applied the export to source.
+- Structured verification confirms source/export/marker parity with CTA enabled and first-click mask still disabled; all touched JavaScript files pass syntax checks.
+- Generated the Level10-only production payload and passed five focused guide/catalog/config regressions.
+- Completed the production build with only the existing Vite chunk-size warning, generated the 3,972,962-byte AppLovin single HTML, and passed all 15 static checks.
+- Final scans confirm Level10 only, vehicle 39 present, both guides on Level10/39, CTA enabled, threshold 10, and no Level16/Level9 payload.
+
 ## 2026-08-11 Sakura background packaging
 
 - Started from the project progress, code navigation, resource status, and existing planning records.

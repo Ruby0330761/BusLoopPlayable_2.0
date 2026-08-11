@@ -5,7 +5,7 @@ import test from 'node:test';
 import { SCENE_TUNING } from '../src/scene-tuning.js';
 import { isGuideLevelActive } from '../src/scene-view.js';
 
-test('guide hand targets Level16 vehicle 45 only with the first-step mask disabled', async () => {
+test('guide hand targets Level10 vehicle 39 only with the first-step mask disabled', async () => {
   const tuning = SCENE_TUNING.vehicleGuideHand;
   const firstClickGuide = SCENE_TUNING.firstClickGuide;
   const mainSource = await readFile(new URL('../src/main.js', import.meta.url), 'utf8');
@@ -13,24 +13,24 @@ test('guide hand targets Level16 vehicle 45 only with the first-step mask disabl
   const stylesSource = await readFile(new URL('../src/styles.css', import.meta.url), 'utf8');
   const viewSource = await readFile(new URL('../src/scene-view.js', import.meta.url), 'utf8');
 
-  assert.equal(tuning.levelKey, 'level16');
-  assert.equal(tuning.vehicleId, 45);
+  assert.equal(tuning.levelKey, 'level10');
+  assert.equal(tuning.vehicleId, 39);
   assert.equal(tuning.size, 2.12);
   assert.equal(tuning.offsetX, 0.25);
   assert.equal(tuning.approachOffsetX, 0.62);
   assert.ok(tuning.farScale > tuning.nearScale, 'hand should shrink while moving from right to left');
   assert.equal(firstClickGuide.enabled, 0);
-  assert.equal(firstClickGuide.levelKey, 'level16');
-  assert.equal(firstClickGuide.vehicleId, 45);
+  assert.equal(firstClickGuide.levelKey, 'level10');
+  assert.equal(firstClickGuide.vehicleId, 39);
   assert.equal(firstClickGuide.durationSeconds, 3);
   assert.equal(firstClickGuide.maskOpacity, 0.8);
   assert.equal(firstClickGuide.holePadding, 15);
   assert.equal(firstClickGuide.holeScaleX, 0.62);
   assert.equal(firstClickGuide.holeScaleY, 0.62);
-  assert.equal(isGuideLevelActive(tuning, 'level16'), true);
-  assert.equal(isGuideLevelActive(tuning, 'level15'), false);
-  assert.equal(isGuideLevelActive(firstClickGuide, 'level16'), true);
-  assert.equal(isGuideLevelActive(firstClickGuide, 'level15'), false);
+  assert.equal(isGuideLevelActive(tuning, 'level10'), true);
+  assert.equal(isGuideLevelActive(tuning, 'level16'), false);
+  assert.equal(isGuideLevelActive(firstClickGuide, 'level10'), true);
+  assert.equal(isGuideLevelActive(firstClickGuide, 'level16'), false);
   assert.match(viewSource, /texture\.wrapS = THREE\.RepeatWrapping/);
   assert.match(viewSource, /texture\.repeat\.x = -1/);
   assert.match(viewSource, /texture\.offset\.x = 1/);
@@ -52,8 +52,8 @@ test('guide hand targets Level16 vehicle 45 only with the first-step mask disabl
   assert.match(mainSource, /Number\(guideHand\.vehicleId\) === 1/);
   assert.match(mainSource, /Number\(guideHand\.offsetX\) === -0\.38/);
   assert.match(mainSource, /Number\(guideHand\.approachOffsetX\) === -0\.62/);
-  assert.match(mainSource, /guide\.levelKey = 'level16'/);
-  assert.match(mainSource, /guide\.vehicleId = 45/);
+  assert.match(mainSource, /guide\.levelKey = 'level10'/);
+  assert.match(mainSource, /guide\.vehicleId = 39/);
   assert.match(stylesSource, /\.first-click-guide-hand/);
   assert.match(stylesSource, /scaleX\(-1\)/);
   assert.match(editorSource, /firstClickGuide\.enabled/);

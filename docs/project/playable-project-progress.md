@@ -1,5 +1,13 @@
 ﻿# Playable Project Progress
 
+## Completed On 2026-08-11 - Level10 guide-39 CTA AppLovin package
+
+- Baked Level10 as the single production level with 64 vehicles and authored queues 218+218; vehicle 39 is a visible 6-seat guide target.
+- Synchronized both guide scopes to `level10 / vehicle 39`, kept the normal guide enabled and first-click mask disabled, kept CTA enabled, and changed the successful-operation redirect threshold from 30 to 10.
+- Added a saved-editor migration from the prior Level16/45/30 package defaults to Level10/39/10 without changing unrelated camera, path, background, layout, scale, or guide-motion values.
+- Source/export/selection parity, touched syntax, and five focused guide/catalog/config checks pass. Production marker scans confirm only Level10 is present and Level16/Level9 payloads are absent.
+- Generated `artifacts/applovin/index.html` at 3,972,962 bytes; all 15 AppLovin static checks pass. SHA-256: `BA8EC8CD23FDF2104E0314488AFC963C7A3348D4AF28AD556F75B2F33261447B`. Official preview/upload/device play remains external manual acceptance.
+
 ## Completed On 2026-08-11 - Sakura background selection and single-background packaging
 
 - Added `BG01 \u6a31\u82b1` as a third editor-selectable background using the optimized 2100x3382 `BG01_split01_Sakura_q60.jpg` derivative (278,157 bytes); the supplied 1,976,289-byte PNG remains untouched.

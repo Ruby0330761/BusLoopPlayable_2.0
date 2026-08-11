@@ -111,6 +111,28 @@ function migrateLevel16PackageTuning(source) {
   return changed;
 }
 
+function migrateLevel10PackageTuning(source) {
+  let changed = false;
+  const replaceNumber = (target, key, previousValue, nextValue) => {
+    if (Number(target?.[key]) !== previousValue) return;
+    target[key] = nextValue;
+    changed = true;
+  };
+  if (source?.level?.selected === 'level16') {
+    source.level.selected = 'level10';
+    changed = true;
+  }
+  replaceNumber(source?.installGate, 'successfulOperationThreshold', 30, 10);
+  replaceNumber(source?.cta, 'enabled', 0, 1);
+  for (const guide of [source?.vehicleGuideHand, source?.firstClickGuide]) {
+    if (guide?.levelKey !== 'level16' || Number(guide.vehicleId) !== 45) continue;
+    guide.levelKey = 'level10';
+    guide.vehicleId = 39;
+    changed = true;
+  }
+  return changed;
+}
+
 function waitForMraidReady(onReady) {
   const mraid = window.mraid;
   if (!mraid?.getState || !mraid?.addEventListener) {
@@ -165,9 +187,10 @@ function loadSavedTuning() {
       const savedTuning = JSON.parse(saved);
       const guideHandMotionMigrated = migrateGuideHandMotionTuning(savedTuning);
       const level16PackageMigrated = migrateLevel16PackageTuning(savedTuning);
+      const level10PackageMigrated = migrateLevel10PackageTuning(savedTuning);
       deepMerge(SCENE_TUNING, savedTuning);
       migrateLegacyConveyorTuning(savedTuning);
-      if (guideHandMotionMigrated || level16PackageMigrated) {
+      if (guideHandMotionMigrated || level16PackageMigrated || level10PackageMigrated) {
         localStorage.setItem(TUNING_STORAGE_KEY, JSON.stringify(savedTuning));
       }
       return;
@@ -177,6 +200,7 @@ function loadSavedTuning() {
     const legacy = JSON.parse(legacySaved);
     migrateGuideHandMotionTuning(legacy);
     migrateLevel16PackageTuning(legacy);
+    migrateLevel10PackageTuning(legacy);
     const legacyModelScale = legacy.vehicleArea?.modelScale;
     delete legacy.vehicleArea;
     deepMerge(SCENE_TUNING, legacy);

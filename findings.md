@@ -1,5 +1,25 @@
 # Findings
 
+## 2026-08-11 Level10 guide-39 CTA package
+
+- Requested baked values: Level10, guide level 10, guide vehicle id 39, CTA enabled, and store redirect after 10 successful operations.
+- Prior package work synchronizes both the normal guide and disabled first-click guide scope/target together while preserving `firstClickGuide.enabled`; follow the same established behavior unless the user explicitly asks to enable the mask.
+- AppLovin remains the project baseline: single fully inlined HTML, <= 5,000,000 bytes, MRAID CTA, and all 15 existing static checks.
+- `artifacts/selected-level.txt` is already `level10`, likely from the editor selection, while `src/scene-tuning.js` and `artifacts/scene-tuning.json` still declare `level16`; the package inputs must be synchronized before generation.
+- CTA is already enabled (`cta.enabled = 1`) in both source and exported tuning. Preserve it at `1` and add explicit verification rather than changing unrelated CTA geometry.
+- Current package values still use threshold `30`, normal guide `level16/45`, disabled first-click guide `level16/45`, and `firstClickGuide.enabled = 0`.
+- `src/main.js` contains a saved-editor migration from the prior Level15/157/40 defaults to Level16/45/30. This package needs a narrow next migration so exact Level16/45/30 cached defaults move to Level10/39/10 without overwriting unrelated custom tuning.
+- Level10 contains visible vehicle 39: 6 seats, color index 0, position `(1.1570295, 1.502522)`, yaw about 45 degrees. Level10 has 64 vehicles and authored queues 218+218.
+- Exact editable package fields are `level.selected`, `vehicleGuideHand.levelKey/vehicleId`, `firstClickGuide.levelKey/vehicleId`, `cta.enabled`, and `installGate.successfulOperationThreshold`. Preserve every other tuning value.
+- The source/exported first-click mask is disabled and remains disabled. The normal guide remains enabled.
+- Source, exported tuning, and selected-level marker now agree exactly on Level10. CTA is `1`, threshold is `10`, normal guide is `level10/39/enabled`, and first-click guide is `level10/39/disabled`.
+- Unrequested durable values remain unchanged in the structured comparison, including summer background and `dualQueue3` conveyor layout.
+- Syntax checks pass for `src/main.js` and the three touched test files.
+- Active generation now emits exactly Level10 with 64 vehicles and queues 218+218; no Level9 -> Level7 expansion applies.
+- Five focused checks pass: guide target/mask state, selected-session boundary, Level10 vehicle 39, saved-cache migration contracts, and threshold-10 store redirect wiring.
+- The final AppLovin package contains only the Level10 session, includes vehicle 39, and carries `level10/39`, CTA enabled, and threshold 10 markers; Level16 and Level9 payload markers are absent.
+- Final artifact size is 3,972,962 bytes, leaving 1,027,038 bytes under the strict limit. SHA-256 is `BA8EC8CD23FDF2104E0314488AFC963C7A3348D4AF28AD556F75B2F33261447B`.
+
 ## 2026-08-11 Sakura background packaging
 
 - The supplied asset already exists at `public/assets/applovin/textures/BG01_split01_Sakura.png` and is intended to become a third editor background option.
