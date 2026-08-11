@@ -1,5 +1,20 @@
 ﻿# Progress
 
+## 2026-08-11 Level10 Sakura repackage
+
+- Started from the completed Level10/39/CTA/threshold-10 package and existing Sakura single-background packaging implementation.
+- Confirmed source/export tuning still uses the optimized summer background; the optimized Sakura q60 asset and generator override already exist.
+- Scoped changes to background asset, exact saved-default migration, and focused background expectations. Level10/39, CTA enabled, threshold 10, first-click mask state, layout, and other tuning remain unchanged.
+- Switched exported tuning to Sakura, added the exact summer -> Sakura Level10 cache migration, updated background assertions, and applied tuning to source.
+- Structured parity confirms only the requested background changed; the selected optimized asset exists and touched syntax checks pass.
+- Generated Level10 and ran focused checks: guide/catalog/cache migration pass, while the background equality assertion correctly caught a stale summer URL in the generated runtime manifest. Diagnosing the generator input/output before packaging.
+- Generator diagnosis confirms the output is Sakura; correcting the focused test boundary from mutable `LEVEL_1` state to the immutable generated `ACTIVE_LEVEL` manifest.
+- Immutable background selection now passes. A second regression exposed its old PNG-only dimension parsing on JPEG; implementing a real PNG/JPEG size parser in the test before rerunning.
+- JPEG dimension parsing now works; the broad test only fails later on an unrelated stale parking-count expectation. Keeping that tuning untouched and moving dimension coverage to the focused background regression.
+- Focused background/config/catalog/guide verification now passes 5/5 with the Sakura-generated Level10 payload.
+- Completed the build and AppLovin package at 4,192,202 bytes; all 15 checks and final Level10/39/CTA/threshold/background fingerprint scans pass.
+- Recorded Sakura as the current baked background in project progress and resource status.
+
 ## 2026-08-11 Level10 guide-39 CTA package
 
 - Started from the current planning files, project progress, code navigation, and AppLovin platform reference.

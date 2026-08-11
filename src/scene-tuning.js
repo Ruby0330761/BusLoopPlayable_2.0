@@ -221,7 +221,7 @@ export const SCENE_TUNING = {
     }
   ],
   "background": {
-    "asset": "/assets/applovin/textures/BG02_split01_summer_q60.jpg",
+    "asset": "/assets/applovin/textures/BG01_split01_Sakura_q60.jpg",
     "offsetX": 0,
     "offsetY": 0.11,
     "distanceOffset": 7,

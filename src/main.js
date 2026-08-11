@@ -124,6 +124,10 @@ function migrateLevel10PackageTuning(source) {
   }
   replaceNumber(source?.installGate, 'successfulOperationThreshold', 30, 10);
   replaceNumber(source?.cta, 'enabled', 0, 1);
+  if (source?.background?.asset === '/assets/applovin/textures/BG02_split01_summer_q60.jpg') {
+    source.background.asset = '/assets/applovin/textures/BG01_split01_Sakura_q60.jpg';
+    changed = true;
+  }
   for (const guide of [source?.vehicleGuideHand, source?.firstClickGuide]) {
     if (guide?.levelKey !== 'level16' || Number(guide.vehicleId) !== 45) continue;
     guide.levelKey = 'level10';

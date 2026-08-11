@@ -2,11 +2,18 @@
 
 ## Current Goal
 
-Bake Level10 with guide vehicle 39, CTA enabled, and successful-operation redirect threshold 10, then generate and validate the AppLovin package.
+Switch the current Level10/39/CTA/threshold-10 package from the summer background to the optimized Sakura background and regenerate the AppLovin package.
 
 ## Current Phase
 
-Complete: Level10/39, CTA enabled, and threshold 10 are baked into a validated AppLovin single-HTML package.
+Complete: the Level10/39/CTA/threshold-10 package is rebuilt with Sakura as the only embedded background and passes final validation.
+
+## Current Level10 Sakura Repackage Phases
+
+1. **Complete:** Confirmed the current Level10 package inputs, optimized Sakura asset, selected-background generator boundary, cache migration owner, and focused tests.
+2. **Complete:** Switched exported/source tuning to Sakura and migrated the exact prior summer default without changing Level10/39/CTA/threshold values.
+3. **Complete:** Regenerated Level10 and passed focused syntax/background/config/catalog/guide checks.
+4. **Complete:** Built, packaged, passed all 15 AppLovin checks and background byte fingerprints, and recorded final size/hash/status.
 
 ## Current Level10 Guide/CTA Package Phases
 
@@ -212,6 +219,9 @@ Complete: Level10/39, CTA enabled, and threshold 10 are baked into a validated A
 | Final progress scan found the new durable completion entry duplicated at the document top | 1 | Removed the second identical block and rechecked the heading count. |
 | Initial combined plan/progress/findings patch did not match the BOM-prefixed progress heading | 1 | Split the update around the first dated section heading and applied the three planning-file changes successfully. |
 | Final multi-pattern `rg` command was split by PowerShell quoting into invalid path arguments | 1 | Keep the successful package/hash checks and rerun config location checks with literal `Select-String` patterns. |
+| First Sakura background regression found `SCENE_TUNING` on Sakura while mutable test-state `LEVEL_1.assets.background` remained summer | 1 | Confirmed generated `ACTIVE_LEVEL` is Sakura; move the production-manifest assertion to immutable `ACTIVE_LEVEL` while keeping runtime swap coverage separate. |
+| Background sizing regression read JPEG bytes with PNG fixed offsets and reported width 65536 | 1 | Replace the fixed-offset read with a format-aware PNG/JPEG dimension parser and retain exact 2100x3382 assertions. |
+| Broad editor-sizing test reached an unrelated stale parking count expectation (`6 !== 5`) after the JPEG parser succeeded | 1 | Do not change parking tuning; assert dimensions in the focused background test and exclude the unrelated broad case from this package verification. |
 | First editor-cache synchronization targeted one of two localhost tabs; that tab disappeared on reload while the surviving tab retained old Level15 values | 1 | Synchronize the surviving current tab and verify its controls after reload; production source/package values are already correct. |
 | Focused config group included a stale camera assertion expecting elevation 55 while current authored tuning is 61 | 1 | Keep unrelated camera tuning unchanged; rerun the requested Level16/config checks through their focused catalog and threshold/background tests. |
 | Browser role lookup for hidden result-overlay elements exceeded its selector deadline | 1 | Used direct id locators for the hidden shared overlay DOM; title, CTA, and logo each resolve exactly once. |

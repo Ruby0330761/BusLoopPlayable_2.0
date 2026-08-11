@@ -2080,7 +2080,7 @@ const PRIMARY_LEVEL = Object.freeze({
       "imageWidth": 2100,
       "imageHeight": 1300
     },
-    "background": "/assets/applovin/textures/BG02_split01_summer_q60.jpg",
+    "background": "/assets/applovin/textures/BG01_split01_Sakura_q60.jpg",
     "audio": {
       "bus_hit": {
         "clips": [

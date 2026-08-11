@@ -1,5 +1,22 @@
 # Findings
 
+## 2026-08-11 Level10 Sakura repackage
+
+- Current Level10 package source/export background is `/assets/applovin/textures/BG02_split01_summer_q60.jpg`.
+- Target background is the existing 278,157-byte `/assets/applovin/textures/BG01_split01_Sakura_q60.jpg`; the 1,976,289-byte source PNG remains excluded.
+- `scripts/generate-active-level.mjs` already overwrites the generated session manifest with `SCENE_TUNING.background.asset`, so after apply/generate the final entry should reference Sakura only.
+- Update the exact Level10 package cache migration from summer to Sakura so prior saved defaults cannot visually override the new baked background in development.
+- Source, exported tuning, and selected marker now agree on Level10 with Sakura q60; Level10/39, CTA 1, threshold 10, disabled first-click mask, and DualQueue3 remain unchanged.
+- The selected Sakura delivery asset exists at 278,157 bytes. Main/test syntax checks pass.
+- First focused background run exposed a real mismatch: `SCENE_TUNING.background.asset` is Sakura but runtime `LEVEL_1.assets.background` is still summer after generation. Catalog/guide/cache-migration checks otherwise pass.
+- Direct inspection shows `src/generated-active-level.js` and a fresh module import both contain Sakura correctly. The failed assertion observed the mutable `LEVEL_1` binding after shared test-module state, not a stale generated artifact.
+- The background production assertion should use immutable `ACTIVE_LEVEL.assets.background` rather than the mutable runtime `LEVEL_1` binding; runtime texture swapping remains separately covered by the existing source contract.
+- The broader sizing regression used PNG fixed offsets (`readUInt32BE(16/20)`) on a JPEG and therefore returned 65536 instead of 2100. Replace it with a format-aware PNG/JPEG dimension reader so the 2100x3382 assertion remains meaningful.
+- The format-aware parser succeeds and reaches later assertions; the same broad historical test then fails on unrelated parking spot count `6 !== 5`. Preserve the user's current parking tuning and place exact image dimensions in the focused background test instead.
+- Final focused verification passes 5/5: optimized Sakura selection and 2100x3382 dimensions, exact saved-default migration, Level10-only active payload, Level10 vehicle 39, and guide/mask state.
+- Final AppLovin HTML is 4,192,202 bytes and passes all 15 checks. It contains only the Sakura q60 byte payload; summer q60, winter q60, and the original Sakura PNG are absent.
+- Final package markers retain Level10, guide vehicle 39, CTA enabled, and threshold 10. SHA-256 is `CA7BAF4EC5645B14CEB7F95058D051EEC87653DF1F38BC2630CC499AB2BC2A63`.
+
 ## 2026-08-11 Level10 guide-39 CTA package
 
 - Requested baked values: Level10, guide level 10, guide vehicle id 39, CTA enabled, and store redirect after 10 successful operations.

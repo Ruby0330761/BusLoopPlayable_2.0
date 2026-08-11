@@ -4,6 +4,7 @@ import { existsSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import * as THREE from 'three';
 import { BusLoopGame } from '../src/game-model.js';
+import { ACTIVE_LEVEL } from '../src/generated-active-level.js';
 import { COLORS, LEVEL_1, setActiveLevel } from '../src/level-data.js';
 import { LEVEL_CATALOG } from '../src/level-catalog.js';
 import {
@@ -33,6 +34,39 @@ const advance = (game, seconds, step = .05) => {
 };
 
 const publicAssetExists = (url) => existsSync(join('public', url.replace(/^\//, '')));
+
+const readImageDimensions = (buffer) => {
+  const pngSignature = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+  if (buffer.subarray(0, pngSignature.length).equals(pngSignature)) {
+    return { width: buffer.readUInt32BE(16), height: buffer.readUInt32BE(20) };
+  }
+
+  if (buffer[0] === 0xff && buffer[1] === 0xd8) {
+    const startOfFrameMarkers = new Set([
+      0xc0, 0xc1, 0xc2, 0xc3, 0xc5, 0xc6, 0xc7,
+      0xc9, 0xca, 0xcb, 0xcd, 0xce, 0xcf
+    ]);
+    let offset = 2;
+    while (offset < buffer.length) {
+      while (buffer[offset] === 0xff) offset += 1;
+      const marker = buffer[offset];
+      offset += 1;
+      if (marker === 0xd8 || marker === 0xd9) continue;
+      if (marker === 0xda || offset + 2 > buffer.length) break;
+      const segmentLength = buffer.readUInt16BE(offset);
+      if (startOfFrameMarkers.has(marker)) {
+        return {
+          width: buffer.readUInt16BE(offset + 5),
+          height: buffer.readUInt16BE(offset + 3)
+        };
+      }
+      if (segmentLength < 2) break;
+      offset += segmentLength;
+    }
+  }
+
+  throw new Error('Unsupported background image format.');
+};
 
 const LEVEL12_TOTAL_PASSENGERS = 438;
 const LEVEL12_PASSENGER_COLOR_TOTALS = { 0: 68, 1: 34, 2: 18, 3: 22, 4: 12, 5: 198, 6: 20, 7: 52, 8: 14 };
@@ -330,14 +364,14 @@ test('Unity visual assets and tunable camera configuration are complete', () => 
   assert.equal(SCENE_TUNING.vehicleArea.positionUnitScale, 0.8);
   assert.equal(SCENE_TUNING.vehicleArea.modelScale, 0.7);
   assert.equal(SCENE_TUNING.facing.arrowYawDegrees, 180);
-  assert.match(LEVEL_1.assets.background, /BG02_split01_summer_q60\.jpg$/);
+  assert.match(ACTIVE_LEVEL.assets.background, /BG01_split01_Sakura_q60\.jpg$/);
   assert.match(LEVEL_1.assets.textures.parkingSpot, /Car_P2\.png$/);
   assert.equal(LEVEL_1.assets.colorTextures.length, 11);
   assert.deepEqual(Object.keys(LEVEL_1.assets.models.vehicleBySeats).map(Number), [4, 6, 10]);
   assert.match(LEVEL_1.assets.models.vehicleShadowBySeats[10], /Bus_FakeShadow\.fbx$/);
   assert.match(LEVEL_1.assets.textures.vehicleShadowBySeats[10], /Bus_FakeShadow\.png$/);
   const urls = [
-    LEVEL_1.assets.background,
+    ACTIVE_LEVEL.assets.background,
     LEVEL_1.assets.loopScene,
     LEVEL_1.assets.models.passengerVatMesh,
     LEVEL_1.assets.models.passengerVatTexture,
@@ -373,15 +407,16 @@ test('Unity visual assets and tunable camera configuration are complete', () => 
   assert.equal(LEVEL_1.assets.passengerAnimations.move.duration, 0.60000014);
 });
 
-test('background asset selection uses the optimized summer image and remains editor-switchable', () => {
+test('background asset selection uses the optimized Sakura image and remains editor-switchable', () => {
   const editorSource = readFileSync(join('src', 'scene-editor.js'), 'utf8');
   const viewSource = readFileSync(join('src', 'scene-view.js'), 'utf8');
   const backgroundPath = join('public', SCENE_TUNING.background.asset.replace(/^\//, ''));
   const sakuraPath = join('public', 'assets', 'applovin', 'textures', 'BG01_split01_Sakura_q60.jpg');
 
-  assert.equal(SCENE_TUNING.background.asset, LEVEL_1.assets.background);
-  assert.match(SCENE_TUNING.background.asset, /BG02_split01_summer_q60\.jpg$/);
-  assert.ok(statSync(backgroundPath).size < 250_000);
+  assert.equal(SCENE_TUNING.background.asset, ACTIVE_LEVEL.assets.background);
+  assert.match(SCENE_TUNING.background.asset, /BG01_split01_Sakura_q60\.jpg$/);
+  assert.ok(statSync(backgroundPath).size < 350_000);
+  assert.deepEqual(readImageDimensions(readFileSync(backgroundPath)), { width: 2100, height: 3382 });
   assert.ok(statSync(sakuraPath).size < 350_000);
   assert.match(editorSource, /BACKGROUND_OPTIONS/);
   assert.match(editorSource, /BG01_split01_q60\.jpg/);
@@ -427,14 +462,13 @@ test('vehicle generation region matches GameSceneDualQueue2 VehicleRoot Cube', (
 test('editor sizing, source background ratio, and passenger shadow anchor stay wired', () => {
   const indexSource = readFileSync(join('index.html'), 'utf8');
   const stylesSource = readFileSync(join('src', 'styles.css'), 'utf8');
-  const background = readFileSync(join('public', LEVEL_1.assets.background.replace(/^\//, '')));
-  const sourceWidth = background.readUInt32BE(16);
-  const sourceHeight = background.readUInt32BE(20);
+  const background = readFileSync(join('public', ACTIVE_LEVEL.assets.background.replace(/^\//, '')));
+  const { width: sourceWidth, height: sourceHeight } = readImageDimensions(background);
   assert.equal(sourceWidth, 2100);
   assert.equal(sourceHeight, 3382);
   assert.equal(SCENE_TUNING.background.sourceWidth, sourceWidth);
   assert.equal(SCENE_TUNING.background.sourceHeight, sourceHeight);
-  assert.equal(SCENE_TUNING.background.asset, LEVEL_1.assets.background);
+  assert.equal(SCENE_TUNING.background.asset, ACTIVE_LEVEL.assets.background);
   assert.deepEqual(SCENE_TUNING.preview, { enabled: 1, width: 1080, height: 2160 });
   assert.deepEqual(SCENE_TUNING.sourceCrop, { enabled: 1, width: 1080, height: 2160, offsetX: 0, offsetY: 211 });
   assert.equal(SCENE_TUNING.parkingSpots.count, 5);
@@ -1146,6 +1180,8 @@ test('main thread saves and restores scene tuning from localStorage', () => {
   assert.match(mainSource, /source\.level\.selected = 'level10'/);
   assert.match(mainSource, /'successfulOperationThreshold', 30, 10/);
   assert.match(mainSource, /'enabled', 0, 1/);
+  assert.match(mainSource, /BG02_split01_summer_q60\.jpg/);
+  assert.match(mainSource, /BG01_split01_Sakura_q60\.jpg/);
   assert.match(mainSource, /guide\.levelKey = 'level10'/);
   assert.match(mainSource, /guide\.vehicleId = 39/);
   assert.match(mainSource, /SCENE_TUNING\.conveyorLayouts\?\.dualQueue2/);

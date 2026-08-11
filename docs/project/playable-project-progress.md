@@ -1,5 +1,13 @@
 ﻿# Playable Project Progress
 
+## Completed On 2026-08-11 - Level10 Sakura AppLovin repackage
+
+- Switched the completed Level10/guide-39/CTA-enabled/threshold-10 package from summer to the optimized 278,157-byte Sakura background without changing other tuning.
+- Added an exact saved-editor default migration from summer q60 to Sakura q60 and corrected focused background verification to use the immutable generated manifest plus format-aware PNG/JPEG dimension parsing.
+- Focused background/cache/catalog/guide checks pass 5/5. The generated session remains Level10 only with 64 vehicles, queues 218+218, and vehicle 39 present.
+- Generated `artifacts/applovin/index.html` at 4,192,202 bytes; all 15 AppLovin static checks pass. Base64 fingerprints confirm only Sakura q60 is embedded; summer, winter, and the source Sakura PNG are absent.
+- SHA-256: `CA7BAF4EC5645B14CEB7F95058D051EEC87653DF1F38BC2630CC499AB2BC2A63`. Official preview/upload/device play remains external manual acceptance.
+
 ## Completed On 2026-08-11 - Level10 guide-39 CTA AppLovin package
 
 - Baked Level10 as the single production level with 64 vehicles and authored queues 218+218; vehicle 39 is a visible 6-seat guide target.
