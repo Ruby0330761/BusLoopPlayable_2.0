@@ -2,11 +2,121 @@
 
 ## Current Goal
 
-Synchronize the updated Unity Level7 coordinates for vehicles 66 and 82 into the playable's reproducible level pipeline, then rebuild and regenerate the AppLovin package.
+Add the supplied Sakura background to the editor selector and ensure production/AppLovin packaging embeds only the currently selected background.
 
 ## Current Phase
 
-Complete: Level7 vehicle 66/82 coordinates are synchronized, verified, built, and packaged for AppLovin.
+Complete: Sakura is editor-selectable, selected-background-only generation is enforced, and build/package/browser verification passes.
+
+## Current Sakura Background Packaging Phases
+
+1. **Complete:** Traced background tuning, editor, runtime manifest, generated active-level, and AppLovin packaging behavior; isolated the catalog summer fallback leak.
+2. **Complete:** Added the optimized Sakura background as a third editor option while preserving the summer default and original PNG.
+3. **Complete:** Updated focused regressions and verified generated production data retains only the selected background.
+4. **Complete:** Passed focused checks, temporary Sakura and restored-summer builds, AppLovin validation/fingerprint scans, browser QA, and durable documentation.
+
+## Current Level16 Guide-45 Package Phases
+
+1. **Complete:** Confirmed Level16 vehicle 45 exists and the current Level15 guide scope would otherwise suppress it.
+2. **Complete:** Updated normal/first-click guide scope and target plus focused tests and editor-cache migration.
+3. **Complete:** Applied tuning, regenerated Level16, and passed focused guide/config checks.
+4. **Complete:** Built, packaged, passed all AppLovin checks, and recorded the refreshed size/hash.
+
+## Current Level16 Parameter Package Phases
+
+1. **Complete:** Confirmed current values, AppLovin commands, generated-level boundary, and affected focused tests.
+2. **Complete:** Set Level16, summer background, threshold 30, path X -2.2/2.2, map scale 0.8, and model scale 0.7 across source/exported selection state.
+3. **Complete:** Regenerated the Level16 active payload and passed focused configuration/catalog/runtime checks.
+4. **Complete:** Rebuilt after the editor saved-default migration, revalidated all 15 AppLovin checks, and confirmed the final size/hash remain unchanged.
+
+## Current Editor Completion-State Phases
+
+1. **Complete:** Confirmed the model reaches `won` while the final-session UI branch exposed no result action.
+2. **Complete:** Reused the existing failure CTA/icon overlay for final victory with `You Win!` and the existing store CTA behavior.
+3. **Complete:** Updated focused source contracts and retained the model win-condition plus Level9 -> Level7 handoff coverage.
+4. **Complete:** Targeted tests and browser DOM/log QA pass, Level15 remains selected, and durable project records are updated.
+
+## Current Layout-Switch Queue Parity Phases
+
+1. **Complete:** Reproduced Level15 -> Level16 initialization parity, then isolated duplication when editor-driven queue geometry reinitialization rebuilt authored queues while retaining occupied belt slots.
+2. **Complete:** Preserve the model's current side/source queue remainder during non-reset editor reinitialization; explicit structural resets still restore authored queues and clear the belt.
+3. **Complete:** Added a Level16 regression that advances passengers onto the belt, reapplies editor queue geometry, and asserts exact total/per-color conservation.
+4. **Complete:** Targeted tests and browser switching/editing QA pass, Level15 is restored, and durable project records are updated.
+
+## Current Level16 Import Phases
+
+1. **Complete:** Inspected project navigation/rules; Level16 has 37 unique vehicles, 218 seats, authored queues 139+79, exact per-color parity, valid depth references, and zero initial overlaps.
+2. **Complete:** Added Level16 to the default extractor and Vite persistence whitelist without changing the Level15 production selection or inventing conveyor/tuning values.
+3. **Complete:** Regenerated catalog/runtime data; four focused catalog/queue/collision/selection regressions pass and the generated production module remains Level15-only.
+4. **Complete:** Browser QA loaded Level16 with zero console errors, restored Level15, and confirmed the production boundary did not change; recorded the durable handoff without an unnecessary build/package.
+
+## Current Summer Background Phases
+
+1. **Complete:** Measured both 2100x3382 backgrounds and generated a 195,940-byte q60 summer derivative without overwriting the 1,035,562-byte source.
+2. **Complete:** Added the background asset to tuning, editor options, runtime texture swapping, and generated level manifests; summer is the baked default and winter remains selectable in development.
+3. **Complete:** Source syntax and the focused background regression pass; browser QA confirmed both directions switch immediately and reported zero console errors.
+4. **Complete:** Production build and all 15 AppLovin checks pass at 3,979,125 bytes. Official preview/QR and real-backend upload/play remain external.
+
+## Current Level15 AppLovin Packaging Phases
+
+1. **Complete:** Confirmed Level15 remains selected with the revised data/tuning and AppLovin requires a fully inlined single HTML <= 5,000,000 bytes plus the existing static bridge/lifecycle checks.
+2. **Complete:** Production build passed without additional permission; prebuild generated Level15 with 81 vehicles and 296+214 queues, with only the existing Vite chunk-size warning.
+3. **Complete:** Generated `artifacts/applovin/index.html` at 3,642,343 bytes; all 15 static checks pass and final marker scans confirm the revised queues/tuning with SHA-256 `74FBABDBE2488F99AEF442FB6D04D485007DBF9AC3FF24E8E0DD17343C2EB0E6`.
+4. **Complete:** Recorded the package status. No local permission-dependent work remains; AppLovin official preview and real-backend upload/play are the required external manual validation steps.
+
+## Current Level15 Queue/Tuning Revision Phases
+
+1. **Complete:** Parsed the replacement queues as 296 left + 214 right and confirmed their combined per-color totals exactly match all 510 Level15 seats.
+2. **Complete:** Replaced the Level15 queue override/test expectations and synchronized map scale 0.73, vehicle model size 0.63, both guide scopes/targets to Level15 vehicle 157, and path X bounds -2.53/2.53 in source/exported tuning.
+3. **Complete:** Regenerated Level15 catalog/runtime data; generated-source syntax and focused queue/guide/config verification pass 8/8 without packaging or building.
+4. **Complete:** Recorded the durable revised Level15 status and handoff.
+
+## Current Level15 Import Phases
+
+1. **Complete:** Parsed `level15.asset` and validated 81 unique vehicles / 510 seats against the supplied 278+232 queues with exact per-color parity.
+2. **Complete:** Added Level15 and its exact queue override, corrected the drifted Level7 default source to its preserved 83-vehicle backup, and regenerated the full catalog/artifact with Level15 selected.
+3. **Complete:** Generated the narrow Level15 runtime payload; catalog tests passed 7/7, direct collision diagnostics found zero initial overlaps, and the production build passed before the queue/tuning revision request.
+4. **Complete:** Recorded the durable Level15 import/revision status, verification results, and handoff.
+
+## Current First-Step Mask-Off Package Phases
+
+### Phase: First-step mask-off AppLovin package
+
+**Status:** complete
+
+1. **Complete:** Confirmed `firstClickGuide.enabled` owns the timed DOM mask and synchronized it to `0` in source/exported tuning plus the focused test.
+2. **Complete:** Source/test syntax, direct source/export assertions, focused guide test, and production build passed; build retains only the existing Vite chunk-size warning.
+3. **Complete:** Regenerated/checked the AppLovin single HTML; all static checks and final mask/guide/CTA marker scans passed.
+4. **Complete:** Recorded final artifact size/hash/status and prepared the handoff.
+
+## Current AppLovin Parameter Package Phases
+
+1. **Complete:** Confirm current tuning values, AppLovin single-HTML commands, and platform checks.
+2. **Complete:** Synchronize threshold 40, guide vehicle 114, and guide size 2.12 across source/exported tuning and focused tests.
+3. **Complete:** Run focused verification and production build.
+4. **Complete:** Generated and checked the AppLovin single HTML; sharing the identical Level9/Level7 asset manifest reduced it to 3,653,268 bytes and every static check passes.
+5. **Complete:** Recorded artifact size/hash/static status and prepared the package handoff.
+
+## Current Level9-Only Guide Phases
+
+1. **Complete:** Inspect guide tuning, editor/exported config, visibility conditions, and focused tests.
+2. **Complete:** Add Level9 scope for guide vehicle 114 and suppress both guide layers on Level7.
+3. **Complete:** Update focused tests and durable documentation.
+4. **Complete:** Run syntax, focused tests, and production build verification.
+
+## Current Vehicle-Only Level7 Entrance Phases
+
+1. **Complete:** Inspect the current layout-root grouping, queue initialization, and focused transition regression.
+2. **Complete:** Move Level7 entrance animation to a vehicle-only root while keeping conveyor art fixed and restarting side queues.
+3. **Complete:** Update focused regressions and durable documentation.
+4. **Complete:** Run syntax, focused tests, and production build verification.
+
+## Current Level9 To Level7 Transition Phases
+
+1. **Complete:** Trace the mapped runtime/model/render/test paths and confirm the current production level payload constraints.
+2. **Complete:** Implement the Level9-to-Level7 session transition, lower-center scale-in visual, shared CTA counter, and disabled end page.
+3. **Complete:** Add focused regression coverage for level order, counter continuity, transition wiring, and end-page suppression.
+4. **Complete:** Run focused verification and record durable status/handoff.
 
 ## Current Level7 Vehicle Position Sync Phases
 
@@ -87,6 +197,41 @@ Complete: Level7 vehicle 66/82 coordinates are synchronized, verified, built, an
 
 | Error | Attempt | Resolution |
 | --- | --- | --- |
+| Planning session catch-up could not start because neither `python` nor the Windows `py` launcher is installed on PATH | 2 | Continue from the existing planning files and inspect the current workspace directly; do not retry the unavailable launchers. |
+| Initial combined planning-file patch used a progress-file context that did not match the BOM-prefixed file | 2 | Split the update into narrow heading/current-goal patches and verify each file independently. |
+| Initial background asset size probe referenced a nonexistent unoptimized winter filename | 1 | Use the actual editor option path `BG01_split01_q60.jpg` and enumerate the texture directory before further comparisons. |
+| PowerShell passed the literal `dist/assets/*.js` wildcard to `rg`, producing Windows path error 123 | 1 | Resolve the generated JS file explicitly or verify the final package using Base64 byte fingerprints instead of a wildcard path. |
+| In-app browser load-state helper does not support `networkidle` | 1 | Wait for `domcontentloaded`, allow a short render interval, and inspect the fresh DOM snapshot. |
+| Final progress scan found the new durable completion entry duplicated at the document top | 1 | Removed the second identical block and rechecked the heading count. |
+| First editor-cache synchronization targeted one of two localhost tabs; that tab disappeared on reload while the surviving tab retained old Level15 values | 1 | Synchronize the surviving current tab and verify its controls after reload; production source/package values are already correct. |
+| Focused config group included a stale camera assertion expecting elevation 55 while current authored tuning is 61 | 1 | Keep unrelated camera tuning unchanged; rerun the requested Level16/config checks through their focused catalog and threshold/background tests. |
+| Browser role lookup for hidden result-overlay elements exceeded its selector deadline | 1 | Used direct id locators for the hidden shared overlay DOM; title, CTA, and logo each resolve exactly once. |
+| In-app browser isolated evaluation does not expose a real `document.createElement`, so a temporary main-world win-state script could not be injected | 2 | Do not add a runtime debug hook; verify the win branch with focused model/source-contract tests and inspect the already-shared overlay DOM/logs in browser. |
+| Browser label lookup for the DualQueue3 closed-Z input also matched its closed-Z-size input | 1 | Used an exact spinbutton role/name locator and completed the edit/restore QA. |
+| Parallel final verification stopped on an over-specific Level15 `rg` expression and hid sibling output | 1 | Reran focused tests and selection checks separately with direct markers. |
+| Broader Level9->Level7 session suite failed because the intentional production selection is Level15 | 1 | Kept the Level15 boundary unchanged; relied on the passing focused Level15/Level16 catalog/model regressions for this task. |
+| Broader queue filter hit the known stale Level12 expected head color 5 while runtime data starts at color 0 | 1 | Did not alter unrelated historical queue expectations; the four relevant queue/parity tests pass. |
+| First duplication diagnostic called nonexistent `game.tick()` | 1 | Used the model's public `game.update()` method; reproduced Level16 growing from 218 to 226 passengers after a non-reset editor reinitialization. |
+| Browser tab creation returned a tab outside the current in-app browser session | 1 | Read the browser bootstrap troubleshooting guide and claimed the existing localhost preview tab instead. |
+| Planning skill completion checker was not installed under the local `.claude` cache | 1 | Verified the current Level16 phase list directly; all four phases are marked complete and all requested checks pass. |
+| Combined Level16 completion-doc patch used a stale current-phase sentence and failed verification | 1 | Re-read the four short document headers and apply narrow per-section updates against current text. |
+| Combined Level16 syntax/status probe returned aggregate exit 1 after only printing the Level15 marker | 1 | Separate each syntax and config check so the failing segment is explicit before regeneration. |
+| PowerShell queue diagnostic treated integer color keys as ordered-dictionary positional indexes and emitted repeated out-of-range errors | 1 | Preserve the reliable queue lengths/run extraction, then switch the color-total comparison to a Node diagnostic using explicit run arrays. |
+| Node diagnostic received the Chinese Unity asset path through the legacy PowerShell pipeline code page as `??` and failed with `ENOENT` | 1 | Separate the pure numeric Node queue calculation from a native PowerShell Unicode-path asset calculation, then compare their small JSON summaries. |
+| Full default extraction stopped on pre-existing Level7 because its configured external Unity source now fails the preserved queue/seat parity check across colors 0-8 | 1 | Repointed the default to the matching preserved 83-vehicle source at `D:/备份/改文件名临时文件夹/level7.asset`; existing Level7 data remains unchanged. |
+| Level7 drift diagnostic could not serialize a PowerShell hashtable with integer keys to JSON, hiding the paired path-search output | 1 | Emit the small asset summary as plain text/string-key fields and run the candidate-path search independently. |
+| First refreshed AppLovin package is 5,926,059 bytes and fails the 5,000,000-byte limit | 1 | All other AppLovin checks pass; share the identical Level9/Level7 asset manifest in generated session data so each binary data URI is inlined only once. |
+| First generated-session assertion checked numeric `id` values against level names | 1 | Use the catalog's `key` field (`level9`, `level7`); corrected assertion confirms both order and shared asset-object identity. |
+| Combined durable-doc patch did not match the BOM-prefixed progress heading | 1 | Split the update by file and anchor on the first ASCII section heading; all four records were then updated and reread. |
+| Exact quoted `rg` check for `levelKey` returned no match under PowerShell quoting | 1 | Read the focused tuning block directly; both guide configs visibly contain `"levelKey": "level9"`. |
+| Planning completion checker reported 0/0 because the existing plan used numbered bold statuses instead of its supported phase/status markers | 1 | Added one compatible `### Phase` plus `**Status:** complete` marker for the current package task; retained the detailed numbered checklist. |
+| Broad guide `rg` pipeline returned exit 1 after emitting useful matches | 1 | Re-read the exact scene-view method range and guide test directly; use separated verification commands later. |
+| Second split patch found the replacement vehicle add already changed by the prior narrow edit | 1 | Re-read the exact method and patch only the remaining old parent/removal and animation blocks. |
+| Combined vehicle-root/entrance patch did not match one mixed-line-ending scene-view block | 1 | Split the change into small constructor, vehicle-parent, and animation-method patches using local ASCII anchors. |
+| Combined transition-test/queue search returned exit 1 after emitting the requested context | 1 | Treat the emitted context as usable and keep later searches/verification separated so the failing segment is identifiable. |
+| Progress update did not match the BOM-prefixed `# Progress` heading | 1 | Insert the entry before the first ASCII dated section instead of matching the first line. |
+| Large `src/main.js` patch failed to match the BOM/line-ending-sensitive import block | 1 | Split the edit into narrow patches anchored on individual ASCII sections. |
+| Targeted `rg` used a Unix-style `src/*.js` glob that PowerShell passed as an invalid Windows path | 1 | Avoid shell globs for `rg` on this workspace; pass explicit files or use `-g` filters. |
 | Planning completion checker was blocked by the current PowerShell execution policy | 1 | Run the same read-only checker in a child PowerShell with `-ExecutionPolicy Bypass`. |
 | Final package marker scan expected leading zeros in minified decimals | 1 | Vite emits values such as `-.15425447` and `.95464253`; verify exact vehicle-id/property snippets in the minified package instead. |
 | Combined plan/progress patch did not match the BOM-prefixed `progress.md` heading | 1 | Split the files and insert the progress entry before the first dated section using an ASCII anchor. |

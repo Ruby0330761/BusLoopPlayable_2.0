@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import * as THREE from 'three';
 import { BusLoopGame } from '../src/game-model.js';
@@ -195,6 +195,41 @@ test('queue initialization can use adapted Unity visible capacities without losi
   assert.equal(state.queueItems[1][17].distanceFromHead, 4.25);
 });
 
+test('editor queue reinitialization preserves passengers already on the conveyor', () => {
+  const level = structuredClone(LEVEL_CATALOG.level16);
+  const layout = CONVEYOR_LAYOUTS.dualQueue3;
+  const game = new BusLoopGame(level);
+  const config = {
+    capacity: layout.conveyorCapacity,
+    queueCapacities: layout.queueCapacities,
+    entryPercents: [0, 0.5],
+    exitStart: layout.exitStart,
+    exitEnd: layout.exitEnd,
+    resetSlots: true
+  };
+  game.initializeQueues([22, 22], level.passengerQueue.spacing, [8, 8], 30, config);
+  advance(game, 2, 1 / 60);
+
+  const before = game.getRemainingByColor();
+  assert.ok(game.snapshot().slots.some((slot) => slot.colorIndex !== null));
+  game.initializeQueues(
+    [22, 22],
+    level.passengerQueue.spacing,
+    [8.5, 8.5],
+    31,
+    { ...config, resetSlots: false }
+  );
+
+  assert.equal(game.getRemainingGroups(), level.passengerQueues.flat().length);
+  assert.deepEqual(game.getRemainingByColor(), before);
+  for (const vehicle of level.vehicles) {
+    const expected = level.vehicles
+      .filter((candidate) => candidate.colorIndex === vehicle.colorIndex)
+      .reduce((sum, candidate) => sum + candidate.seats, 0);
+    assert.equal(game.getRemainingByColor()[vehicle.colorIndex], expected);
+  }
+});
+
 test('queue passengers keep Unity-style logic distance and advance after dequeue', () => {
   const game = new BusLoopGame();
   game.initializeQueues([4, 4], 0.5, [3, 3]);
@@ -292,9 +327,10 @@ test('Unity visual assets and tunable camera configuration are complete', () => 
   assert.equal(SCENE_TUNING.facing.passengerModelYawDegrees, -90);
   assert.equal(SCENE_TUNING.vehicleArea.rotationDegrees, 0);
   assert.equal(SCENE_TUNING.vehicleArea.mirrorZ, true);
-  assert.equal(SCENE_TUNING.vehicleArea.positionUnitScale, LEVEL_1.mapScale);
+  assert.equal(SCENE_TUNING.vehicleArea.positionUnitScale, 0.8);
+  assert.equal(SCENE_TUNING.vehicleArea.modelScale, 0.7);
   assert.equal(SCENE_TUNING.facing.arrowYawDegrees, 180);
-  assert.match(LEVEL_1.assets.background, /BG01_split01_q60\.jpg$/);
+  assert.match(LEVEL_1.assets.background, /BG02_split01_summer_q60\.jpg$/);
   assert.match(LEVEL_1.assets.textures.parkingSpot, /Car_P2\.png$/);
   assert.equal(LEVEL_1.assets.colorTextures.length, 11);
   assert.deepEqual(Object.keys(LEVEL_1.assets.models.vehicleBySeats).map(Number), [4, 6, 10]);
@@ -335,6 +371,23 @@ test('Unity visual assets and tunable camera configuration are complete', () => 
     volume: 0.50023913
   });
   assert.equal(LEVEL_1.assets.passengerAnimations.move.duration, 0.60000014);
+});
+
+test('background asset selection uses the optimized summer image and remains editor-switchable', () => {
+  const editorSource = readFileSync(join('src', 'scene-editor.js'), 'utf8');
+  const viewSource = readFileSync(join('src', 'scene-view.js'), 'utf8');
+  const backgroundPath = join('public', SCENE_TUNING.background.asset.replace(/^\//, ''));
+  const sakuraPath = join('public', 'assets', 'applovin', 'textures', 'BG01_split01_Sakura_q60.jpg');
+
+  assert.equal(SCENE_TUNING.background.asset, LEVEL_1.assets.background);
+  assert.match(SCENE_TUNING.background.asset, /BG02_split01_summer_q60\.jpg$/);
+  assert.ok(statSync(backgroundPath).size < 250_000);
+  assert.ok(statSync(sakuraPath).size < 350_000);
+  assert.match(editorSource, /BACKGROUND_OPTIONS/);
+  assert.match(editorSource, /BG01_split01_q60\.jpg/);
+  assert.match(editorSource, /BG02_split01_summer_q60\.jpg/);
+  assert.match(editorSource, /BG01_split01_Sakura_q60\.jpg/);
+  assert.match(viewSource, /this\.setArtworkPlaneTexture\(this\.backgroundPlane, getSelectedBackgroundUrl\(\)\)/);
 });
 
 test('vehicle generation region matches GameSceneDualQueue2 VehicleRoot Cube', () => {
@@ -381,6 +434,7 @@ test('editor sizing, source background ratio, and passenger shadow anchor stay w
   assert.equal(sourceHeight, 3382);
   assert.equal(SCENE_TUNING.background.sourceWidth, sourceWidth);
   assert.equal(SCENE_TUNING.background.sourceHeight, sourceHeight);
+  assert.equal(SCENE_TUNING.background.asset, LEVEL_1.assets.background);
   assert.deepEqual(SCENE_TUNING.preview, { enabled: 1, width: 1080, height: 2160 });
   assert.deepEqual(SCENE_TUNING.sourceCrop, { enabled: 1, width: 1080, height: 2160, offsetX: 0, offsetY: 211 });
   assert.equal(SCENE_TUNING.parkingSpots.count, 5);
@@ -432,7 +486,7 @@ test('editor sizing, source background ratio, and passenger shadow anchor stay w
     appearSpeed: 1.45
   });
   assert.deepEqual(SCENE_TUNING.installGate, {
-    successfulOperationThreshold: 20
+    successfulOperationThreshold: 30
   });
   assert.deepEqual(SCENE_TUNING.gameOver, {
     failureDelaySeconds: 2,
@@ -452,8 +506,9 @@ test('editor sizing, source background ratio, and passenger shadow anchor stay w
   assert.equal(LEVEL_1.conveyorPathLength, 4.591284809513923);
   assert.deepEqual(SCENE_TUNING.vehicleBoardingPulse, { scale: 1.14, speed: 5 });
   assert.equal(SCENE_TUNING.vehicleGuideHand.enabled, 1);
-  assert.equal(SCENE_TUNING.vehicleGuideHand.vehicleId, 89);
-  assert.equal(SCENE_TUNING.vehicleGuideHand.size, 1);
+  assert.equal(SCENE_TUNING.vehicleGuideHand.levelKey, 'level16');
+  assert.equal(SCENE_TUNING.vehicleGuideHand.vehicleId, 45);
+  assert.equal(SCENE_TUNING.vehicleGuideHand.size, 2.12);
   assert.equal(SCENE_TUNING.vehicleGuideHand.speed, 1.15);
   assert.equal(SCENE_TUNING.vehicleGuideHand.nearScale, 0.78);
   assert.equal(SCENE_TUNING.vehicleGuideHand.farScale, 1.14);
@@ -1080,6 +1135,13 @@ test('main thread saves and restores scene tuning from localStorage', () => {
   assert.match(mainSource, /LEGACY_TUNING_STORAGE_KEY/);
   assert.match(mainSource, /function deepMerge/);
   assert.match(mainSource, /function migrateLegacyConveyorTuning/);
+  assert.match(mainSource, /function migrateLevel16PackageTuning/);
+  assert.match(mainSource, /source\.level\.selected = 'level16'/);
+  assert.match(mainSource, /'successfulOperationThreshold', 40, 30/);
+  assert.match(mainSource, /'minX', -2\.53, -2\.2/);
+  assert.match(mainSource, /'maxX', 2\.53, 2\.2/);
+  assert.match(mainSource, /'positionUnitScale', 0\.73, 0\.8/);
+  assert.match(mainSource, /'modelScale', 0\.63, 0\.7/);
   assert.match(mainSource, /SCENE_TUNING\.conveyorLayouts\?\.dualQueue2/);
   assert.match(mainSource, /classList\.toggle\('is-phone-preview', EDITOR_ENABLED && Boolean\(preview\?\.enabled\)\)/);
   assert.match(mainSource, /function loadSavedTuning\(\) \{\s+if \(!EDITOR_ENABLED\) return;/);
@@ -1126,7 +1188,7 @@ test('main thread saves and restores scene tuning from localStorage', () => {
   assert.doesNotMatch(mainSource, /INSTALL_GATE_AFTER_SUCCESSFUL_OPERATIONS_ENABLED/);
   assert.match(mainSource, /function applyCtaTuning/);
   assert.match(mainSource, /showResultOverlay\('Game Over'\)/);
-  assert.match(mainSource, /showResultOverlay\('You Win!'\)/);
+  assert.match(mainSource, /^\s*showResultOverlay\('You Win!'\);/m);
   assert.match(mainSource, /gameOverTitle\.textContent = title/);
   assert.match(mainSource, /function getGameOverTitleFontFamily/);
   assert.match(mainSource, /function InstallFullGame/);
@@ -1151,22 +1213,21 @@ test('main thread saves and restores scene tuning from localStorage', () => {
   assert.match(mainSource, /window\.mraid\.open\(url\)/);
   assert.doesNotMatch(mainSource, /window\.open/);
   assert.match(mainSource, /MRAID store open failed\./);
-  assert.match(mainSource, /let numberCountBus = 0/);
-  assert.match(mainSource, /let isFinish = false/);
-  assert.match(mainSource, /countedInstallVehicles = new Set\(\)/);
+  assert.match(mainSource, /createLevelSession\(sessionLevels\)/);
+  assert.doesNotMatch(mainSource, /let numberCountBus = 0/);
+  assert.doesNotMatch(mainSource, /let isFinish = false/);
+  assert.doesNotMatch(mainSource, /countedInstallVehicles = new Set\(\)/);
   assert.match(mainSource, /INSTALL_GATE_VEHICLE_STATES = new Set\(\['at-spot', 'boarding-final', 'departing', 'done'\]\)/);
   assert.match(mainSource, /const markInstallVehicle = \(vehicleId\) => \{/);
-  assert.match(mainSource, /countedInstallVehicles\.has\(vehicleId\)/);
+  assert.match(mainSource, /levelSession\.recordSuccessfulVehicle\(vehicleId, getSuccessfulOperationThreshold\(\)\)/);
   assert.match(mainSource, /const handleVehicleClick = \(vehicleId\) => \{/);
   assert.match(mainSource, /const result = game\.clickVehicle\(vehicleId\)/);
   assert.match(mainSource, /^\s*if \(result\?\.ok && markInstallVehicle\(vehicleId\)\) InstallFullGame\(\);/m);
   assert.match(mainSource, /function updateInstallGate\(state\)/);
   assert.match(mainSource, /for \(const vehicle of state\.vehicles \?\? \[\]\)/);
-  assert.match(mainSource, /countedInstallVehicles\.has\(vehicle\.id\)/);
+  assert.match(mainSource, /levelSession\.hasCountedVehicle\(vehicle\.id\)/);
   assert.match(mainSource, /markInstallVehicle\(vehicle\.id\)/);
-  assert.match(mainSource, /numberCountBus \+= 1/);
-  assert.match(mainSource, /numberCountBus >= getSuccessfulOperationThreshold\(\)/);
-  assert.match(mainSource, /if \(isFinish\) \{/);
+  assert.match(mainSource, /levelSession\.shouldOpenStore\(\)/);
   assert.match(mainSource, /stopImmediatePropagation\(\)/);
   assert.match(mainSource, /ctaButton\?\.addEventListener\('click', \(event\) => \{/);
   assert.match(mainSource, /event\.stopPropagation\(\)/);
@@ -1212,10 +1273,10 @@ test('successful operation store redirect uses the baked threshold and remains e
   const mainSource = readFileSync(join('src', 'main.js'), 'utf8');
   const editorSource = readFileSync(join('src', 'scene-editor.js'), 'utf8');
 
-  assert.equal(SCENE_TUNING.installGate.successfulOperationThreshold, 20);
+  assert.equal(SCENE_TUNING.installGate.successfulOperationThreshold, 30);
   assert.match(editorSource, /installGate\.successfulOperationThreshold/);
   assert.match(mainSource, /SCENE_TUNING\.installGate\?\.successfulOperationThreshold/);
   assert.match(mainSource, /^\s*if \(result\?\.ok && markInstallVehicle\(vehicleId\)\) InstallFullGame\(\);/m);
-  assert.match(mainSource, /numberCountBus >= getSuccessfulOperationThreshold\(\)/);
+  assert.match(mainSource, /levelSession\.recordSuccessfulVehicle\(vehicleId, getSuccessfulOperationThreshold\(\)\)/);
   assert.doesNotMatch(mainSource, /INSTALL_GATE_AFTER_SUCCESSFUL_OPERATIONS_ENABLED/);
 });

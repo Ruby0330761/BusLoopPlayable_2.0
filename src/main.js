@@ -1,6 +1,8 @@
 ﻿import './styles.css';
 import { BusLoopGame } from './game-model.js';
+import { PLAYABLE_LEVEL_SEQUENCE } from './generated-active-level.js';
 import { LEVEL_1, setActiveLevel } from './level-data.js';
+import { createLevelSession } from './level-session.js';
 import { SceneView } from './scene-view.js';
 import { SCENE_TUNING } from './scene-tuning.js';
 import { createGameAudioController } from './audio-controller.js';
@@ -84,6 +86,31 @@ function migrateGuideHandMotionTuning(source) {
   return changed;
 }
 
+function migrateLevel16PackageTuning(source) {
+  let changed = false;
+  const replaceNumber = (target, key, previousValue, nextValue) => {
+    if (Number(target?.[key]) !== previousValue) return;
+    target[key] = nextValue;
+    changed = true;
+  };
+  if (source?.level?.selected === 'level15') {
+    source.level.selected = 'level16';
+    changed = true;
+  }
+  replaceNumber(source?.installGate, 'successfulOperationThreshold', 40, 30);
+  replaceNumber(source?.vehiclePath?.parkingBounds, 'minX', -2.53, -2.2);
+  replaceNumber(source?.vehiclePath?.parkingBounds, 'maxX', 2.53, 2.2);
+  replaceNumber(source?.vehicleArea, 'positionUnitScale', 0.73, 0.8);
+  replaceNumber(source?.vehicleArea, 'modelScale', 0.63, 0.7);
+  for (const guide of [source?.vehicleGuideHand, source?.firstClickGuide]) {
+    if (guide?.levelKey !== 'level15' || Number(guide.vehicleId) !== 157) continue;
+    guide.levelKey = 'level16';
+    guide.vehicleId = 45;
+    changed = true;
+  }
+  return changed;
+}
+
 function waitForMraidReady(onReady) {
   const mraid = window.mraid;
   if (!mraid?.getState || !mraid?.addEventListener) {
@@ -137,9 +164,10 @@ function loadSavedTuning() {
     if (saved) {
       const savedTuning = JSON.parse(saved);
       const guideHandMotionMigrated = migrateGuideHandMotionTuning(savedTuning);
+      const level16PackageMigrated = migrateLevel16PackageTuning(savedTuning);
       deepMerge(SCENE_TUNING, savedTuning);
       migrateLegacyConveyorTuning(savedTuning);
-      if (guideHandMotionMigrated) {
+      if (guideHandMotionMigrated || level16PackageMigrated) {
         localStorage.setItem(TUNING_STORAGE_KEY, JSON.stringify(savedTuning));
       }
       return;
@@ -148,6 +176,7 @@ function loadSavedTuning() {
     if (!legacySaved) return;
     const legacy = JSON.parse(legacySaved);
     migrateGuideHandMotionTuning(legacy);
+    migrateLevel16PackageTuning(legacy);
     const legacyModelScale = legacy.vehicleArea?.modelScale;
     delete legacy.vehicleArea;
     deepMerge(SCENE_TUNING, legacy);
@@ -359,22 +388,26 @@ function clearSavedTuning() {
 
 async function startRuntime() {
   loadSavedTuning();
+  let sessionLevels = PLAYABLE_LEVEL_SEQUENCE;
   if (EDITOR_ENABLED) {
     const { getLevelDefinition } = await import('./level-catalog.js');
-    setActiveLevel(getLevelDefinition(SCENE_TUNING.level?.selected));
+    const selectedLevel = getLevelDefinition(SCENE_TUNING.level?.selected);
+    sessionLevels = selectedLevel.key === 'level9'
+      ? [selectedLevel, getLevelDefinition('level7')]
+      : [selectedLevel];
   }
+  const levelSession = createLevelSession(sessionLevels);
+  setActiveLevel(levelSession.currentLevel());
   applyPreviewFrame();
 
-  const game = new BusLoopGame();
+  let game = new BusLoopGame(levelSession.currentLevel());
   audio = createGameAudioController(LEVEL_1.assets.audio);
   const endPanel = $('#end-panel');
   let pressTimer = 0;
   let pressed = false;
-  let numberCountBus = 0;
-  let isFinish = false;
   let gameOverActive = false;
+  let unsubscribeGame = () => {};
   const gameOverTimers = new Set();
-  const countedInstallVehicles = new Set();
   const INSTALL_GATE_VEHICLE_STATES = new Set(['at-spot', 'boarding-final', 'departing', 'done']);
 
   function updateLoadingProgress(progress) {
@@ -386,11 +419,7 @@ async function startRuntime() {
 
   updateLoadingProgress(0);
   const markInstallVehicle = (vehicleId) => {
-    if (countedInstallVehicles.has(vehicleId)) return false;
-    countedInstallVehicles.add(vehicleId);
-    numberCountBus += 1;
-    if (numberCountBus >= getSuccessfulOperationThreshold()) isFinish = true;
-    return isFinish;
+    return levelSession.recordSuccessfulVehicle(vehicleId, getSuccessfulOperationThreshold());
   };
 
   const handleVehicleClick = (vehicleId) => {
@@ -486,6 +515,16 @@ async function startRuntime() {
     }
     if (state.status === 'won') {
       endPanel.hidden = true;
+      const nextLevel = levelSession.advanceAfterWin();
+      if (nextLevel) {
+        unsubscribeGame();
+        setActiveLevel(nextLevel);
+        game = new BusLoopGame(nextLevel);
+        view.replaceActiveLevel({ animate: true });
+        initializeGameQueues({ resetSlots: true });
+        unsubscribeGame = game.subscribe(syncHud);
+        return;
+      }
       showResultOverlay('You Win!');
     }
   }
@@ -495,7 +534,7 @@ async function startRuntime() {
       if (
         vehicle.spotIndex == null ||
         !INSTALL_GATE_VEHICLE_STATES.has(vehicle.state) ||
-        countedInstallVehicles.has(vehicle.id)
+        levelSession.hasCountedVehicle(vehicle.id)
       ) {
         continue;
       }
@@ -547,15 +586,17 @@ async function startRuntime() {
     }
   }
 
-  game.subscribe(syncHud);
+  unsubscribeGame = game.subscribe(syncHud);
   function reset() {
     endPanel.hidden = true;
     hideGameOver();
-    numberCountBus = 0;
-    isFinish = false;
-    countedInstallVehicles.clear();
-    game.reset();
+    unsubscribeGame();
+    const initialLevel = levelSession.reset();
+    setActiveLevel(initialLevel);
+    game = new BusLoopGame(initialLevel);
+    view.replaceActiveLevel();
     initializeGameQueues({ resetSlots: true });
+    unsubscribeGame = game.subscribe(syncHud);
   }
   $('#reset-button')?.addEventListener('click', reset);
   $('#end-reset-button').addEventListener('click', reset);
@@ -564,7 +605,7 @@ async function startRuntime() {
     InstallFullGame();
   });
   canvas.addEventListener('pointerdown', (event) => {
-    if (isFinish) {
+    if (levelSession.shouldOpenStore()) {
       event.stopImmediatePropagation();
       InstallFullGame();
       return;
@@ -600,8 +641,8 @@ async function startRuntime() {
   requestAnimationFrame(frame);
 
   window.__busLoop = {
-    game,
-    view,
+    get game() { return game; },
+    get view() { return view; },
     tuning: SCENE_TUNING,
     setTuning: (patch, { path } = {}) => {
       return applyTuningPatch(patch, { path, syncEditor: true });
@@ -614,9 +655,10 @@ async function startRuntime() {
     InstallFullGame,
     openStore,
     installState: () => ({
-      numberCountBus,
+      numberCountBus: levelSession.state().successfulOperationCount,
       maxNumberCountBus: getSuccessfulOperationThreshold(),
-      isFinish
+      isFinish: levelSession.state().installReady,
+      levelKey: levelSession.state().levelKey
     }),
     step: (seconds, increment = .05) => {
       for (let time = 0; time < seconds; time += increment) game.update(increment);

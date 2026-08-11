@@ -2,7 +2,7 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { LEVEL_CATALOG, LEVEL_OPTIONS } from '../src/level-catalog.js';
-import { ACTIVE_LEVEL } from '../src/generated-active-level.js';
+import { ACTIVE_LEVEL, PLAYABLE_LEVEL_SEQUENCE } from '../src/generated-active-level.js';
 import { SCENE_TUNING } from '../src/scene-tuning.js';
 import { BusLoopGame } from '../src/game-model.js';
 import { boxesOverlap, getVehicleCollisionSize } from '../src/vehicle-collision.js';
@@ -13,7 +13,9 @@ const IMPORTED_EXPECTATIONS = {
   level8: { vehicles: 38, queues: [140, 140] },
   level9: { vehicles: 37, queues: [131, 131] },
   level10: { vehicles: 64, queues: [218, 218] },
-  level13: { vehicles: 75, queues: [202, 202] }
+  level13: { vehicles: 75, queues: [202, 202] },
+  level15: { vehicles: 81, queues: [296, 214] },
+  level16: { vehicles: 37, queues: [139, 79] }
 };
 
 const LEVEL7_QUEUE_RUNS = [
@@ -31,6 +33,36 @@ const LEVEL7_QUEUE_RUNS = [
     [0, 6], [5, 10], [1, 10], [5, 10], [1, 4], [5, 10], [1, 6], [7, 6],
     [5, 6], [7, 12], [0, 6], [7, 6], [0, 6], [7, 4], [0, 10], [7, 10],
     [0, 10], [7, 4], [0, 18]
+  ]
+];
+
+const LEVEL15_QUEUE_RUNS = [
+  [
+    [1, 6], [4, 4], [7, 6], [0, 6], [4, 10], [3, 6], [5, 6], [6, 6],
+    [1, 6], [7, 10], [4, 6], [0, 4], [6, 10], [5, 6], [2, 6], [7, 6],
+    [1, 4], [2, 4], [0, 6], [4, 6], [3, 6], [5, 6], [0, 10], [4, 6],
+    [6, 6], [0, 6], [4, 6], [5, 10], [4, 10], [0, 6], [1, 6], [2, 10],
+    [7, 10], [5, 4], [3, 6], [6, 4], [4, 6], [0, 10], [7, 4], [3, 4],
+    [2, 4], [1, 4], [6, 6], [3, 6], [5, 6], [6, 4], [7, 6]
+  ],
+  [
+    [7, 4], [6, 10], [3, 4], [6, 6], [2, 6], [0, 10], [6, 10], [1, 4],
+    [5, 10], [3, 4], [0, 6], [1, 6], [2, 10], [4, 6], [2, 6], [0, 6],
+    [1, 4], [3, 6], [4, 6], [2, 6], [3, 6], [1, 6], [3, 6], [0, 6],
+    [4, 6], [7, 6], [0, 4], [2, 6], [7, 4], [1, 6], [0, 6], [2, 6],
+    [1, 6], [2, 6], [4, 4]
+  ]
+];
+
+const LEVEL16_QUEUE_RUNS = [
+  [
+    [6, 5], [0, 5], [7, 9], [2, 1], [3, 3], [1, 1], [8, 4], [3, 4],
+    [0, 24], [8, 4], [5, 12], [8, 4], [7, 2], [5, 6], [1, 10], [5, 2],
+    [7, 6], [5, 4], [2, 6], [0, 1], [1, 19], [2, 5], [3, 1], [2, 1]
+  ],
+  [
+    [2, 9], [3, 6], [2, 11], [1, 6], [7, 12], [2, 7], [7, 1], [3, 4],
+    [6, 5], [2, 3], [7, 4], [6, 10], [2, 1]
   ]
 ];
 
@@ -70,14 +102,18 @@ test('Unity level catalog imports each supplied layout and its paired queues', (
   }
 });
 
-test('production active module contains the editor-selected level only', () => {
+test('production active module contains only the selected playable session levels', () => {
   const selectedLevel = readFileSync('artifacts/selected-level.txt', 'utf8').trim()
     || SCENE_TUNING.level.selected;
   assert.equal(ACTIVE_LEVEL.key, selectedLevel);
+  const sessionKeys = new Set(PLAYABLE_LEVEL_SEQUENCE.map((level) => level.key));
+  assert.deepEqual([...sessionKeys], selectedLevel === 'level9' ? ['level9', 'level7'] : [selectedLevel]);
   const source = readFileSync('src/generated-active-level.js', 'utf8');
-  assert.match(source, new RegExp(`"sourceFile": "${ACTIVE_LEVEL.sourceFile}"`));
+  for (const level of PLAYABLE_LEVEL_SEQUENCE) {
+    assert.match(source, new RegExp(`"sourceFile": "${level.sourceFile}"`));
+  }
   for (const key of Object.keys(IMPORTED_EXPECTATIONS)) {
-    if (key === ACTIVE_LEVEL.key) continue;
+    if (sessionKeys.has(key)) continue;
     assert.doesNotMatch(source, new RegExp(`"key": "${key}"`));
   }
 });
@@ -118,6 +154,39 @@ test('level13 vehicle 130 is nudged clear of vehicle 135 collision body', () => 
   assert.deepEqual(new BusLoopGame(structuredClone(level)).getBlockers(130), []);
 });
 
+test('level15 uses the supplied passenger queue order', () => {
+  const level = LEVEL_CATALOG.level15;
+  assert.equal(level.unityId, 15);
+  assert.equal(level.sourceFile, 'level15.asset');
+  assert.equal(level.vehicles.some((vehicle) => vehicle.id === 157), true);
+  assert.deepEqual(level.passengerQueues.map(queueRuns), LEVEL15_QUEUE_RUNS);
+});
+
+test('level16 uses the authored vehicle layout and passenger queue order', () => {
+  const level = LEVEL_CATALOG.level16;
+  assert.equal(level.unityId, 14);
+  assert.equal(level.sourceFile, 'level16.asset');
+  assert.equal(level.mapScale, 0.95);
+  assert.equal(level.vehicles.some((vehicle) => vehicle.id === 45), true);
+  assert.deepEqual(level.passengerQueues.map(queueRuns), LEVEL16_QUEUE_RUNS);
+  assert.equal(SCENE_TUNING.level.selected, 'level16');
+  assert.equal(SCENE_TUNING.vehicleArea.positionUnitScale, 0.8);
+  assert.equal(SCENE_TUNING.vehicleArea.modelScale, 0.7);
+  assert.equal(SCENE_TUNING.vehiclePath.parkingBounds.minX, -2.2);
+  assert.equal(SCENE_TUNING.vehiclePath.parkingBounds.maxX, 2.2);
+  for (let first = 0; first < level.vehicles.length; first += 1) {
+    for (let second = first + 1; second < level.vehicles.length; second += 1) {
+      const firstVehicle = level.vehicles[first];
+      const secondVehicle = level.vehicles[second];
+      assert.equal(
+        boxesOverlap(collisionBox(level, firstVehicle), collisionBox(level, secondVehicle)),
+        false,
+        `level16 vehicles ${firstVehicle.id} and ${secondVehicle.id}`
+      );
+    }
+  }
+});
+
 test('level8 and level9 use Unity logical vehicle sizes without initial overlaps', () => {
   const expectedSizes = {
     4: { width: 0.27, length: 0.47157902 },
@@ -147,12 +216,19 @@ test('editor level selection reloads the runtime and production build regenerate
   const packageJson = JSON.parse(readFileSync('package.json', 'utf8'));
   assert.match(editorSource, /'level\.selected'/);
   assert.match(editorSource, /LEVEL_OPTIONS/);
-  assert.match(mainSource, /setActiveLevel\(getLevelDefinition\(SCENE_TUNING\.level\?\.selected\)\)/);
+  assert.match(mainSource, /getLevelDefinition\(SCENE_TUNING\.level\?\.selected\)/);
+  assert.match(mainSource, /setActiveLevel\(levelSession\.currentLevel\(\)\)/);
   assert.match(mainSource, /path === 'level\.selected'/);
   assert.match(mainSource, /fetch\('\/__playable-level'/);
   assert.match(mainSource, /window\.location\.reload\(\)/);
   assert.equal(packageJson.scripts.prebuild, 'node scripts/generate-active-level.mjs');
   const generatorSource = readFileSync('scripts/generate-active-level.mjs', 'utf8');
   assert.match(generatorSource, /selected-level\.txt/);
+  assert.match(generatorSource, /SCENE_TUNING\.background\?\.asset/);
+  assert.match(generatorSource, /background: selectedBackground/);
+  assert.match(generatorSource, /Selected background asset does not exist/);
+  const viteConfigSource = readFileSync('vite.config.js', 'utf8');
+  assert.match(viteConfigSource, /'level15'/);
+  assert.match(viteConfigSource, /'level16'/);
 });
 

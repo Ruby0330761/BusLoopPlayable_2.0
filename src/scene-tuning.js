@@ -1,6 +1,6 @@
 export const SCENE_TUNING = {
   "level": {
-    "selected": "level7"
+    "selected": "level16"
   },
   "preview": {
     "enabled": 1,
@@ -43,7 +43,7 @@ export const SCENE_TUNING = {
     "bottom": 46
   },
   "installGate": {
-    "successfulOperationThreshold": 20
+    "successfulOperationThreshold": 30
   },
   "gameOver": {
     "failureDelaySeconds": 2,
@@ -221,6 +221,7 @@ export const SCENE_TUNING = {
     }
   ],
   "background": {
+    "asset": "/assets/applovin/textures/BG02_split01_summer_q60.jpg",
     "offsetX": 0,
     "offsetY": 0.11,
     "distanceOffset": 7,
@@ -323,8 +324,8 @@ export const SCENE_TUNING = {
     "turnInController": 0.1,
     "turnOutController": 0.25,
     "parkingBounds": {
-      "minX": -2.26,
-      "maxX": 2.25,
+      "minX": -2.2,
+      "maxX": 2.2,
       "minZ": -3.02,
       "maxZ": 2.12
     }
@@ -348,7 +349,7 @@ export const SCENE_TUNING = {
   },
   "vehicleArea": {
     "unityToWorldScale": 2,
-    "positionUnitScale": 0.84,
+    "positionUnitScale": 0.8,
     "sourceRootX": 0,
     "sourceRootZ": -2.92,
     "positionPivotX": 0,
@@ -379,13 +380,14 @@ export const SCENE_TUNING = {
   },
   "vehicleGuideHand": {
     "enabled": 1,
-    "vehicleId": 89,
+    "levelKey": "level16",
+    "vehicleId": 45,
     "offsetX": 0.25,
     "offsetY": 0.38,
     "offsetZ": 0.46,
     "approachOffsetX": 0.62,
     "approachOffsetZ": -0.11,
-    "size": 2.52,
+    "size": 2.12,
     "width": 0.47,
     "height": 0.5,
     "nearScale": 1,
@@ -394,8 +396,9 @@ export const SCENE_TUNING = {
     "opacity": 1
   },
   "firstClickGuide": {
-    "enabled": 1,
-    "vehicleId": 89,
+    "enabled": 0,
+    "levelKey": "level16",
+    "vehicleId": 45,
     "durationSeconds": 3,
     "maskOpacity": 0.8,
     "holePadding": 15,

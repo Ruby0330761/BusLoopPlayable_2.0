@@ -1,5 +1,89 @@
 ﻿# Playable Project Progress
 
+## Completed On 2026-08-11 - Sakura background selection and single-background packaging
+
+- Added `BG01 \u6a31\u82b1` as a third editor-selectable background using the optimized 2100x3382 `BG01_split01_Sakura_q60.jpg` derivative (278,157 bytes); the supplied 1,976,289-byte PNG remains untouched.
+- Active-level generation now overwrites every generated session level's background manifest with the baked editor selection and validates that the selected asset exists. This prevents the catalog's fallback background from entering production alongside the selected image.
+- Focused syntax/tests pass. Browser QA switched summer -> Sakura -> summer, visually confirmed the Sakura preview, and reported zero error-level logs.
+- A temporary Sakura build produced a 4,191,471-byte AppLovin HTML that passed all 15 checks; Base64 fingerprints confirmed only Sakura was embedded. The restored summer final artifact is 3,972,231 bytes, passes all 15 checks, and embeds only summer.
+- Final SHA-256: `3300A5FDC1045513203224648AB414AB472E5C490CC6C2D873817DE9C060196F`. Official AppLovin upload/device play remains external manual acceptance.
+
+## Completed On 2026-08-03 - Level16 vehicle-45 guided AppLovin package
+
+- Baked Level16 with the optimized summer background, successful-operation threshold 30, vehicle path X bounds -2.2/2.2, map scale 0.8, and vehicle model scale 0.7 across source/exported tuning and the durable selection marker.
+- Added a development-only saved-default migration so editor caches still holding the immediately prior Level15/40/-2.53/0.73/0.63 defaults adopt this package's values without overwriting unrelated custom tuning.
+- Baked both guide scopes to Level16 vehicle 45 while retaining `firstClickGuide.enabled = 0`; the normal guide hand remains enabled.
+- Generated a Level16-only production payload with 37 vehicles and authored queues 139+79, then completed the production build with only the existing Vite chunk-size warning.
+- Generated `artifacts/applovin/index.html` at 3,968,019 bytes, leaving 1,031,981 bytes under the 5,000,000-byte limit. All 15 AppLovin static checks and final guide/parameter/background marker checks pass.
+- SHA-256: `7E4C981851EFC8F3F13371E2ED6109553D6327FCA04585507AE9909391FBA7CF`. Official AppLovin preview/QR and real-backend upload/play remain external manual acceptance steps.
+
+## Completed On 2026-08-03 - Final victory CTA overlay
+
+- Fixed the unresponsive final state after every vehicle completes: the terminal win branch now reuses the existing result overlay with `You Win!`, the game icon, title animation, and `Play Now` store CTA.
+- The Level9 -> Level7 intermediate handoff remains unchanged; the shared overlay appears only when the current session has no next level.
+- Main/test syntax and three focused win/session/source-contract tests pass. Browser inspection confirms the shared title/icon/CTA DOM is present and reports zero error-level logs.
+- No build/package was run because the change is a narrow existing-UI branch correction with no asset, dependency, or packaging changes.
+
+## Completed On 2026-08-03 - Editor queue color parity fix
+
+- Fixed editor-driven queue geometry reinitialization duplicating passengers already on the conveyor after a vehicle-layout switch or tuning change.
+- Non-reset initialization now preserves the current side/source queue remainder, while explicit structural resets still restore the selected level's authored queues and clear belt slots.
+- Level16 remains exactly 218 passengers with per-color parity before and after reinitialization; focused queue/catalog tests pass, browser switching/editing QA has no error-level logs, and Level15 was restored as the production selection.
+- No build/package was run because this is a focused model-state fix and the production asset/config boundary is unchanged.
+
+## Completed On 2026-08-03 - Level16 vehicle and queue layout import
+
+- Imported `level16.asset` into the reproducible Unity level catalog as a new editor-selectable layout while preserving its authored Unity `id: 14`, 37 vehicles, and exact 139+79 passenger queues.
+- Vehicle seats and passenger colors match exactly across 218 passengers; all vehicle ids/yaws/depth references are valid and the layout has zero initial collision-box overlaps.
+- Catalog/generated-source syntax and four focused catalog/queue/collision/selection regressions pass. Browser QA loaded Level16 with both queues and zero console errors, then restored Level15 as the current production selection.
+- No production build/package was run because the narrow active module remains Level15-only; Level16 stays behind the development-only catalog/editor boundary.
+
+## Completed On 2026-08-03 - Summer background and AppLovin size pass
+
+- Added an editor background selector for BG01 winter / BG02 summer and made the optimized summer image the baked default across scene tuning and generated level asset manifests.
+- Preserved the supplied 1,035,562-byte source and generated `BG02_split01_summer_q60.jpg` at 195,940 bytes with the same 2100x3382 dimensions.
+- Focused background regression, source syntax, production build, browser switching QA, and all 15 AppLovin checks pass. The final single HTML is 3,979,125 bytes with 1,020,875 bytes remaining under the 5,000,000-byte checker limit.
+- SHA-256: `A7F438C10AC4D7E4C157AAF70E7A13565DBA4ED9904BAE276BC3F8EFF59CE648`. AppLovin official preview/QR and real-backend upload remain external manual acceptance steps.
+
+## Completed On 2026-07-30 - Level15 AppLovin package
+
+- Built the revised Level15-only payload (81 vehicles, queues 296+214) and generated `artifacts/applovin/index.html` at 3,642,343 bytes.
+- All 15 AppLovin static checks pass. Final package markers confirm Level15, both replacement queue prefixes, Map Scale `0.73`, vehicle model scale `0.63`, guide vehicle 157, and path X bounds `-2.53 / 2.53`.
+- SHA-256: `74FBABDBE2488F99AEF442FB6D04D485007DBF9AC3FF24E8E0DD17343C2EB0E6`. No local permission issue remains.
+- AppLovin official preview/QR device play and real creative-backend upload remain required external manual acceptance steps.
+
+## Completed On 2026-07-30 - Level15 queue and tuning revision
+
+- Replaced Level15 passenger queues with the supplied exact order: 296 left + 214 right. Their combined per-color totals still match all 510 vehicle seats.
+- Applied Map Scale `0.73`, vehicle model scale `0.63`, Level15 vehicle-157 guide scope/target for both guide configs, and vehicle path X bounds `-2.53 / 2.53` in source and exported tuning.
+- Regenerated the Level15 catalog and narrow active payload. Focused queue/guide/config tests pass 8/8 and generated-source syntax passes.
+- Build and platform packaging were intentionally skipped per user request.
+
+## Completed On 2026-07-17 - First-step mask-off AppLovin package
+
+- Disabled the timed first-step mask/DOM guide by baking `firstClickGuide.enabled = 0`; the ordinary guide hand remains enabled for Level9 vehicle 114 at size 2.12, with successful-operation threshold 40 unchanged.
+- Focused guide/config verification and the production build pass; the build retains only the existing Vite chunk-size warning.
+- Generated `artifacts/applovin/index.html` at 3,653,268 bytes; every AppLovin static check passes. SHA-256: `041493FEB89FB3714FBF72CEFB2D4E6C7D2CED5006BF166C5412B720FCF83EE5`.
+- AppLovin preview/upload play remains a manual validation step.
+
+## Completed On 2026-07-17 - Level9 to Level7 AppLovin parameter package
+
+- Baked successful-operation threshold `40`, both Level9-only guide targets on vehicle `114`, and guide-hand overall size `2.12` into source/exported tuning.
+- The Level9 -> Level7 generator now shares their identical asset manifest instead of serializing it twice; gameplay layouts remain independent and the AppLovin single HTML stays below the platform size limit.
+- Focused guide/catalog/session/CTA regressions pass 14/14. The production build passes with only the existing Vite chunk-size warning.
+- Generated `artifacts/applovin/index.html` at 3,653,268 bytes; every AppLovin static check passes. SHA-256: `79B7951D936AEBF1D0D5E6340555157607C234A4C641056BB7FB82BFC505745B`.
+- AppLovin preview/upload play remains a manual validation step.
+
+## Completed On 2026-07-17 - Level9 to Level7 session transition
+
+- The playable now starts on Level9 and automatically rebuilds as Level7 after Level9 is cleared.
+- Follow-up refinement: the Level9 conveyor artwork remains fixed. Only the new Level7 vehicle layout slides in from below over 0.85 seconds, while both side passenger queues restart their existing entrance motion.
+- The successful-operation CTA/install counter is session-wide and namespaces repeated vehicle ids by level, so Level9 progress is preserved into Level7 without collisions.
+- If the configured threshold is reached during Level9, the count remains ready but store interception is deferred until Level7, ensuring the Level9 win transition cannot be blocked by the current threshold of 40.
+- The existing win result/end overlay call is temporarily commented out; loss/game-over behavior is unchanged.
+- Both guide layers now target vehicle 114 only on Level9. Normal and timed mask/DOM guide visibility is gated by the active level key, so Level7 vehicle 114 is never guided; both scopes are selectable in the editor.
+- Production generation continues to bake only the requested Level9 -> Level7 sequence. The latest guide/session tests pass 6/6, touched-source syntax and production build pass, and the final bundle contains both guide configs as Level9 vehicle 114. The subsequent AppLovin package status is recorded above.
+
 ## Completed On 2026-07-16 - Level7 vehicle 66/82 position sync
 
 - Synchronized the latest Unity Level7 coordinates for vehicle 66 (`x -0.15425447 / z 0.95464253`) and vehicle 82 (`x 0.77715284 / z 0.57091796`) through the reproducible level extraction pipeline.

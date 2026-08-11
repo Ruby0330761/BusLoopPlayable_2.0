@@ -7,6 +7,12 @@ const CONVEYOR_LAYOUT_OPTIONS = [
   ['dualQueue10', 'GameSceneDualQueue10']
 ];
 
+const BACKGROUND_OPTIONS = [
+  ['/assets/applovin/textures/BG01_split01_q60.jpg', 'BG01 \u51ac\u5b63'],
+  ['/assets/applovin/textures/BG02_split01_summer_q60.jpg', 'BG02 \u590f\u5b63'],
+  ['/assets/applovin/textures/BG01_split01_Sakura_q60.jpg', 'BG01 \u6a31\u82b1']
+];
+
 function makeConveyorLayoutGroups(layoutId, label) {
   const root = `conveyorLayouts.${layoutId}`;
   return [
@@ -89,6 +95,15 @@ const FIELD_GROUPS = [
       ['\u7a97\u53e3\u9ad8', 'sourceCrop.height', 640, 3382, 1],
       ['X \u504f\u79fb', 'sourceCrop.offsetX', -1020, 1020, 1],
       ['Y \u504f\u79fb', 'sourceCrop.offsetY', -1222, 1222, 1]
+    ]
+  },
+  {
+    title: '\u80cc\u666f',
+    fields: [
+      ['\u56fe\u7247', 'background.asset', 0, 0, 1, BACKGROUND_OPTIONS],
+      ['X \u5750\u6807', 'background.offsetX', -10, 10, 0.05],
+      ['Y \u5750\u6807', 'background.offsetY', -10, 10, 0.05],
+      ['\u900f\u660e\u5ea6', 'background.opacity', 0, 1, 0.01]
     ]
   },
   {
@@ -305,6 +320,7 @@ const FIELD_GROUPS = [
       ['\u4e0a\u8f66\u653e\u5927\u500d\u6570', 'vehicleBoardingPulse.scale', 1, 2, 0.01],
       ['\u4e0a\u8f66\u7f29\u653e\u901f\u5ea6', 'vehicleBoardingPulse.speed', 0, 20, 0.1],
       ['\u5f15\u5bfc\u5c0f\u624b\u663e\u793a', 'vehicleGuideHand.enabled', 0, 1, 1],
+      ['\u5f15\u5bfc\u5173\u5361', 'vehicleGuideHand.levelKey', 0, 0, 1, LEVEL_OPTIONS],
       ['\u5f15\u5bfc\u8f66 ID', 'vehicleGuideHand.vehicleId', 1, 200, 1],
       ['\u5c0f\u624b X', 'vehicleGuideHand.offsetX', -3, 3, 0.01],
       ['\u5c0f\u624b\u9ad8\u5ea6', 'vehicleGuideHand.offsetY', 0, 3, 0.01],
@@ -319,6 +335,7 @@ const FIELD_GROUPS = [
       ['\u5c0f\u624b\u901f\u5ea6', 'vehicleGuideHand.speed', 0.1, 6, 0.01],
       ['\u5c0f\u624b\u900f\u660e\u5ea6', 'vehicleGuideHand.opacity', 0, 1, 0.01],
       ['\u9996\u6b65\u906e\u7f69\u5f00\u542f', 'firstClickGuide.enabled', 0, 1, 1],
+      ['\u9996\u6b65\u5f15\u5bfc\u5173\u5361', 'firstClickGuide.levelKey', 0, 0, 1, LEVEL_OPTIONS],
       ['\u9996\u6b65\u8f66 ID', 'firstClickGuide.vehicleId', 1, 200, 1],
       ['\u906e\u7f69\u6301\u7eed\u65f6\u95f4', 'firstClickGuide.durationSeconds', 0, 10, 0.1],
       ['\u906e\u7f69\u900f\u660e\u5ea6', 'firstClickGuide.maskOpacity', 0, 1, 0.01],

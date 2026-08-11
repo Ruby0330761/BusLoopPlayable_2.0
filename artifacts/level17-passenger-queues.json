@@ -1,0 +1,2306 @@
+{
+    "source":  "C:/Users/15389/Downloads/level17.csv",
+    "rule":  "queue1 starts color 3; queue0 starts color 5; exchange colors every 50 passengers; remaining counts are emitted as final short runs.",
+    "vehicleSeatTotals":  {
+                              "3":  304,
+                              "5":  254,
+                              "total":  558
+                          },
+    "queueLengths":  {
+                         "queue0":  300,
+                         "queue1":  258,
+                         "total":  558
+                     },
+    "runs":  {
+                 "queue1":  [
+                                {
+                                    "colorIndex":  3,
+                                    "count":  50
+                                },
+                                {
+                                    "colorIndex":  5,
+                                    "count":  50
+                                },
+                                {
+                                    "colorIndex":  3,
+                                    "count":  50
+                                },
+                                {
+                                    "colorIndex":  5,
+                                    "count":  50
+                                },
+                                {
+                                    "colorIndex":  3,
+                                    "count":  50
+                                },
+                                {
+                                    "colorIndex":  5,
+                                    "count":  4
+                                },
+                                {
+                                    "colorIndex":  3,
+                                    "count":  4
+                                }
+                            ],
+                 "queue0":  [
+                                {
+                                    "colorIndex":  5,
+                                    "count":  50
+                                },
+                                {
+                                    "colorIndex":  3,
+                                    "count":  50
+                                },
+                                {
+                                    "colorIndex":  5,
+                                    "count":  50
+                                },
+                                {
+                                    "colorIndex":  3,
+                                    "count":  50
+                                },
+                                {
+                                    "colorIndex":  5,
+                                    "count":  50
+                                },
+                                {
+                                    "colorIndex":  3,
+                                    "count":  50
+                                }
+                            ]
+             },
+    "passengers":  [
+                       {
+                           "queueId":  0,
+                           "colorIndex":  5
+                       },
+                       {
+                           "queueId":  0,
+                           "colorIndex":  5
+                       },
+                       {
+                           "queueId":  0,
+                           "colorIndex":  5
+                       },
+                       {
+                           "queueId":  0,
+                           "colorIndex":  5
+                       },
+                       {
+                           "queueId":  0,
+                           "colorIndex":  5
+                       },
+                       {
+                           "queueId":  0,
+                           "colorIndex":  5
+                       },
+                       {
+                           "queueId":  0,
+                           "colorIndex":  5
+                       },
+                       {
+                           "queueId":  0,
+                           "colorIndex":  5
+                       },
+                       {
+                           "queueId":  0,
+                           "colorIndex":  5
+                       },
+                       {
+                           "queueId":  0,
+                           "colorIndex":  5
+                       },
+                       {
+                           "queueId":  0,
+                           "colorIndex":  5
+                       },
+                       {
+                           "queueId":  0,
+                           "colorIndex":  5
+                       },
+                       {
+                           "queueId":  0,
+                           "colorIndex":  5
+                       },
+                       {
+                           "queueId":  0,
+                           "colorIndex":  5
+                       },
+                       {
+                           "queueId":  0,
+                           "colorIndex":  5
+                       },
+                       {
+                           "queueId":  0,
+                           "colorIndex":  5
+                       },
+                       {
+                           "queueId":  0,
+                           "colorIndex":  5
+                       },
+                       {
+                           "queueId":  0,
+                           "colorIndex":  5
+                       },
+                       {
+                           "queueId":  0,
+                           "colorIndex":  5
+                       },
+                       {
+                           "queueId":  0,
+                           "colorIndex":  5
+                       },
+                       {
+                           "queueId":  0,
+                           "colorIndex":  5
+                       },
+                       {
+                           "queueId":  0,
+                           "colorIndex":  5
+                       },
+                       {
+                           "queueId":  0,
+                           "colorIndex":  5
+                       },
+                       {
+                           "queueId":  0,
+                           "colorIndex":  5
+                       },
+                       {
+                           "queueId":  0,
+                           "colorIndex":  5
+                       },
+                       {
+                           "queueId":  0,
+                           "colorIndex":  5
+                       },
+                       {
+                           "queueId":  0,
+                           "colorIndex":  5
+                       },
+                       {
+                           "queueId":  0,
+                           "colorIndex":  5
+                       },
+                       {
+                           "queueId":  0,
+                           "colorIndex":  5
+                       },
+                       {
+                           "queueId":  0,
+                           "colorIndex":  5
+                       },
+                       {
+                           "queueId":  0,
+                           "colorIndex":  5
+                       },
+                       {
+                           "queueId":  0,
+                           "colorIndex":  5
+                       },
+                       {
+                           "queueId":  0,
+                           "colorIndex":  5
+                       },
+                       {
+                           "queueId":  0,
+                           "colorIndex":  5
+                       },
+                       {
+                           "queueId":  0,
+                           "colorIndex":  5
+                       },
+                       {
+                           "queueId":  0,
+                           "colorIndex":  5
+                       },
+                       {
+                           "queueId":  0,
+                           "colorIndex":  5
+                       },
+                       {
+                           "queueId":  0,
+                           "colorIndex":  5
+                       },
+                       {
+                           "queueId":  0,
+                           "colorIndex":  5
+                       },
+                       {
+                           "queueId":  0,
+                           "colorIndex":  5
+                       },
+                       {
+                           "queueId":  0,
+                           "colorIndex":  5
+                       },
+                       {
+                           "queueId":  0,
+                           "colorIndex":  5
+                       },
+                       {
+                           "queueId":  0,
+                           "colorIndex":  5
+                       },
+                       {
+                           "queueId":  0,
+                           "colorIndex":  5
+                       },
+                       {
+                           "queueId":  0,
+                           "colorIndex":  5
+                       },
+                       {
+                           "queueId":  0,
+                           "colorIndex":  5
+                       },
+                       {
+                           "queueId":  0,
+                           "colorIndex":  5
+                       },
+                       {
+                           "queueId":  0,
+                           "colorIndex":  5
+                       },
+                       {
+                           "queueId":  0,
+                           "colorIndex":  5
+                       },
+                       {
+                           "queueId":  0,
+                           "colorIndex":  5
+                       },
+                       {
+                           "queueId":  0,
+                           "colorIndex":  3
+                       },
+                       {
+                           "queueId":  0,
+                           "colorIndex":  3
+                       },
+                       {
+                           "queueId":  0,
+                           "colorIndex":  3
+                       },
+                       {
+                           "queueId":  0,
+                           "colorIndex":  3
+                       },
+                       {
+                           "queueId":  0,
+                           "colorIndex":  3
+                       },
+                       {
+                           "queueId":  0,
+                           "colorIndex":  3
+                       },
+                       {
+                           "queueId":  0,
+                           "colorIndex":  3
+                       },
+                       {
+                           "queueId":  0,
+                           "colorIndex":  3
+                       },
+                       {
+                           "queueId":  0,
+                           "colorIndex":  3
+                       },
+                       {
+                           "queueId":  0,
+                           "colorIndex":  3
+                       },
+                       {
+                           "queueId":  0,
+                           "colorIndex":  3
+                       },
+                       {
+                           "queueId":  0,
+                           "colorIndex":  3
+                       },
+                       {
+                           "queueId":  0,
+                           "colorIndex":  3
+                       },
+                       {
+                           "queueId":  0,
+                           "colorIndex":  3
+                       },
+                       {
+                           "queueId":  0,
+                           "colorIndex":  3
+                       },
+                       {
+                           "queueId":  0,
+                           "colorIndex":  3
+                       },
+                       {
+                           "queueId":  0,
+                           "colorIndex":  3
+                       },
+                       {
+                           "queueId":  0,
+                           "colorIndex":  3
+                       },
+                       {
+                           "queueId":  0,
+                           "colorIndex":  3
+                       },
+                       {
+                           "queueId":  0,
+                           "colorIndex":  3
+                       },
+                       {
+                           "queueId":  0,
+                           "colorIndex":  3
+                       },
+                       {
+                           "queueId":  0,
+                           "colorIndex":  3
+                       },
+                       {
+                           "queueId":  0,
+                           "colorIndex":  3
+                       },
+                       {
+                           "queueId":  0,
+                           "colorIndex":  3
+                       },
+                       {
+                           "queueId":  0,
+                           "colorIndex":  3
+                       },
+                       {
+                           "queueId":  0,
+                           "colorIndex":  3
+                       },
+                       {
+                           "queueId":  0,
+                           "colorIndex":  3
+                       },
+                       {
+                           "queueId":  0,
+                           "colorIndex":  3
+                       },
+                       {
+                           "queueId":  0,
+                           "colorIndex":  3
+                       },
+                       {
+                           "queueId":  0,
+                           "colorIndex":  3
+                       },
+                       {
+                           "queueId":  0,
+                           "colorIndex":  3
+                       },
+                       {
+                           "queueId":  0,
+                           "colorIndex":  3
+                       },
+                       {
+                           "queueId":  0,
+                           "colorIndex":  3
+                       },
+                       {
+                           "queueId":  0,
+                           "colorIndex":  3
+                       },
+                       {
+                           "queueId":  0,
+                           "colorIndex":  3
+                       },
+                       {
+                           "queueId":  0,
+                           "colorIndex":  3
+                       },
+                       {
+                           "queueId":  0,
+                           "colorIndex":  3
+                       },
+                       {
+                           "queueId":  0,
+                           "colorIndex":  3
+                       },
+                       {
+                           "queueId":  0,
+                           "colorIndex":  3
+                       },
+                       {
+                           "queueId":  0,
+                           "colorIndex":  3
+                       },
+                       {
+                           "queueId":  0,
+                           "colorIndex":  3
+                       },
+                       {
+                           "queueId":  0,
+                           "colorIndex":  3
+                       },
+                       {
+                           "queueId":  0,
+                           "colorIndex":  3
+                       },
+                       {
+                           "queueId":  0,
+                           "colorIndex":  3
+                       },
+                       {
+                           "queueId":  0,
+                           "colorIndex":  3
+                       },
+                       {
+                           "queueId":  0,
+                           "colorIndex":  3
+                       },
+                       {
+                           "queueId":  0,
+                           "colorIndex":  3
+                       },
+                       {
+                           "queueId":  0,
+                           "colorIndex":  3
+                       },
+                       {
+                           "queueId":  0,
+                           "colorIndex":  3
+                       },
+                       {
+                           "queueId":  0,
+                           "colorIndex":  3
+                       },
+                       {
+                           "queueId":  0,
+                           "colorIndex":  5
+                       },
+                       {
+                           "queueId":  0,
+                           "colorIndex":  5
+                       },
+                       {
+                           "queueId":  0,
+                           "colorIndex":  5
+                       },
+                       {
+                           "queueId":  0,
+                           "colorIndex":  5
+                       },
+                       {
+                           "queueId":  0,
+                           "colorIndex":  5
+                       },
+                       {
+                           "queueId":  0,
+                           "colorIndex":  5
+                       },
+                       {
+                           "queueId":  0,
+                           "colorIndex":  5
+                       },
+                       {
+                           "queueId":  0,
+                           "colorIndex":  5
+                       },
+                       {
+                           "queueId":  0,
+                           "colorIndex":  5
+                       },
+                       {
+                           "queueId":  0,
+                           "colorIndex":  5
+                       },
+                       {
+                           "queueId":  0,
+                           "colorIndex":  5
+                       },
+                       {
+                           "queueId":  0,
+                           "colorIndex":  5
+                       },
+                       {
+                           "queueId":  0,
+                           "colorIndex":  5
+                       },
+                       {
+                           "queueId":  0,
+                           "colorIndex":  5
+                       },
+                       {
+                           "queueId":  0,
+                           "colorIndex":  5
+                       },
+                       {
+                           "queueId":  0,
+                           "colorIndex":  5
+                       },
+                       {
+                           "queueId":  0,
+                           "colorIndex":  5
+                       },
+                       {
+                           "queueId":  0,
+                           "colorIndex":  5
+                       },
+                       {
+                           "queueId":  0,
+                           "colorIndex":  5
+                       },
+                       {
+                           "queueId":  0,
+                           "colorIndex":  5
+                       },
+                       {
+                           "queueId":  0,
+                           "colorIndex":  5
+                       },
+                       {
+                           "queueId":  0,
+                           "colorIndex":  5
+                       },
+                       {
+                           "queueId":  0,
+                           "colorIndex":  5
+                       },
+                       {
+                           "queueId":  0,
+                           "colorIndex":  5
+                       },
+                       {
+                           "queueId":  0,
+                           "colorIndex":  5
+                       },
+                       {
+                           "queueId":  0,
+                           "colorIndex":  5
+                       },
+                       {
+                           "queueId":  0,
+                           "colorIndex":  5
+                       },
+                       {
+                           "queueId":  0,
+                           "colorIndex":  5
+                       },
+                       {
+                           "queueId":  0,
+                           "colorIndex":  5
+                       },
+                       {
+                           "queueId":  0,
+                           "colorIndex":  5
+                       },
+                       {
+                           "queueId":  0,
+                           "colorIndex":  5
+                       },
+                       {
+                           "queueId":  0,
+                           "colorIndex":  5
+                       },
+                       {
+                           "queueId":  0,
+                           "colorIndex":  5
+                       },
+                       {
+                           "queueId":  0,
+                           "colorIndex":  5
+                       },
+                       {
+                           "queueId":  0,
+                           "colorIndex":  5
+                       },
+                       {
+                           "queueId":  0,
+                           "colorIndex":  5
+                       },
+                       {
+                           "queueId":  0,
+                           "colorIndex":  5
+                       },
+                       {
+                           "queueId":  0,
+                           "colorIndex":  5
+                       },
+                       {
+                           "queueId":  0,
+                           "colorIndex":  5
+                       },
+                       {
+                           "queueId":  0,
+                           "colorIndex":  5
+                       },
+                       {
+                           "queueId":  0,
+                           "colorIndex":  5
+                       },
+                       {
+                           "queueId":  0,
+                           "colorIndex":  5
+                       },
+                       {
+                           "queueId":  0,
+                           "colorIndex":  5
+                       },
+                       {
+                           "queueId":  0,
+                           "colorIndex":  5
+                       },
+                       {
+                           "queueId":  0,
+                           "colorIndex":  5
+                       },
+                       {
+                           "queueId":  0,
+                           "colorIndex":  5
+                       },
+                       {
+                           "queueId":  0,
+                           "colorIndex":  5
+                       },
+                       {
+                           "queueId":  0,
+                           "colorIndex":  5
+                       },
+                       {
+                           "queueId":  0,
+                           "colorIndex":  5
+                       },
+                       {
+                           "queueId":  0,
+                           "colorIndex":  5
+                       },
+                       {
+                           "queueId":  0,
+                           "colorIndex":  3
+                       },
+                       {
+                           "queueId":  0,
+                           "colorIndex":  3
+                       },
+                       {
+                           "queueId":  0,
+                           "colorIndex":  3
+                       },
+                       {
+                           "queueId":  0,
+                           "colorIndex":  3
+                       },
+                       {
+                           "queueId":  0,
+                           "colorIndex":  3
+                       },
+                       {
+                           "queueId":  0,
+                           "colorIndex":  3
+                       },
+                       {
+                           "queueId":  0,
+                           "colorIndex":  3
+                       },
+                       {
+                           "queueId":  0,
+                           "colorIndex":  3
+                       },
+                       {
+                           "queueId":  0,
+                           "colorIndex":  3
+                       },
+                       {
+                           "queueId":  0,
+                           "colorIndex":  3
+                       },
+                       {
+                           "queueId":  0,
+                           "colorIndex":  3
+                       },
+                       {
+                           "queueId":  0,
+                           "colorIndex":  3
+                       },
+                       {
+                           "queueId":  0,
+                           "colorIndex":  3
+                       },
+                       {
+                           "queueId":  0,
+                           "colorIndex":  3
+                       },
+                       {
+                           "queueId":  0,
+                           "colorIndex":  3
+                       },
+                       {
+                           "queueId":  0,
+                           "colorIndex":  3
+                       },
+                       {
+                           "queueId":  0,
+                           "colorIndex":  3
+                       },
+                       {
+                           "queueId":  0,
+                           "colorIndex":  3
+                       },
+                       {
+                           "queueId":  0,
+                           "colorIndex":  3
+                       },
+                       {
+                           "queueId":  0,
+                           "colorIndex":  3
+                       },
+                       {
+                           "queueId":  0,
+                           "colorIndex":  3
+                       },
+                       {
+                           "queueId":  0,
+                           "colorIndex":  3
+                       },
+                       {
+                           "queueId":  0,
+                           "colorIndex":  3
+                       },
+                       {
+                           "queueId":  0,
+                           "colorIndex":  3
+                       },
+                       {
+                           "queueId":  0,
+                           "colorIndex":  3
+                       },
+                       {
+                           "queueId":  0,
+                           "colorIndex":  3
+                       },
+                       {
+                           "queueId":  0,
+                           "colorIndex":  3
+                       },
+                       {
+                           "queueId":  0,
+                           "colorIndex":  3
+                       },
+                       {
+                           "queueId":  0,
+                           "colorIndex":  3
+                       },
+                       {
+                           "queueId":  0,
+                           "colorIndex":  3
+                       },
+                       {
+                           "queueId":  0,
+                           "colorIndex":  3
+                       },
+                       {
+                           "queueId":  0,
+                           "colorIndex":  3
+                       },
+                       {
+                           "queueId":  0,
+                           "colorIndex":  3
+                       },
+                       {
+                           "queueId":  0,
+                           "colorIndex":  3
+                       },
+                       {
+                           "queueId":  0,
+                           "colorIndex":  3
+                       },
+                       {
+                           "queueId":  0,
+                           "colorIndex":  3
+                       },
+                       {
+                           "queueId":  0,
+                           "colorIndex":  3
+                       },
+                       {
+                           "queueId":  0,
+                           "colorIndex":  3
+                       },
+                       {
+                           "queueId":  0,
+                           "colorIndex":  3
+                       },
+                       {
+                           "queueId":  0,
+                           "colorIndex":  3
+                       },
+                       {
+                           "queueId":  0,
+                           "colorIndex":  3
+                       },
+                       {
+                           "queueId":  0,
+                           "colorIndex":  3
+                       },
+                       {
+                           "queueId":  0,
+                           "colorIndex":  3
+                       },
+                       {
+                           "queueId":  0,
+                           "colorIndex":  3
+                       },
+                       {
+                           "queueId":  0,
+                           "colorIndex":  3
+                       },
+                       {
+                           "queueId":  0,
+                           "colorIndex":  3
+                       },
+                       {
+                           "queueId":  0,
+                           "colorIndex":  3
+                       },
+                       {
+                           "queueId":  0,
+                           "colorIndex":  3
+                       },
+                       {
+                           "queueId":  0,
+                           "colorIndex":  3
+                       },
+                       {
+                           "queueId":  0,
+                           "colorIndex":  3
+                       },
+                       {
+                           "queueId":  0,
+                           "colorIndex":  5
+                       },
+                       {
+                           "queueId":  0,
+                           "colorIndex":  5
+                       },
+                       {
+                           "queueId":  0,
+                           "colorIndex":  5
+                       },
+                       {
+                           "queueId":  0,
+                           "colorIndex":  5
+                       },
+                       {
+                           "queueId":  0,
+                           "colorIndex":  5
+                       },
+                       {
+                           "queueId":  0,
+                           "colorIndex":  5
+                       },
+                       {
+                           "queueId":  0,
+                           "colorIndex":  5
+                       },
+                       {
+                           "queueId":  0,
+                           "colorIndex":  5
+                       },
+                       {
+                           "queueId":  0,
+                           "colorIndex":  5
+                       },
+                       {
+                           "queueId":  0,
+                           "colorIndex":  5
+                       },
+                       {
+                           "queueId":  0,
+                           "colorIndex":  5
+                       },
+                       {
+                           "queueId":  0,
+                           "colorIndex":  5
+                       },
+                       {
+                           "queueId":  0,
+                           "colorIndex":  5
+                       },
+                       {
+                           "queueId":  0,
+                           "colorIndex":  5
+                       },
+                       {
+                           "queueId":  0,
+                           "colorIndex":  5
+                       },
+                       {
+                           "queueId":  0,
+                           "colorIndex":  5
+                       },
+                       {
+                           "queueId":  0,
+                           "colorIndex":  5
+                       },
+                       {
+                           "queueId":  0,
+                           "colorIndex":  5
+                       },
+                       {
+                           "queueId":  0,
+                           "colorIndex":  5
+                       },
+                       {
+                           "queueId":  0,
+                           "colorIndex":  5
+                       },
+                       {
+                           "queueId":  0,
+                           "colorIndex":  5
+                       },
+                       {
+                           "queueId":  0,
+                           "colorIndex":  5
+                       },
+                       {
+                           "queueId":  0,
+                           "colorIndex":  5
+                       },
+                       {
+                           "queueId":  0,
+                           "colorIndex":  5
+                       },
+                       {
+                           "queueId":  0,
+                           "colorIndex":  5
+                       },
+                       {
+                           "queueId":  0,
+                           "colorIndex":  5
+                       },
+                       {
+                           "queueId":  0,
+                           "colorIndex":  5
+                       },
+                       {
+                           "queueId":  0,
+                           "colorIndex":  5
+                       },
+                       {
+                           "queueId":  0,
+                           "colorIndex":  5
+                       },
+                       {
+                           "queueId":  0,
+                           "colorIndex":  5
+                       },
+                       {
+                           "queueId":  0,
+                           "colorIndex":  5
+                       },
+                       {
+                           "queueId":  0,
+                           "colorIndex":  5
+                       },
+                       {
+                           "queueId":  0,
+                           "colorIndex":  5
+                       },
+                       {
+                           "queueId":  0,
+                           "colorIndex":  5
+                       },
+                       {
+                           "queueId":  0,
+                           "colorIndex":  5
+                       },
+                       {
+                           "queueId":  0,
+                           "colorIndex":  5
+                       },
+                       {
+                           "queueId":  0,
+                           "colorIndex":  5
+                       },
+                       {
+                           "queueId":  0,
+                           "colorIndex":  5
+                       },
+                       {
+                           "queueId":  0,
+                           "colorIndex":  5
+                       },
+                       {
+                           "queueId":  0,
+                           "colorIndex":  5
+                       },
+                       {
+                           "queueId":  0,
+                           "colorIndex":  5
+                       },
+                       {
+                           "queueId":  0,
+                           "colorIndex":  5
+                       },
+                       {
+                           "queueId":  0,
+                           "colorIndex":  5
+                       },
+                       {
+                           "queueId":  0,
+                           "colorIndex":  5
+                       },
+                       {
+                           "queueId":  0,
+                           "colorIndex":  5
+                       },
+                       {
+                           "queueId":  0,
+                           "colorIndex":  5
+                       },
+                       {
+                           "queueId":  0,
+                           "colorIndex":  5
+                       },
+                       {
+                           "queueId":  0,
+                           "colorIndex":  5
+                       },
+                       {
+                           "queueId":  0,
+                           "colorIndex":  5
+                       },
+                       {
+                           "queueId":  0,
+                           "colorIndex":  5
+                       },
+                       {
+                           "queueId":  0,
+                           "colorIndex":  3
+                       },
+                       {
+                           "queueId":  0,
+                           "colorIndex":  3
+                       },
+                       {
+                           "queueId":  0,
+                           "colorIndex":  3
+                       },
+                       {
+                           "queueId":  0,
+                           "colorIndex":  3
+                       },
+                       {
+                           "queueId":  0,
+                           "colorIndex":  3
+                       },
+                       {
+                           "queueId":  0,
+                           "colorIndex":  3
+                       },
+                       {
+                           "queueId":  0,
+                           "colorIndex":  3
+                       },
+                       {
+                           "queueId":  0,
+                           "colorIndex":  3
+                       },
+                       {
+                           "queueId":  0,
+                           "colorIndex":  3
+                       },
+                       {
+                           "queueId":  0,
+                           "colorIndex":  3
+                       },
+                       {
+                           "queueId":  0,
+                           "colorIndex":  3
+                       },
+                       {
+                           "queueId":  0,
+                           "colorIndex":  3
+                       },
+                       {
+                           "queueId":  0,
+                           "colorIndex":  3
+                       },
+                       {
+                           "queueId":  0,
+                           "colorIndex":  3
+                       },
+                       {
+                           "queueId":  0,
+                           "colorIndex":  3
+                       },
+                       {
+                           "queueId":  0,
+                           "colorIndex":  3
+                       },
+                       {
+                           "queueId":  0,
+                           "colorIndex":  3
+                       },
+                       {
+                           "queueId":  0,
+                           "colorIndex":  3
+                       },
+                       {
+                           "queueId":  0,
+                           "colorIndex":  3
+                       },
+                       {
+                           "queueId":  0,
+                           "colorIndex":  3
+                       },
+                       {
+                           "queueId":  0,
+                           "colorIndex":  3
+                       },
+                       {
+                           "queueId":  0,
+                           "colorIndex":  3
+                       },
+                       {
+                           "queueId":  0,
+                           "colorIndex":  3
+                       },
+                       {
+                           "queueId":  0,
+                           "colorIndex":  3
+                       },
+                       {
+                           "queueId":  0,
+                           "colorIndex":  3
+                       },
+                       {
+                           "queueId":  0,
+                           "colorIndex":  3
+                       },
+                       {
+                           "queueId":  0,
+                           "colorIndex":  3
+                       },
+                       {
+                           "queueId":  0,
+                           "colorIndex":  3
+                       },
+                       {
+                           "queueId":  0,
+                           "colorIndex":  3
+                       },
+                       {
+                           "queueId":  0,
+                           "colorIndex":  3
+                       },
+                       {
+                           "queueId":  0,
+                           "colorIndex":  3
+                       },
+                       {
+                           "queueId":  0,
+                           "colorIndex":  3
+                       },
+                       {
+                           "queueId":  0,
+                           "colorIndex":  3
+                       },
+                       {
+                           "queueId":  0,
+                           "colorIndex":  3
+                       },
+                       {
+                           "queueId":  0,
+                           "colorIndex":  3
+                       },
+                       {
+                           "queueId":  0,
+                           "colorIndex":  3
+                       },
+                       {
+                           "queueId":  0,
+                           "colorIndex":  3
+                       },
+                       {
+                           "queueId":  0,
+                           "colorIndex":  3
+                       },
+                       {
+                           "queueId":  0,
+                           "colorIndex":  3
+                       },
+                       {
+                           "queueId":  0,
+                           "colorIndex":  3
+                       },
+                       {
+                           "queueId":  0,
+                           "colorIndex":  3
+                       },
+                       {
+                           "queueId":  0,
+                           "colorIndex":  3
+                       },
+                       {
+                           "queueId":  0,
+                           "colorIndex":  3
+                       },
+                       {
+                           "queueId":  0,
+                           "colorIndex":  3
+                       },
+                       {
+                           "queueId":  0,
+                           "colorIndex":  3
+                       },
+                       {
+                           "queueId":  0,
+                           "colorIndex":  3
+                       },
+                       {
+                           "queueId":  0,
+                           "colorIndex":  3
+                       },
+                       {
+                           "queueId":  0,
+                           "colorIndex":  3
+                       },
+                       {
+                           "queueId":  0,
+                           "colorIndex":  3
+                       },
+                       {
+                           "queueId":  0,
+                           "colorIndex":  3
+                       },
+                       {
+                           "queueId":  1,
+                           "colorIndex":  3
+                       },
+                       {
+                           "queueId":  1,
+                           "colorIndex":  3
+                       },
+                       {
+                           "queueId":  1,
+                           "colorIndex":  3
+                       },
+                       {
+                           "queueId":  1,
+                           "colorIndex":  3
+                       },
+                       {
+                           "queueId":  1,
+                           "colorIndex":  3
+                       },
+                       {
+                           "queueId":  1,
+                           "colorIndex":  3
+                       },
+                       {
+                           "queueId":  1,
+                           "colorIndex":  3
+                       },
+                       {
+                           "queueId":  1,
+                           "colorIndex":  3
+                       },
+                       {
+                           "queueId":  1,
+                           "colorIndex":  3
+                       },
+                       {
+                           "queueId":  1,
+                           "colorIndex":  3
+                       },
+                       {
+                           "queueId":  1,
+                           "colorIndex":  3
+                       },
+                       {
+                           "queueId":  1,
+                           "colorIndex":  3
+                       },
+                       {
+                           "queueId":  1,
+                           "colorIndex":  3
+                       },
+                       {
+                           "queueId":  1,
+                           "colorIndex":  3
+                       },
+                       {
+                           "queueId":  1,
+                           "colorIndex":  3
+                       },
+                       {
+                           "queueId":  1,
+                           "colorIndex":  3
+                       },
+                       {
+                           "queueId":  1,
+                           "colorIndex":  3
+                       },
+                       {
+                           "queueId":  1,
+                           "colorIndex":  3
+                       },
+                       {
+                           "queueId":  1,
+                           "colorIndex":  3
+                       },
+                       {
+                           "queueId":  1,
+                           "colorIndex":  3
+                       },
+                       {
+                           "queueId":  1,
+                           "colorIndex":  3
+                       },
+                       {
+                           "queueId":  1,
+                           "colorIndex":  3
+                       },
+                       {
+                           "queueId":  1,
+                           "colorIndex":  3
+                       },
+                       {
+                           "queueId":  1,
+                           "colorIndex":  3
+                       },
+                       {
+                           "queueId":  1,
+                           "colorIndex":  3
+                       },
+                       {
+                           "queueId":  1,
+                           "colorIndex":  3
+                       },
+                       {
+                           "queueId":  1,
+                           "colorIndex":  3
+                       },
+                       {
+                           "queueId":  1,
+                           "colorIndex":  3
+                       },
+                       {
+                           "queueId":  1,
+                           "colorIndex":  3
+                       },
+                       {
+                           "queueId":  1,
+                           "colorIndex":  3
+                       },
+                       {
+                           "queueId":  1,
+                           "colorIndex":  3
+                       },
+                       {
+                           "queueId":  1,
+                           "colorIndex":  3
+                       },
+                       {
+                           "queueId":  1,
+                           "colorIndex":  3
+                       },
+                       {
+                           "queueId":  1,
+                           "colorIndex":  3
+                       },
+                       {
+                           "queueId":  1,
+                           "colorIndex":  3
+                       },
+                       {
+                           "queueId":  1,
+                           "colorIndex":  3
+                       },
+                       {
+                           "queueId":  1,
+                           "colorIndex":  3
+                       },
+                       {
+                           "queueId":  1,
+                           "colorIndex":  3
+                       },
+                       {
+                           "queueId":  1,
+                           "colorIndex":  3
+                       },
+                       {
+                           "queueId":  1,
+                           "colorIndex":  3
+                       },
+                       {
+                           "queueId":  1,
+                           "colorIndex":  3
+                       },
+                       {
+                           "queueId":  1,
+                           "colorIndex":  3
+                       },
+                       {
+                           "queueId":  1,
+                           "colorIndex":  3
+                       },
+                       {
+                           "queueId":  1,
+                           "colorIndex":  3
+                       },
+                       {
+                           "queueId":  1,
+                           "colorIndex":  3
+                       },
+                       {
+                           "queueId":  1,
+                           "colorIndex":  3
+                       },
+                       {
+                           "queueId":  1,
+                           "colorIndex":  3
+                       },
+                       {
+                           "queueId":  1,
+                           "colorIndex":  3
+                       },
+                       {
+                           "queueId":  1,
+                           "colorIndex":  3
+                       },
+                       {
+                           "queueId":  1,
+                           "colorIndex":  3
+                       },
+                       {
+                           "queueId":  1,
+                           "colorIndex":  5
+                       },
+                       {
+                           "queueId":  1,
+                           "colorIndex":  5
+                       },
+                       {
+                           "queueId":  1,
+                           "colorIndex":  5
+                       },
+                       {
+                           "queueId":  1,
+                           "colorIndex":  5
+                       },
+                       {
+                           "queueId":  1,
+                           "colorIndex":  5
+                       },
+                       {
+                           "queueId":  1,
+                           "colorIndex":  5
+                       },
+                       {
+                           "queueId":  1,
+                           "colorIndex":  5
+                       },
+                       {
+                           "queueId":  1,
+                           "colorIndex":  5
+                       },
+                       {
+                           "queueId":  1,
+                           "colorIndex":  5
+                       },
+                       {
+                           "queueId":  1,
+                           "colorIndex":  5
+                       },
+                       {
+                           "queueId":  1,
+                           "colorIndex":  5
+                       },
+                       {
+                           "queueId":  1,
+                           "colorIndex":  5
+                       },
+                       {
+                           "queueId":  1,
+                           "colorIndex":  5
+                       },
+                       {
+                           "queueId":  1,
+                           "colorIndex":  5
+                       },
+                       {
+                           "queueId":  1,
+                           "colorIndex":  5
+                       },
+                       {
+                           "queueId":  1,
+                           "colorIndex":  5
+                       },
+                       {
+                           "queueId":  1,
+                           "colorIndex":  5
+                       },
+                       {
+                           "queueId":  1,
+                           "colorIndex":  5
+                       },
+                       {
+                           "queueId":  1,
+                           "colorIndex":  5
+                       },
+                       {
+                           "queueId":  1,
+                           "colorIndex":  5
+                       },
+                       {
+                           "queueId":  1,
+                           "colorIndex":  5
+                       },
+                       {
+                           "queueId":  1,
+                           "colorIndex":  5
+                       },
+                       {
+                           "queueId":  1,
+                           "colorIndex":  5
+                       },
+                       {
+                           "queueId":  1,
+                           "colorIndex":  5
+                       },
+                       {
+                           "queueId":  1,
+                           "colorIndex":  5
+                       },
+                       {
+                           "queueId":  1,
+                           "colorIndex":  5
+                       },
+                       {
+                           "queueId":  1,
+                           "colorIndex":  5
+                       },
+                       {
+                           "queueId":  1,
+                           "colorIndex":  5
+                       },
+                       {
+                           "queueId":  1,
+                           "colorIndex":  5
+                       },
+                       {
+                           "queueId":  1,
+                           "colorIndex":  5
+                       },
+                       {
+                           "queueId":  1,
+                           "colorIndex":  5
+                       },
+                       {
+                           "queueId":  1,
+                           "colorIndex":  5
+                       },
+                       {
+                           "queueId":  1,
+                           "colorIndex":  5
+                       },
+                       {
+                           "queueId":  1,
+                           "colorIndex":  5
+                       },
+                       {
+                           "queueId":  1,
+                           "colorIndex":  5
+                       },
+                       {
+                           "queueId":  1,
+                           "colorIndex":  5
+                       },
+                       {
+                           "queueId":  1,
+                           "colorIndex":  5
+                       },
+                       {
+                           "queueId":  1,
+                           "colorIndex":  5
+                       },
+                       {
+                           "queueId":  1,
+                           "colorIndex":  5
+                       },
+                       {
+                           "queueId":  1,
+                           "colorIndex":  5
+                       },
+                       {
+                           "queueId":  1,
+                           "colorIndex":  5
+                       },
+                       {
+                           "queueId":  1,
+                           "colorIndex":  5
+                       },
+                       {
+                           "queueId":  1,
+                           "colorIndex":  5
+                       },
+                       {
+                           "queueId":  1,
+                           "colorIndex":  5
+                       },
+                       {
+                           "queueId":  1,
+                           "colorIndex":  5
+                       },
+                       {
+                           "queueId":  1,
+                           "colorIndex":  5
+                       },
+                       {
+                           "queueId":  1,
+                           "colorIndex":  5
+                       },
+                       {
+                           "queueId":  1,
+                           "colorIndex":  5
+                       },
+                       {
+                           "queueId":  1,
+                           "colorIndex":  5
+                       },
+                       {
+                           "queueId":  1,
+                           "colorIndex":  5
+                       },
+                       {
+                           "queueId":  1,
+                           "colorIndex":  3
+                       },
+                       {
+                           "queueId":  1,
+                           "colorIndex":  3
+                       },
+                       {
+                           "queueId":  1,
+                           "colorIndex":  3
+                       },
+                       {
+                           "queueId":  1,
+                           "colorIndex":  3
+                       },
+                       {
+                           "queueId":  1,
+                           "colorIndex":  3
+                       },
+                       {
+                           "queueId":  1,
+                           "colorIndex":  3
+                       },
+                       {
+                           "queueId":  1,
+                           "colorIndex":  3
+                       },
+                       {
+                           "queueId":  1,
+                           "colorIndex":  3
+                       },
+                       {
+                           "queueId":  1,
+                           "colorIndex":  3
+                       },
+                       {
+                           "queueId":  1,
+                           "colorIndex":  3
+                       },
+                       {
+                           "queueId":  1,
+                           "colorIndex":  3
+                       },
+                       {
+                           "queueId":  1,
+                           "colorIndex":  3
+                       },
+                       {
+                           "queueId":  1,
+                           "colorIndex":  3
+                       },
+                       {
+                           "queueId":  1,
+                           "colorIndex":  3
+                       },
+                       {
+                           "queueId":  1,
+                           "colorIndex":  3
+                       },
+                       {
+                           "queueId":  1,
+                           "colorIndex":  3
+                       },
+                       {
+                           "queueId":  1,
+                           "colorIndex":  3
+                       },
+                       {
+                           "queueId":  1,
+                           "colorIndex":  3
+                       },
+                       {
+                           "queueId":  1,
+                           "colorIndex":  3
+                       },
+                       {
+                           "queueId":  1,
+                           "colorIndex":  3
+                       },
+                       {
+                           "queueId":  1,
+                           "colorIndex":  3
+                       },
+                       {
+                           "queueId":  1,
+                           "colorIndex":  3
+                       },
+                       {
+                           "queueId":  1,
+                           "colorIndex":  3
+                       },
+                       {
+                           "queueId":  1,
+                           "colorIndex":  3
+                       },
+                       {
+                           "queueId":  1,
+                           "colorIndex":  3
+                       },
+                       {
+                           "queueId":  1,
+                           "colorIndex":  3
+                       },
+                       {
+                           "queueId":  1,
+                           "colorIndex":  3
+                       },
+                       {
+                           "queueId":  1,
+                           "colorIndex":  3
+                       },
+                       {
+                           "queueId":  1,
+                           "colorIndex":  3
+                       },
+                       {
+                           "queueId":  1,
+                           "colorIndex":  3
+                       },
+                       {
+                           "queueId":  1,
+                           "colorIndex":  3
+                       },
+                       {
+                           "queueId":  1,
+                           "colorIndex":  3
+                       },
+                       {
+                           "queueId":  1,
+                           "colorIndex":  3
+                       },
+                       {
+                           "queueId":  1,
+                           "colorIndex":  3
+                       },
+                       {
+                           "queueId":  1,
+                           "colorIndex":  3
+                       },
+                       {
+                           "queueId":  1,
+                           "colorIndex":  3
+                       },
+                       {
+                           "queueId":  1,
+                           "colorIndex":  3
+                       },
+                       {
+                           "queueId":  1,
+                           "colorIndex":  3
+                       },
+                       {
+                           "queueId":  1,
+                           "colorIndex":  3
+                       },
+                       {
+                           "queueId":  1,
+                           "colorIndex":  3
+                       },
+                       {
+                           "queueId":  1,
+                           "colorIndex":  3
+                       },
+                       {
+                           "queueId":  1,
+                           "colorIndex":  3
+                       },
+                       {
+                           "queueId":  1,
+                           "colorIndex":  3
+                       },
+                       {
+                           "queueId":  1,
+                           "colorIndex":  3
+                       },
+                       {
+                           "queueId":  1,
+                           "colorIndex":  3
+                       },
+                       {
+                           "queueId":  1,
+                           "colorIndex":  3
+                       },
+                       {
+                           "queueId":  1,
+                           "colorIndex":  3
+                       },
+                       {
+                           "queueId":  1,
+                           "colorIndex":  3
+                       },
+                       {
+                           "queueId":  1,
+                           "colorIndex":  3
+                       },
+                       {
+                           "queueId":  1,
+                           "colorIndex":  3
+                       },
+                       {
+                           "queueId":  1,
+                           "colorIndex":  5
+                       },
+                       {
+                           "queueId":  1,
+                           "colorIndex":  5
+                       },
+                       {
+                           "queueId":  1,
+                           "colorIndex":  5
+                       },
+                       {
+                           "queueId":  1,
+                           "colorIndex":  5
+                       },
+                       {
+                           "queueId":  1,
+                           "colorIndex":  5
+                       },
+                       {
+                           "queueId":  1,
+                           "colorIndex":  5
+                       },
+                       {
+                           "queueId":  1,
+                           "colorIndex":  5
+                       },
+                       {
+                           "queueId":  1,
+                           "colorIndex":  5
+                       },
+                       {
+                           "queueId":  1,
+                           "colorIndex":  5
+                       },
+                       {
+                           "queueId":  1,
+                           "colorIndex":  5
+                       },
+                       {
+                           "queueId":  1,
+                           "colorIndex":  5
+                       },
+                       {
+                           "queueId":  1,
+                           "colorIndex":  5
+                       },
+                       {
+                           "queueId":  1,
+                           "colorIndex":  5
+                       },
+                       {
+                           "queueId":  1,
+                           "colorIndex":  5
+                       },
+                       {
+                           "queueId":  1,
+                           "colorIndex":  5
+                       },
+                       {
+                           "queueId":  1,
+                           "colorIndex":  5
+                       },
+                       {
+                           "queueId":  1,
+                           "colorIndex":  5
+                       },
+                       {
+                           "queueId":  1,
+                           "colorIndex":  5
+                       },
+                       {
+                           "queueId":  1,
+                           "colorIndex":  5
+                       },
+                       {
+                           "queueId":  1,
+                           "colorIndex":  5
+                       },
+                       {
+                           "queueId":  1,
+                           "colorIndex":  5
+                       },
+                       {
+                           "queueId":  1,
+                           "colorIndex":  5
+                       },
+                       {
+                           "queueId":  1,
+                           "colorIndex":  5
+                       },
+                       {
+                           "queueId":  1,
+                           "colorIndex":  5
+                       },
+                       {
+                           "queueId":  1,
+                           "colorIndex":  5
+                       },
+                       {
+                           "queueId":  1,
+                           "colorIndex":  5
+                       },
+                       {
+                           "queueId":  1,
+                           "colorIndex":  5
+                       },
+                       {
+                           "queueId":  1,
+                           "colorIndex":  5
+                       },
+                       {
+                           "queueId":  1,
+                           "colorIndex":  5
+                       },
+                       {
+                           "queueId":  1,
+                           "colorIndex":  5
+                       },
+                       {
+                           "queueId":  1,
+                           "colorIndex":  5
+                       },
+                       {
+                           "queueId":  1,
+                           "colorIndex":  5
+                       },
+                       {
+                           "queueId":  1,
+                           "colorIndex":  5
+                       },
+                       {
+                           "queueId":  1,
+                           "colorIndex":  5
+                       },
+                       {
+                           "queueId":  1,
+                           "colorIndex":  5
+                       },
+                       {
+                           "queueId":  1,
+                           "colorIndex":  5
+                       },
+                       {
+                           "queueId":  1,
+                           "colorIndex":  5
+                       },
+                       {
+                           "queueId":  1,
+                           "colorIndex":  5
+                       },
+                       {
+                           "queueId":  1,
+                           "colorIndex":  5
+                       },
+                       {
+                           "queueId":  1,
+                           "colorIndex":  5
+                       },
+                       {
+                           "queueId":  1,
+                           "colorIndex":  5
+                       },
+                       {
+                           "queueId":  1,
+                           "colorIndex":  5
+                       },
+                       {
+                           "queueId":  1,
+                           "colorIndex":  5
+                       },
+                       {
+                           "queueId":  1,
+                           "colorIndex":  5
+                       },
+                       {
+                           "queueId":  1,
+                           "colorIndex":  5
+                       },
+                       {
+                           "queueId":  1,
+                           "colorIndex":  5
+                       },
+                       {
+                           "queueId":  1,
+                           "colorIndex":  5
+                       },
+                       {
+                           "queueId":  1,
+                           "colorIndex":  5
+                       },
+                       {
+                           "queueId":  1,
+                           "colorIndex":  5
+                       },
+                       {
+                           "queueId":  1,
+                           "colorIndex":  5
+                       },
+                       {
+                           "queueId":  1,
+                           "colorIndex":  3
+                       },
+                       {
+                           "queueId":  1,
+                           "colorIndex":  3
+                       },
+                       {
+                           "queueId":  1,
+                           "colorIndex":  3
+                       },
+                       {
+                           "queueId":  1,
+                           "colorIndex":  3
+                       },
+                       {
+                           "queueId":  1,
+                           "colorIndex":  3
+                       },
+                       {
+                           "queueId":  1,
+                           "colorIndex":  3
+                       },
+                       {
+                           "queueId":  1,
+                           "colorIndex":  3
+                       },
+                       {
+                           "queueId":  1,
+                           "colorIndex":  3
+                       },
+                       {
+                           "queueId":  1,
+                           "colorIndex":  3
+                       },
+                       {
+                           "queueId":  1,
+                           "colorIndex":  3
+                       },
+                       {
+                           "queueId":  1,
+                           "colorIndex":  3
+                       },
+                       {
+                           "queueId":  1,
+                           "colorIndex":  3
+                       },
+                       {
+                           "queueId":  1,
+                           "colorIndex":  3
+                       },
+                       {
+                           "queueId":  1,
+                           "colorIndex":  3
+                       },
+                       {
+                           "queueId":  1,
+                           "colorIndex":  3
+                       },
+                       {
+                           "queueId":  1,
+                           "colorIndex":  3
+                       },
+                       {
+                           "queueId":  1,
+                           "colorIndex":  3
+                       },
+                       {
+                           "queueId":  1,
+                           "colorIndex":  3
+                       },
+                       {
+                           "queueId":  1,
+                           "colorIndex":  3
+                       },
+                       {
+                           "queueId":  1,
+                           "colorIndex":  3
+                       },
+                       {
+                           "queueId":  1,
+                           "colorIndex":  3
+                       },
+                       {
+                           "queueId":  1,
+                           "colorIndex":  3
+                       },
+                       {
+                           "queueId":  1,
+                           "colorIndex":  3
+                       },
+                       {
+                           "queueId":  1,
+                           "colorIndex":  3
+                       },
+                       {
+                           "queueId":  1,
+                           "colorIndex":  3
+                       },
+                       {
+                           "queueId":  1,
+                           "colorIndex":  3
+                       },
+                       {
+                           "queueId":  1,
+                           "colorIndex":  3
+                       },
+                       {
+                           "queueId":  1,
+                           "colorIndex":  3
+                       },
+                       {
+                           "queueId":  1,
+                           "colorIndex":  3
+                       },
+                       {
+                           "queueId":  1,
+                           "colorIndex":  3
+                       },
+                       {
+                           "queueId":  1,
+                           "colorIndex":  3
+                       },
+                       {
+                           "queueId":  1,
+                           "colorIndex":  3
+                       },
+                       {
+                           "queueId":  1,
+                           "colorIndex":  3
+                       },
+                       {
+                           "queueId":  1,
+                           "colorIndex":  3
+                       },
+                       {
+                           "queueId":  1,
+                           "colorIndex":  3
+                       },
+                       {
+                           "queueId":  1,
+                           "colorIndex":  3
+                       },
+                       {
+                           "queueId":  1,
+                           "colorIndex":  3
+                       },
+                       {
+                           "queueId":  1,
+                           "colorIndex":  3
+                       },
+                       {
+                           "queueId":  1,
+                           "colorIndex":  3
+                       },
+                       {
+                           "queueId":  1,
+                           "colorIndex":  3
+                       },
+                       {
+                           "queueId":  1,
+                           "colorIndex":  3
+                       },
+                       {
+                           "queueId":  1,
+                           "colorIndex":  3
+                       },
+                       {
+                           "queueId":  1,
+                           "colorIndex":  3
+                       },
+                       {
+                           "queueId":  1,
+                           "colorIndex":  3
+                       },
+                       {
+                           "queueId":  1,
+                           "colorIndex":  3
+                       },
+                       {
+                           "queueId":  1,
+                           "colorIndex":  3
+                       },
+                       {
+                           "queueId":  1,
+                           "colorIndex":  3
+                       },
+                       {
+                           "queueId":  1,
+                           "colorIndex":  3
+                       },
+                       {
+                           "queueId":  1,
+                           "colorIndex":  3
+                       },
+                       {
+                           "queueId":  1,
+                           "colorIndex":  3
+                       },
+                       {
+                           "queueId":  1,
+                           "colorIndex":  5
+                       },
+                       {
+                           "queueId":  1,
+                           "colorIndex":  5
+                       },
+                       {
+                           "queueId":  1,
+                           "colorIndex":  5
+                       },
+                       {
+                           "queueId":  1,
+                           "colorIndex":  5
+                       },
+                       {
+                           "queueId":  1,
+                           "colorIndex":  3
+                       },
+                       {
+                           "queueId":  1,
+                           "colorIndex":  3
+                       },
+                       {
+                           "queueId":  1,
+                           "colorIndex":  3
+                       },
+                       {
+                           "queueId":  1,
+                           "colorIndex":  3
+                       }
+                   ]
+}

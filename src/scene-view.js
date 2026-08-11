@@ -51,6 +51,10 @@ const PASSENGER_DEFAULT_MATERIAL_COLORS = Object.freeze([
 const scratchPassengerBaseColor = new THREE.Color();
 const scratchPassengerEmissionColor = new THREE.Color();
 
+function getSelectedBackgroundUrl() {
+  return SCENE_TUNING.background?.asset || LEVEL_1.assets.background;
+}
+
 function setPassengerMaterialMaps(material, map, emissiveMap) {
   const nextMap = map ?? null;
   const nextEmissiveMap = emissiveMap ?? null;
@@ -494,6 +498,11 @@ function makeVehiclePlaceholder(vehicle) {
   return root;
 }
 
+export function isGuideLevelActive(tuning, activeLevelKey = LEVEL_1.key) {
+  const levelKey = String(tuning?.levelKey ?? '').trim();
+  return !levelKey || levelKey === activeLevelKey;
+}
+
 function makePassengerGroup(groupScale) {
   const group = new THREE.Group();
   group.scale.setScalar(groupScale);
@@ -525,6 +534,13 @@ export class SceneView {
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     this.renderer.setClearColor(0xc9d7ed, 1);
     this.scene = new THREE.Scene();
+    this.layoutRoot = new THREE.Group();
+    this.layoutRoot.name = 'Level Layout Root';
+    this.vehicleRoot = new THREE.Group();
+    this.vehicleRoot.name = 'Vehicle Layout Root';
+    this.layoutRoot.add(this.vehicleRoot);
+    this.scene.add(this.layoutRoot);
+    this.vehicleEntrance = null;
     this.camera = new THREE.PerspectiveCamera(SCENE_TUNING.camera.fovDegrees, 1, 0.1, 1000);
     this.raycaster = new THREE.Raycaster();
     this.pointer = new THREE.Vector2();
@@ -614,7 +630,7 @@ export class SceneView {
     this.applySceneLighting();
 
 
-    this.backgroundPlane = this.makeArtworkPlane(LEVEL_1.assets.background);
+    this.backgroundPlane = this.makeArtworkPlane(getSelectedBackgroundUrl());
     this.backgroundPlane.rotation.set(0, 0, 0);
     this.backgroundPlane.material.depthWrite = false;
     this.backgroundPlane.renderOrder = -100;
@@ -624,7 +640,8 @@ export class SceneView {
       conveyorLayout.assets.loopSpriteRect
     );
     this.camera.add(this.backgroundPlane);
-    this.scene.add(this.camera, this.loopPlane);
+    this.scene.add(this.camera);
+    this.layoutRoot.add(this.loopPlane);
     this.buildPathCurves();
     this.buildSpots();
     this.buildGuideHand();
@@ -632,20 +649,20 @@ export class SceneView {
     for (const vehicle of LEVEL_1.vehicles) {
       const view = makeVehiclePlaceholder(vehicle);
       this.vehicleViews.set(vehicle.id, view);
-      this.scene.add(view);
+      this.vehicleRoot.add(view);
     }
     for (let i = 0; i < MAX_CONVEYOR_CAPACITY; i += 1) {
       const view = makePassengerGroup(SCENE_TUNING.passengers.modelScale);
       view.visible = false;
       this.passengerViews.push(view);
-      this.scene.add(view);
+      this.layoutRoot.add(view);
     }
     for (let queueIndex = 0; queueIndex < LEVEL_1.queueCount; queueIndex += 1) {
       for (let i = 0; i < MAX_QUEUE_CAPACITY; i += 1) {
         const view = makePassengerGroup(SCENE_TUNING.passengers.modelScale);
         view.visible = false;
         this.queuePassengerViews[queueIndex].push(view);
-        this.scene.add(view);
+        this.layoutRoot.add(view);
       }
     }
   }
@@ -729,7 +746,7 @@ export class SceneView {
     sprite.visible = false;
     this.guideHand = sprite;
     this.guideHandMaterial = material;
-    this.scene.add(sprite);
+    this.layoutRoot.add(sprite);
   }
 
   buildPathCurves() {
@@ -816,14 +833,14 @@ export class SceneView {
       this.spotRoots.push(root);
       this.spotPositions.push(new THREE.Vector3());
       this.seatCountBoards.push(board);
-      this.scene.add(root);
+      this.layoutRoot.add(root);
     }
   }
 
 
   clearVehiclePathLines() {
     for (const line of [...this.vehiclePathLines, ...this.vehicleDeparturePathLines]) {
-      this.scene.remove(line);
+      this.layoutRoot.remove(line);
       line.geometry.dispose();
       line.material.dispose();
     }
@@ -871,7 +888,7 @@ export class SceneView {
           const line = this.makeVehiclePathLine(path, baseMaterial, tuning.y);
           line.material.opacity = blockers.length ? (tuning.opacity ?? 0.88) * 0.35 : (tuning.opacity ?? 0.88);
           this.vehiclePathLines.push(line);
-          this.scene.add(line);
+          this.layoutRoot.add(line);
         }
         baseMaterial.dispose();
       }
@@ -902,7 +919,7 @@ export class SceneView {
       for (const path of [backwardPath, forwardPath]) {
         const line = this.makeVehiclePathLine(path, baseMaterial, tuning.y);
         this.vehicleDeparturePathLines.push(line);
-        this.scene.add(line);
+        this.layoutRoot.add(line);
       }
     }
     baseMaterial.dispose();
@@ -1020,7 +1037,7 @@ export class SceneView {
         smokeTrailTexture
       ].forEach(configureColorTexture);
       this.vehicleEffects = new VehicleEffects({
-        scene: this.scene,
+        scene: this.layoutRoot,
         vehicleViews: this.vehicleViews,
         spotRoots: this.spotRoots,
         textures: {
@@ -1456,6 +1473,7 @@ export class SceneView {
   applyTuning() {
     this.applySceneLighting();
     const background = SCENE_TUNING.background;
+    this.setArtworkPlaneTexture(this.backgroundPlane, getSelectedBackgroundUrl());
     this.backgroundPlane.material.opacity = background.opacity;
     if (this.vehicleShadowMaterials) {
       Object.entries(this.vehicleShadowMaterials).forEach(([seats, material]) => {
@@ -1527,6 +1545,53 @@ export class SceneView {
       this.applyTuning();
     }
     return SCENE_TUNING;
+  }
+
+  replaceActiveLevel({ animate = false } = {}) {
+    this.clearVehiclePathLines();
+    this.clearBoardingViews();
+    this.vehicleEffects?.clear();
+    for (const view of this.vehicleViews.values()) this.vehicleRoot.remove(view);
+    this.vehicleViews.clear();
+    for (const vehicle of LEVEL_1.vehicles) {
+      const view = makeVehiclePlaceholder(vehicle);
+      this.vehicleViews.set(vehicle.id, view);
+      this.vehicleRoot.add(view);
+    }
+    if (this.vehicleTemplates) this.upgradeVehicleViews();
+    this.setArtworkPlaneTexture(this.backgroundPlane, getSelectedBackgroundUrl());
+    this.lastSnapshot = null;
+    this.lastGame = null;
+    this.initialEntryPathStates.clear();
+    this.queueEntryPathStates.clear();
+    this.applyTuning();
+    if (animate) {
+      this.startVehicleEntrance();
+    } else {
+      this.vehicleEntrance = null;
+      this.vehicleRoot.position.set(0, 0, 0);
+    }
+  }
+
+  startVehicleEntrance({ durationSeconds = 0.85, startOffsetZ = 8 } = {}) {
+    this.vehicleEntrance = {
+      startedAt: globalThis.performance?.now?.() ?? Date.now(),
+      durationMs: Math.max(1, durationSeconds * 1000),
+      startOffsetZ: Math.max(0, Number(startOffsetZ) || 0)
+    };
+    this.updateVehicleEntrance(this.vehicleEntrance.startedAt);
+  }
+
+  updateVehicleEntrance(now = globalThis.performance?.now?.() ?? Date.now()) {
+    const entrance = this.vehicleEntrance;
+    if (!entrance) return;
+    const progress = Math.max(0, Math.min(1, (now - entrance.startedAt) / entrance.durationMs));
+    const eased = 1 - (1 - progress) ** 3;
+    this.vehicleRoot.position.set(0, 0, entrance.startOffsetZ * (1 - eased));
+    if (progress >= 1) {
+      this.vehicleRoot.position.set(0, 0, 0);
+      this.vehicleEntrance = null;
+    }
   }
 
   update(snapshot, game) {
@@ -1711,7 +1776,7 @@ export class SceneView {
     const targetId = Math.round(tuning.vehicleId ?? 1);
     const target = this.vehicleViews.get(targetId);
     const targetState = snapshot?.vehicles?.find((vehicle) => vehicle.id === targetId)?.state;
-    if (!tuning.enabled || !target || !target.visible || targetState !== 'parked') {
+    if (!tuning.enabled || !isGuideLevelActive(tuning) || !target || !target.visible || targetState !== 'parked') {
       this.guideHand.visible = false;
       return;
     }
@@ -1740,7 +1805,7 @@ export class SceneView {
 
   isFirstClickGuideActive(snapshot = this.lastSnapshot) {
     const guide = SCENE_TUNING.firstClickGuide ?? {};
-    if (!guide.enabled) return false;
+    if (!guide.enabled || !isGuideLevelActive(guide)) return false;
     const duration = Math.max(0, Number(guide.durationSeconds) || 0);
     if (duration <= 0) return false;
     if ((snapshot?.time ?? 0) > duration) return false;
@@ -2039,7 +2104,7 @@ export class SceneView {
 
   clearBoardingViews() {
     for (const entry of this.boardingViews) {
-      this.scene.remove(entry.root);
+      this.layoutRoot.remove(entry.root);
       entry.material.dispose();
     }
     this.boardingViews.length = 0;
@@ -2116,7 +2181,7 @@ export class SceneView {
       visual.rotation.y = Math.atan2(direction.x, direction.z)
         + deg(SCENE_TUNING.facing.passengerYawDegrees);
       this.setVatAnimation(visual.userData.vatMaterial, 'move');
-      this.scene.add(visual);
+      this.layoutRoot.add(visual);
       this.boardingViews.push({
         root: visual,
         material: visual.userData.vatMaterial,
@@ -2141,7 +2206,7 @@ export class SceneView {
       this.triggerVehicleBoardingPulse(entry.vehicleId, time);
       this.vehicleEffects?.spawnAboardSmoke(entry.vehicleId);
       this.hooks.onPassengerAboard?.(entry.vehicleId);
-      this.scene.remove(entry.root);
+      this.layoutRoot.remove(entry.root);
       entry.material.dispose();
       this.boardingViews.splice(index, 1);
     }
@@ -2250,6 +2315,7 @@ export class SceneView {
   }
 
   render() {
+    this.updateVehicleEntrance();
     this.renderer.render(this.scene, this.camera);
   }
 }

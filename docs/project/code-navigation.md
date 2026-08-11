@@ -11,7 +11,8 @@ Use this file before code changes. Pick the closest change area, then read only 
 | Core gameplay rules, click handling, blockers, spots, queues, boarding, win/fail | `src/game-model.js` | `src/level-data.js`, `src/vehicle-motion.js`, `test/game-model.test.js` |
 | Runtime vehicle collision graph, Unity vehicle sizes, oriented contact edges | `src/vehicle-collision.js` | `src/game-model.js`, `test/vehicle-collision.test.js` |
 | Level constants, colors, fixed passenger sequence, vehicle/spot source data | `src/level-data.js` | `src/game-model.js`, `test/game-model.test.js` |
-| Imported Unity level catalog and single-level production selection | `src/level-catalog.js` | `src/generated-active-level.js`, `scripts/extract-unity-levels.mjs`, `scripts/generate-active-level.mjs`, `test/level-catalog.test.js` |
+| Imported Unity level catalog and narrow production session selection | `src/level-catalog.js` | `src/generated-active-level.js`, `scripts/extract-unity-levels.mjs`, `scripts/generate-active-level.mjs`, `test/level-catalog.test.js` |
+| Multi-level playable session order, shared CTA operation count, and win handoff | `src/level-session.js` | `src/main.js`, `src/generated-active-level.js`, `src/scene-view.js`, `test/level-session.test.js` |
 | Conveyor layouts and prefab-derived paths | `src/conveyor-layouts.js` | `src/scene-view.js`, `src/game-model.js`, `src/scene-tuning.js`, `test/game-model.test.js` |
 | Unity conveyor prefab extraction | `scripts/extract-unity-conveyor-layouts.mjs` | `src/conveyor-layouts.js`, `artifacts/unity-conveyor-layouts.json` |
 | Three.js scene rendering, camera, picking, assets, vehicles, passengers, shadows | `src/scene-view.js` | `src/scene-tuning.js`, `src/scene-layout.js`, `test/game-model.test.js`, `test/guide-hand.test.js` |
@@ -47,9 +48,10 @@ Use this file before code changes. Pick the closest change area, then read only 
 - `src/audio-controller.js`: Runtime audio bridge. Owns Unity-named sound config playback, WebAudio unlocking/preloading, random clip choice, game-event de-duping, and passenger-up playback.
 - `src/game-model.js`: Pure gameplay state machine. Owns vehicle click handling, blocker checks, station assignment, route progress, conveyor/queue passenger flow, boarding events, win/fail checks, snapshots, and subscriptions.
 - `src/vehicle-collision.js`: Unity-style runtime collision context. Owns per-vehicle collision sizes, current-pose oriented boxes, drive-out graph decisions, direct candidates, and edge contact points.
-- `src/level-data.js`: Small runtime boundary that exports colors and the mutable live `LEVEL_1` binding backed by the generated single active level.
+- `src/level-data.js`: Small runtime boundary that exports colors and the mutable live `LEVEL_1` binding backed by the current generated session level.
+- `src/level-session.js`: Pure two-level session state. Owns current level order, level-scoped successful-vehicle de-duplication, shared CTA/install count, win advancement, and full-session reset.
 - `src/level-catalog.js`: Generated development-only catalog for the six imported Unity levels plus the legacy baseline used as extraction/template data.
-- `src/generated-active-level.js`: Generated production payload containing exactly one selected level's vehicles and passenger queues.
+- `src/generated-active-level.js`: Generated narrow production payload containing the selected active level and any explicit in-session follow-up level.
 - `src/scene-view.js`: Main Three.js renderer. Owns scene construction, camera/background fit, texture/model/VAT loading, path curves, parking spots, vehicle/passenger visuals, shadows, arrows, seat boards, effects integration, picking, snapshot rendering, resize, and per-frame render.
 - `src/scene-tuning.js`: Single mutable tuning object. Owns editor-facing numeric values for preview/crop, camera, facing, path transforms, background, conveyor art, parking spots, seat boards, vehicle paths, vehicle area mapping, passengers, shadows, arrows, and effects.
 - `src/scene-editor.js`: Generated editor panel. Owns `FIELD_GROUPS`, input/range bindings, nested tuning path get/set helpers, collapsed UI behavior, reset-to-default hook, and editor labels.
@@ -65,10 +67,11 @@ Use this file before code changes. Pick the closest change area, then read only 
 - `test/vehicle-effects.test.js`: Unit tests for Effect_Ribbon, ParticleRibbon atlas behavior, ParticleSmoke, speed-over-lifetime, and editor-driven effect tuning.
 - `scripts/extract-unity-vat.mjs`: Node utility that reads Unity texture YAML `_typelessdata` and writes the top mip raw VAT texture bytes for the web runtime.
 - `scripts/extract-unity-levels.mjs`: Parses supplied Unity level YAML into the development catalog/artifact, applies authored vehicle/queue overrides, and validates per-color passenger totals against vehicle seats.
-- `scripts/generate-active-level.mjs`: Reads baked scene tuning and emits only the selected level into the production runtime module before Vite builds.
-- `test/level-catalog.test.js`: Imported level counts, queue pairing, single-level production boundary, and editor/build wiring regressions.
+- `scripts/generate-active-level.mjs`: Reads baked scene tuning and emits the selected production session (Level9 followed by Level7 when Level9 is selected) before Vite builds.
+- `test/level-catalog.test.js`: Imported level counts, queue pairing, narrow production-session boundary, and editor/build wiring regressions.
+- `test/level-session.test.js`: Level9-to-Level7 production sequence, shared CTA/install count continuity, repeated-id namespacing, vehicle-only entrance/stationary-conveyor wiring, two-sided queue restart, and end-page suppression regressions.
 - `test/vehicle-collision.test.js`: Focused geometry graph, vehicle-size, reset, station-ordering, contact, and blocked-click regressions.
-- `test/guide-hand.test.js`: Focused vehicle target plus horizontal art/motion mirroring regression for the guide hand.
+- `test/guide-hand.test.js`: Focused guide target, active-level scope, timed mask, editor wiring, and horizontal art/motion mirroring regressions.
 
 ### Conveyor layout subsystem
 

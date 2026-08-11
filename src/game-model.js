@@ -209,6 +209,14 @@ export class BusLoopGame {
     conveyorConfig = {}
   ) {
     const authoredQueues = this.level.passengerQueues ?? [this.level.passengerSequence];
+    const remainingQueues = authoredQueues.map((queue, index) => {
+      if (conveyorConfig.resetSlots || !this.queues?.[index] || !this.sourceQueues?.[index]) {
+        return queue;
+      }
+      return [...this.queues[index], ...this.sourceQueues[index]].map((passenger) => (
+        typeof passenger === 'object' ? passenger.colorIndex : passenger
+      ));
+    });
     const nextConveyorCapacity = Math.max(1, Math.floor(conveyorConfig.capacity ?? this.conveyorCapacity));
     const conveyorCapacityChanged = nextConveyorCapacity !== this.conveyorCapacity;
     this.conveyorCapacity = nextConveyorCapacity;
@@ -228,14 +236,14 @@ export class BusLoopGame {
         Math.floor(queueCapacities[index] ?? authoredCapacity)
       ));
     });
-    this.queues = authoredQueues.map((queue, index) => {
+    this.queues = remainingQueues.map((queue, index) => {
       const capacity = Math.max(0, Math.min(
         this.queueCapacities[index],
         Math.floor(queueCapacities[index] ?? this.queueCapacities[index])
       ));
       return this.createQueueItems(queue.slice(0, capacity), index);
     });
-    this.sourceQueues = authoredQueues.map((queue, index) => (
+    this.sourceQueues = remainingQueues.map((queue, index) => (
       queue.slice(this.queues[index]?.length ?? 0)
     ));
     if (conveyorCapacityChanged || conveyorConfig.resetSlots) {

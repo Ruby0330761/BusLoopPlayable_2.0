@@ -1,5 +1,14 @@
 # Playable Resource Status
 
+## Backgrounds
+
+| Resource | Status | Notes |
+| --- | --- | --- |
+| `public/assets/applovin/textures/BG01_split01_q60.jpg` | wired | Editor option `BG01 \u51ac\u5b63`; production includes it only when selected and baked. |
+| `public/assets/applovin/textures/BG02_split01_summer_q60.jpg` | wired | Editor option `BG02 \u590f\u5b63`; current baked default. |
+| `public/assets/applovin/textures/BG01_split01_Sakura.png` | source | Supplied 2100x3382 Sakura source; preserved unchanged and excluded from production packages. |
+| `public/assets/applovin/textures/BG01_split01_Sakura_q60.jpg` | wired | Editor option `BG01 \u6a31\u82b1`; 278,157-byte delivery derivative, packaged alone when selected and baked. |
+
 ## Conveyor layouts
 
 | Resource | Status | Notes |

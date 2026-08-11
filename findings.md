@@ -1,5 +1,147 @@
 # Findings
 
+## 2026-08-11 Sakura background packaging
+
+- The supplied asset already exists at `public/assets/applovin/textures/BG01_split01_Sakura.png` and is intended to become a third editor background option.
+- The current project already records a winter/summer selector and confirms the final AppLovin package embeds only the optimized selected summer image, so the implementation should extend that established selection boundary rather than introduce a parallel asset-loading path.
+- Session catch-up automation was unavailable because this Windows environment exposes neither `python` nor `py`; the current planning files and targeted repository reads are the recovery source.
+- Current ownership is `src/scene-tuning.js` for the selected asset, `src/scene-editor.js` for the option list, `src/scene-view.js` for live texture swapping, and `scripts/generate-active-level.mjs` plus the level asset manifest for the production-only selection boundary.
+- `BG01_split01_Sakura.png` is 1,976,289 bytes. Replacing the currently embedded 195,940-byte summer JPEG in the latest 3,968,019-byte package without optimization would push the package well above AppLovin's 5,000,000-byte limit.
+- The source PNG should remain untouched while a dimension-preserving optimized delivery derivative is added and referenced by the editor option.
+- The existing editor options point to `BG01_split01_q60.jpg` (139,386 bytes) and `BG02_split01_summer_q60.jpg` (195,940 bytes); Sakura should follow the same optimized-derivative naming and size pattern.
+- `scripts/generate-active-level.mjs` serializes only the selected catalog level (plus the explicit Level9 follow-up case) and shares identical asset manifests. It does not independently override the background from tuning, so the apply/export synchronization path must be inspected before editing.
+- Runtime switching is already generic: `getSelectedBackgroundUrl()` prefers `SCENE_TUNING.background.asset`, and the view reapplies that texture during tuning changes.
+- `scripts/apply-scene-tuning.mjs` updates `src/scene-tuning.js` and the selected-level marker only; it does not update `src/level-catalog.js`.
+- `scripts/generate-active-level.mjs` currently serializes the catalog asset manifest unchanged. When a non-summer background is baked into tuning, the production JS can therefore retain both the selected tuning URL and the catalog's summer fallback URL.
+- The narrow fix is to clone each selected session level during generation and overwrite `assets.background` with `SCENE_TUNING.background.asset`. Runtime behavior stays unchanged, but both the tuning and generated manifest then reference the same single background.
+- AppLovin packaging enumerates all built assets but only substitutes URLs present in the inlined entry HTML/JS/CSS. Preventing extra background URLs from entering production source is sufficient to keep unused editor alternatives out of the final HTML.
+- A q60 progressive JPEG derivative was generated at `public/assets/applovin/textures/BG01_split01_Sakura_q60.jpg`: 2100x3382, 278,157 bytes. Visual inspection preserves the supplied composition and major edge/detail readability while keeping the expected package increase manageable.
+- Touched source/test syntax checks pass, as do the focused background selector and active-level generator contract tests.
+- With a temporary baked Sakura selection, prebuild generated the current durable selected Level5 payload with its background manifest overwritten to Sakura. The production build passed with only the existing Vite chunk-size warning.
+- The temporary Sakura AppLovin HTML is 4,191,471 bytes and passes all 15 static checks, leaving 808,529 bytes under the strict limit.
+- Final HTML contains no original asset filenames because the packager replaces referenced URLs with data URIs; byte-content fingerprints are required for the definitive selected-only assertion.
+- Base64 byte fingerprints confirm the temporary Sakura package embeds only `BG01_split01_Sakura_q60.jpg`; summer, winter, and the original Sakura PNG are absent.
+- After restoring the summer default, the refreshed final package embeds only `BG02_split01_summer_q60.jpg`; Sakura, winter, and the original PNG are absent.
+- Browser DOM QA at the local editor shows exactly three background options: `BG01 \u51ac\u5b63`, selected `BG02 \u590f\u5b63`, and `BG01 \u6a31\u82b1`.
+- Selecting `BG01 \u6a31\u82b1` in the real editor immediately changes the phone preview to the supplied Sakura artwork. The select value resolves to `/assets/applovin/textures/BG01_split01_Sakura_q60.jpg`, and browser error logs remain empty.
+- The final restored selection remains Level5 + summer in source/exported/generated state. Final AppLovin size is 3,972,231 bytes with SHA-256 `3300A5FDC1045513203224648AB414AB472E5C490CC6C2D873817DE9C060196F`.
+- The current worktree was already broadly dirty across level, tuning, editor, runtime, tests, and generated artifacts. This task preserved those changes and only added the Sakura derivative/option, generator background override, focused contracts, regenerated current artifacts, and short durable records.
+
+## 2026-08-03 Level16 guide-45 package
+
+- Level16 contains visible vehicle 45 (`6` seats, color index `2`), so it is a valid guide target.
+- The prior guide remained scoped to `level15 + vehicle 157`; changing only the id would keep the guide hidden on the current Level16 package. Both normal and disabled first-click guide configs therefore need `level16 + vehicle 45`.
+- Editor localStorage may still contain the exact prior guide pair. The existing saved-default migration now upgrades `level15 + 157` to `level16 + 45` for both guide configs without changing offsets, scale, speed, mask settings, or first-click enabled state.
+- The refreshed final package is 3,968,019 bytes and leaves 1,031,981 bytes under the strict limit. Both guide configs contain `levelKey: "level16", vehicleId: 45`; the first-click guide remains disabled.
+- All 15 AppLovin static checks pass. Only the optimized summer q60 background is embedded, and the final SHA-256 is `7E4C981851EFC8F3F13371E2ED6109553D6327FCA04585507AE9909391FBA7CF`.
+
+## 2026-08-03 Level16 parameter package
+
+- Requested production values map to `level.selected = level16`, `background.asset = BG02_split01_summer_q60.jpg`, `installGate.successfulOperationThreshold = 30`, `vehiclePath.parkingBounds.minX/maxX = -2.2/2.2`, and `vehicleArea.positionUnitScale/modelScale = 0.8/0.7`.
+- The optimized summer background is already the baked source/export asset, so this package does not need another image conversion or duplicate background asset.
+- Current pre-change values are Level15, threshold 40, path X bounds -2.53/2.53, map scale 0.73, and vehicle model scale 0.63. `artifacts/scene-tuning.json` is the authoritative patch input for `npm run apply:tuning`, which also synchronizes `src/scene-tuning.js` and `artifacts/selected-level.txt`.
+- Selecting Level16 generates a single-level production payload; the special Level9 -> Level7 session expansion does not apply.
+- Final generated session is exactly `['level16']` with 37 vehicles and queues 139+79. The production build passes with only the existing >500 kB chunk warning.
+- Final AppLovin single HTML is 3,968,021 bytes with 1,031,979 bytes remaining under the strict limit. All 15 static checks pass and marker scans confirm Level16, threshold 30, path X -2.2/2.2, map scale 0.8, model scale 0.7, and `You Win!`.
+- Binary embedding verification confirms the package contains the q60 summer background and contains neither the 1,035,562-byte summer source nor the winter background. SHA-256 is `9B6B584D7E58765471B1EDEA4F8CF6C455A41C23873133A9D3D0BAFD5644A201`.
+- Existing browser tabs can retain the complete prior editor tuning in localStorage and override new source defaults. A development-only migration now upgrades only exact previous package defaults (Level15/40/-2.53/2.53/0.73/0.63); production excludes this path and the rebuilt package remains byte-identical.
+
+## 2026-08-03 editor final-level freeze
+
+- `BusLoopGame.checkEndState()` correctly sets `status = 'won'` only after every vehicle is `done` and no passengers remain, so the model is not deadlocked.
+- `main.js` then always hides `#end-panel`; when there is no next session level it also leaves `showResultOverlay('You Win!')` disabled. The final editor frame therefore has no replay or next action even though the runtime has completed normally.
+- Follow-up requirement supersedes the simple replay-panel approach: final victory should reuse `showResultOverlay()` so the existing icon, title animation, CTA art, and store bridge are shared with the failure state; only the title changes to `You Win!`.
+- The final implementation calls `showResultOverlay('You Win!')` only after `advanceAfterWin()` returns no next level. Intermediate Level9 -> Level7 completion still reconstructs Level7 and returns before the overlay call.
+- Browser DOM inspection confirms one shared result title, one `Play Now` CTA, and one `/assets/main-loading-icon.png` logo; no error-level console logs were reported.
+
+## 2026-08-03 editor layout-switch queue mismatch
+
+- Level16 source/catalog data is already validated at 218 seats and 218 authored passengers with exact per-color parity, so do not alter its queue sequences before reproducing a runtime discrepancy.
+- Editor `level.selected` changes are saved immediately, persisted through `/__playable-level`, and followed by a full page reload. Startup resolves the selected catalog level, calls `setActiveLevel`, constructs a fresh `BusLoopGame(selectedLevel)`, then initializes queues from that same model level.
+- `BusLoopGame.initializeQueues()` rebuilds its visible queues and source queues from `this.level.passengerQueues`; the next diagnostic must count visible queue items, source items, and belt slots together to distinguish a real loss/mix from finite on-screen queue capacity.
+- Direct initialization with the current maximum layout capacities preserves exact totals for both Level15 (510) and Level16 (218). Every runtime per-color count matches both authored queues and vehicle seats; only the visible queue heads differ because the rest remain in `sourceQueues` for later refill.
+- The current editor is Level15 + DualQueue3. That conveyor layout exposes 22 visible passengers per side, so counting only the on-screen side queues cannot equal the 510-seat vehicle layout.
+- The real duplication occurs after passengers enter the belt: non-structural editor changes call `initializeQueues()` with `resetSlots: false`; the old implementation rebuilt both side/source queues from the full authored arrays while retaining occupied belt slots. Level16 therefore grew from 218 to 226 after eight passengers entered the belt.
+- Non-reset queue initialization must preserve the current remaining side/source sequence and only recalculate capacity/distance metadata. Explicit `resetSlots: true` keeps the prior full authored reset behavior.
+
+## 2026-08-03 Level16 import discovery
+
+- Supplied source `D:/备份/busloop素材关卡/level16.asset` is a 19,337-byte Unity YAML level file. Its filename yields catalog key `level16`, while its authored internal `id` is `14`; preserve both values rather than rewriting the Unity id.
+- The asset declares `mapScale: 0.95` and `conveyorBeltName: ConveyorBelt4`. Vehicle and fixed passenger queue sections are present; exact counts and per-color parity still require structured extraction.
+- The request is to add a new layout, not to replace the current production selection. Preserve the existing Level15 selection unless validation reveals an explicit project rule requiring otherwise.
+- The existing extractor already derives catalog keys/options from filenames and validates per-color passenger totals. Level16 needs only a new default source entry, regenerated catalog/artifact output, a Vite persistence whitelist entry, and focused catalog coverage; no new editor control subsystem is required.
+- Production generation reads `artifacts/selected-level.txt` and emits only the selected session, so keeping that marker at Level15 allows Level16 to be development-selectable without increasing the current AppLovin package.
+- Structured parsing finds 37 unique vehicle ids with 218 total seats (`14x4`, `17x6`, `6x10`) and two authored queues of 139 + 79 passengers. Seat and passenger color totals match exactly: `{0:30,1:36,2:44,3:18,5:24,6:20,7:34,8:12}`.
+- The source `m_Name` is also `level14`, confirming the filename/internal-name mismatch originates in the supplied asset. Catalog key/display should remain filename-based (`level16`) while provenance fields retain Unity `id: 14`.
+- `conveyorBeltName: ConveyorBelt4` exists in the YAML, but the current level extractor/runtime do not store or consume that field; conveyor shape remains the independently selected global editor layout. The user specifically scoped this import to vehicle layout and passenger queues, so no conveyor mapping should be invented.
+- Direct runtime-collision diagnostics report zero initial vehicle-body overlaps, every derived yaw is finite, and every authored `vehicleDepthes` reference points to an existing Level16 vehicle id.
+- Browser QA confirms Level16 appears after Level15 in the editor, the Vite endpoint accepts the selection, and the reloaded scene visibly renders the new vehicle ring plus both passenger queues on a nonblank 644x1328 canvas with zero error-level console messages.
+
+## 2026-08-03 summer background packaging decision
+
+- The supplied summer JPG is 1,035,562 bytes at 2100x3382. A quality-60 derivative preserves the dimensions and visual composition at 195,940 bytes, so production uses the derivative while retaining the original as the source asset.
+- AppLovin packaging replaces only asset URLs present in the production JS/CSS/HTML. Keeping BG01 in the development-only editor options does not embed it in the final package; the verified HTML contains the summer q60 bytes and contains neither the original summer bytes nor BG01 bytes.
+- The verified single HTML is 3,979,125 bytes, leaving 1,020,875 bytes under the project's strict 5,000,000-byte limit.
+
+## 2026-07-30 Level15 import discovery
+
+- Supplied source `D:/备份/busloop素材关卡/level15.asset` is a Unity YAML level asset with `id: 15`, `m_Name: level15`, and `conveyorBeltName: ConveyorBelt6`.
+- The existing reproducible import boundary is `scripts/extract-unity-levels.mjs`; it owns source paths, exact passenger-queue overrides, per-color seat validation, and generated catalog/artifact output. Focused coverage lives in `test/level-catalog.test.js`.
+- The supplied sequences contain 278 left-queue passengers and 232 right-queue passengers (510 total); the Unity asset contains 81 unique vehicles and 510 seats.
+- Queue color totals are `{0:86,1:58,2:70,3:54,4:76,5:48,6:62,7:56}` and exactly match the Unity vehicle-seat totals color by color, so the queues are valid as an authoritative override.
+- Replacement queue request redistributes the same 510 passengers to 296 left + 214 right while preserving the exact combined color totals `{0:86,1:58,2:70,3:54,4:76,5:48,6:62,7:56}`; no vehicle color/seat changes are required.
+- Requested editor/runtime fields map to `vehicleArea.positionUnitScale` (Map Scale), `vehicleArea.modelScale` (vehicle model size), `vehiclePath.parkingBounds.minX/maxX` (drive-path X bounds), and both `vehicleGuideHand` / `firstClickGuide` for guide level and vehicle id.
+- Making an imported level the current playable requires synchronizing `src/scene-tuning.js`, `artifacts/scene-tuning.json`, `artifacts/selected-level.txt`, and the Vite development-selection whitelist; Level9-only guide `levelKey` values are separate scope controls and must remain unchanged.
+- The former default Level7 path under `D:/UnityProjects/.../Level_Escape_C/level7.asset` has drifted to an unrelated 42-vehicle, color-8 layout. The compatible preserved 83-vehicle source is `D:/备份/改文件名临时文件夹/level7.asset`; the extractor now uses that stable backup so adding Level15 does not rewrite or invalidate Level7.
+- The planning skill session-catchup helper cannot run because neither `py` nor `python` is available in this Windows workspace; continue from the existing planning files plus direct workspace inspection.
+- Current AppLovin packaging route remains `npm.cmd run build` -> `npm.cmd run package:applovin` -> `npm.cmd run check:applovin`; local completion requires a single fully inlined HTML <= 5,000,000 bytes, while official preview and real-backend play remain external manual acceptance steps.
+
+## Level9 to Level7 session transition - 2026-07-17
+
+- New packaging request: disable only the first-step timed mask (`firstClickGuide.enabled`) while retaining the ordinary Level9 vehicle-114 guide hand, threshold 40, and guide size 2.12.
+- `SceneView.updateGuideHand()` suppresses the ordinary sprite only while `firstClickGuide.enabled` is truthy, so setting that flag to `0` both hides the timed DOM mask/hand and restores the normal vehicle guide without runtime code changes.
+- Final package markers confirm `firstClickGuide.enabled: 0` and `vehicleGuideHand.enabled: 1`; the new single HTML remains 3,653,268 bytes, passes all AppLovin static checks, and has SHA-256 `041493FEB89FB3714FBF72CEFB2D4E6C7D2CED5006BF166C5412B720FCF83EE5`.
+- Current packaging request uses the project's established AppLovin baseline path: baked source/exported tuning -> `npm.cmd run build` -> `npm.cmd run package:applovin` -> `npm.cmd run check:applovin` -> fixed-marker/hash inspection of `artifacts/applovin/index.html`.
+- AppLovin delivery remains a single fully inlined HTML using the existing MRAID bridge. Local checks cannot replace AppLovin preview/upload validation.
+- Requested baked values are successful-operation threshold 40, both guide targets on Level9 vehicle 114, and `vehicleGuideHand.size` 2.12.
+- Initial config inspection confirmed source and exported tuning were synchronized at threshold 20 and guide size 2.52; both already held Level9 vehicle 114 before the requested parameter update.
+- The project checker enforces one HTML <= 5,000,000 bytes, inline script syntax, no external script/stylesheet, no WAV, MRAID CTA, no `window.open` fallback, lifecycle/startup markers, and an allowlist for only the Android/iOS store URLs plus W3C namespace references.
+- First package generation produced 5,926,059 bytes (5.652 MiB). Every AppLovin checker item passes except the 5,000,000-byte limit, so the remaining work is package-size optimization rather than bridge/runtime correction.
+- Level9 and Level7 use the same asset manifest, but the generated session serialized that manifest twice. Because the AppLovin packager replaces every asset URL occurrence with a full data URI, the duplicate manifest repeated the encoded models/textures/audio in the single HTML. The generator can safely share the primary level's asset object with follow-up levels while retaining distinct vehicle/passenger layouts.
+- After sharing the manifest, the final single HTML is 3,653,268 bytes and all static checks pass. Marker inspection confirms threshold 40, both Level9 vehicle-114 guide configs, guide size 2.12, and the MRAID-only CTA bridge. SHA-256: `79B7951D936AEBF1D0D5E6340555157607C234A4C641056BB7FB82BFC505745B`.
+
+- Guide follow-up: source/exported tuning still stores vehicle 89 even though the current editor setting is vehicle 114. Persist vehicle 114 in both `vehicleGuideHand` and `firstClickGuide` so production matches the requested current configuration.
+- Both guide layers are owned by `SceneView`: the normal sprite uses `vehicleGuideHand`, while the timed DOM mask/hand uses `firstClickGuide`. Level scoping must be checked in both `updateGuideHand()` and `isFirstClickGuideActive()` to guarantee Level7 suppression.
+- Add a durable `levelKey: 'level9'` to both guide configs. Saved editor patches that omit this field will preserve the source default through the existing deep merge.
+- Vehicle 114 exists in both baked session levels, confirming that id-only lookup will reproduce the guide on Level7 unless the active `LEVEL_1.key` is checked.
+- The editor already supports option-backed fields through `LEVEL_OPTIONS`, so both normal and first-click guide scopes can be exposed as level selectors without adding new editor infrastructure.
+- Final guide verification passes: the scope helper returns true for Level9 and false for Level7 for both configs; guide/session tests pass 6/6 and the production build succeeds.
+- The 749,343-byte final bundle contains `vehicleGuideHand` and `firstClickGuide` as `levelKey: "level9", vehicleId: 114`.
+
+- Follow-up clarification: the conveyor artwork and general passenger/conveyor layout must remain stationary during the Level9-to-Level7 handoff. Only the newly created Level7 vehicle roots should animate upward from below.
+- `replaceActiveLevel()` already clears `initialEntryPathStates` and `queueEntryPathStates`; `main.js` then calls `initializeGameQueues({ resetSlots: true })` on a fresh Level7 model. This preserves the existing two-sided `entryMotion` startup path, so no separate passenger animation system is needed.
+- The current `layoutRoot` owns conveyor art, spots, passengers, guide, vehicles, and effects; animating it scales/moves all of them. Add a child `vehicleRoot` for vehicle views and animate only that child while leaving `layoutRoot` at its identity transform.
+- Ground-plane screen direction is represented by positive world Z toward the lower/near side of the camera, so a vehicle-root Z offset can provide the requested from-below entrance without changing vehicle scales.
+- Level7 supplies two queues, capacity 24 per side, entry percents `[0, 0.421]`, and the standard initial-fill metadata. A focused model regression can confirm both entry indices become active after the fresh Level7 queue reset.
+- Final implementation uses a dedicated `Vehicle Layout Root` with a positive-Z start offset of 8 and a 0.85-second cubic ease-out to zero. Conveyor art, parking/passenger layout roots, and vehicle scale remain unchanged during the handoff.
+- Refined verification passes 13/13 across session/catalog and paired CTA tests. The 749,210-byte production bundle contains the vehicle-only entrance markers, excludes the old scale entrance marker, and retains only Level9/Level7 data.
+
+- The current production boundary is still a generated single active level (`src/generated-active-level.js`); Level7 and Level9 coexist only in the development catalog. A production two-level session therefore needs an explicit second-level payload path instead of relying on editor-only catalog imports.
+- `src/main.js` owns the session-wide CTA/install state (`numberCountBus`, `isFinish`, and the counted vehicle set), while its existing `reset()` clears all three. The Level9-to-Level7 handoff must rebuild the game/view without calling that session reset path.
+- Current win handling in `syncHud()` hides `#end-panel` and calls `showResultOverlay('You Win!')`; this is the end-page behavior that must be disabled for the intermediate Level9 win and, per request, temporarily suppressed altogether.
+- `BusLoopGame` already accepts a level argument in its constructor, and `level-data.js` exposes `setActiveLevel(level)`, so the model can be reconstructed around Level7 while keeping CTA state in the outer bootstrap scope.
+- `SceneView` reads the live `LEVEL_1` binding throughout construction and update logic but has no level-swap or full-dispose API. The least invasive safe transition is to add a focused scene rebuild method that clears level-specific scene objects/state and rebuilds them after `setActiveLevel(level7)`, or to make the bootstrap replace the entire view while explicitly disposing the old renderer/listeners/assets.
+- `src/main.js` currently declares `game` and `view` as constants and exposes those fixed objects through `window.__busLoop`; a real in-session level swap requires mutable runtime references and QA accessors that resolve the current objects.
+- The install counted set currently keys only by numeric vehicle id. Because Level9 and Level7 reuse numeric ids, a shared counter must namespace uniqueness by level key while preserving the accumulated numeric count.
+- Level9 and Level7 share the exact same runtime asset manifest, conveyor scene, and background; only authored level data differs. The existing loaded Three.js templates/textures can be reused safely, so the transition only needs to replace level-specific vehicle roots and reset transient render state.
+- Current production generation writes only `ACTIVE_LEVEL`. The focused extension is to keep Level9 as `ACTIVE_LEVEL` and emit Level7 as a named session follow-up from the same generator, preserving the narrow production payload without importing the full development catalog.
+- Structural sizes: Level9 has 37 vehicles with queues 131+131; Level7 has 83 vehicles with queues 368+278.
+- `VehicleEffects.clear()` already removes live particles and resets timing/contact state, so render-level handoff can explicitly clear effects before replacing vehicle roots.
+- `BusLoopGame.subscribe()` returns an unsubscribe closure. The main runtime should unsubscribe the completed Level9 model before creating/subscribing Level7, preventing stale listeners and duplicate win handling.
+- The generated runtime now contains exactly `level9` and `level7` when Level9 is selected; direct inspection confirms 37/83 vehicles and queue sizes 131+131 / 368+278 in that order.
+- The current install threshold is 20 while Level9 has 37 vehicles. To keep Level9 completable, reaching the threshold during Level9 records `installReady` but does not intercept input or open the store until the session advances to Level7.
+- Focused verification passes 12/12 across session/catalog and paired CTA main-thread/threshold paths. The production bundle is 749,274 bytes and includes only Level9/Level7 markers among imported levels; the existing >500 kB Vite warning remains unchanged.
+
 ## Level7 vehicle 66/82 coordinate sync - 2026-07-16
 
 - The authoritative input is `D:\UnityProjects\BusLoop\Assets\BusJam\Game\Bundleables\Level_Escape_C\level7.asset`.

@@ -8,8 +8,10 @@ const catalogPath = join(root, 'src', 'level-catalog.js');
 const activePath = join(root, 'src', 'generated-active-level.js');
 const defaultSources = [
   'D:/备份/改文件名临时文件夹/level5.asset',
-  'D:/UnityProjects/BusLoop/Assets/BusJam/Game/Bundleables/Level_Escape_C/level7.asset',
-  ...[8, 9, 10, 13].map((id) => `D:/备份/改文件名临时文件夹/level${id}.asset`)
+  'D:/备份/改文件名临时文件夹/level7.asset',
+  ...[8, 9, 10, 13].map((id) => `D:/备份/改文件名临时文件夹/level${id}.asset`),
+  'D:/备份/busloop素材关卡/level15.asset',
+  'D:/备份/busloop素材关卡/level16.asset'
 ];
 const sourcePaths = process.argv.slice(2).filter((value) => !value.startsWith('--'));
 const selectedArg = process.argv.find((value) => value.startsWith('--selected='))?.slice('--selected='.length);
@@ -34,6 +36,23 @@ const passengerQueueOverrides = {
       [0, 6], [5, 10], [1, 10], [5, 10], [1, 4], [5, 10], [1, 6], [7, 6],
       [5, 6], [7, 12], [0, 6], [7, 6], [0, 6], [7, 4], [0, 10], [7, 10],
       [0, 10], [7, 4], [0, 18]
+    ])
+  ],
+  level15: [
+    expandPassengerQueue([
+      [1, 6], [4, 4], [7, 6], [0, 6], [4, 10], [3, 6], [5, 6], [6, 6],
+      [1, 6], [7, 10], [4, 6], [0, 4], [6, 10], [5, 6], [2, 6], [7, 6],
+      [1, 4], [2, 4], [0, 6], [4, 6], [3, 6], [5, 6], [0, 10], [4, 6],
+      [6, 6], [0, 6], [4, 6], [5, 10], [4, 10], [0, 6], [1, 6], [2, 10],
+      [7, 10], [5, 4], [3, 6], [6, 4], [4, 6], [0, 10], [7, 4], [3, 4],
+      [2, 4], [1, 4], [6, 6], [3, 6], [5, 6], [6, 4], [7, 6]
+    ]),
+    expandPassengerQueue([
+      [7, 4], [6, 10], [3, 4], [6, 6], [2, 6], [0, 10], [6, 10], [1, 4],
+      [5, 10], [3, 4], [0, 6], [1, 6], [2, 10], [4, 6], [2, 6], [0, 6],
+      [1, 4], [3, 6], [4, 6], [2, 6], [3, 6], [1, 6], [3, 6], [0, 6],
+      [4, 6], [7, 6], [0, 4], [2, 6], [7, 4], [1, 6], [0, 6], [2, 6],
+      [1, 6], [2, 6], [4, 4]
     ])
   ]
 };
