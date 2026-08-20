@@ -13,6 +13,7 @@ const IMPORTED_EXPECTATIONS = {
   level8: { vehicles: 38, queues: [140, 140] },
   level9: { vehicles: 37, queues: [131, 131] },
   level10: { vehicles: 64, queues: [218, 218] },
+  level12: { vehicles: 94, queues: [219, 219] },
   level13: { vehicles: 75, queues: [202, 202] },
   level15: { vehicles: 81, queues: [296, 214] },
   level16: { vehicles: 37, queues: [139, 79] }
@@ -63,6 +64,22 @@ const LEVEL16_QUEUE_RUNS = [
   [
     [2, 9], [3, 6], [2, 11], [1, 6], [7, 12], [2, 7], [7, 1], [3, 4],
     [6, 5], [2, 3], [7, 4], [6, 10], [2, 1]
+  ]
+];
+
+const LEVEL12_QUEUE_RUNS = [
+  [
+    [5, 2], [3, 2], [0, 3], [5, 2], [1, 9], [8, 6], [7, 6], [4, 4],
+    [2, 4], [5, 6], [1, 6], [7, 8], [6, 10], [0, 4], [5, 4], [6, 6],
+    [0, 10], [5, 10], [3, 10], [6, 4], [0, 6], [5, 8], [2, 10], [1, 10],
+    [8, 4], [3, 4], [5, 4], [1, 4], [8, 4], [5, 4], [7, 10], [0, 4],
+    [2, 4], [5, 4], [4, 4], [5, 4], [1, 4], [4, 4], [5, 7]
+  ],
+  [
+    [5, 2], [3, 2], [0, 3], [5, 2], [1, 1], [5, 9], [3, 4], [7, 8],
+    [5, 8], [7, 4], [5, 14], [7, 8], [5, 16], [7, 4], [5, 4], [7, 4],
+    [5, 12], [0, 4], [5, 24], [0, 6], [5, 4], [0, 8], [5, 12], [0, 20],
+    [5, 36]
   ]
 ];
 
@@ -162,14 +179,41 @@ test('level15 uses the supplied passenger queue order', () => {
   assert.deepEqual(level.passengerQueues.map(queueRuns), LEVEL15_QUEUE_RUNS);
 });
 
-test('level10 contains guide vehicle 39 and is the baked production selection', () => {
-  const level = LEVEL_CATALOG.level10;
-  const guideVehicle = level.vehicles.find((vehicle) => vehicle.id === 39);
+test('level12 contains guide vehicle 34 and is the baked production selection', () => {
+  const level = LEVEL_CATALOG.level12;
+  const guideVehicle = level.vehicles.find((vehicle) => vehicle.id === 34);
   assert.deepEqual(
     guideVehicle && { seats: guideVehicle.seats, colorIndex: guideVehicle.colorIndex, isHidden: guideVehicle.isHidden },
     { seats: 6, colorIndex: 0, isHidden: false }
   );
-  assert.equal(SCENE_TUNING.level.selected, 'level10');
+  assert.equal(SCENE_TUNING.level.selected, 'level12');
+});
+
+test('level12 uses the supplied layout and AppLovin playable passenger queue order', () => {
+  const level = LEVEL_CATALOG.level12;
+  assert.equal(level.unityId, 0);
+  assert.equal(level.sourceFile, 'level12.asset');
+  assert.equal(level.mapScale, 1.0012542);
+  assert.deepEqual(level.passengerQueues.map(queueRuns), LEVEL12_QUEUE_RUNS);
+  const vehicleIds = new Set(level.vehicles.map((vehicle) => vehicle.id));
+  assert.equal(vehicleIds.size, level.vehicles.length);
+  for (const [vehicleId, depthIds] of Object.entries(level.vehicleDepthes)) {
+    assert.equal(vehicleIds.has(Number(vehicleId)), true, `level12 depth owner ${vehicleId}`);
+    for (const depthId of depthIds) {
+      assert.equal(vehicleIds.has(depthId), true, `level12 depth reference ${vehicleId} -> ${depthId}`);
+    }
+  }
+  for (let first = 0; first < level.vehicles.length; first += 1) {
+    for (let second = first + 1; second < level.vehicles.length; second += 1) {
+      const firstVehicle = level.vehicles[first];
+      const secondVehicle = level.vehicles[second];
+      assert.equal(
+        boxesOverlap(collisionBox(level, firstVehicle), collisionBox(level, secondVehicle)),
+        false,
+        `level12 vehicles ${firstVehicle.id} and ${secondVehicle.id}`
+      );
+    }
+  }
 });
 
 test('level16 uses the authored vehicle layout and passenger queue order', () => {
@@ -239,5 +283,6 @@ test('editor level selection reloads the runtime and production build regenerate
   const viteConfigSource = readFileSync('vite.config.js', 'utf8');
   assert.match(viteConfigSource, /'level15'/);
   assert.match(viteConfigSource, /'level16'/);
+  assert.match(viteConfigSource, /'level12'/);
 });
 

@@ -1,5 +1,55 @@
 # Findings
 
+## 2026-08-20 Production handoff workflow
+
+- The editor auto-saves the mutable `SCENE_TUNING` object to browser `localStorage` key `bus-loop-scene-tuning-v3`; most editor changes do not automatically write project source files.
+- Development level selection is a special case: the Vite `/__playable-level` endpoint writes `artifacts/selected-level.txt`, which can make persistence appear more complete than it is.
+- The production boundary is explicit: export `window.__busLoop.exportTuning()` to `artifacts/scene-tuning.json`, then run `npm run apply:tuning` to update `src/scene-tuning.js` and synchronize the selected-level marker before building.
+- Current `openStore()` only calls `window.mraid.open()` and has no normal-browser `window.open` fallback. A local editor without AppLovin MRAID is therefore expected not to navigate.
+- Store opening is wired to actual gameplay/CTA pointer paths, and AppLovin acceptance still requires a real user gesture in the official preview or real ad container. Debug API calls are diagnostic evidence, not platform acceptance.
+- Added `docs/project/playable-handoff-guide.md` with the startup, persistence, packaging, verification, and AI prompt handoff flow.
+- One targeted `rg` call used a Windows-invalid `*.md` path argument; the useful scoped results still returned, and later reads used explicit document paths instead.
+
+## 2026-08-11 Level12 AppLovin queue replacement
+
+- `Bus Fever - Car Jam Escape Playable_applovin.html` embeds Level12 queues in minified variable `Lu`, assigned to both `passengerQueues` and flattened `passengerSequence`.
+- The playable queue lengths are 219 + 219, not the previously imported Excel split of 173 + 265.
+- Combined per-color totals remain identical to all 438 Level12 seats: `{0:68,1:34,2:18,3:22,4:12,5:198,6:20,7:52,8:14}`.
+- The user explicitly chose the playable's ordering as the new authority for both the supplied Unity `level12.asset` and the imported web catalog.
+- `fixedPassengerSequence` is the final field in the asset, so it can be replaced as one controlled section after backing up the original file.
+- The original asset is preserved at `D:/备份/busloop素材关卡/level12.asset.before-applovin-queue-20260811.bak`.
+- Final comparison confirms the playable HTML, edited asset, generated JSON artifact, and JavaScript catalog contain byte-for-byte equivalent numeric queue arrays at 219+219.
+- Focused catalog tests pass 10/10 and the narrow generated production module remains Level10 only.
+
+## 2026-08-11 Level12 layout and Excel queue import
+
+- The supplied `level12.asset` contains 94 vehicles and 438 total seats; Unity `id` is `0`, map scale is `1.0012542`, and scene name is `GameSceneDualQueue2`.
+- `FixQueueConfigB.xlsx` stores Level12 on `Sheet1` with `LevelId = 12`, `QueueL1` and `QueueR1` as pipe-delimited color indices.
+- The Excel queues are 173 left + 265 right. Combined counts are `{0:68,1:34,2:18,3:22,4:12,5:198,6:20,7:52,8:14}` and match the Level12 vehicle-seat totals exactly for every color.
+- The asset's embedded fixed passenger sequence is stale/different, so the reproducible extractor must override Level12 with the Excel-authored order instead of parsing the asset queue.
+- Preserve the current Level10 production selection and existing named AppLovin artifacts; Level12 is an editor/development catalog addition only in this task.
+- The historical default Level7 source path is gone, and available same-named assets contain different layouts rather than the verified 83-vehicle Level7. The extractor therefore needs an explicit merge mode that replaces supplied levels while preserving the existing validated catalog entries.
+- Incremental generation retained all prior catalog counts, inserted Level12 between Level10 and Level13, and restored the narrow production module to Level10 only.
+- Level12 has 94 unique vehicle ids, valid depth owners/references, and zero initial logical collision-box overlaps.
+- Browser QA loaded Level12 in the real editor, visually confirmed the complete vehicle/queue scene, and reported zero error-level console logs. Existing Three.js texture/FBX compatibility warnings remain unrelated and unchanged.
+
+## 2026-08-11 Level10 winter separate package
+
+- User explicitly requires the prior Sakura package to remain available. `scripts/package-applovin-single-html.mjs` always writes `artifacts/applovin/index.html`, so the current file must be copied before invoking it.
+- Preserve the actual on-disk artifact, not only the previously reported hash: current `index.html` size is 4,196,123 bytes and requires a fresh Sakura/background/config fingerprint check before backup.
+- Planned stable outputs: `level10-sakura.html` for the preserved package and `level10-winter.html` for the new package; `index.html` may remain the latest winter output.
+- Fresh fingerprint confirms the preserved source artifact is Level10/39 with CTA enabled and threshold 10, contains Sakura but not winter, is 4,196,123 bytes, and has SHA-256 `81A42A23ABADC5A320203BDE099F829D5CCE9286EF7C669834C041371A94D344`.
+- `artifacts/applovin/level10-sakura.html` now exists with the exact same size/hash, so later writes to `index.html` cannot destroy the prior package.
+- Source/exported tuning and selection marker now agree on Level10 with winter q60; Level10/39, CTA 1, threshold 10, first-click mask disabled, and DualQueue3 remain unchanged.
+- The winter delivery asset is 139,386 bytes. The preserved Sakura artifact remains present at 4,196,123 bytes while source/test syntax checks pass.
+- Generated the Level10-only winter payload and passed five focused background/cache/catalog/guide checks.
+- Winter build/package completed at 3,822,146 bytes and was copied to `level10-winter.html`; the preserved `level10-sakura.html` remains 4,196,123 bytes.
+- Both descriptive targets now exist. `index.html` currently matches the latest winter output.
+- Independent Base64 byte fingerprints prove `level10-winter.html` embeds only `BG01_split01_q60.jpg` and `level10-sakura.html` embeds only `BG01_split01_Sakura_q60.jpg`; summer q60 and the original Sakura PNG are absent from both.
+- Both named artifacts contain the requested Level10, vehicle 39, CTA-enabled, and threshold-10 markers and pass the same 15 AppLovin static checks.
+- Final winter SHA-256 is `30BA4A16F886428507E5C7392E7858CAA9EB2F511DC2EC0A441CE0AE8D420E7E`; preserved Sakura SHA-256 is `81A42A23ABADC5A320203BDE099F829D5CCE9286EF7C669834C041371A94D344`.
+- After the temporary Sakura validation swap, `index.html` was restored from `level10-winter.html`; both files are byte-identical at 3,822,146 bytes.
+
 ## 2026-08-11 Level10 Sakura repackage
 
 - Current Level10 package source/export background is `/assets/applovin/textures/BG02_split01_summer_q60.jpg`.

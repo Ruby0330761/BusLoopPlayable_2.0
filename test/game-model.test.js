@@ -540,8 +540,8 @@ test('editor sizing, source background ratio, and passenger shadow anchor stay w
   assert.equal(LEVEL_1.conveyorPathLength, 4.591284809513923);
   assert.deepEqual(SCENE_TUNING.vehicleBoardingPulse, { scale: 1.14, speed: 5 });
   assert.equal(SCENE_TUNING.vehicleGuideHand.enabled, 1);
-  assert.equal(SCENE_TUNING.vehicleGuideHand.levelKey, 'level10');
-  assert.equal(SCENE_TUNING.vehicleGuideHand.vehicleId, 39);
+  assert.equal(SCENE_TUNING.vehicleGuideHand.levelKey, 'level12');
+  assert.equal(SCENE_TUNING.vehicleGuideHand.vehicleId, 34);
   assert.equal(SCENE_TUNING.vehicleGuideHand.size, 2.12);
   assert.equal(SCENE_TUNING.vehicleGuideHand.speed, 1.15);
   assert.equal(SCENE_TUNING.vehicleGuideHand.nearScale, 0.78);
@@ -1182,8 +1182,9 @@ test('main thread saves and restores scene tuning from localStorage', () => {
   assert.match(mainSource, /'enabled', 0, 1/);
   assert.match(mainSource, /BG02_split01_summer_q60\.jpg/);
   assert.match(mainSource, /BG01_split01_Sakura_q60\.jpg/);
-  assert.match(mainSource, /guide\.levelKey = 'level10'/);
-  assert.match(mainSource, /guide\.vehicleId = 39/);
+  assert.match(mainSource, /BG01_split01_q60\.jpg/);
+  assert.match(mainSource, /guide\.levelKey = 'level12'/);
+  assert.match(mainSource, /guide\.vehicleId = 34/);
   assert.match(mainSource, /SCENE_TUNING\.conveyorLayouts\?\.dualQueue2/);
   assert.match(mainSource, /classList\.toggle\('is-phone-preview', EDITOR_ENABLED && Boolean\(preview\?\.enabled\)\)/);
   assert.match(mainSource, /function loadSavedTuning\(\) \{\s+if \(!EDITOR_ENABLED\) return;/);

@@ -377,8 +377,8 @@
   },
   "vehicleGuideHand": {
     "enabled": 1,
-    "levelKey": "level10",
-    "vehicleId": 39,
+    "levelKey": "level12",
+    "vehicleId": 34,
     "offsetX": 0.25,
     "offsetY": 0.38,
     "offsetZ": 0.46,
@@ -394,8 +394,8 @@
   },
   "firstClickGuide": {
     "enabled": 0,
-    "levelKey": "level10",
-    "vehicleId": 39,
+    "levelKey": "level12",
+    "vehicleId": 34,
     "durationSeconds": 3,
     "maskOpacity": 0.8,
     "holePadding": 15,
@@ -561,6 +561,6 @@
     "opacity": 0.55
   },
   "level": {
-    "selected": "level10"
+    "selected": "level12"
   }
 }

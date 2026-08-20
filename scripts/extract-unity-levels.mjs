@@ -9,12 +9,15 @@ const activePath = join(root, 'src', 'generated-active-level.js');
 const defaultSources = [
   'D:/备份/改文件名临时文件夹/level5.asset',
   'D:/备份/改文件名临时文件夹/level7.asset',
-  ...[8, 9, 10, 13].map((id) => `D:/备份/改文件名临时文件夹/level${id}.asset`),
+  ...[8, 9, 10].map((id) => `D:/备份/改文件名临时文件夹/level${id}.asset`),
+  'D:/备份/busloop素材关卡/level12.asset',
+  'D:/备份/改文件名临时文件夹/level13.asset',
   'D:/备份/busloop素材关卡/level15.asset',
   'D:/备份/busloop素材关卡/level16.asset'
 ];
 const sourcePaths = process.argv.slice(2).filter((value) => !value.startsWith('--'));
 const selectedArg = process.argv.find((value) => value.startsWith('--selected='))?.slice('--selected='.length);
+const mergeExisting = process.argv.includes('--merge-existing');
 const unityVehicleCollisionSizes = {
   4: { width: 0.27, length: 0.47157902 },
   6: { width: 0.27, length: 0.486 },
@@ -36,6 +39,22 @@ const passengerQueueOverrides = {
       [0, 6], [5, 10], [1, 10], [5, 10], [1, 4], [5, 10], [1, 6], [7, 6],
       [5, 6], [7, 12], [0, 6], [7, 6], [0, 6], [7, 4], [0, 10], [7, 10],
       [0, 10], [7, 4], [0, 18]
+    ])
+  ],
+  // Bus Fever - Car Jam Escape Playable_applovin.html, embedded Level12 passengerQueues.
+  level12: [
+    expandPassengerQueue([
+      [5, 2], [3, 2], [0, 3], [5, 2], [1, 9], [8, 6], [7, 6], [4, 4],
+      [2, 4], [5, 6], [1, 6], [7, 8], [6, 10], [0, 4], [5, 4], [6, 6],
+      [0, 10], [5, 10], [3, 10], [6, 4], [0, 6], [5, 8], [2, 10], [1, 10],
+      [8, 4], [3, 4], [5, 4], [1, 4], [8, 4], [5, 4], [7, 10], [0, 4],
+      [2, 4], [5, 4], [4, 4], [5, 4], [1, 4], [4, 4], [5, 7]
+    ]),
+    expandPassengerQueue([
+      [5, 2], [3, 2], [0, 3], [5, 2], [1, 1], [5, 9], [3, 4], [7, 8],
+      [5, 8], [7, 4], [5, 14], [7, 8], [5, 16], [7, 4], [5, 4], [7, 4],
+      [5, 12], [0, 4], [5, 24], [0, 6], [5, 4], [0, 8], [5, 12], [0, 20],
+      [5, 36]
     ])
   ],
   level15: [
@@ -270,8 +289,29 @@ const requestedSources = sourcePaths.length > 0 ? sourcePaths : defaultSources;
 for (const path of requestedSources) {
   if (!existsSync(path)) throw new Error(`Unity level asset not found: ${path}`);
 }
-const levels = [baseLevel, ...requestedSources.map((path) => parseUnityLevel(path, baseLevel))];
-const selected = selectedArg ?? baseLevel.key;
+const importedLevels = requestedSources.map((path) => parseUnityLevel(path, baseLevel));
+let levels = [baseLevel, ...importedLevels];
+let selected = selectedArg ?? baseLevel.key;
+
+if (mergeExisting) {
+  if (!existsSync(artifactPath)) {
+    throw new Error('Cannot merge Unity levels without artifacts/unity-levels.json');
+  }
+  const existing = JSON.parse(readFileSync(artifactPath, 'utf8'));
+  const replacements = new Map(importedLevels.map((level) => [level.key, level]));
+  levels = (existing.levels ?? []).map((level) => replacements.get(level.key) ?? level);
+  for (const importedLevel of importedLevels) {
+    if (!levels.some((level) => level.key === importedLevel.key)) levels.push(importedLevel);
+  }
+  levels.sort((first, second) => {
+    if (first.key === 'currentLevel12') return -1;
+    if (second.key === 'currentLevel12') return 1;
+    const firstId = Number(first.key.match(/^level(\d+)$/)?.[1] ?? Number.MAX_SAFE_INTEGER);
+    const secondId = Number(second.key.match(/^level(\d+)$/)?.[1] ?? Number.MAX_SAFE_INTEGER);
+    return firstId - secondId || first.key.localeCompare(second.key);
+  });
+  selected = selectedArg ?? existing.selected ?? baseLevel.key;
+}
 const activeLevel = levels.find((level) => level.key === selected);
 if (!activeLevel) throw new Error(`Unknown selected level: ${selected}`);
 

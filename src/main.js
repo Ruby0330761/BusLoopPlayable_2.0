@@ -128,10 +128,33 @@ function migrateLevel10PackageTuning(source) {
     source.background.asset = '/assets/applovin/textures/BG01_split01_Sakura_q60.jpg';
     changed = true;
   }
+  if (source?.background?.asset === '/assets/applovin/textures/BG01_split01_Sakura_q60.jpg') {
+    source.background.asset = '/assets/applovin/textures/BG01_split01_q60.jpg';
+    changed = true;
+  }
   for (const guide of [source?.vehicleGuideHand, source?.firstClickGuide]) {
     if (guide?.levelKey !== 'level16' || Number(guide.vehicleId) !== 45) continue;
     guide.levelKey = 'level10';
     guide.vehicleId = 39;
+    changed = true;
+  }
+  return changed;
+}
+
+function migrateLevel12PackageTuning(source) {
+  let changed = false;
+  if (source?.level?.selected === 'level10') {
+    source.level.selected = 'level12';
+    changed = true;
+  }
+  if (source?.background?.asset === '/assets/applovin/textures/BG01_split01_q60.jpg') {
+    source.background.asset = '/assets/applovin/textures/BG01_split01_Sakura_q60.jpg';
+    changed = true;
+  }
+  for (const guide of [source?.vehicleGuideHand, source?.firstClickGuide]) {
+    if (guide?.levelKey !== 'level10' || Number(guide.vehicleId) !== 39) continue;
+    guide.levelKey = 'level12';
+    guide.vehicleId = 34;
     changed = true;
   }
   return changed;
@@ -192,9 +215,10 @@ function loadSavedTuning() {
       const guideHandMotionMigrated = migrateGuideHandMotionTuning(savedTuning);
       const level16PackageMigrated = migrateLevel16PackageTuning(savedTuning);
       const level10PackageMigrated = migrateLevel10PackageTuning(savedTuning);
+      const level12PackageMigrated = migrateLevel12PackageTuning(savedTuning);
       deepMerge(SCENE_TUNING, savedTuning);
       migrateLegacyConveyorTuning(savedTuning);
-      if (guideHandMotionMigrated || level16PackageMigrated || level10PackageMigrated) {
+      if (guideHandMotionMigrated || level16PackageMigrated || level10PackageMigrated || level12PackageMigrated) {
         localStorage.setItem(TUNING_STORAGE_KEY, JSON.stringify(savedTuning));
       }
       return;
@@ -205,6 +229,7 @@ function loadSavedTuning() {
     migrateGuideHandMotionTuning(legacy);
     migrateLevel16PackageTuning(legacy);
     migrateLevel10PackageTuning(legacy);
+    migrateLevel12PackageTuning(legacy);
     const legacyModelScale = legacy.vehicleArea?.modelScale;
     delete legacy.vehicleArea;
     deepMerge(SCENE_TUNING, legacy);

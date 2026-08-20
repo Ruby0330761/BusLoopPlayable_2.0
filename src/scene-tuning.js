@@ -1,6 +1,6 @@
 export const SCENE_TUNING = {
   "level": {
-    "selected": "level10"
+    "selected": "level12"
   },
   "preview": {
     "enabled": 1,
@@ -380,8 +380,8 @@ export const SCENE_TUNING = {
   },
   "vehicleGuideHand": {
     "enabled": 1,
-    "levelKey": "level10",
-    "vehicleId": 39,
+    "levelKey": "level12",
+    "vehicleId": 34,
     "offsetX": 0.25,
     "offsetY": 0.38,
     "offsetZ": 0.46,
@@ -397,8 +397,8 @@ export const SCENE_TUNING = {
   },
   "firstClickGuide": {
     "enabled": 0,
-    "levelKey": "level10",
-    "vehicleId": 39,
+    "levelKey": "level12",
+    "vehicleId": 34,
     "durationSeconds": 3,
     "maskOpacity": 0.8,
     "holePadding": 15,

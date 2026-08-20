@@ -2,11 +2,46 @@
 
 ## Current Goal
 
-Switch the current Level10/39/CTA/threshold-10 package from the summer background to the optimized Sakura background and regenerate the AppLovin package.
+Prepare a durable Chinese handoff guide for local editor use, tuning persistence, AppLovin packaging, store redirect expectations, and final validation.
 
 ## Current Phase
 
-Complete: the Level10/39/CTA/threshold-10 package is rebuilt with Sakura as the only embedded background and passes final validation.
+Complete: the handoff guide is written from the current runtime and packaging implementation, with the editor-to-production tuning boundary and MRAID behavior clarified.
+
+## Current Production Handoff Guide Phases
+
+1. **Complete:** Confirmed the local Vite editor startup route, browser persistence behavior, level-selection endpoint, and production tuning application script.
+2. **Complete:** Traced CTA/install redirects to `mraid.open()` and real pointer/click paths; local browsers without MRAID are expected not to navigate.
+3. **Complete:** Documented the AI-assisted export/apply/build/package/check workflow and the required AppLovin manual validation sequence.
+4. **Complete:** Recorded the handoff in project documentation without changing runtime code or rebuilding the existing package.
+
+## Current Level12 Sakura Package Phases
+
+1. **Complete:** Confirmed Level12 vehicle 34, guide/CTA/background tuning owners, production selection, and AppLovin package commands.
+2. **Complete:** Synchronized Level12, guide vehicle 34 with Level12 scope, Sakura background, and store redirect threshold 10 across durable source/exported state, saved-cache migration, and focused assertions.
+3. **Complete:** Regenerated the narrow Level12 production payload; syntax, catalog 10/10, guide 1/1, and targeted background/cache/install checks 3/3 pass.
+4. **Complete:** Built, packaged, passed all 15 AppLovin checks, saved `level12-sakura.html`, and verified the package markers/background fingerprints and final hash.
+
+## Current Level12 Playable Queue Sync Phases
+
+1. **Complete:** Parsed both AppLovin `passengerQueues` arrays and confirmed 219+219 passengers with exact Level12 seat-color parity.
+2. **Complete:** Replaced the extractor override/test expectations and the supplied `level12.asset` fixed passenger sequence, preserving a backup of the prior asset.
+3. **Complete:** Re-imported Level12 incrementally, restored the Level10 narrow production module, and verified exact queue parity across playable, asset, catalog, and tests.
+4. **Complete:** Recorded the completed queue-source correction and verification result.
+
+## Current Level12 Import Phases
+
+1. **Complete:** Located the Level12 row in `FixQueueConfigB.xlsx` and confirmed 173 left + 265 right passengers exactly match 94 vehicles / 438 seats by color.
+2. **Complete:** Added Level12 and its exact queue order to the reproducible Unity extraction/catalog pipeline and editor persistence whitelist.
+3. **Complete:** Regenerated the catalog with an explicit merge mode, preserved Level10 production selection, and passed queue, collision, depth-reference, selection, and syntax checks.
+4. **Complete:** Browser QA rendered Level12 with zero error-level logs, restored Level10, and recorded the durable handoff without rebuilding or repackaging AppLovin artifacts.
+
+## Current Level10 Winter Separate Package Phases
+
+1. **Complete:** Fingerprinted the existing Sakura package and preserved it as `level10-sakura.html` with an identical hash.
+2. **Complete:** Switched exported/source/cache defaults and focused assertions from Sakura to winter while preserving Level10/39/CTA/threshold values.
+3. **Complete:** Regenerated Level10 and passed focused syntax/background/config/catalog/guide checks.
+4. **Complete:** Built/packaged winter, saved it separately, passed all 15 checks on both named artifacts, verified selected-background-only fingerprints, and recorded hashes/status.
 
 ## Current Level10 Sakura Repackage Phases
 
@@ -211,6 +246,15 @@ Complete: the Level10/39/CTA/threshold-10 package is rebuilt with Sakura as the 
 
 | Error | Attempt | Resolution |
 | --- | --- | --- |
+| PowerShell blocked `npm.ps1`, so the parallel generation step did not run and dependent tests still read the old Level10 module | 1 | Use direct `node scripts/generate-active-level.mjs` and `npm.cmd` commands, then rerun dependent checks serially. |
+| Broad visual-config test also hit the pre-existing camera elevation expectation `55` versus current tuning `61` | 1 | Do not change unrelated camera tuning; verify this request with narrower Level12/background/guide/install assertions. |
+| Inline Node marker command was mangled by PowerShell quote parsing and produced an invalid regular expression | 1 | Use native PowerShell string/byte checks for the packaged artifact instead of retrying the same quoting pattern. |
+| Post-write PowerShell queue-count regex reported `0+0` because its end-of-line assertion did not accommodate CRLF | 1 | Did not rewrite; re-read with the project's line parser and confirmed 219+219 with exact playable parity. |
+| Combined playable-queue planning update did not match the BOM-prefixed `progress.md` heading | 1 | Split task plan, findings, and progress into separate narrow patches. |
+| Combined Level12 completion patch did not match the BOM-prefixed project progress heading | 1 | Verify no partial changes, then patch the BOM file separately using its first dated section as context. |
+| Bundled `pnpm run dev` attempted to rewrite existing `node_modules` metadata and failed with EPERM | 1 | Do not retry dependency installation; launch the already-installed Vite entry directly with the bundled Node runtime. |
+| Full Unity catalog regeneration failed because the historical default `D:/备份/改文件名临时文件夹/level7.asset` no longer exists | 1 | Locate the current preserved source paths; if unavailable, use an explicit incremental catalog import that preserves existing generated levels. |
+| Combined Level12 planning-file patch did not match the BOM-prefixed `progress.md` heading | 1 | Split the updates into narrow per-file patches that avoid the encoded first line. |
 | Planning session catch-up could not start because neither `python` nor the Windows `py` launcher is installed on PATH | 2 | Continue from the existing planning files and inspect the current workspace directly; do not retry the unavailable launchers. |
 | Initial combined planning-file patch used a progress-file context that did not match the BOM-prefixed file | 2 | Split the update into narrow heading/current-goal patches and verify each file independently. |
 | Initial background asset size probe referenced a nonexistent unoptimized winter filename | 1 | Use the actual editor option path `BG01_split01_q60.jpg` and enumerate the texture directory before further comparisons. |

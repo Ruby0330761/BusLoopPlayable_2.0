@@ -1,5 +1,41 @@
 ﻿# Playable Project Progress
 
+## Completed On 2026-08-20 - Production handoff guide
+
+- Added `docs/project/playable-handoff-guide.md` covering local editor startup, browser-local tuning persistence, AI-assisted tuning export/application, AppLovin packaging, and manual validation.
+- Confirmed the production parameter boundary: editor changes live in `localStorage` until `window.__busLoop.exportTuning()` is written to `artifacts/scene-tuning.json` and applied with `npm run apply:tuning`.
+- Clarified that local browsers are expected not to open the store because the current runtime only calls AppLovin `mraid.open()`; final CTA behavior still requires real user clicks in official preview/backend testing.
+- Documentation-only change. No runtime code, build output, or existing AppLovin artifact was modified.
+
+## Completed On 2026-08-12 - Level12 Sakura AppLovin package
+
+- Switched the production selection and exported tuning to Level12, scoped both guide configurations to vehicle 34 while retaining the disabled first-click mask, selected the optimized Sakura background, and kept the successful-operation store redirect threshold at 10.
+- Regenerated the narrow Level12 payload, passed catalog 10/10, guide 1/1, targeted background/cache/install checks 3/3, and the production build with only the existing Vite chunk-size warning.
+- `artifacts/applovin/index.html` and the preserved `artifacts/applovin/level12-sakura.html` are identical at 4,197,570 bytes; all 15 AppLovin static checks pass. SHA-256: `2ED3ACA5C9233FF73B34D9A898BE2463207A478B7C226FF0F582CD48315B9D81`.
+- Package fingerprints confirm Level12 only, guide vehicle 34, redirect threshold 10, Sakura bytes present, and winter/summer background bytes absent. Official AppLovin preview/upload play remains external manual QA.
+
+## Completed On 2026-08-11 - Level12 AppLovin queue replacement
+
+- Replaced Level12's prior Excel 173+265 split with the exact two queues embedded in `Bus Fever - Car Jam Escape Playable_applovin.html`: 219+219 passengers.
+- Updated both `D:/备份/busloop素材关卡/level12.asset` fixed passenger sequence and the reproducible extractor/catalog source; the original asset is preserved as `level12.asset.before-applovin-queue-20260811.bak`.
+- The playable, edited asset, generated JSON artifact, and JavaScript catalog now contain identical queue arrays. Combined colors still match all 438 vehicle seats, focused tests pass 10/10, and syntax checks pass.
+- Level10 remains the selected/active production level. No production build or AppLovin package was run because only the development Level12 queue order changed.
+
+## Completed On 2026-08-11 - Level12 layout and Excel queue import
+
+- Imported the supplied 94-vehicle `level12.asset` into the editor/development catalog and sourced its exact passenger order from `FixQueueConfigB.xlsx` Sheet1 LevelId 12: 173 left + 265 right.
+- All 438 passenger colors match the vehicle-seat totals exactly; vehicle ids and depth references are valid and the layout has zero initial collision-box overlaps.
+- Added an explicit incremental extractor mode because the historical full-regeneration Level7 source is no longer available; existing verified catalog levels are preserved instead of being replaced by a different same-named asset.
+- Catalog tests pass 10/10, touched/generated syntax checks pass, and browser QA rendered Level12 with zero error-level logs before restoring Level10. The production module and existing AppLovin packages remain Level10 and were not rebuilt.
+
+## Completed On 2026-08-11 - Separate Level10 winter AppLovin package
+
+- Preserved the existing Sakura build as `artifacts/applovin/level10-sakura.html`, then switched the baked background to winter and generated `artifacts/applovin/level10-winter.html` without overwriting it.
+- Both packages retain Level10, guide vehicle 39, CTA enabled, successful-operation threshold 10, disabled first-click mask, and the existing DualQueue3 layout.
+- All 15 AppLovin static checks pass independently for both named artifacts. Base64 fingerprints confirm the winter package embeds only winter q60 and the Sakura package embeds only Sakura q60; summer and the source Sakura PNG are absent.
+- Winter: 3,822,146 bytes, SHA-256 `30BA4A16F886428507E5C7392E7858CAA9EB2F511DC2EC0A441CE0AE8D420E7E`. Sakura: 4,196,123 bytes, SHA-256 `81A42A23ABADC5A320203BDE099F829D5CCE9286EF7C669834C041371A94D344`.
+- `artifacts/applovin/index.html` remains the latest winter output and is byte-identical to `level10-winter.html`. Official preview/upload/device play remains external manual acceptance.
+
 ## Completed On 2026-08-11 - Level10 Sakura AppLovin repackage
 
 - Switched the completed Level10/guide-39/CTA-enabled/threshold-10 package from summer to the optimized 278,157-byte Sakura background without changing other tuning.
