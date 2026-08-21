@@ -5,6 +5,8 @@
 | Resource | Status | Notes |
 | --- | --- | --- |
 | `public/assets/applovin/textures/BG01_split01_q60.jpg` | wired | Editor option `BG01 \u51ac\u5b63`; current `level10-winter.html` and `index.html` embed this background only. |
+| `public/assets/applovin/textures/BG02_split01_winter.png` | source | Supplied 2100x3382 BG02 winter source; preserved unchanged and excluded unless selected directly. |
+| `public/assets/applovin/textures/BG02_split01_winter_q60.jpg` | wired | Editor option `BG02 \u51ac\u5b63`; 140,721-byte JPEG quality-60 delivery derivative. |
 | `public/assets/applovin/textures/BG02_split01_summer_q60.jpg` | wired | Editor option `BG02 \u590f\u5b63`; excluded from both current named Level10 packages. |
 | `public/assets/applovin/textures/BG01_split01_Sakura.png` | source | Supplied 2100x3382 Sakura source; preserved unchanged and excluded from production packages. |
 | `public/assets/applovin/textures/BG01_split01_Sakura_q60.jpg` | wired | Editor option `BG01 \u6a31\u82b1`; 278,157-byte delivery derivative preserved alone in `level10-sakura.html` and excluded from the winter package. |

@@ -420,6 +420,7 @@ test('background asset selection uses the optimized Sakura image and remains edi
   assert.ok(statSync(sakuraPath).size < 350_000);
   assert.match(editorSource, /BACKGROUND_OPTIONS/);
   assert.match(editorSource, /BG01_split01_q60\.jpg/);
+  assert.match(editorSource, /BG02_split01_winter_q60\.jpg/);
   assert.match(editorSource, /BG02_split01_summer_q60\.jpg/);
   assert.match(editorSource, /BG01_split01_Sakura_q60\.jpg/);
   assert.match(viewSource, /this\.setArtworkPlaneTexture\(this\.backgroundPlane, getSelectedBackgroundUrl\(\)\)/);

@@ -1,5 +1,11 @@
 ﻿# Playable Project Progress
 
+## Completed On 2026-08-21 - BG02 winter background option
+
+- Generated the 2100x3382 `BG02_split01_winter_q60.jpg` JPEG quality-60 derivative at 140,721 bytes while preserving the supplied PNG source.
+- Added it to the scene editor background selector as `BG02 \u51ac\u5b63` and recorded the source/delivery asset status.
+- Scene-editor/test syntax and the focused background-selection regression pass; visual inspection of the compressed image is clean. Default background and platform packages were not changed.
+
 ## Completed On 2026-08-20 - Production handoff guide
 
 - Added `docs/project/playable-handoff-guide.md` covering local editor startup, browser-local tuning persistence, AI-assisted tuning export/application, AppLovin packaging, and manual validation.
