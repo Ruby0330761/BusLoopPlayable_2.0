@@ -1,5 +1,26 @@
 # Findings
 
+## 2026-08-21 Removed editor Levels19-20
+
+- Level19 and Level20 are no longer valid editor catalog ids. Only the sequential alias Level18 remains from the three-file import set.
+- The durable selection was Level19 at removal time, so `artifacts/selected-level.txt` now selects Level18. Development localStorage values selecting removed Level19/20 migrate to Level18 without changing unrelated tuning.
+- The renamed `level19.asset` and `level20.asset` project snapshots were deleted; the user's original Unity repository files remain untouched.
+
+## 2026-08-21 Sequential Level18-20 editor imports
+
+- User-defined editor ordering overrides source filenames: supplied `level16.asset` maps to `level18`, supplied `level18.asset` maps to `level19`, and supplied `level19.asset` maps to `level20`.
+- Editor Level18 retains Unity `id: 16`, `mapScale: 1`, 68 vehicles, queues 200+228, and color totals `{0:230,6:198}`.
+- Editor Level19 retains Unity `id: 18`, `mapScale: 1.0295557`, 61 vehicles, queues 184+184, and color total `{0:368}`.
+- Editor Level20 retains Unity `id: 0`, `mapScale: 1.011019`, 64 vehicles, queues 218+218, and color total `{5:436}`.
+- All three levels have unique vehicle ids, valid vehicle-depth references, and no initial oriented collision overlaps. Their project-local renamed snapshots are byte-identical to the corresponding supplied sources.
+
+## 2026-08-21 Level17 editor import restoration
+
+- The supplied Unity YAML is `level17` with Unity `id: 17`, `mapScale: 0.9`, 107 unique vehicles, and two queues of 300 + 258.
+- Seat/passenger totals match exactly by color: color 3 = 304 and color 5 = 254. All 63 vehicle-depth entries resolve and no initial oriented collision boxes overlap.
+- `conveyorBeltName: ConveyorBelt4` remains informational because per-level conveyor names are not consumed by the current extractor/runtime; conveyor geometry remains the global editor selection.
+- Incremental `--merge-existing` imports must update only `artifacts/unity-levels.json` and `src/level-catalog.js`; they now leave `src/generated-active-level.js` untouched so editor catalog recovery cannot replace a production payload.
+
 ## 2026-08-20 Production handoff workflow
 
 - The editor auto-saves the mutable `SCENE_TUNING` object to browser `localStorage` key `bus-loop-scene-tuning-v3`; most editor changes do not automatically write project source files.

@@ -16,7 +16,9 @@ const IMPORTED_EXPECTATIONS = {
   level12: { vehicles: 94, queues: [219, 219] },
   level13: { vehicles: 75, queues: [202, 202] },
   level15: { vehicles: 81, queues: [296, 214] },
-  level16: { vehicles: 37, queues: [139, 79] }
+  level16: { vehicles: 37, queues: [139, 79] },
+  level17: { vehicles: 107, queues: [300, 258] },
+  level18: { vehicles: 68, queues: [200, 228] }
 };
 
 const LEVEL7_QUEUE_RUNS = [
@@ -240,6 +242,58 @@ test('level16 uses the authored vehicle layout and passenger queue order', () =>
   }
 });
 
+test('level17 uses the supplied Unity layout and has valid depth and collision data', () => {
+  const level = LEVEL_CATALOG.level17;
+  assert.equal(level.unityId, 17);
+  assert.equal(level.sourceFile, 'level17.asset');
+  assert.equal(level.mapScale, 0.9);
+  const vehicleIds = new Set(level.vehicles.map((vehicle) => vehicle.id));
+  assert.equal(vehicleIds.size, level.vehicles.length);
+  for (const [vehicleId, depthIds] of Object.entries(level.vehicleDepthes)) {
+    assert.equal(vehicleIds.has(Number(vehicleId)), true, `level17 depth owner ${vehicleId}`);
+    for (const depthId of depthIds) {
+      assert.equal(vehicleIds.has(depthId), true, `level17 depth reference ${vehicleId} -> ${depthId}`);
+    }
+  }
+  for (let first = 0; first < level.vehicles.length; first += 1) {
+    for (let second = first + 1; second < level.vehicles.length; second += 1) {
+      const firstVehicle = level.vehicles[first];
+      const secondVehicle = level.vehicles[second];
+      assert.equal(
+        boxesOverlap(collisionBox(level, firstVehicle), collisionBox(level, secondVehicle)),
+        false,
+        `level17 vehicles ${firstVehicle.id} and ${secondVehicle.id}`
+      );
+    }
+  }
+});
+
+test('level18 follows the supplied file order and has valid geometry', () => {
+  const level = LEVEL_CATALOG.level18;
+  assert.equal(level.unityId, 16);
+  assert.equal(level.sourceFile, 'level18.asset');
+  assert.equal(level.mapScale, 1);
+  const vehicleIds = new Set(level.vehicles.map((vehicle) => vehicle.id));
+  assert.equal(vehicleIds.size, level.vehicles.length);
+  for (const [vehicleId, depthIds] of Object.entries(level.vehicleDepthes)) {
+    assert.equal(vehicleIds.has(Number(vehicleId)), true, `level18 depth owner ${vehicleId}`);
+    for (const depthId of depthIds) {
+      assert.equal(vehicleIds.has(depthId), true, `level18 depth reference ${vehicleId} -> ${depthId}`);
+    }
+  }
+  for (let first = 0; first < level.vehicles.length; first += 1) {
+    for (let second = first + 1; second < level.vehicles.length; second += 1) {
+      const firstVehicle = level.vehicles[first];
+      const secondVehicle = level.vehicles[second];
+      assert.equal(
+        boxesOverlap(collisionBox(level, firstVehicle), collisionBox(level, secondVehicle)),
+        false,
+        `level18 vehicles ${firstVehicle.id} and ${secondVehicle.id}`
+      );
+    }
+  }
+});
+
 test('level8 and level9 use Unity logical vehicle sizes without initial overlaps', () => {
   const expectedSizes = {
     4: { width: 0.27, length: 0.47157902 },
@@ -284,5 +338,7 @@ test('editor level selection reloads the runtime and production build regenerate
   assert.match(viteConfigSource, /'level15'/);
   assert.match(viteConfigSource, /'level16'/);
   assert.match(viteConfigSource, /'level12'/);
+  assert.match(viteConfigSource, /'level17'/);
+  assert.match(viteConfigSource, /'level18'/);
 });
 

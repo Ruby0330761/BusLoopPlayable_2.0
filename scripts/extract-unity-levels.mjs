@@ -13,10 +13,17 @@ const defaultSources = [
   'D:/备份/busloop素材关卡/level12.asset',
   'D:/备份/改文件名临时文件夹/level13.asset',
   'D:/备份/busloop素材关卡/level15.asset',
-  'D:/备份/busloop素材关卡/level16.asset'
+  'D:/备份/busloop素材关卡/level16.asset',
+  ...[17, 18].map((id) => join(root, 'artifacts', 'unity-level-sources', `level${id}.asset`))
 ];
 const sourcePaths = process.argv.slice(2).filter((value) => !value.startsWith('--'));
 const selectedArg = process.argv.find((value) => value.startsWith('--selected='))?.slice('--selected='.length);
+const removeKeys = new Set(
+  (process.argv.find((value) => value.startsWith('--remove='))?.slice('--remove='.length) ?? '')
+    .split(',')
+    .map((value) => value.trim())
+    .filter(Boolean)
+);
 const mergeExisting = process.argv.includes('--merge-existing');
 const unityVehicleCollisionSizes = {
   4: { width: 0.27, length: 0.47157902 },
@@ -285,7 +292,12 @@ baseLevel.collision = {
   garageSize: baseLevel.collision?.garageSize
     ?? { width: 0.95 / 1.5, length: 1.2 / 1.5 }
 };
-const requestedSources = sourcePaths.length > 0 ? sourcePaths : defaultSources;
+if (removeKeys.size > 0 && !mergeExisting) {
+  throw new Error('--remove requires --merge-existing');
+}
+const requestedSources = sourcePaths.length > 0
+  ? sourcePaths
+  : removeKeys.size > 0 ? [] : defaultSources;
 for (const path of requestedSources) {
   if (!existsSync(path)) throw new Error(`Unity level asset not found: ${path}`);
 }
@@ -303,6 +315,7 @@ if (mergeExisting) {
   for (const importedLevel of importedLevels) {
     if (!levels.some((level) => level.key === importedLevel.key)) levels.push(importedLevel);
   }
+  levels = levels.filter((level) => !removeKeys.has(level.key));
   levels.sort((first, second) => {
     if (first.key === 'currentLevel12') return -1;
     if (second.key === 'currentLevel12') return 1;
@@ -321,9 +334,13 @@ writeFileSync(catalogPath, moduleSource(
   Object.fromEntries(levels.map((level) => [level.key, level])),
   `\nexport const LEVEL_OPTIONS = Object.freeze(Object.values(LEVEL_CATALOG).filter((level) => level.key !== 'currentLevel12').map((level) => [level.key, level.displayName]));\n\nexport function getLevelDefinition(key) {\n  return LEVEL_CATALOG[key] ?? LEVEL_CATALOG.level5;\n}\n`
 ));
-writeFileSync(activePath, moduleSource('ACTIVE_LEVEL', activeLevel));
+if (!mergeExisting) {
+  writeFileSync(activePath, moduleSource('ACTIVE_LEVEL', activeLevel));
+}
 
 for (const level of levels) {
   console.log(`${level.key}: ${level.vehicles.length} vehicles, queues ${level.passengerQueues.map((queue) => queue.length).join('+')}`);
 }
-console.log(`Generated active level: ${activeLevel.key}`);
+console.log(mergeExisting
+  ? `Preserved production active module; catalog selection remains ${selected}`
+  : `Generated active level: ${activeLevel.key}`);

@@ -1,5 +1,25 @@
 ﻿# Playable Project Progress
 
+## Completed On 2026-08-21 - Removed editor Levels19-20
+
+- Removed editor catalog entries Level19 and Level20, their Vite selection ids, regression expectations, default extraction inputs, and project-local renamed Unity snapshots.
+- Retained Level17 and Level18. Because the current durable editor selection was Level19, it now falls back to Level18; saved browser tuning selecting removed Level19/20 also migrates narrowly to Level18.
+- Incremental structured removal preserved the existing Level12 production active module byte-for-byte. Focused verification is recorded below.
+
+## Completed On 2026-08-21 - Sequential Level18-20 editor imports
+
+- Imported the three supplied Unity files in user-specified order, ignoring their original filenames: source Level16 -> editor Level18, source Level18 -> editor Level19, and source Level19 -> editor Level20.
+- The resulting layouts contain 68 / 61 / 64 unique vehicles with queues 200+228 / 184+184 / 218+218. Every level has exact seat/passenger color parity, valid depth references, and zero initial vehicle collision-box overlaps.
+- Added byte-identical project-local source snapshots, default extractor inputs, Vite selection support, and focused sequential-alias regression coverage.
+- Four focused catalog/editor tests and touched syntax checks pass. Current Level17 editor selection and the existing Level12 production module remain unchanged; no build/package was run.
+
+## Completed On 2026-08-21 - Level17 editor import restored
+
+- Restored the supplied `level17.asset` as an editor-selectable development level after the earlier import was overwritten by a remote pull.
+- Level17 contains 107 unique vehicles and queues of 300 + 258 passengers; color totals match all 558 seats, all depth references are valid, and there are no initial vehicle collision-box overlaps.
+- Added a project-local Unity source snapshot, Vite selection support, focused regression coverage, and merge-mode protection that leaves the production active module unchanged.
+- Syntax checks and three focused catalog/editor tests pass. Current `level8` selection and the existing Level12 production module were preserved; no build/package was run.
+
 ## Completed On 2026-08-21 - BG02 winter background option
 
 - Generated the 2100x3382 `BG02_split01_winter_q60.jpg` JPEG quality-60 derivative at 140,721 bytes while preserving the supplied PNG source.

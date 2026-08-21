@@ -2,7 +2,10 @@ import { writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { defineConfig } from 'vite';
 
-const LEVEL_IDS = new Set(['level5', 'level8', 'level9', 'level10', 'level12', 'level13', 'level15', 'level16']);
+const LEVEL_IDS = new Set([
+  'level5', 'level8', 'level9', 'level10', 'level12', 'level13', 'level15', 'level16',
+  'level17', 'level18'
+]);
 
 export default defineConfig({
   plugins: [{
