@@ -56,11 +56,30 @@ const FIELD_GROUPS = [
     ]
   },
   {
-    title: '\u624b\u673a\u9884\u89c8',
+    title: 'Icon/Logo\u8c03\u6574',
     fields: [
-      ['\u542f\u7528', 'preview.enabled', 0, 1, 1],
-      ['\u5bbd\u5ea6', 'preview.width', 320, 2160, 1],
-      ['\u9ad8\u5ea6', 'preview.height', 640, 4320, 1]
+      ['\u9884\u89c8\u542f\u7528', 'preview.enabled', 0, 1, 1, null, 'toggle'],
+      ['\u6a21\u62df\u5bbd\u5ea6', 'preview.width', 320, 2160, 1],
+      ['\u6a21\u62df\u9ad8\u5ea6', 'preview.height', 320, 4320, 1],
+      ['Icon \u663e\u793a', 'branding.icon.enabled', 0, 1, 1, null, 'toggle'],
+      ['Icon \u9501\u5b9a', 'branding.icon.locked', 0, 1, 1, null, 'toggle'],
+      ['Icon X', 'branding.icon.x', 0, 4320, 1],
+      ['Icon Y', 'branding.icon.y', 0, 4320, 1],
+      ['Icon \u5bbd\u5ea6', 'branding.icon.width', 16, 2160, 1],
+      ['Icon \u9ad8\u5ea6', 'branding.icon.height', 16, 2160, 1],
+      ['Logo \u663e\u793a', 'branding.logo.enabled', 0, 1, 1, null, 'toggle'],
+      ['Logo \u9501\u5b9a', 'branding.logo.locked', 0, 1, 1, null, 'toggle'],
+      ['Logo X', 'branding.logo.x', 0, 4320, 1],
+      ['Logo Y', 'branding.logo.y', 0, 4320, 1],
+      ['Logo \u5bbd\u5ea6', 'branding.logo.width', 16, 2160, 1],
+      ['Logo \u9ad8\u5ea6', 'branding.logo.height', 16, 2160, 1],
+      ['\u6587\u672c\u663e\u793a', 'branding.text.enabled', 0, 1, 1, null, 'toggle'],
+      ['\u6587\u672c\u9501\u5b9a', 'branding.text.locked', 0, 1, 1, null, 'toggle'],
+      ['\u6587\u672c\u5185\u5bb9', 'branding.text.content', 0, 0, 1, null, 'text'],
+      ['\u6587\u672c X', 'branding.text.x', 0, 4320, 1],
+      ['\u6587\u672c Y', 'branding.text.y', 0, 4320, 1],
+      ['\u6587\u672c\u5bbd\u5ea6', 'branding.text.width', 16, 2160, 1],
+      ['\u6587\u672c\u9ad8\u5ea6', 'branding.text.height', 16, 2160, 1]
     ]
   },
   {
@@ -429,17 +448,21 @@ export function createSceneEditor(root, { getTuning, setTuning, clearSavedTuning
     section.className = 'editor-section';
     if (group.conveyorLayout) section.dataset.conveyorLayout = group.conveyorLayout;
     section.innerHTML = `<h3>${group.title}</h3>`;
-    for (const [label, path, min, max, step, options] of group.fields) {
+    for (const [label, path, min, max, step, options, control] of group.fields) {
       const isColor = /color$/i.test(path) || /^passengerMaterial\.solidColors\.\d+$/.test(path);
+      const isToggle = control === 'toggle';
+      const isText = control === 'text';
       const row = document.createElement('label');
       row.className = 'editor-field';
       row.dataset.path = path;
       if (isColor) row.classList.add('editor-field-color');
       if (options) row.classList.add('editor-field-select');
+      if (isToggle) row.classList.add('editor-field-toggle');
+      if (isText) row.classList.add('editor-field-text');
       const optionsMarkup = options
         ? `<select class="editor-select">${options.map(([value, text]) => `<option value="${value}">${text}</option>`).join('')}</select>`
         : '';
-      const rangeMarkup = isColor
+      const rangeMarkup = isColor || isToggle || isText
         ? ''
         : `<input class="editor-range" type="range" min="${min}" max="${max}" step="${step}">`;
       row.innerHTML = `
@@ -447,12 +470,16 @@ export function createSceneEditor(root, { getTuning, setTuning, clearSavedTuning
         ${optionsMarkup}
         ${options ? '' : rangeMarkup}
         ${isColor && !options ? '<input class="editor-color" type="color">' : ''}
-        ${options ? '' : `<input class="editor-number" type="number" min="${min}" max="${max}" step="${step}" aria-label="${group.title} ${label}">`}
+        ${isToggle ? `<input class="editor-checkbox" type="checkbox" role="switch" aria-label="${group.title} ${label}">` : ''}
+        ${isText ? `<input class="editor-text" type="text" aria-label="${group.title} ${label}">` : ''}
+        ${options || isToggle || isText ? '' : `<input class="editor-number" type="number" min="${min}" max="${max}" step="${step}" aria-label="${group.title} ${label}">`}
       `;
       const select = row.querySelector('.editor-select');
       const range = row.querySelector('.editor-range');
       const number = row.querySelector('.editor-number');
       const color = row.querySelector('.editor-color');
+      const checkbox = row.querySelector('.editor-checkbox');
+      const textInput = row.querySelector('.editor-text');
       if (options) {
         const commitOption = (value) => {
           const next = structuredClone(getTuning());
@@ -463,6 +490,26 @@ export function createSceneEditor(root, { getTuning, setTuning, clearSavedTuning
         };
         select.addEventListener('change', () => commitOption(select.value));
         inputs.set(path, { row, select, step, options });
+        section.append(row);
+        continue;
+      }
+      if (isToggle) {
+        checkbox.addEventListener('change', () => {
+          const next = structuredClone(getTuning());
+          setAtPath(next, path, checkbox.checked ? 1 : 0);
+          setTuning(next, { path });
+        });
+        inputs.set(path, { row, checkbox, step });
+        section.append(row);
+        continue;
+      }
+      if (isText) {
+        textInput.addEventListener('input', () => {
+          const next = structuredClone(getTuning());
+          setAtPath(next, path, textInput.value);
+          setTuning(next, { path });
+        });
+        inputs.set(path, { row, textInput });
         section.append(row);
         continue;
       }
@@ -511,6 +558,14 @@ export function createSceneEditor(root, { getTuning, setTuning, clearSavedTuning
       const value = getAtPath(tuning, path);
       if (controls.select) {
         controls.select.value = value;
+        continue;
+      }
+      if (controls.checkbox) {
+        controls.checkbox.checked = Boolean(value);
+        continue;
+      }
+      if (controls.textInput) {
+        controls.textInput.value = value ?? '';
         continue;
       }
       if (controls.range) controls.range.value = String(value);

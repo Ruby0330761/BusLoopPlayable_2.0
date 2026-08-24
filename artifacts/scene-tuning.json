@@ -4,6 +4,33 @@
     "width": 1080,
     "height": 2160
   },
+  "branding": {
+    "icon": {
+      "enabled": 1,
+      "locked": 0,
+      "x": 135,
+      "y": 170,
+      "width": 180,
+      "height": 180
+    },
+    "logo": {
+      "enabled": 1,
+      "locked": 0,
+      "x": 540,
+      "y": 170,
+      "width": 420,
+      "height": 252
+    },
+    "text": {
+      "enabled": 1,
+      "locked": 0,
+      "content": "Bus Fever-Car Jam Escape",
+      "x": 540,
+      "y": 350,
+      "width": 800,
+      "height": 100
+    }
+  },
   "camera": {
     "elevationDegrees": 61,
     "fovDegrees": 2.2,

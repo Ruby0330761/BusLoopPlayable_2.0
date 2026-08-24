@@ -1172,6 +1172,7 @@ test('main thread saves and restores scene tuning from localStorage', () => {
   assert.match(mainSource, /function migrateLegacyConveyorTuning/);
   assert.match(mainSource, /function migrateLevel16PackageTuning/);
   assert.match(mainSource, /function migrateLevel10PackageTuning/);
+  assert.match(mainSource, /function migrateLegacyPackageTuning/);
   assert.match(mainSource, /source\.level\.selected = 'level16'/);
   assert.match(mainSource, /'successfulOperationThreshold', 40, 30/);
   assert.match(mainSource, /'minX', -2\.53, -2\.2/);
@@ -1191,6 +1192,12 @@ test('main thread saves and restores scene tuning from localStorage', () => {
   assert.match(mainSource, /function loadSavedTuning\(\) \{\s+if \(!EDITOR_ENABLED\) return;/);
   assert.match(mainSource, /deepMerge\(SCENE_TUNING, savedTuning\)/);
   assert.match(mainSource, /migrateLegacyConveyorTuning\(savedTuning\)/);
+  const currentStorageBranch = mainSource.slice(
+    mainSource.indexOf('if (saved) {'),
+    mainSource.indexOf('const legacySaved =')
+  );
+  assert.doesNotMatch(currentStorageBranch, /migrateLevel(?:16|10|12)PackageTuning/);
+  assert.match(mainSource, /migrateLegacyPackageTuning\(legacy\)/);
   assert.match(mainSource, /delete legacy\.vehicleArea/);
   assert.match(mainSource, /localStorage\.setItem/);
   assert.match(mainSource, /localStorage\.getItem/);
@@ -1311,6 +1318,66 @@ test('main thread saves and restores scene tuning from localStorage', () => {
   assert.match(mainSource, /const updateCtaPosition = \(\) => \{/);
   assert.match(mainSource, /applyCtaTuning\(view\)/);
   assert.match(mainSource, /updateCtaPosition\(\)/);
+});
+
+test('Icon, Logo, and text overlays expose independent responsive editor controls and drag locking', () => {
+  const indexSource = readFileSync('index.html', 'utf8');
+  const mainSource = readFileSync(join('src', 'main.js'), 'utf8');
+  const editorSource = readFileSync(join('src', 'scene-editor.js'), 'utf8');
+  const styleSource = readFileSync(join('src', 'styles.css'), 'utf8');
+
+  assert.equal(existsSync(join('public', 'assets', 'icon.png')), true);
+  assert.equal(existsSync(join('public', 'assets', 'main-loading-icon.png')), true);
+  assert.equal(existsSync(join('public', 'assets', 'unity', 'fonts', 'Poppins-Bold.ttf')), true);
+  assert.match(indexSource, /id="branding-overlay"/);
+  assert.match(indexSource, /id="branding-icon"[^>]+src="\/assets\/icon\.png"/);
+  assert.match(indexSource, /id="branding-logo"[^>]+src="\/assets\/main-loading-icon\.png"/);
+  assert.match(indexSource, /id="branding-text"[^>]*>Bus Fever-Car Jam Escape<\/div>/);
+
+  for (const key of ['icon', 'logo', 'text']) {
+    const config = SCENE_TUNING.branding[key];
+    assert.equal(config.enabled, 1, `${key} enabled`);
+    assert.equal(config.locked, 0, `${key} unlocked`);
+    for (const field of ['x', 'y', 'width', 'height']) {
+      assert.equal(Number.isFinite(config[field]), true, `${key}.${field}`);
+    }
+  }
+  assert.equal(SCENE_TUNING.branding.text.content, 'Bus Fever-Car Jam Escape');
+
+  assert.match(editorSource, /Icon\/Logo\\u8c03\\u6574/);
+  assert.match(editorSource, /preview\.width/);
+  assert.match(editorSource, /preview\.height/);
+  for (const path of [
+    'branding.icon.enabled', 'branding.icon.locked', 'branding.icon.x', 'branding.icon.y',
+    'branding.icon.width', 'branding.icon.height', 'branding.logo.enabled', 'branding.logo.locked',
+    'branding.logo.x', 'branding.logo.y', 'branding.logo.width', 'branding.logo.height',
+    'branding.text.enabled', 'branding.text.locked', 'branding.text.content', 'branding.text.x',
+    'branding.text.y', 'branding.text.width', 'branding.text.height'
+  ]) {
+    assert.match(editorSource, new RegExp(path.replaceAll('.', '\\.')));
+  }
+  assert.match(editorSource, /class="editor-checkbox" type="checkbox" role="switch"/);
+  assert.match(editorSource, /class="editor-text" type="text"/);
+
+  assert.match(mainSource, /function getBrandingStageMetrics/);
+  assert.match(mainSource, /function applyBrandingTuning/);
+  assert.match(mainSource, /function fitBrandingText/);
+  assert.match(mainSource, /function bindBrandingDrag/);
+  assert.match(mainSource, /path\?\.startsWith\('branding\.'\)/);
+  assert.match(mainSource, /branding\.\$\{key\}\.position/);
+  assert.match(mainSource, /config\.locked/);
+  assert.match(mainSource, /element\.textContent = content/);
+  assert.match(mainSource, /setPointerCapture/);
+  assert.match(mainSource, /Math\.max\(0, Math\.min\(metrics\.designWidth, x\)\)/);
+  assert.match(mainSource, /Math\.max\(0, Math\.min\(metrics\.designHeight, y\)\)/);
+
+  assert.match(styleSource, /\.branding-overlay/);
+  assert.match(styleSource, /\.branding-item\.is-draggable/);
+  assert.match(styleSource, /\.branding-item\.is-dragging/);
+  assert.match(styleSource, /Poppins-Bold\.ttf/);
+  assert.match(styleSource, /\.branding-text/);
+  assert.match(styleSource, /\.editor-field-toggle/);
+  assert.match(styleSource, /\.editor-field-text/);
 });
 
 test('successful operation store redirect uses the baked threshold and remains editor-tunable', () => {

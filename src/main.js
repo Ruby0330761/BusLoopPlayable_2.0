@@ -35,6 +35,11 @@ const loadingProgressValue = $('#loading-progress-value');
 const gameOverOverlay = $('#game-over-overlay');
 const gameOverTitle = $('#game-over-title');
 const ctaButton = $('#cta-button');
+const brandingItems = {
+  icon: $('#branding-icon'),
+  logo: $('#branding-logo'),
+  text: $('#branding-text')
+};
 const sceneEditorRoot = EDITOR_ENABLED ? $('#scene-editor') : null;
 const PASSENGER_MATERIAL_TUNING_PREFIX = 'passengerMaterial.';
 const PASSENGER_MATERIAL_COLOR_INDEX_PATTERN = /^passengerMaterial\.(?:solidColors|colors)\.(\d+)(?:\.|$)/;
@@ -160,6 +165,12 @@ function migrateLevel12PackageTuning(source) {
   return changed;
 }
 
+function migrateLegacyPackageTuning(source) {
+  migrateLevel16PackageTuning(source);
+  migrateLevel10PackageTuning(source);
+  migrateLevel12PackageTuning(source);
+}
+
 function waitForMraidReady(onReady) {
   const mraid = window.mraid;
   if (!mraid?.getState || !mraid?.addEventListener) {
@@ -213,12 +224,9 @@ function loadSavedTuning() {
     if (saved) {
       const savedTuning = JSON.parse(saved);
       const guideHandMotionMigrated = migrateGuideHandMotionTuning(savedTuning);
-      const level16PackageMigrated = migrateLevel16PackageTuning(savedTuning);
-      const level10PackageMigrated = migrateLevel10PackageTuning(savedTuning);
-      const level12PackageMigrated = migrateLevel12PackageTuning(savedTuning);
       deepMerge(SCENE_TUNING, savedTuning);
       migrateLegacyConveyorTuning(savedTuning);
-      if (guideHandMotionMigrated || level16PackageMigrated || level10PackageMigrated || level12PackageMigrated) {
+      if (guideHandMotionMigrated) {
         localStorage.setItem(TUNING_STORAGE_KEY, JSON.stringify(savedTuning));
       }
       return;
@@ -227,9 +235,7 @@ function loadSavedTuning() {
     if (!legacySaved) return;
     const legacy = JSON.parse(legacySaved);
     migrateGuideHandMotionTuning(legacy);
-    migrateLevel16PackageTuning(legacy);
-    migrateLevel10PackageTuning(legacy);
-    migrateLevel12PackageTuning(legacy);
+    migrateLegacyPackageTuning(legacy);
     const legacyModelScale = legacy.vehicleArea?.modelScale;
     delete legacy.vehicleArea;
     deepMerge(SCENE_TUNING, legacy);
@@ -265,6 +271,109 @@ function getStageUiScale(stageWidth, designWidth) {
 
 function scaledPx(value, scale) {
   return `${Math.max(0, value * scale)}px`;
+}
+
+function getBrandingStageMetrics() {
+  const designWidth = Math.max(1, Number(SCENE_TUNING.preview?.width) || 1080);
+  const designHeight = Math.max(1, Number(SCENE_TUNING.preview?.height) || 2160);
+  const rect = stage?.getBoundingClientRect();
+  const stageWidth = stage?.clientWidth || rect?.width || designWidth;
+  const stageHeight = stage?.clientHeight || rect?.height || designHeight;
+  return {
+    designWidth,
+    designHeight,
+    stageWidth,
+    stageHeight,
+    uiScale: getStageUiScale(stageWidth, designWidth),
+    screenLeft: (rect?.left || 0) + (stage?.clientLeft || 0),
+    screenTop: (rect?.top || 0) + (stage?.clientTop || 0)
+  };
+}
+
+function fitBrandingText(element, boxHeight) {
+  const maxFontSize = Math.max(1, boxHeight * 0.62);
+  element.style.fontSize = `${maxFontSize}px`;
+  const availableWidth = element.clientWidth;
+  const textRange = document.createRange();
+  textRange.selectNodeContents(element);
+  const contentWidth = textRange.getBoundingClientRect().width;
+  if (availableWidth > 0 && contentWidth > availableWidth) {
+    element.style.fontSize = `${Math.max(1, maxFontSize * availableWidth / contentWidth * 0.98)}px`;
+  }
+}
+
+function applyBrandingTuning() {
+  const metrics = getBrandingStageMetrics();
+  for (const [key, element] of Object.entries(brandingItems)) {
+    if (!element) continue;
+    const config = SCENE_TUNING.branding?.[key] ?? {};
+    const enabled = Boolean(config.enabled ?? 1);
+    const locked = Boolean(config.locked ?? 0);
+    const x = Number.isFinite(Number(config.x)) ? Number(config.x) : metrics.designWidth / 2;
+    const y = Number.isFinite(Number(config.y)) ? Number(config.y) : metrics.designHeight / 2;
+    const width = Math.max(1, Number(config.width) || 180);
+    const height = Math.max(1, Number(config.height) || width);
+    const draggable = EDITOR_ENABLED && enabled && !locked;
+    if (key === 'text') {
+      const content = String(config.content ?? 'Bus Fever-Car Jam Escape');
+      element.textContent = content;
+      element.setAttribute('aria-label', content);
+    }
+    element.hidden = !enabled;
+    element.classList.toggle('is-draggable', draggable);
+    element.classList.toggle('is-locked', locked);
+    if (!draggable) element.classList.remove('is-dragging');
+    element.style.left = `${metrics.stageWidth / 2 + (x - metrics.designWidth / 2) * metrics.uiScale}px`;
+    element.style.top = `${metrics.stageHeight / 2 + (y - metrics.designHeight / 2) * metrics.uiScale}px`;
+    element.style.width = scaledPx(width, metrics.uiScale);
+    element.style.height = scaledPx(height, metrics.uiScale);
+    if (key === 'text') fitBrandingText(element, height * metrics.uiScale);
+  }
+}
+
+function bindBrandingDrag(element, key, onPositionChange) {
+  if (!element || !EDITOR_ENABLED) return;
+  let activePointerId = null;
+  const finish = (event) => {
+    if (activePointerId == null) return;
+    const pointerId = activePointerId;
+    activePointerId = null;
+    element.classList.remove('is-dragging');
+    if (element.hasPointerCapture?.(pointerId)) element.releasePointerCapture(pointerId);
+  };
+  element.addEventListener('pointerdown', (event) => {
+    const config = SCENE_TUNING.branding?.[key];
+    if (!config || !config.enabled || config.locked) return;
+    event.preventDefault();
+    event.stopPropagation();
+    activePointerId = event.pointerId;
+    element.setPointerCapture?.(event.pointerId);
+    element.classList.add('is-dragging');
+  });
+  element.addEventListener('pointermove', (event) => {
+    if (activePointerId == null) return;
+    const config = SCENE_TUNING.branding?.[key];
+    if (!config?.enabled || config.locked) {
+      activePointerId = null;
+      element.classList.remove('is-dragging');
+      return;
+    }
+    const metrics = getBrandingStageMetrics();
+    const localX = event.clientX - metrics.screenLeft;
+    const localY = event.clientY - metrics.screenTop;
+    const x = metrics.designWidth / 2 + (localX - metrics.stageWidth / 2) / metrics.uiScale;
+    const y = metrics.designHeight / 2 + (localY - metrics.stageHeight / 2) / metrics.uiScale;
+    onPositionChange(
+      Math.max(0, Math.min(metrics.designWidth, x)),
+      Math.max(0, Math.min(metrics.designHeight, y))
+    );
+  });
+  element.addEventListener('pointerup', finish);
+  element.addEventListener('pointercancel', finish);
+  element.addEventListener('lostpointercapture', () => {
+    activePointerId = null;
+    element.classList.remove('is-dragging');
+  });
 }
 
 function clampConfigNumber(value, min, max, fallback) {
@@ -493,8 +602,10 @@ async function startRuntime() {
     view.resize();
     applyGameOverTuning();
     applyCtaTuning(view);
+    applyBrandingTuning();
   };
   updateCtaPosition();
+  document.fonts?.load?.('700 16px "Poppins Branding"').then(applyBrandingTuning).catch(() => {});
   if ('ResizeObserver' in window && stage) {
     new ResizeObserver(updateCtaPosition).observe(stage);
   } else {
@@ -529,6 +640,13 @@ async function startRuntime() {
       }).finally(() => window.location.reload());
       return next;
     }
+    if (path?.startsWith('branding.')) {
+      deepMerge(SCENE_TUNING, next);
+      applyBrandingTuning();
+      saveTuning(SCENE_TUNING);
+      if (syncEditor) editor.sync();
+      return SCENE_TUNING;
+    }
     const materialOnly = isPassengerMaterialTuningPath(path);
     const colorIndex = getPassengerMaterialColorIndex(path);
     const tuning = view.setTuning(next, { mode: materialOnly ? 'passengerMaterial' : 'full', colorIndex });
@@ -542,6 +660,15 @@ async function startRuntime() {
     saveTuning(tuning);
     if (syncEditor) editor.sync();
     return tuning;
+  }
+
+  for (const [key, element] of Object.entries(brandingItems)) {
+    bindBrandingDrag(element, key, (x, y) => {
+      const next = structuredClone(SCENE_TUNING);
+      next.branding[key].x = Math.round(x);
+      next.branding[key].y = Math.round(y);
+      applyTuningPatch(next, { path: `branding.${key}.position`, syncEditor: true });
+    });
   }
 
   if (EDITOR_ENABLED && sceneEditorRoot) {

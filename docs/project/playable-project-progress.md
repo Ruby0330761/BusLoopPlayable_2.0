@@ -1,5 +1,16 @@
 ﻿# Playable Project Progress
 
+## Completed On 2026-08-24 - Icon/Logo and text editor controls
+
+- Added an `Icon/Logo调整` editor section for `public/assets/icon.png`, `public/assets/main-loading-icon.png`, and an editable text overlay, with independent display, lock, X/Y position, width, and height controls plus direct stage dragging.
+- The text defaults to `Bus Fever-Car Jam Escape`, loads `public/assets/unity/fonts/Poppins-Bold.ttf`, and automatically fits changed content inside its configured box. All branding positions use the configurable preview width/height as responsive design coordinates.
+- Browser QA verified text editing, dragging, lock behavior, independent visibility/size changes, long-text fitting, desktop/mobile layouts, and the Poppins font load. Focused tests pass 2/2, touched JavaScript syntax checks pass, and `npx vite build` succeeds with only the existing chunk-size warning.
+
+## Completed On 2026-08-24 - Editor level selection persistence fix
+
+- Fixed current `v3` editor tuning loads so historical Level15 -> Level16 -> Level10 -> Level12 package migrations no longer rewrite an explicitly selected development level after reload; those package migrations now run only for legacy `v2` tuning.
+- Browser regression confirmed Level10, Level15, and Level16 each remain selected after the editor's persist-and-reload flow. The focused localStorage test and touched-file syntax checks pass; no production build or platform package was run.
+
 ## Completed On 2026-08-21 - Removed editor Levels19-20
 
 - Removed editor catalog entries Level19 and Level20, their Vite selection ids, regression expectations, default extraction inputs, and project-local renamed Unity snapshots.

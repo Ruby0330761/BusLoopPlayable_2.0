@@ -1,5 +1,12 @@
 # Findings
 
+## 2026-08-24 Icon/Logo and text editor overlays
+
+- Icon, Logo, and text overlay coordinates are stored in the simulated preview design space and converted around the stage center with the same uniform width-derived UI scale used by the HUD. This keeps authored placement stable when the stage aspect ratio changes.
+- Branding-only editor changes update and persist the DOM overlay directly instead of rebuilding the Three.js scene. Text content uses the bundled Poppins-Bold font and is measured after rendering so it shrinks within the configured width without clipping.
+- Dragging writes rounded design-space X/Y values; hidden or locked branding items do not accept pointer input.
+- On viewports up to 760px, phone-preview mode must let the stage fill the viewport and keep only the collapsed 60x48 editor control visible. The desktop phone-frame aspect ratio must not constrain the mobile stage.
+
 ## 2026-08-21 Removed editor Levels19-20
 
 - Level19 and Level20 are no longer valid editor catalog ids. Only the sequential alias Level18 remains from the three-file import set.
