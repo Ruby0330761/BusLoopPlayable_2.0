@@ -51,9 +51,9 @@
 
 ## 当前本地基线 - 2026-08-24
 
-- `artifacts/applovin/index.html`: 4,729,259 bytes, SHA-256 `019ED123D6D015FCA2B618D2CFFE7A9CC0B7357F9F45229A0614C54DDEA29AFA`.
+- `artifacts/applovin/index.html`: 4,730,441 bytes, SHA-256 `5682F0F89E3EDD468496EAB43424372E64ACCBDDB7BFEC93E1988B3FD4BEB888`.
 - 18/18 static checks pass, including branding DOM, inlined Icon/Logo PNGs, and inlined Poppins TTF.
-- Final-package browser QA passes at 1280x720 and 390x844: Icon, Logo, and editable text remain visible; no error-level console logs.
+- Final-package browser QA passes at 1280x720 and 390x844: Icon and Logo stay fully inside the visible background width while retaining responsive outward movement; editable text keeps its prior positioning; no error-level console logs.
 - Official AppLovin preview/upload and real-device interaction remain pending manual validation.
 
 ## 判定通过前必须确认

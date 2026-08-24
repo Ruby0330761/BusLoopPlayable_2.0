@@ -33,6 +33,23 @@ function clamp(value, min, max) {
   return Math.min(max, Math.max(min, value));
 }
 
+export function clampCenteredRectX({ centerX, width, left, right }) {
+  const safeCenterX = Number(centerX);
+  const safeWidth = Math.max(0, Number(width) || 0);
+  const safeLeft = Number(left);
+  const safeRight = Number(right);
+  if (
+    !Number.isFinite(safeCenterX)
+    || !Number.isFinite(safeLeft)
+    || !Number.isFinite(safeRight)
+    || safeRight <= safeLeft
+  ) {
+    return safeCenterX;
+  }
+  if (safeWidth >= safeRight - safeLeft) return (safeLeft + safeRight) / 2;
+  return clamp(safeCenterX, safeLeft + safeWidth / 2, safeRight - safeWidth / 2);
+}
+
 function clampCropOffset(offset, cropSize, sourceSize) {
   if (cropSize >= sourceSize) return 0;
   const maxOffset = (sourceSize - cropSize) / 2;

@@ -4,6 +4,7 @@ import {
   calculateDesignCoverHalfHeight,
   calculateOrthographicHalfHeight,
   calculatePerspectiveDistance,
+  clampCenteredRectX,
   evaluateDreamteckClosedBSpline,
   resolveCameraFit,
   resolveResponsiveCropFit,
@@ -32,6 +33,17 @@ const CAMERA = Object.freeze({
 function assertClose(actual, expected, epsilon = 1e-10) {
   assert.ok(Math.abs(actual - expected) < epsilon, `${actual} !== ${expected}`);
 }
+
+test('centered rectangles stay fully inside horizontal bounds', () => {
+  assert.equal(clampCenteredRectX({ centerX: 121, width: 140, left: 326, right: 954 }), 396);
+  assert.equal(clampCenteredRectX({ centerX: 1110, width: 60, left: 326, right: 954 }), 924);
+  assert.equal(clampCenteredRectX({ centerX: 640, width: 140, left: 326, right: 954 }), 640);
+});
+
+test('oversized centered rectangles use the available background midpoint', () => {
+  assert.equal(clampCenteredRectX({ centerX: 200, width: 700, left: 326, right: 954 }), 640);
+  assert.equal(clampCenteredRectX({ centerX: 200, width: 100, left: undefined, right: 954 }), 200);
+});
 
 test('orthographic fit keeps both configured width and height visible', () => {
   assert.equal(calculateOrthographicHalfHeight({

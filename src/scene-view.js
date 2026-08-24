@@ -2236,6 +2236,50 @@ export class SceneView {
     };
   }
 
+  getBackgroundCanvasBounds() {
+    if (!this.backgroundPlane) return null;
+    const rect = this.canvas.getBoundingClientRect();
+    const canvasWidth = Math.max(0, rect.width);
+    const canvasHeight = Math.max(0, rect.height);
+    if (canvasWidth <= 0 || canvasHeight <= 0) return null;
+
+    this.camera.updateMatrixWorld(true);
+    this.backgroundPlane.updateMatrixWorld(true);
+    const projectedCorners = [
+      [-0.5, -0.5],
+      [0.5, -0.5],
+      [0.5, 0.5],
+      [-0.5, 0.5]
+    ].map(([x, y]) => (
+      new THREE.Vector3(x, y, 0)
+        .applyMatrix4(this.backgroundPlane.matrixWorld)
+        .project(this.camera)
+    ));
+    if (projectedCorners.some((point) => (
+      !Number.isFinite(point.x) || !Number.isFinite(point.y) || !Number.isFinite(point.z)
+    ))) {
+      return null;
+    }
+
+    const canvasPoints = projectedCorners.map((point) => ({
+      x: (point.x + 1) * canvasWidth / 2,
+      y: (1 - point.y) * canvasHeight / 2
+    }));
+    const left = Math.max(0, Math.min(...canvasPoints.map((point) => point.x)));
+    const right = Math.min(canvasWidth, Math.max(...canvasPoints.map((point) => point.x)));
+    const top = Math.max(0, Math.min(...canvasPoints.map((point) => point.y)));
+    const bottom = Math.min(canvasHeight, Math.max(...canvasPoints.map((point) => point.y)));
+    if (right <= left || bottom <= top) return null;
+    return {
+      left,
+      right,
+      top,
+      bottom,
+      width: right - left,
+      height: bottom - top
+    };
+  }
+
   resize() {
     const rect = this.canvas.getBoundingClientRect();
     const width = Math.max(1, Math.round(rect.width || this.canvas.clientWidth || innerWidth));

@@ -1,5 +1,11 @@
 # Findings
 
+## 2026-08-24 Branding background-width constraint
+
+- Stage-width responsive X coordinates can place branding over page gutters when the Three.js background is narrower than a landscape canvas. The constraint must use the projected background plane, not the stage width or a hard-coded aspect ratio.
+- Only rendered Icon/Logo centers are clamped, using half their rendered widths so the full rectangles remain visible. Authored design-space coordinates are not rewritten, so editor tuning survives viewport changes without drift.
+- Text remains outside this background-width clamp and continues using the existing independent X/Y mapping.
+
 ## 2026-08-24 AppLovin branding overlay adaptation
 
 - A packaged branding overlay can be fully present and correctly inlined yet remain invisible if design-space Y uses the width scale on a short/landscape stage. With the saved bottom layout, the previous 1280x720 package placed the three elements at Y 1235-1344, entirely below the 720px stage.

@@ -1369,17 +1369,25 @@ test('Icon, Logo, and text overlays expose independent responsive editor control
   assert.match(mainSource, /function applyBrandingTuning/);
   assert.match(mainSource, /function fitBrandingText/);
   assert.match(mainSource, /function bindBrandingDrag/);
+  assert.match(mainSource, /key === 'text'[\s\S]*\? authoredCenterX[\s\S]*: clampCenteredRectX/);
+  assert.match(mainSource, /applyBrandingTuning\(view\.getBackgroundCanvasBounds\(\)\)/);
   assert.match(mainSource, /path\?\.startsWith\('branding\.'\)/);
   assert.match(mainSource, /branding\.\$\{key\}\.position/);
   assert.match(mainSource, /config\.locked/);
   assert.match(mainSource, /element\.textContent = content/);
-  assert.match(mainSource, /element\.style\.left = `\$\{x \* metrics\.positionScaleX\}px`/);
+  assert.match(mainSource, /element\.style\.left = `\$\{renderedCenterX\}px`/);
   assert.match(mainSource, /element\.style\.top = `\$\{y \* metrics\.positionScaleY\}px`/);
   assert.match(mainSource, /const x = localX \/ metrics\.positionScaleX/);
   assert.match(mainSource, /const y = localY \/ metrics\.positionScaleY/);
   assert.match(mainSource, /setPointerCapture/);
   assert.match(mainSource, /Math\.max\(0, Math\.min\(metrics\.designWidth, x\)\)/);
   assert.match(mainSource, /Math\.max\(0, Math\.min\(metrics\.designHeight, y\)\)/);
+
+  const sceneViewSource = readFileSync(join('src', 'scene-view.js'), 'utf8');
+  assert.match(sceneViewSource, /getBackgroundCanvasBounds\(\)/);
+  assert.match(sceneViewSource, /this\.backgroundPlane\.matrixWorld/);
+  assert.match(sceneViewSource, /left = Math\.max\(0,/);
+  assert.match(sceneViewSource, /right = Math\.min\(canvasWidth,/);
 
   assert.match(styleSource, /\.branding-overlay/);
   assert.match(styleSource, /\.branding-item\.is-draggable/);

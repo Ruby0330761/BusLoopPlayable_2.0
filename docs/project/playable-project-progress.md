@@ -1,5 +1,11 @@
 ﻿# Playable Project Progress
 
+## Completed On 2026-08-24 - Branding background-width constraint
+
+- Preserved responsive outward X movement while clamping only the rendered Icon and Logo rectangles to the Three.js background plane's visible canvas width. Saved editor coordinates remain unchanged, and text keeps its existing independent responsive position.
+- Added focused layout coverage for left/right overflow and oversized items. Touched syntax checks, 15 focused tests, `npx vite build`, and all 18 AppLovin static checks pass.
+- Final-package browser QA passes at 1280x720 and 390x844 with no error-level logs. Rebuilt `artifacts/applovin/index.html` at 4,730,441 bytes; SHA-256 is `5682F0F89E3EDD468496EAB43424372E64ACCBDDB7BFEC93E1988B3FD4BEB888`. Official AppLovin preview/upload remains manual QA.
+
 ## Completed On 2026-08-24 - AppLovin branding overlay production fix
 
 - Fixed production-only Icon/Logo/text disappearance on short or landscape screens. The final package already contained the DOM, configuration, images, and Poppins font; the defect was the width-only position scale placing bottom-authored items below the real stage.

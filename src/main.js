@@ -4,6 +4,7 @@ import { PLAYABLE_LEVEL_SEQUENCE } from './generated-active-level.js';
 import { LEVEL_1, setActiveLevel } from './level-data.js';
 import { createLevelSession } from './level-session.js';
 import { SceneView } from './scene-view.js';
+import { clampCenteredRectX } from './scene-layout.js';
 import { SCENE_TUNING } from './scene-tuning.js';
 import { createGameAudioController } from './audio-controller.js';
 
@@ -306,7 +307,7 @@ function fitBrandingText(element, boxHeight) {
   }
 }
 
-function applyBrandingTuning() {
+function applyBrandingTuning(backgroundBounds = null) {
   const metrics = getBrandingStageMetrics();
   for (const [key, element] of Object.entries(brandingItems)) {
     if (!element) continue;
@@ -317,6 +318,17 @@ function applyBrandingTuning() {
     const y = Number.isFinite(Number(config.y)) ? Number(config.y) : metrics.designHeight / 2;
     const width = Math.max(1, Number(config.width) || 180);
     const height = Math.max(1, Number(config.height) || width);
+    const renderedWidth = width * metrics.uiScale;
+    const renderedHeight = height * metrics.uiScale;
+    const authoredCenterX = x * metrics.positionScaleX;
+    const renderedCenterX = key === 'text'
+      ? authoredCenterX
+      : clampCenteredRectX({
+        centerX: authoredCenterX,
+        width: renderedWidth,
+        left: backgroundBounds?.left,
+        right: backgroundBounds?.right
+      });
     const draggable = EDITOR_ENABLED && enabled && !locked;
     if (key === 'text') {
       const content = String(config.content ?? 'Bus Fever-Car Jam Escape');
@@ -327,11 +339,11 @@ function applyBrandingTuning() {
     element.classList.toggle('is-draggable', draggable);
     element.classList.toggle('is-locked', locked);
     if (!draggable) element.classList.remove('is-dragging');
-    element.style.left = `${x * metrics.positionScaleX}px`;
+    element.style.left = `${renderedCenterX}px`;
     element.style.top = `${y * metrics.positionScaleY}px`;
-    element.style.width = scaledPx(width, metrics.uiScale);
-    element.style.height = scaledPx(height, metrics.uiScale);
-    if (key === 'text') fitBrandingText(element, height * metrics.uiScale);
+    element.style.width = `${renderedWidth}px`;
+    element.style.height = `${renderedHeight}px`;
+    if (key === 'text') fitBrandingText(element, renderedHeight);
   }
 }
 
@@ -606,10 +618,12 @@ async function startRuntime() {
     view.resize();
     applyGameOverTuning();
     applyCtaTuning(view);
-    applyBrandingTuning();
+    applyBrandingTuning(view.getBackgroundCanvasBounds());
   };
   updateCtaPosition();
-  document.fonts?.load?.('700 16px "Poppins Branding"').then(applyBrandingTuning).catch(() => {});
+  document.fonts?.load?.('700 16px "Poppins Branding"')
+    .then(() => applyBrandingTuning(view.getBackgroundCanvasBounds()))
+    .catch(() => {});
   if ('ResizeObserver' in window && stage) {
     new ResizeObserver(updateCtaPosition).observe(stage);
   } else {
@@ -646,7 +660,7 @@ async function startRuntime() {
     }
     if (path?.startsWith('branding.')) {
       deepMerge(SCENE_TUNING, next);
-      applyBrandingTuning();
+      applyBrandingTuning(view.getBackgroundCanvasBounds());
       saveTuning(SCENE_TUNING);
       if (syncEditor) editor.sync();
       return SCENE_TUNING;
