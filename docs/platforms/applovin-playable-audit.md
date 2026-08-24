@@ -49,6 +49,13 @@
 - `https://p.applov.in/playablePreview?create=1&qr=1`
 - 实际广告素材后台
 
+## 当前本地基线 - 2026-08-24
+
+- `artifacts/applovin/index.html`: 4,729,259 bytes, SHA-256 `019ED123D6D015FCA2B618D2CFFE7A9CC0B7357F9F45229A0614C54DDEA29AFA`.
+- 18/18 static checks pass, including branding DOM, inlined Icon/Logo PNGs, and inlined Poppins TTF.
+- Final-package browser QA passes at 1280x720 and 390x844: Icon, Logo, and editable text remain visible; no error-level console logs.
+- Official AppLovin preview/upload and real-device interaction remain pending manual validation.
+
 ## 判定通过前必须确认
 
 - 包体稳定在 `5MB` 以内

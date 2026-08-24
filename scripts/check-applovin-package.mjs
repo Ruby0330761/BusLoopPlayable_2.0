@@ -102,6 +102,21 @@ async function main() {
       pass: /data:image\//iu.test(html)
     },
     {
+      name: 'branding overlay markup present',
+      pass: /id=["']branding-overlay["']/iu.test(html) &&
+        /id=["']branding-text["']/iu.test(html)
+    },
+    {
+      name: 'branding Icon and Logo images inlined',
+      pass: /<img\b(?=[^>]*\bid=["']branding-icon["'])(?=[^>]*\bsrc=["']data:image\/png;base64,)[^>]*>/iu.test(html) &&
+        /<img\b(?=[^>]*\bid=["']branding-logo["'])(?=[^>]*\bsrc=["']data:image\/png;base64,)[^>]*>/iu.test(html)
+    },
+    {
+      name: 'branding Poppins font inlined',
+      pass: /font-family:["']?Poppins Branding["']?/iu.test(html) &&
+        /src:url\(["']?data:font\/ttf;base64,/iu.test(html)
+    },
+    {
       name: 'inline audio assets present',
       pass: /data:audio\/mpeg/iu.test(html)
     },

@@ -1,5 +1,11 @@
 ﻿# Playable Project Progress
 
+## Completed On 2026-08-24 - AppLovin branding overlay production fix
+
+- Fixed production-only Icon/Logo/text disappearance on short or landscape screens. The final package already contained the DOM, configuration, images, and Poppins font; the defect was the width-only position scale placing bottom-authored items below the real stage.
+- Branding positions now map X and Y independently from the 1080x2160 design space to the actual stage, while width/height use a uniform contain scale. Browser validation of the final single HTML confirms all three items render in both 1280x720 and 390x844 viewports with no error-level logs.
+- Rebuilt `artifacts/applovin/index.html` at 4,729,259 bytes with normalized LF output. All 18 AppLovin static checks pass, including new branding markup/image/font checks; SHA-256 is `019ED123D6D015FCA2B618D2CFFE7A9CC0B7357F9F45229A0614C54DDEA29AFA`. Focused tests pass 2/2; the broad game-model file remains 30/39 because of nine pre-existing level/tuning fixed-value failures. Official AppLovin preview/upload remains manual QA.
+
 ## Completed On 2026-08-24 - Icon/Logo and text editor controls
 
 - Added an `Icon/Logo调整` editor section for `public/assets/icon.png`, `public/assets/main-loading-icon.png`, and an editable text overlay, with independent display, lock, X/Y position, width, and height controls plus direct stage dragging.

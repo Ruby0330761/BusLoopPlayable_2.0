@@ -98,6 +98,10 @@ function replaceAssetUrls(content, assetMap) {
   return next;
 }
 
+function normalizeLineEndings(content) {
+  return content.replace(/\r\n?/gu, '\n');
+}
+
 function stripEditorCss(css) {
   const start = css.indexOf('.scene-editor{');
   const end = start >= 0 ? css.indexOf('#app.is-phone-preview', start) : -1;
@@ -145,7 +149,7 @@ async function main() {
   output = replaceAssetUrls(output, assetMap);
 
   await mkdir(OUTPUT_DIR, { recursive: true });
-  await writeFile(OUTPUT_FILE, output, 'utf8');
+  await writeFile(OUTPUT_FILE, normalizeLineEndings(output), 'utf8');
 
   const { size } = await stat(OUTPUT_FILE);
   const sizeMiB = size / (1024 * 1024);

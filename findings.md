@@ -1,5 +1,11 @@
 # Findings
 
+## 2026-08-24 AppLovin branding overlay adaptation
+
+- A packaged branding overlay can be fully present and correctly inlined yet remain invisible if design-space Y uses the width scale on a short/landscape stage. With the saved bottom layout, the previous 1280x720 package placed the three elements at Y 1235-1344, entirely below the 720px stage.
+- Branding position adaptation must use `stageWidth/designWidth` for X and `stageHeight/designHeight` for Y. Asset dimensions should use the smaller of those scales so Icon, Logo, and text keep their aspect instead of stretching.
+- AppLovin static validation now checks the branding mount, data-URI Icon/Logo images, and data-URI Poppins TTF independently of the generic inline-asset checks.
+
 ## 2026-08-24 Icon/Logo and text editor overlays
 
 - Icon, Logo, and text overlay coordinates are stored in the simulated preview design space and converted around the stage center with the same uniform width-derived UI scale used by the HUD. This keeps authored placement stable when the stage aspect ratio changes.

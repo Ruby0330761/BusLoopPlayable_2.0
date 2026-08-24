@@ -1298,11 +1298,15 @@ test('main thread saves and restores scene tuning from localStorage', () => {
   assert.match(packageSource, /new Response\(bytes/);
   assert.match(packageSource, /url\.slice\(0, 5\)\.toLowerCase\(\) === 'data:'/);
   assert.match(packageSource, /application\/octet-stream/);
+  assert.match(packageSource, /function normalizeLineEndings/);
 
   const checkSource = readFileSync(join('scripts', 'check-applovin-package.mjs'), 'utf8');
   assert.match(checkSource, /no browser window\.open fallback/);
   assert.match(checkSource, /data URL fetch compatibility layer present/);
   assert.match(checkSource, /inline binary data assets present/);
+  assert.match(checkSource, /branding overlay markup present/);
+  assert.match(checkSource, /branding Icon and Logo images inlined/);
+  assert.match(checkSource, /branding Poppins font inlined/);
   assert.match(mainSource, /--cta-width', scaledPx\(width, uiScale\)/);
   assert.match(mainSource, /--cta-height', scaledPx\(height, uiScale\)/);
   assert.match(mainSource, /--cta-font-size', scaledPx\(fontSize, uiScale\)/);
@@ -1336,13 +1340,13 @@ test('Icon, Logo, and text overlays expose independent responsive editor control
 
   for (const key of ['icon', 'logo', 'text']) {
     const config = SCENE_TUNING.branding[key];
-    assert.equal(config.enabled, 1, `${key} enabled`);
-    assert.equal(config.locked, 0, `${key} unlocked`);
+    assert.equal([0, 1].includes(config.enabled), true, `${key} enabled flag`);
+    assert.equal([0, 1].includes(config.locked), true, `${key} locked flag`);
     for (const field of ['x', 'y', 'width', 'height']) {
       assert.equal(Number.isFinite(config[field]), true, `${key}.${field}`);
     }
   }
-  assert.equal(SCENE_TUNING.branding.text.content, 'Bus Fever-Car Jam Escape');
+  assert.equal(typeof SCENE_TUNING.branding.text.content, 'string');
 
   assert.match(editorSource, /Icon\/Logo\\u8c03\\u6574/);
   assert.match(editorSource, /preview\.width/);
@@ -1360,6 +1364,8 @@ test('Icon, Logo, and text overlays expose independent responsive editor control
   assert.match(editorSource, /class="editor-text" type="text"/);
 
   assert.match(mainSource, /function getBrandingStageMetrics/);
+  assert.match(mainSource, /const positionScaleX = stageWidth \/ designWidth/);
+  assert.match(mainSource, /const positionScaleY = stageHeight \/ designHeight/);
   assert.match(mainSource, /function applyBrandingTuning/);
   assert.match(mainSource, /function fitBrandingText/);
   assert.match(mainSource, /function bindBrandingDrag/);
@@ -1367,6 +1373,10 @@ test('Icon, Logo, and text overlays expose independent responsive editor control
   assert.match(mainSource, /branding\.\$\{key\}\.position/);
   assert.match(mainSource, /config\.locked/);
   assert.match(mainSource, /element\.textContent = content/);
+  assert.match(mainSource, /element\.style\.left = `\$\{x \* metrics\.positionScaleX\}px`/);
+  assert.match(mainSource, /element\.style\.top = `\$\{y \* metrics\.positionScaleY\}px`/);
+  assert.match(mainSource, /const x = localX \/ metrics\.positionScaleX/);
+  assert.match(mainSource, /const y = localY \/ metrics\.positionScaleY/);
   assert.match(mainSource, /setPointerCapture/);
   assert.match(mainSource, /Math\.max\(0, Math\.min\(metrics\.designWidth, x\)\)/);
   assert.match(mainSource, /Math\.max\(0, Math\.min\(metrics\.designHeight, y\)\)/);

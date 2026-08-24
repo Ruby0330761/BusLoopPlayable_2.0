@@ -279,12 +279,16 @@ function getBrandingStageMetrics() {
   const rect = stage?.getBoundingClientRect();
   const stageWidth = stage?.clientWidth || rect?.width || designWidth;
   const stageHeight = stage?.clientHeight || rect?.height || designHeight;
+  const positionScaleX = stageWidth / designWidth;
+  const positionScaleY = stageHeight / designHeight;
   return {
     designWidth,
     designHeight,
     stageWidth,
     stageHeight,
-    uiScale: getStageUiScale(stageWidth, designWidth),
+    positionScaleX,
+    positionScaleY,
+    uiScale: Math.max(0.01, Math.min(1, positionScaleX, positionScaleY)),
     screenLeft: (rect?.left || 0) + (stage?.clientLeft || 0),
     screenTop: (rect?.top || 0) + (stage?.clientTop || 0)
   };
@@ -323,8 +327,8 @@ function applyBrandingTuning() {
     element.classList.toggle('is-draggable', draggable);
     element.classList.toggle('is-locked', locked);
     if (!draggable) element.classList.remove('is-dragging');
-    element.style.left = `${metrics.stageWidth / 2 + (x - metrics.designWidth / 2) * metrics.uiScale}px`;
-    element.style.top = `${metrics.stageHeight / 2 + (y - metrics.designHeight / 2) * metrics.uiScale}px`;
+    element.style.left = `${x * metrics.positionScaleX}px`;
+    element.style.top = `${y * metrics.positionScaleY}px`;
     element.style.width = scaledPx(width, metrics.uiScale);
     element.style.height = scaledPx(height, metrics.uiScale);
     if (key === 'text') fitBrandingText(element, height * metrics.uiScale);
@@ -361,8 +365,8 @@ function bindBrandingDrag(element, key, onPositionChange) {
     const metrics = getBrandingStageMetrics();
     const localX = event.clientX - metrics.screenLeft;
     const localY = event.clientY - metrics.screenTop;
-    const x = metrics.designWidth / 2 + (localX - metrics.stageWidth / 2) / metrics.uiScale;
-    const y = metrics.designHeight / 2 + (localY - metrics.stageHeight / 2) / metrics.uiScale;
+    const x = localX / metrics.positionScaleX;
+    const y = localY / metrics.positionScaleY;
     onPositionChange(
       Math.max(0, Math.min(metrics.designWidth, x)),
       Math.max(0, Math.min(metrics.designHeight, y))

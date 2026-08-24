@@ -1,9 +1,9 @@
 export const SCENE_TUNING = {
   "level": {
-    "selected": "level12"
+    "selected": "level10"
   },
   "preview": {
-    "enabled": 1,
+    "enabled": 0,
     "width": 1080,
     "height": 2160
   },
@@ -11,25 +11,25 @@ export const SCENE_TUNING = {
     "icon": {
       "enabled": 1,
       "locked": 0,
-      "x": 135,
-      "y": 170,
+      "x": 962,
+      "y": 2017,
       "width": 180,
-      "height": 180
+      "height": 123
     },
     "logo": {
       "enabled": 1,
-      "locked": 0,
-      "x": 540,
-      "y": 170,
+      "locked": 1,
+      "x": 161,
+      "y": 2032,
       "width": 420,
-      "height": 252
+      "height": 123
     },
     "text": {
       "enabled": 1,
-      "locked": 0,
+      "locked": 1,
       "content": "Bus Fever-Car Jam Escape",
-      "x": 540,
-      "y": 350,
+      "x": 534,
+      "y": 2114,
       "width": 800,
       "height": 100
     }
@@ -351,7 +351,7 @@ export const SCENE_TUNING = {
     "turnInController": 0.1,
     "turnOutController": 0.25,
     "parkingBounds": {
-      "minX": -2.2,
+      "minX": -2.1,
       "maxX": 2.2,
       "minZ": -3.02,
       "maxZ": 2.12
@@ -376,7 +376,7 @@ export const SCENE_TUNING = {
   },
   "vehicleArea": {
     "unityToWorldScale": 2,
-    "positionUnitScale": 0.8,
+    "positionUnitScale": 0.84,
     "sourceRootX": 0,
     "sourceRootZ": -2.92,
     "positionPivotX": 0,
@@ -399,23 +399,23 @@ export const SCENE_TUNING = {
       "6": 1.23,
       "10": 1.48
     },
-    "modelScale": 0.7
+    "modelScale": 0.75
   },
   "vehicleBoardingPulse": {
     "scale": 1.09,
-    "speed": 11
+    "speed": 11.7
   },
   "vehicleGuideHand": {
     "enabled": 1,
-    "levelKey": "level12",
-    "vehicleId": 34,
+    "levelKey": "level10",
+    "vehicleId": 60,
     "offsetX": 0.25,
     "offsetY": 0.38,
     "offsetZ": 0.46,
     "approachOffsetX": 0.62,
     "approachOffsetZ": -0.11,
-    "size": 2.12,
-    "width": 0.47,
+    "size": 1.63,
+    "width": 0.6,
     "height": 0.5,
     "nearScale": 1,
     "farScale": 1.14,
@@ -424,8 +424,8 @@ export const SCENE_TUNING = {
   },
   "firstClickGuide": {
     "enabled": 0,
-    "levelKey": "level12",
-    "vehicleId": 34,
+    "levelKey": "level10",
+    "vehicleId": 89,
     "durationSeconds": 3,
     "maskOpacity": 0.8,
     "holePadding": 15,
