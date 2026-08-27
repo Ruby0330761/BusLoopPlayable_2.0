@@ -51,9 +51,9 @@
 
 ## 当前本地基线 - 2026-08-27
 
-- `artifacts/applovin/index.html`: 4,086,902 bytes, SHA-256 `53142E2EF700D003132EF4E186F8A53DAE85D18A6279BC5CAC7EB1D3EDFD1532`.
-- 21/21 static checks pass. The selected `spatial:ConveyorBeltShape` package and both embedded conveyor textures are present; corrected Android `icon-android.jpg` and the small Logo are inlined, while iOS `icon-ios.png` and the legacy large Logo are absent.
-- Production tuning uses spatial X/Z scale `1.178 / 1.05`, road width `1.1`, normal speed `2.3`, long-press multiplier `5.4`, and successful-operation store threshold 20. Editor browser QA confirms the spatial scale/road-width controls, speed controls, and saved-tuning migration. Official AppLovin preview/upload remains the final platform visual acceptance step.
+- `artifacts/applovin/index.html`: 4,103,778 bytes, SHA-256 `4468CCA4650472D094E5DCA4D2D5A3192240B814C5D05CB8F4D1D537FF956BF3`.
+- 21/21 static checks pass. The selected `spatial:ConveyorBeltShape` package, both conveyor textures, and the spatial optimization runtime are present; corrected Android `icon-android.jpg` and the small Logo are inlined, while iOS `icon-ios.png` and the legacy large Logo are absent.
+- Production tuning uses spatial X/Z scale `1.178 / 1.05`, road width `1.1`, normal speed `2.3`, long-press multiplier `5.4`, and the current successful-operation store threshold 18. Mobile final-package browser QA confirms the populated animated track with zero error-level logs. Official AppLovin preview/upload remains the final platform visual acceptance step.
 - Official AppLovin preview/upload and real-device interaction remain pending manual validation.
 
 ## 判定通过前必须确认

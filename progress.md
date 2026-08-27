@@ -1,5 +1,21 @@
 ﻿# Progress
 
+## 2026-08-27 Spatial guide restoration completed
+
+- Traced the missing guide hands to the prior batch build reusing Heart's guide scope/vehicle across Duck, Fish, and Rainbow; spatial rendering optimization itself was not the cause.
+- Restored the complete backup matrix, including Rainbow's enabled 3-second first-click guide on vehicle 89 and normal guide on vehicle 39.
+- Regenerated/hardened all 32 Unity shape variants, passed full Unity lifecycle and conversion-pipeline tests, and verified all 32 deployed Unity packages retain the correct guide and optimization markers.
+- Mobile 390x844 browser QA matched the backup timing and presentation for Rainbow; Duck and Fish normal white guide hands are visible and all sampled pages have zero error-level logs.
+- Backed up the overwritten optimized target batch to `D:/Project/Convert-playable/backups/可玩-立体轨道-optimized-pre-guide-fix-20260827`, replaced all 64 shape HTML files, and passed exact SHA-256 parity plus target configuration/runtime checks.
+
+## 2026-08-27 Spatial optimization delivery batch completed
+
+- Rebuilt optimized spatial bases for Duck/Level12, Fish/Level13, Heart/Level15, and Rainbow/Level7 while restoring the editor and generated production state to Level15 afterward.
+- Regenerated 32 AppLovin Android/IOS background variants and converted 32 Unity counterparts through the integrated hardening pipeline.
+- Backed up the original external batch to `D:/Project/Convert-playable/backups/可玩-立体轨道-pre-optimization-20260827.zip`, then replaced the 64 same-name HTML files under `D:/文件/可玩-立体轨道`.
+- Exact source/target hash checks, optimization/platform marker scans, size and remote-asset checks, full Unity lifecycle/branding regressions, and conversion fail-closed tests pass.
+- Representative Android Heart AppLovin and Unity packages render and animate at 390x844 with zero error-level browser logs. Official AppLovin/Unity upload validation remains pending.
+
 ## 2026-08-20 Production handoff guide completed
 
 - Added `docs/project/playable-handoff-guide.md` for the receiving production colleague.

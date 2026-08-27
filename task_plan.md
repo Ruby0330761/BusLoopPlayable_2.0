@@ -2,11 +2,27 @@
 
 ## Current Goal
 
-Prepare a durable Chinese handoff guide for local editor use, tuning persistence, AppLovin packaging, store redirect expectations, and final validation.
+Restore every optimized spatial package's guide-hand configuration and visible behavior to the pre-optimization backup, especially Rainbow's first-step guide, without removing the mobile performance optimizations.
 
 ## Current Phase
 
-Complete: the handoff guide is written from the current runtime and packaging implementation, with the editor-to-production tuning boundary and MRAID behavior clarified.
+Complete: the backup guide matrix, 32 corrected AppLovin variants, 32 rebuilt/hardened Unity variants, target replacement, exact-hash checks, regressions, and mobile visual comparison are complete.
+
+## Current Spatial Guide Restoration Phases
+
+1. **Complete:** Compared all four level families and their background/platform variants against the complete pre-optimization backup.
+2. **Complete:** Restored the family-specific normal guide targets and Rainbow-only first-click guide while retaining every spatial optimization switch and payload.
+3. **Complete:** Reconverted 32 Unity packages through the integrated hardening pipeline and passed lifecycle/fail-closed tests.
+4. **Complete:** Verified Rainbow AppLovin/Unity first-click timing and Duck/Fish ordinary guide visibility at 390x844 with zero error-level logs.
+5. **Complete:** Backed up the overwritten optimized files, replaced 64 target HTML files, and confirmed byte-for-byte source/target parity.
+
+## Current Spatial Runtime Optimization Phases
+
+1. **Complete:** Added the spatial-only editor group, master gate, and independent rollback switches.
+2. **Complete:** Added live render state, curve lookup, lazy unused views, static/blocker caches, boarding pooling, and duplicate-work removal.
+3. **Complete:** Added shared-geometry VAT passenger and fake-shadow instance batches with four conservative culling chunks.
+4. **Complete:** Passed focused tests/build and desktop/mobile browser rendering with zero final error-level logs.
+5. **Complete:** Rebuilt and published all 64 supplied spatial packages with exact target hash validation and a full pre-replacement backup.
 
 ## Current Production Handoff Guide Phases
 

@@ -319,6 +319,23 @@ export class BusLoopGame {
     };
   }
 
+  renderState() {
+    const state = this.renderStateCache ??= {};
+    state.time = this.time;
+    state.resetVersion = this.resetVersion;
+    state.status = this.status;
+    state.speedMultiplier = this.speedMultiplier;
+    state.initialFillActive = this.initialFillActive;
+    state.queueItems = this.queues;
+    state.queues = this.queues;
+    state.vehicles = this.vehicles;
+    state.spots = this.spots;
+    state.slots = this.slots;
+    state.boardingEvents = this.boardingEvents;
+    state.lastEvent = this.lastEvent;
+    return state;
+  }
+
   setSpeedMultiplier(multiplier) {
     const value = Number(multiplier);
     const next = Number.isFinite(value) ? Math.max(0.1, value) : 1;

@@ -11,8 +11,10 @@ import {
   SPATIAL_CONVEYOR_DISPLAY,
   buildSpatialConveyorExitGeometry,
   buildSpatialConveyorGeometry,
+  createSpatialCurveLookup,
   getSpatialConveyorPackage,
-  getSpatialConveyorWorldPoints
+  getSpatialConveyorWorldPoints,
+  sampleSpatialCurveLookup
 } from './spatial-conveyor-runtime.js';
 import { VehicleEffects } from './vehicle-effects.js';
 import {
@@ -42,6 +44,7 @@ const deg = (value) => THREE.MathUtils.degToRad(value);
 const ARROW_OUTLINE_SCALE = 1.28;
 const GUIDE_HAND_TEXTURE_URL = '/assets/applovin/main-guide-hand_q80.webp';
 const DEFAULT_CONVEYOR_LAYOUT_ID = 'dualQueue2';
+const SPATIAL_PASSENGER_CHUNK_COUNT = 4;
 const PASSENGER_DEFAULT_MATERIAL_COLORS = Object.freeze([
   { baseColor: 0xffffff, emissionColor: 0x36a6ff },
   { baseColor: 0xffffff, emissionColor: 0xadd98a },
@@ -159,6 +162,15 @@ function getSelectedConveyorLayout() {
 
 function getSelectedSpatialConveyor() {
   return getSpatialConveyorPackage(SCENE_TUNING.conveyorLayout?.selected);
+}
+
+function isConfiguredSpatialOptimizationEnabled(key) {
+  const optimizations = SCENE_TUNING.spatialConveyor?.optimizations;
+  return Boolean(
+    getSelectedSpatialConveyor()
+    && optimizations?.enabled
+    && optimizations?.[key]
+  );
 }
 
 function getSpatialRuntimeCapacity(packageData) {
@@ -375,6 +387,23 @@ function setMaterial(root, material, meshFilter = null) {
   return meshes;
 }
 
+function makeSharedAttributeGeometry(source) {
+  const geometry = new THREE.BufferGeometry();
+  geometry.setIndex(source.index);
+  for (const [name, attribute] of Object.entries(source.attributes)) {
+    geometry.setAttribute(name, attribute);
+  }
+  for (const [name, attributes] of Object.entries(source.morphAttributes ?? {})) {
+    geometry.morphAttributes[name] = [...attributes];
+  }
+  geometry.morphTargetsRelative = source.morphTargetsRelative;
+  geometry.groups = source.groups.map((group) => ({ ...group }));
+  geometry.setDrawRange(source.drawRange.start, source.drawRange.count);
+  geometry.boundingBox = source.boundingBox?.clone() ?? null;
+  geometry.boundingSphere = source.boundingSphere?.clone() ?? null;
+  return geometry;
+}
+
 function storeHitBase(object) {
   object.userData.hitBasePosition = object.position.clone();
   object.userData.hitBaseRotation = object.rotation.clone();
@@ -551,7 +580,11 @@ export class SceneView {
     this.canvas = canvas;
     this.onVehicleClick = onVehicleClick;
     this.hooks = hooks;
-    this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
+    const rendererOptions = { canvas, antialias: true, alpha: true };
+    if (isConfiguredSpatialOptimizationEnabled('highPerformanceRenderer')) {
+      rendererOptions.powerPreference = 'high-performance';
+    }
+    this.renderer = new THREE.WebGLRenderer(rendererOptions);
     this.renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     this.renderer.setClearColor(0xc9d7ed, 1);
@@ -584,6 +617,7 @@ export class SceneView {
     this.seatCountBoards = [];
     this.passengerMaterials = [];
     this.passengerColorTextures = [];
+    this.unityAssetsFailed = false;
     this.vehicleMaterials = [];
     this.vehicleColorTextures = [];
     this.vatTimeUniform = { value: 0 };
@@ -591,6 +625,24 @@ export class SceneView {
     this.vehicleBoardingPulses = new Map();
     this.initialEntryPathStates = new Map();
     this.queueEntryPathStates = new Map();
+    this.boardingVisualPool = [];
+    this.staticVehicleTransforms = new Map();
+    this.blockerCache = new Map();
+    this.blockerCacheSignature = '';
+    this.spatialCurveLookup = null;
+    this.spatialPassengerBatchRoot = null;
+    this.spatialPassengerBatches = null;
+    this.spatialPassengerBatchKey = '';
+    this.spatialBatchScratch = {
+      point: new THREE.Vector3(),
+      tangent: new THREE.Vector3(),
+      upAxis: new THREE.Vector3(0, 1, 0),
+      quaternion: new THREE.Quaternion(),
+      scale: new THREE.Vector3(),
+      groupMatrix: new THREE.Matrix4(),
+      slotMatrix: new THREE.Matrix4(),
+      finalMatrix: new THREE.Matrix4()
+    };
     this.lastBoardingEventId = 0;
     this.vehicleEffects = null;
     this.guideHand = null;
@@ -675,17 +727,11 @@ export class SceneView {
       this.vehicleViews.set(vehicle.id, view);
       this.vehicleRoot.add(view);
     }
-    this.ensurePassengerViewCapacity(Math.max(
-      MAX_CONVEYOR_CAPACITY,
-      this.activeConveyorLayout?.conveyorCapacity ?? 0
-    ));
-    for (let queueIndex = 0; queueIndex < LEVEL_1.queueCount; queueIndex += 1) {
-      for (let i = 0; i < MAX_QUEUE_CAPACITY; i += 1) {
-        const view = makePassengerGroup(SCENE_TUNING.passengers.modelScale);
-        view.visible = false;
-        this.queuePassengerViews[queueIndex].push(view);
-        this.layoutRoot.add(view);
-      }
+    if (!this.shouldUseSpatialPassengerInstancing()) {
+      this.ensurePassengerViewCapacity(Math.max(
+        MAX_CONVEYOR_CAPACITY,
+        this.activeConveyorLayout?.conveyorCapacity ?? 0
+      ));
     }
   }
 
@@ -787,16 +833,25 @@ export class SceneView {
         directEntrance: true
       };
       this.curve = makeOpenCurve(points);
+      this.spatialCurveLookup = this.isSpatialOptimizationEnabled('curveLookup')
+        ? createSpatialCurveLookup(this.curve)
+        : null;
       this.fullQueueCurves = [];
       this.queueCurves = [];
       this.entryPercents = [spatialPackage.entrances?.[0]?.percent ?? 0];
-      this.ensurePassengerViewCapacity(capacity);
+      if (!this.shouldUseSpatialPassengerInstancing()) {
+        this.ensurePassengerViewCapacity(capacity);
+      }
+      if (!this.isSpatialOptimizationEnabled('skipUnusedQueues')) {
+        this.ensureQueuePassengerViewCapacity(LEVEL_1.queueCount, MAX_QUEUE_CAPACITY);
+      }
       return;
     }
 
     const layout = getSelectedConveyorLayout();
     const tuning = getSelectedConveyorTuning(layout.id);
     this.activeSpatialConveyor = null;
+    this.spatialCurveLookup = null;
     this.activeConveyorLayout = layout;
     this.curve = makeClosedConveyorCurve(
       makeTunedCurvePoints(layout.splinePoints, tuning.curve, 'center'),
@@ -807,6 +862,7 @@ export class SceneView {
     ));
     this.entryPercents = this.calculateConveyorEntryPercents();
     this.updateQueueCurvesForCamera();
+    this.ensureQueuePassengerViewCapacity(LEVEL_1.queueCount, MAX_QUEUE_CAPACITY);
   }
 
   ensurePassengerViewCapacity(capacity) {
@@ -819,6 +875,313 @@ export class SceneView {
       added = true;
     }
     if (added && this.personTemplate) this.upgradePassengerViews();
+  }
+
+  ensureQueuePassengerViewCapacity(queueCount, capacity) {
+    let added = false;
+    while (this.queuePassengerViews.length < queueCount) this.queuePassengerViews.push([]);
+    for (let queueIndex = 0; queueIndex < queueCount; queueIndex += 1) {
+      const views = this.queuePassengerViews[queueIndex];
+      while (views.length < capacity) {
+        const view = makePassengerGroup(SCENE_TUNING.passengers.modelScale);
+        view.visible = false;
+        views.push(view);
+        this.layoutRoot.add(view);
+        added = true;
+      }
+    }
+    if (added && this.personTemplate) this.upgradePassengerViews();
+  }
+
+  isSpatialOptimizationEnabled(key) {
+    const optimizations = SCENE_TUNING.spatialConveyor?.optimizations;
+    return Boolean(
+      this.activeSpatialConveyor
+      && optimizations?.enabled
+      && optimizations?.[key]
+    );
+  }
+
+  shouldUseSpatialPassengerInstancing() {
+    return this.isSpatialOptimizationEnabled('instancedPassengers')
+      && this.isSpatialOptimizationEnabled('instancedShadows');
+  }
+
+  sampleActiveCurve(progress, targetPoint = new THREE.Vector3(), targetTangent = new THREE.Vector3()) {
+    if (this.spatialCurveLookup && this.isSpatialOptimizationEnabled('curveLookup')) {
+      return sampleSpatialCurveLookup(
+        this.spatialCurveLookup,
+        progress,
+        targetPoint,
+        targetTangent
+      );
+    }
+    this.curve.getPointAt(progress, targetPoint);
+    this.curve.getTangentAt(progress, targetTangent).normalize();
+    return { point: targetPoint, tangent: targetTangent };
+  }
+
+  disposeSpatialPassengerBatches() {
+    const batches = this.spatialPassengerBatches;
+    if (!batches) return;
+    this.layoutRoot.remove(batches.root);
+    for (const geometry of batches.ownedGeometries) geometry.dispose();
+    for (const material of batches.ownedMaterials) material.dispose();
+    this.spatialPassengerBatches = null;
+    this.spatialPassengerBatchRoot = null;
+    this.spatialPassengerBatchKey = '';
+  }
+
+  makeSpatialChunkSphere(chunkIndex, chunkCount) {
+    const points = [];
+    const samples = 64;
+    const start = chunkIndex / chunkCount;
+    const end = (chunkIndex + 1) / chunkCount;
+    for (let index = 0; index <= samples; index += 1) {
+      const progress = THREE.MathUtils.lerp(start, end, index / samples);
+      const point = new THREE.Vector3();
+      const tangent = new THREE.Vector3();
+      this.sampleActiveCurve(progress, point, tangent);
+      points.push(point);
+    }
+    const sphere = new THREE.Box3().setFromPoints(points).getBoundingSphere(new THREE.Sphere());
+    sphere.radius += Math.max(1.5, SCENE_TUNING.passengers.modelScale * 1.5);
+    return sphere;
+  }
+
+  buildSpatialPassengerBatches(capacity) {
+    this.disposeSpatialPassengerBatches();
+    if (!this.personTemplate || !this.shadowTemplate || !this.passengerColorTextures.length) return null;
+
+    const chunkCount = SPATIAL_PASSENGER_CHUNK_COUNT;
+    const maxInstancesPerChunk = Math.ceil(capacity / chunkCount) * LEVEL_1.groupSize + LEVEL_1.groupSize;
+    const root = new THREE.Group();
+    root.name = 'Spatial Passenger Instance Batches';
+    const ownedGeometries = new Set();
+    const ownedMaterials = new Set();
+
+    this.personTemplate.updateMatrixWorld(true);
+    const personSources = [];
+    this.personTemplate.traverse((mesh) => {
+      if (!mesh.isMesh) return;
+      personSources.push({
+        geometry: mesh.geometry,
+        matrix: mesh.matrixWorld.clone()
+      });
+    });
+
+    this.shadowTemplate.updateMatrixWorld(true);
+    const shadowRootMatrix = new THREE.Matrix4().compose(
+      new THREE.Vector3(
+        SCENE_TUNING.passengerShadows.conveyor.offsetX,
+        SCENE_TUNING.shadows.y,
+        SCENE_TUNING.passengerShadows.conveyor.offsetZ
+      ),
+      new THREE.Quaternion().setFromAxisAngle(
+        new THREE.Vector3(0, 1, 0),
+        deg(SCENE_TUNING.facing.passengerShadowYawDegrees)
+      ),
+      new THREE.Vector3(
+        SCENE_TUNING.passengers.shadowScale * SCENE_TUNING.passengerShadows.conveyor.scaleX,
+        1,
+        SCENE_TUNING.passengers.shadowScale * 1.2
+          * SCENE_TUNING.passengerShadows.conveyor.scaleZ / 1.26
+      )
+    );
+    const shadowSources = [];
+    this.shadowTemplate.traverse((mesh) => {
+      if (!mesh.isMesh) return;
+      shadowSources.push({
+        geometry: mesh.geometry,
+        matrix: shadowRootMatrix.clone().multiply(mesh.matrixWorld)
+      });
+    });
+
+    const personPivotMatrix = new THREE.Matrix4().compose(
+      new THREE.Vector3(0, SCENE_TUNING.shadows.y + 0.002, 0),
+      new THREE.Quaternion().setFromAxisAngle(
+        new THREE.Vector3(0, 1, 0),
+        deg(SCENE_TUNING.facing.passengerModelYawDegrees)
+      ),
+      new THREE.Vector3(1, 1, 1)
+    );
+    const personBaseMatrices = personSources.map((source) => (
+      personPivotMatrix.clone().multiply(source.matrix)
+    ));
+    const chunkSpheres = Array.from(
+      { length: chunkCount },
+      (_, chunkIndex) => this.makeSpatialChunkSphere(chunkIndex, chunkCount)
+    );
+    const useCulling = this.isSpatialOptimizationEnabled('frustumCulling');
+
+    const passengerBatches = this.passengerColorTextures.map((_map, colorIndex) => {
+      const material = this.createVatMaterial(colorIndex, { instanced: true });
+      this.setVatAnimation(material, 'move');
+      ownedMaterials.add(material);
+      return Array.from({ length: chunkCount }, (_, chunkIndex) => {
+        const meshes = personSources.map((source) => {
+          const geometry = makeSharedAttributeGeometry(source.geometry);
+          const phaseOffset = new THREE.InstancedBufferAttribute(
+            new Float32Array(maxInstancesPerChunk),
+            1
+          );
+          phaseOffset.setUsage(THREE.DynamicDrawUsage);
+          geometry.setAttribute('vatPhaseOffset', phaseOffset);
+          ownedGeometries.add(geometry);
+          const mesh = new THREE.InstancedMesh(geometry, material, maxInstancesPerChunk);
+          mesh.name = 'Spatial Passengers ' + colorIndex + ':' + chunkIndex;
+          mesh.count = 0;
+          mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+          mesh.frustumCulled = useCulling;
+          mesh.boundingSphere = chunkSpheres[chunkIndex].clone();
+          root.add(mesh);
+          return mesh;
+        });
+        return { meshes, count: 0 };
+      });
+    });
+
+    const shadowGeometries = shadowSources.map((source) => {
+      const geometry = source.geometry.clone();
+      ownedGeometries.add(geometry);
+      return geometry;
+    });
+    const shadowBatches = Array.from({ length: chunkCount }, (_, chunkIndex) => {
+      const meshes = shadowGeometries.map((geometry) => {
+        const mesh = new THREE.InstancedMesh(geometry, this.shadowMaterial, maxInstancesPerChunk);
+        mesh.name = 'Spatial Passenger Shadows ' + chunkIndex;
+        mesh.count = 0;
+        mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+        mesh.frustumCulled = useCulling;
+        mesh.boundingSphere = chunkSpheres[chunkIndex].clone();
+        root.add(mesh);
+        return mesh;
+      });
+      return { meshes, count: 0 };
+    });
+
+    this.layoutRoot.add(root);
+    this.spatialPassengerBatchRoot = root;
+    this.spatialPassengerBatches = {
+      root,
+      capacity,
+      chunkCount,
+      maxInstancesPerChunk,
+      passengerBatches,
+      shadowBatches,
+      personBaseMatrices,
+      shadowBaseMatrices: shadowSources.map((source) => source.matrix),
+      ownedGeometries,
+      ownedMaterials
+    };
+    this.spatialPassengerBatchKey = [
+      capacity,
+      SCENE_TUNING.passengers.modelScale,
+      SCENE_TUNING.passengers.groupSpacing,
+      SCENE_TUNING.passengers.shadowScale,
+      SCENE_TUNING.facing.passengerModelYawDegrees,
+      SCENE_TUNING.facing.passengerShadowYawDegrees,
+      SCENE_TUNING.passengerShadows.conveyor.offsetX,
+      SCENE_TUNING.passengerShadows.conveyor.offsetZ,
+      SCENE_TUNING.passengerShadows.conveyor.scaleX,
+      SCENE_TUNING.passengerShadows.conveyor.scaleZ,
+      useCulling ? 1 : 0
+    ].join(':');
+    return this.spatialPassengerBatches;
+  }
+
+  updateSpatialPassengerBatches(snapshot) {
+    const useInstancing = this.shouldUseSpatialPassengerInstancing();
+    if (!useInstancing || !this.personTemplate || !this.shadowTemplate) {
+      if (this.spatialPassengerBatchRoot) this.spatialPassengerBatchRoot.visible = false;
+      return false;
+    }
+    const capacity = this.activeConveyorLayout?.conveyorCapacity ?? snapshot.slots.length;
+    const expectedKey = [
+      capacity,
+      SCENE_TUNING.passengers.modelScale,
+      SCENE_TUNING.passengers.groupSpacing,
+      SCENE_TUNING.passengers.shadowScale,
+      SCENE_TUNING.facing.passengerModelYawDegrees,
+      SCENE_TUNING.facing.passengerShadowYawDegrees,
+      SCENE_TUNING.passengerShadows.conveyor.offsetX,
+      SCENE_TUNING.passengerShadows.conveyor.offsetZ,
+      SCENE_TUNING.passengerShadows.conveyor.scaleX,
+      SCENE_TUNING.passengerShadows.conveyor.scaleZ,
+      this.isSpatialOptimizationEnabled('frustumCulling') ? 1 : 0
+    ].join(':');
+    const batches = this.spatialPassengerBatchKey === expectedKey
+      ? this.spatialPassengerBatches
+      : this.buildSpatialPassengerBatches(capacity);
+    if (!batches) return false;
+
+    batches.root.visible = true;
+    for (const colorBatches of batches.passengerBatches) {
+      for (const batch of colorBatches) batch.count = 0;
+    }
+    for (const batch of batches.shadowBatches) batch.count = 0;
+
+    const scratch = this.spatialBatchScratch;
+    const passengerHeight = SCENE_TUNING.passengers.heightAbovePath;
+    const passengerYaw = deg(SCENE_TUNING.facing.passengerYawDegrees);
+    const groupScale = SCENE_TUNING.passengers.modelScale;
+    const groupSpacing = SCENE_TUNING.passengers.groupSpacing;
+    for (const slot of snapshot.slots) {
+      if (slot.colorIndex == null) continue;
+      this.sampleActiveCurve(slot.progress, scratch.point, scratch.tangent);
+      scratch.point.y += passengerHeight;
+      const yaw = Math.atan2(scratch.tangent.x, scratch.tangent.z) + passengerYaw;
+      scratch.quaternion.setFromAxisAngle(scratch.upAxis, yaw);
+      scratch.scale.setScalar(groupScale);
+      scratch.groupMatrix.compose(scratch.point, scratch.quaternion, scratch.scale);
+      const chunkIndex = Math.min(
+        batches.chunkCount - 1,
+        Math.floor(THREE.MathUtils.clamp(slot.progress, 0, 0.999999) * batches.chunkCount)
+      );
+      const passengerBatch = batches.passengerBatches[slot.colorIndex]?.[chunkIndex];
+      const shadowBatch = batches.shadowBatches[chunkIndex];
+      if (!passengerBatch || !shadowBatch) continue;
+      const phase = slot.index > 0 && slot.index % 2 === 0 ? 0.3 : 0;
+      for (let personIndex = 0; personIndex < LEVEL_1.groupSize; personIndex += 1) {
+        scratch.slotMatrix.makeTranslation((personIndex - 1.5) * groupSpacing, 0, 0);
+        const passengerInstanceIndex = passengerBatch.count;
+        for (let sourceIndex = 0; sourceIndex < passengerBatch.meshes.length; sourceIndex += 1) {
+          scratch.finalMatrix
+            .multiplyMatrices(scratch.groupMatrix, scratch.slotMatrix)
+            .multiply(batches.personBaseMatrices[sourceIndex]);
+          const mesh = passengerBatch.meshes[sourceIndex];
+          mesh.setMatrixAt(passengerInstanceIndex, scratch.finalMatrix);
+          mesh.geometry.getAttribute('vatPhaseOffset').setX(passengerInstanceIndex, phase);
+        }
+        passengerBatch.count += 1;
+
+        const shadowInstanceIndex = shadowBatch.count;
+        for (let sourceIndex = 0; sourceIndex < shadowBatch.meshes.length; sourceIndex += 1) {
+          scratch.finalMatrix
+            .multiplyMatrices(scratch.groupMatrix, scratch.slotMatrix)
+            .multiply(batches.shadowBaseMatrices[sourceIndex]);
+          shadowBatch.meshes[sourceIndex].setMatrixAt(shadowInstanceIndex, scratch.finalMatrix);
+        }
+        shadowBatch.count += 1;
+      }
+    }
+
+    for (const colorBatches of batches.passengerBatches) {
+      for (const batch of colorBatches) {
+        for (const mesh of batch.meshes) {
+          mesh.count = batch.count;
+          mesh.instanceMatrix.needsUpdate = true;
+          mesh.geometry.getAttribute('vatPhaseOffset').needsUpdate = true;
+        }
+      }
+    }
+    for (const batch of batches.shadowBatches) {
+      for (const mesh of batch.meshes) {
+        mesh.count = batch.count;
+        mesh.instanceMatrix.needsUpdate = true;
+      }
+    }
+    return true;
   }
 
   clearSpatialConveyorVisual() {
@@ -1001,9 +1364,20 @@ export class SceneView {
   }
 
   updateVehiclePathPreview(snapshot = this.lastSnapshot, game = this.lastGame) {
+    const tuning = SCENE_TUNING.vehiclePath;
+    const departureTuning = SCENE_TUNING.vehicleDeparturePath;
+    if (
+      this.isSpatialOptimizationEnabled('skipDisabledPathPreview')
+      && !tuning?.enabled
+      && !departureTuning?.enabled
+    ) {
+      if (this.vehiclePathLines.length || this.vehicleDeparturePathLines.length) {
+        this.clearVehiclePathLines();
+      }
+      return;
+    }
     this.clearVehiclePathLines();
     if (!snapshot || !game) return;
-    const tuning = SCENE_TUNING.vehiclePath;
     if (tuning?.enabled) {
       const spotIndex = snapshot.spots.findIndex((spot) => spot.vehicleId === null);
       if (spotIndex >= 0) {
@@ -1258,6 +1632,7 @@ export class SceneView {
       this.upgradeSpotViews();
       this.applyTuning();
     } catch (error) {
+      this.unityAssetsFailed = true;
       console.warn('Unity asset load failed; keeping geometric fallbacks.', error);
     }
   }
@@ -1274,7 +1649,7 @@ export class SceneView {
     return normalizeObject(toStaticMeshGroup(source), { depth: targetDepth });
   }
 
-  createVatMaterial(colorIndex = 0) {
+  createVatMaterial(colorIndex = 0, { instanced = false } = {}) {
     const animation = LEVEL_1.assets.passengerAnimations;
     const idle = animation.idle;
     const clip = new THREE.Vector4(idle.uvMin, idle.uvMax, 1 / idle.duration, 0);
@@ -1286,27 +1661,32 @@ export class SceneView {
     });
     applyPassengerMaterial(material, colorIndex, map);
     material.userData.vat = { clip, clipName: null };
+    material.userData.vatInstanced = instanced;
     material.onBeforeCompile = (shader) => {
       shader.uniforms.vatMap = { value: this.passengerVatTexture };
       shader.uniforms.vatTime = this.vatTimeUniform;
       shader.uniforms.vatClip = { value: clip };
-      shader.vertexShader = `
+      let vertexShader = `
         uniform sampler2D vatMap;
         uniform float vatTime;
         uniform vec4 vatClip;
         attribute float vatIndex;
+        ${instanced ? 'attribute float vatPhaseOffset;' : ''}
       ` + shader.vertexShader.replace(
         '#include <begin_vertex>',
         `
-          float vatPhase = fract(vatTime * vatClip.z + vatClip.w);
+          float vatPhase = fract(vatTime * vatClip.z + vatClip.w${instanced ? ' + vatPhaseOffset' : ''});
           float vatX = (vatIndex + 0.5) / ${animation.textureWidth.toFixed(1)};
           float vatY = mix(vatClip.x, vatClip.y, vatPhase)
             + 0.5 / ${animation.textureHeight.toFixed(1)};
           vec3 transformed = texture2D(vatMap, vec2(vatX, vatY)).xyz;
         `
       );
+      shader.vertexShader = vertexShader;
     };
-    material.customProgramCacheKey = () => 'busloop-passenger-vat-v1';
+    material.customProgramCacheKey = () => (
+      instanced ? 'busloop-passenger-vat-instanced-v1' : 'busloop-passenger-vat-v1'
+    );
     this.setVatAnimation(material, 'idle');
     return material;
   }
@@ -1408,6 +1788,12 @@ export class SceneView {
       const map = this.passengerColorTextures[colorIndex] ?? this.passengerColorTextures[0];
       applyPassengerMaterial(material, colorIndex, map);
     });
+    for (const material of this.spatialPassengerBatches?.ownedMaterials ?? []) {
+      const colorIndex = material.userData.passengerColorIndex ?? 0;
+      if (!shouldUpdateColor(colorIndex)) continue;
+      const map = this.passengerColorTextures[colorIndex] ?? this.passengerColorTextures[0];
+      applyPassengerMaterial(material, colorIndex, map);
+    }
 
     const roots = [
       ...this.passengerViews,
@@ -1432,7 +1818,28 @@ export class SceneView {
     }
   }
 
-  upgradePassengerViews() {
+  releasePassengerViewsForInstancing() {
+    const allViews = [...this.passengerViews, ...this.queuePassengerViews.flat()];
+    for (const view of allViews) {
+      if (!view.userData.modelReady) continue;
+      for (const slot of view.userData.personSlots) {
+        slot.userData.vatMaterial?.dispose();
+        slot.clear();
+        slot.userData.visualRoot = null;
+        slot.userData.modelRoot = null;
+        slot.userData.vatMaterial = null;
+      }
+      view.userData.modelReady = false;
+      view.userData.colorIndex = null;
+      view.visible = false;
+    }
+  }
+
+  upgradePassengerViews({ force = false } = {}) {
+    if (!force && this.shouldUseSpatialPassengerInstancing()) {
+      this.releasePassengerViewsForInstancing();
+      return;
+    }
     const allViews = [...this.passengerViews, ...this.queuePassengerViews.flat()];
     for (const view of allViews) {
       for (const slot of view.userData.personSlots) {
@@ -1608,6 +2015,16 @@ export class SceneView {
   }
 
   applyTuning() {
+    this.staticVehicleTransforms.clear();
+    this.blockerCache.clear();
+    this.blockerCacheSignature = '';
+    for (const view of this.vehicleViews.values()) {
+      view.userData.spatialStaticParked = false;
+      view.userData.spatialMovable = undefined;
+    }
+    if (!this.isSpatialOptimizationEnabled('poolBoardingPassengers')) {
+      this.disposeBoardingVisualPool();
+    }
     this.applySceneLighting();
     const background = SCENE_TUNING.background;
     this.setArtworkPlaneTexture(this.backgroundPlane, getSelectedBackgroundUrl());
@@ -1623,6 +2040,19 @@ export class SceneView {
     this.updateGuideHandTuning();
 
     this.buildPathCurves();
+    if (this.personTemplate) {
+      if (this.shouldUseSpatialPassengerInstancing()) {
+        this.releasePassengerViewsForInstancing();
+      } else {
+        this.ensurePassengerViewCapacity(Math.max(
+          MAX_CONVEYOR_CAPACITY,
+          this.activeConveyorLayout?.conveyorCapacity ?? 0
+        ));
+        if (this.passengerViews.some((view) => !view.userData.modelReady)) {
+          this.upgradePassengerViews({ force: true });
+        }
+      }
+    }
     if (this.activeSpatialConveyor) {
       this.loopPlane.visible = false;
       this.spatialConveyorRoot.visible = true;
@@ -1708,6 +2138,9 @@ export class SceneView {
     this.setArtworkPlaneTexture(this.backgroundPlane, getSelectedBackgroundUrl());
     this.lastSnapshot = null;
     this.lastGame = null;
+    this.staticVehicleTransforms.clear();
+    this.blockerCache.clear();
+    this.blockerCacheSignature = '';
     this.initialEntryPathStates.clear();
     this.queueEntryPathStates.clear();
     this.applyTuning();
@@ -1740,6 +2173,52 @@ export class SceneView {
     }
   }
 
+  prepareSpatialBlockerCache(snapshot) {
+    this.blockerCacheAvailable = false;
+    if (!this.isSpatialOptimizationEnabled('cacheBlockers')) {
+      this.blockerCache.clear();
+      this.blockerCacheSignature = '';
+      return;
+    }
+    if (snapshot.vehicles.some((vehicle) => vehicle.state === 'colliding')) {
+      this.blockerCache.clear();
+      this.blockerCacheSignature = '';
+      return;
+    }
+    this.blockerCacheAvailable = true;
+    const signature = snapshot.vehicles
+      .filter((vehicle) => vehicle.state === 'parked')
+      .map((vehicle) => vehicle.id)
+      .join(',');
+    if (signature === this.blockerCacheSignature) return;
+    this.blockerCacheSignature = signature;
+    this.blockerCache.clear();
+  }
+
+  getVehicleBlockers(game, vehicleId) {
+    if (!this.blockerCacheAvailable) return game.getBlockers(vehicleId);
+    if (!this.blockerCache.has(vehicleId)) {
+      this.blockerCache.set(vehicleId, game.getBlockers(vehicleId));
+    }
+    return this.blockerCache.get(vehicleId);
+  }
+
+  getStaticVehicleTransform(vehicle) {
+    let cached = this.staticVehicleTransforms.get(vehicle.id);
+    if (cached) return cached;
+    const layoutStart = mapVehicleAreaPoint(vehicle);
+    cached = {
+      position: new THREE.Vector3(
+        layoutStart.x,
+        SCENE_TUNING.vehicleArea.y,
+        layoutStart.y
+      ),
+      yaw: mapVehicleAreaYaw(vehicle.yaw) + deg(SCENE_TUNING.facing.vehicleYawOffsetDegrees)
+    };
+    this.staticVehicleTransforms.set(vehicle.id, cached);
+    return cached;
+  }
+
   update(snapshot, game) {
     const previousUpdateTime = this.lastSnapshot?.time ?? snapshot.time;
     const visualDelta = Math.max(0, Math.min(snapshot.time - previousUpdateTime, 0.1));
@@ -1747,30 +2226,51 @@ export class SceneView {
     this.lastGame = game;
     this.vatTimeUniform.value = snapshot.time;
     if (snapshot.lastEvent.type === 'reset' && snapshot.time === 0) this.clearBoardingViews();
-    this.processBoardingEvents(snapshot);
-    this.updateBoardingViews(snapshot.time);
+    const deduplicateBoardingUpdates = this.isSpatialOptimizationEnabled('deduplicateBoardingUpdates');
+    if (!deduplicateBoardingUpdates) {
+      this.processBoardingEvents(snapshot);
+      this.updateBoardingViews(snapshot.time);
+    }
     const vehicleArea = SCENE_TUNING.vehicleArea;
     const vehicleYawOffset = deg(SCENE_TUNING.facing.vehicleYawOffsetDegrees);
+    this.prepareSpatialBlockerCache(snapshot);
     for (const board of this.seatCountBoards) {
       board.visible = false;
     }
     for (const vehicle of snapshot.vehicles) {
       const view = this.vehicleViews.get(vehicle.id);
-      const layoutStart = mapVehicleAreaPoint(vehicle);
-      const startYaw = mapVehicleAreaYaw(vehicle.yaw) + vehicleYawOffset;
-      const start = new THREE.Vector3(
+      const useStaticCache = vehicle.state === 'parked'
+        && this.isSpatialOptimizationEnabled('cacheStaticVehicles');
+      const staticTransform = useStaticCache ? this.getStaticVehicleTransform(vehicle) : null;
+      const layoutStart = staticTransform ? null : mapVehicleAreaPoint(vehicle);
+      const startYaw = staticTransform?.yaw ?? (mapVehicleAreaYaw(vehicle.yaw) + vehicleYawOffset);
+      const start = staticTransform?.position ?? new THREE.Vector3(
         layoutStart.x,
         vehicleArea.y,
         layoutStart.y
       );
       const spot = this.spotPositions[vehicle.spotIndex ?? 0];
       view.visible = vehicle.state !== 'done';
+      const activeHit = Boolean(
+        vehicle.hit
+        && snapshot.time - vehicle.hit.startedAt < UNITY_VEHICLE_MOTION.hitDuration
+      );
+      const reuseStaticTransform = Boolean(
+        useStaticCache
+        && view.userData.spatialStaticParked
+        && !activeHit
+        && !view.userData.spatialHadActiveHit
+      );
       let vehicleScale = vehicle.state === 'parked' || vehicle.state === 'colliding'
         ? 1 : (UNITY_VEHICLE_MOTION.stationScaleBySeats[vehicle.seats] ?? 1);
       if (vehicle.state === 'parked') {
-        view.position.copy(start);
-        view.rotation.y = startYaw;
+        if (!reuseStaticTransform) {
+          view.position.copy(start);
+          view.rotation.y = startYaw;
+        }
+        view.userData.spatialStaticParked = useStaticCache;
       } else if (vehicle.state === 'colliding') {
+        view.userData.spatialStaticParked = false;
         const direction = forwardFromYaw(vehicle.yaw);
         const position = {
           x: vehicle.x + direction.x * vehicle.collision.offset,
@@ -1779,6 +2279,7 @@ export class SceneView {
         view.position.copy(mapMotionPoint(position));
         view.rotation.y = startYaw;
       } else if (vehicle.state === 'moving-to-spot') {
+        view.userData.spatialStaticParked = false;
         const data = vehicle.motionData;
         const curveValue = evaluateUnityCurve(data.curve, vehicle.motion);
         const sample = evaluatePath(data.path, data.path.length * curveValue);
@@ -1790,9 +2291,11 @@ export class SceneView {
           evaluateUnityCurve(UNITY_CURVES.smoothScale, vehicle.motion)
         );
       } else if (vehicle.state === 'at-spot' || vehicle.state === 'boarding-final') {
+        view.userData.spatialStaticParked = false;
         view.position.copy(spot);
         view.rotation.y = deg(SCENE_TUNING.facing.parkingSpotYawDegrees + 180) + vehicleYawOffset;
       } else if (vehicle.state === 'departing') {
+        view.userData.spatialStaticParked = false;
         const data = vehicle.motionData;
         const total = data.backwardDuration + data.forwardDuration;
         const elapsed = vehicle.motion * total;
@@ -1813,13 +2316,22 @@ export class SceneView {
         }
       }
       const boardingPulseScale = this.getVehicleBoardingPulseScale(vehicle.id, snapshot.time);
-      view.scale.setScalar(vehicleScale * SCENE_TUNING.vehicleArea.modelScale * boardingPulseScale);
-      this.applyVehicleHit(view, vehicle, snapshot.time);
-      const isMovable = vehicle.state === 'parked' && game.getBlockers(vehicle.id).length === 0;
-      for (const mesh of view.userData.bodyMeshes ?? []) {
-        if (!mesh.material.emissive) continue;
-        mesh.material.emissive.setHex(isMovable ? 0x123a20 : 0x000000);
-        mesh.material.emissiveIntensity = isMovable ? 0.22 : 0;
+      if (!reuseStaticTransform || boardingPulseScale !== 1) {
+        view.scale.setScalar(vehicleScale * SCENE_TUNING.vehicleArea.modelScale * boardingPulseScale);
+      }
+      if (!reuseStaticTransform || activeHit || view.userData.spatialHadActiveHit) {
+        this.applyVehicleHit(view, vehicle, snapshot.time);
+      }
+      view.userData.spatialHadActiveHit = activeHit;
+      const isMovable = vehicle.state === 'parked'
+        && this.getVehicleBlockers(game, vehicle.id).length === 0;
+      if (view.userData.spatialMovable !== isMovable) {
+        view.userData.spatialMovable = isMovable;
+        for (const mesh of view.userData.bodyMeshes ?? []) {
+          if (!mesh.material.emissive) continue;
+          mesh.material.emissive.setHex(isMovable ? 0x123a20 : 0x000000);
+          mesh.material.emissiveIntensity = isMovable ? 0.22 : 0;
+        }
       }
       view.userData.boardedGroups = vehicle.boardedGroups;
       if (vehicle.spotIndex != null && snapshot.spots[vehicle.spotIndex]?.vehicleId === vehicle.id) {
@@ -1830,37 +2342,48 @@ export class SceneView {
 
     const passengerYaw = deg(SCENE_TUNING.facing.passengerYawDegrees);
     const passengerHeight = SCENE_TUNING.passengers.heightAbovePath;
-    const activeInitialEntryKeys = new Set();
-    for (const slot of snapshot.slots) {
-      const view = this.passengerViews[slot.index];
-      view.visible = slot.colorIndex !== null;
-      if (!view.visible) continue;
-      const point = this.curve.getPointAt(slot.progress);
-      const tangent = this.curve.getTangentAt(slot.progress);
-      point.y += passengerHeight;
-      if (slot.entryMotion) {
-        const entryKey = this.getInitialEntryPathKey(slot);
-        activeInitialEntryKeys.add(entryKey);
-        const entryVisual = this.getInitialEntryPathVisual(
-          entryKey,
-          slot,
-          point,
-          tangent,
-          snapshot.time,
-          visualDelta,
-          snapshot.speedMultiplier,
-          passengerHeight
-        );
-        view.position.copy(entryVisual.position);
-        view.rotation.y = Math.atan2(entryVisual.tangent.x, entryVisual.tangent.z) + passengerYaw;
-      } else {
-        view.position.copy(point);
-        view.rotation.y = Math.atan2(tangent.x, tangent.z) + passengerYaw;
+    const usingSpatialPassengerBatches = this.updateSpatialPassengerBatches(snapshot);
+    const awaitingSpatialPassengerAssets = this.shouldUseSpatialPassengerInstancing()
+      && !this.personTemplate
+      && !this.unityAssetsFailed;
+    if (usingSpatialPassengerBatches || awaitingSpatialPassengerAssets) {
+      for (const view of this.passengerViews) view.visible = false;
+      this.initialEntryPathStates.clear();
+    } else {
+      this.ensurePassengerViewCapacity(snapshot.slots.length);
+      const activeInitialEntryKeys = new Set();
+      for (const slot of snapshot.slots) {
+        const view = this.passengerViews[slot.index];
+        view.visible = slot.colorIndex !== null;
+        if (!view.visible) continue;
+        const point = new THREE.Vector3();
+        const tangent = new THREE.Vector3();
+        this.sampleActiveCurve(slot.progress, point, tangent);
+        point.y += passengerHeight;
+        if (slot.entryMotion) {
+          const entryKey = this.getInitialEntryPathKey(slot);
+          activeInitialEntryKeys.add(entryKey);
+          const entryVisual = this.getInitialEntryPathVisual(
+            entryKey,
+            slot,
+            point,
+            tangent,
+            snapshot.time,
+            visualDelta,
+            snapshot.speedMultiplier,
+            passengerHeight
+          );
+          view.position.copy(entryVisual.position);
+          view.rotation.y = Math.atan2(entryVisual.tangent.x, entryVisual.tangent.z) + passengerYaw;
+        } else {
+          view.position.copy(point);
+          view.rotation.y = Math.atan2(tangent.x, tangent.z) + passengerYaw;
+        }
+        this.setPassengerColor(view, slot.colorIndex);
+        this.setPassengerAnimation(view, 'move', slot.index > 0 && slot.index % 2 === 0 ? 0.3 : 0);
       }
-      this.setPassengerColor(view, slot.colorIndex);
-      this.setPassengerAnimation(view, 'move', slot.index > 0 && slot.index % 2 === 0 ? 0.3 : 0);
+      this.pruneInitialEntryPathStates(activeInitialEntryKeys);
     }
-    this.pruneInitialEntryPathStates(activeInitialEntryKeys);
 
     const queueSnapshots = snapshot.queueItems ?? snapshot.queues.map((queue) => (
       queue.map((colorIndex, index) => ({
@@ -1870,7 +2393,7 @@ export class SceneView {
     ));
     queueSnapshots.forEach((queue, queueIndex) => {
       const curve = this.queueCurves[queueIndex];
-      const views = this.queuePassengerViews[queueIndex];
+      const views = this.queuePassengerViews[queueIndex] ?? [];
       for (let i = 0; i < views.length; i += 1) {
         const view = views[i];
         const item = queue[i];
@@ -2257,13 +2780,45 @@ export class SceneView {
   clearBoardingViews() {
     for (const entry of this.boardingViews) {
       this.layoutRoot.remove(entry.root);
-      entry.material.dispose();
+      this.releaseBoardingVisual(entry.root);
     }
     this.boardingViews.length = 0;
     this.vehicleBoardingPulses.clear();
     this.initialEntryPathStates.clear();
     this.queueEntryPathStates.clear();
     this.lastBoardingEventId = 0;
+  }
+
+  disposeBoardingVisualPool() {
+    for (const visual of this.boardingVisualPool) {
+      visual.userData.vatMaterial?.dispose();
+    }
+    this.boardingVisualPool.length = 0;
+  }
+
+  acquireBoardingVisual(colorIndex) {
+    const usePool = this.isSpatialOptimizationEnabled('poolBoardingPassengers');
+    const visual = usePool && this.boardingVisualPool.length
+      ? this.boardingVisualPool.pop()
+      : this.createPassengerVisual(colorIndex);
+    const material = visual.userData.vatMaterial;
+    const map = this.passengerColorTextures[colorIndex] ?? this.passengerColorTextures[0];
+    applyPassengerMaterial(material, colorIndex, map);
+    this.setVatAnimation(material, 'move');
+    visual.visible = true;
+    return visual;
+  }
+
+  releaseBoardingVisual(visual) {
+    if (
+      this.isSpatialOptimizationEnabled('poolBoardingPassengers')
+      && this.boardingVisualPool.length < 64
+    ) {
+      visual.visible = false;
+      this.boardingVisualPool.push(visual);
+      return;
+    }
+    visual.userData.vatMaterial?.dispose();
   }
 
   triggerVehicleBoardingPulse(vehicleId, time) {
@@ -2312,15 +2867,16 @@ export class SceneView {
   spawnBoardingGroup(event) {
     const spot = this.spotPositions[event.spotIndex];
     if (!spot) return;
-    const startCenter = this.curve.getPointAt(event.progress);
+    const startCenter = new THREE.Vector3();
+    const tangent = new THREE.Vector3();
+    this.sampleActiveCurve(event.progress, startCenter, tangent);
     startCenter.y += SCENE_TUNING.passengers.heightAbovePath;
-    const tangent = this.curve.getTangentAt(event.progress);
     const pathYaw = Math.atan2(tangent.x, tangent.z) + deg(SCENE_TUNING.facing.passengerYawDegrees);
     const target = spot.clone();
     target.y = SCENE_TUNING.path.groundY + SCENE_TUNING.passengers.heightAbovePath;
 
     for (let index = 0; index < LEVEL_1.groupSize; index += 1) {
-      const visual = this.createPassengerVisual(event.colorIndex);
+      const visual = this.acquireBoardingVisual(event.colorIndex);
       visual.scale.setScalar(SCENE_TUNING.passengers.modelScale);
       const rowOffset = new THREE.Vector3(
         (index - 1.5) * SCENE_TUNING.passengers.groupSpacing * SCENE_TUNING.passengers.modelScale,
@@ -2359,7 +2915,7 @@ export class SceneView {
       this.vehicleEffects?.spawnAboardSmoke(entry.vehicleId);
       this.hooks.onPassengerAboard?.(entry.vehicleId);
       this.layoutRoot.remove(entry.root);
-      entry.material.dispose();
+      this.releaseBoardingVisual(entry.root);
       this.boardingViews.splice(index, 1);
     }
   }

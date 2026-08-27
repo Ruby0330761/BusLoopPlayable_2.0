@@ -13,6 +13,8 @@ import {
   SPATIAL_CONVEYOR_DISPLAY,
   buildSpatialConveyorExitGeometry,
   buildSpatialConveyorGeometry,
+  createSpatialCurveLookup,
+  sampleSpatialCurveLookup,
   getSpatialConveyorWorldPoints
 } from '../src/spatial-conveyor-runtime.js';
 import {
@@ -314,6 +316,48 @@ test('direct spatial entrance merges authored queues and supplies the belt at on
   assert.equal(game.snapshot().sourceRemaining, totalGroups - 1);
 });
 
+test('spatial curve lookup closely follows the authored curve without per-frame curve solving', () => {
+  const curve = new THREE.CatmullRomCurve3([
+    new THREE.Vector3(-2, 0, 0),
+    new THREE.Vector3(-1, 1, 2),
+    new THREE.Vector3(1, 2, 1),
+    new THREE.Vector3(2, 0, -1)
+  ], false, 'catmullrom', 0.35);
+  const lookup = createSpatialCurveLookup(curve, 4096);
+  const sampledPoint = new THREE.Vector3();
+  const sampledTangent = new THREE.Vector3();
+  for (const progress of [0, 0.1, 0.333, 0.5, 0.875, 1]) {
+    sampleSpatialCurveLookup(lookup, progress, sampledPoint, sampledTangent);
+    assert.ok(sampledPoint.distanceTo(curve.getPointAt(progress)) < 0.001);
+    assert.ok(sampledTangent.distanceTo(curve.getTangentAt(progress).normalize()) < 0.01);
+  }
+  assert.equal(lookup.positions.byteLength + lookup.tangents.byteLength, (4096 + 1) * 6 * 4);
+});
+
+test('live render state reuses gameplay arrays while snapshots remain detached', () => {
+  const game = new BusLoopGame();
+  const renderState = game.renderState();
+  assert.strictEqual(renderState, game.renderState());
+  assert.strictEqual(renderState.vehicles, game.vehicles);
+  assert.strictEqual(renderState.slots, game.slots);
+  assert.strictEqual(renderState.queueItems, game.queues);
+  assert.strictEqual(renderState.boardingEvents, game.boardingEvents);
+  const snapshot = game.snapshot();
+  assert.notStrictEqual(snapshot.vehicles, game.vehicles);
+  assert.notStrictEqual(snapshot.slots, game.slots);
+});
+
+test('exported spatial tuning keeps the optimization defaults for future packages', async () => {
+  const exported = JSON.parse(await readFile(
+    path.resolve('artifacts', 'scene-tuning.json'),
+    'utf8'
+  ));
+  assert.deepEqual(
+    exported.spatialConveyor.optimizations,
+    SCENE_TUNING.spatialConveyor.optimizations
+  );
+});
+
 test('spatial conveyor can start full without entrance upload motion', () => {
   const game = new BusLoopGame();
   const totalGroups = game.level.passengerQueues.flat().length;
@@ -410,6 +454,19 @@ test('HTML editor, renderer, Vite service, and production build expose selectabl
   assert.match(editorSource, /spatialConveyor\.startFilled/);
   assert.match(editorSource, /spatialConveyor\.normalSpeedMultiplier/);
   assert.match(editorSource, /spatialConveyor\.longPressMultiplier/);
+  assert.match(editorSource, /spatialConveyor\.optimizations\.enabled/);
+  assert.match(editorSource, /spatialConveyor\.optimizations\.instancedPassengers/);
+  assert.match(editorSource, /spatialConveyor\.optimizations\.instancedShadows/);
+  assert.match(editorSource, /spatialConveyor\.optimizations\.curveLookup/);
+  assert.match(editorSource, /spatialConveyor\.optimizations\.liveRenderState/);
+  assert.match(editorSource, /spatialConveyor\.optimizations\.skipUnusedQueues/);
+  assert.match(editorSource, /spatialConveyor\.optimizations\.cacheStaticVehicles/);
+  assert.match(editorSource, /spatialConveyor\.optimizations\.cacheBlockers/);
+  assert.match(editorSource, /spatialConveyor\.optimizations\.poolBoardingPassengers/);
+  assert.match(editorSource, /spatialConveyor\.optimizations\.frustumCulling/);
+  assert.match(editorSource, /spatialConveyor\.optimizations\.skipDisabledPathPreview/);
+  assert.match(editorSource, /spatialConveyor\.optimizations\.deduplicateBoardingUpdates/);
+  assert.match(editorSource, /spatialConveyor\.optimizations\.highPerformanceRenderer/);
   assert.ok(
     editorSource.indexOf('spatialConveyor.startFilled')
       < editorSource.indexOf('spatialConveyor.normalSpeedMultiplier')
@@ -448,11 +505,15 @@ test('HTML editor, renderer, Vite service, and production build expose selectabl
   const spatialQueueIndex = editorSource.indexOf(
     "title: '\\u7acb\\u4f53\\u8f68\\u9053\\u961f\\u5217'"
   );
+  const spatialOptimizationIndex = editorSource.indexOf(
+    "title: '\\u7acb\\u4f53\\u8f68\\u9053\\u6027\\u80fd\\u4f18\\u5316'"
+  );
   const ordinaryConveyorGroupsIndex = editorSource.indexOf('...CONVEYOR_LAYOUT_FIELD_GROUPS');
   assert.ok(passengerMaterialIndex < conveyorSelectionIndex);
   assert.ok(conveyorSelectionIndex < spatialTransformIndex);
   assert.ok(spatialTransformIndex < spatialQueueIndex);
-  assert.ok(spatialQueueIndex < ordinaryConveyorGroupsIndex);
+  assert.ok(spatialQueueIndex < spatialOptimizationIndex);
+  assert.ok(spatialOptimizationIndex < ordinaryConveyorGroupsIndex);
   assert.doesNotMatch(editorSource, /option\.disabled = true/);
   assert.match(viewSource, /buildSpatialConveyorGeometry/);
   assert.match(viewSource, /buildSpatialConveyorExitGeometry/);
@@ -460,6 +521,16 @@ test('HTML editor, renderer, Vite service, and production build expose selectabl
   assert.match(viewSource, /initiallyFull/);
   assert.match(viewSource, /SCENE_TUNING\.spatialConveyor\?\.capacity/);
   assert.match(viewSource, /Spatial Conveyor Root/);
+  assert.match(viewSource, /Spatial Passenger Instance Batches/);
+  assert.match(viewSource, /new THREE\.InstancedMesh/);
+  assert.match(viewSource, /vatPhaseOffset/);
+  assert.match(viewSource, /makeSharedAttributeGeometry/);
+  assert.match(viewSource, /createSpatialCurveLookup/);
+  assert.match(viewSource, /updateSpatialPassengerBatches/);
+  assert.match(viewSource, /poolBoardingPassengers/);
+  assert.match(viewSource, /cacheStaticVehicles/);
+  assert.match(viewSource, /cacheBlockers/);
+  assert.match(viewSource, /skipDisabledPathPreview/);
   assert.doesNotMatch(viewSource, /SPATIAL_CONVEYOR_DISPLAY\.camera/);
   assert.match(viteSource, /DEFAULT_OUTPUT_ROOT/);
   assert.match(viteSource, /listSpatialConveyors/);
@@ -477,6 +548,7 @@ test('HTML editor, renderer, Vite service, and production build expose selectabl
   assert.match(mainSource, /function applyIdleSpeedMultiplier/);
   assert.match(mainSource, /path === 'spatialConveyor\.normalSpeedMultiplier'/);
   assert.match(mainSource, /spatialConveyor\?\.longPressMultiplier/);
+  assert.match(mainSource, /game\.renderState\(\)/);
   assert.match(mainSource, /: LEVEL_1\.longPressMultiplier/);
   assert.match(
     JSON.parse(packageJsonSource).scripts.prebuild,
@@ -489,4 +561,5 @@ test('HTML editor, renderer, Vite service, and production build expose selectabl
   assert.equal(SCENE_TUNING.spatialConveyor.roadWidth, 1.1);
   assert.equal(SCENE_TUNING.spatialConveyor.normalSpeedMultiplier, 2.3);
   assert.equal(SCENE_TUNING.spatialConveyor.longPressMultiplier, 5.4);
+  assert.ok(Object.values(SCENE_TUNING.spatialConveyor.optimizations).every((value) => value === 1));
 });

@@ -94,6 +94,54 @@ export function getSpatialConveyorWorldPoints(packageData, displayTuning = {}) {
   return sourcePoints.map(mapDisplayPoint);
 }
 
+export function createSpatialCurveLookup(curve, sampleCount = 4096) {
+  if (!curve) return null;
+  const segments = Math.max(2, Math.floor(Number(sampleCount) || 4096));
+  const positions = new Float32Array((segments + 1) * 3);
+  const tangents = new Float32Array((segments + 1) * 3);
+  const point = new THREE.Vector3();
+  const tangent = new THREE.Vector3();
+  for (let index = 0; index <= segments; index += 1) {
+    const progress = index / segments;
+    curve.getPointAt(progress, point);
+    curve.getTangentAt(progress, tangent).normalize();
+    const offset = index * 3;
+    positions[offset] = point.x;
+    positions[offset + 1] = point.y;
+    positions[offset + 2] = point.z;
+    tangents[offset] = tangent.x;
+    tangents[offset + 1] = tangent.y;
+    tangents[offset + 2] = tangent.z;
+  }
+  return { segments, positions, tangents };
+}
+
+export function sampleSpatialCurveLookup(
+  lookup,
+  progress,
+  targetPoint = new THREE.Vector3(),
+  targetTangent = new THREE.Vector3()
+) {
+  if (!lookup?.segments) return null;
+  const scaled = THREE.MathUtils.clamp(Number(progress) || 0, 0, 1) * lookup.segments;
+  const lower = Math.min(lookup.segments - 1, Math.floor(scaled));
+  const upper = Math.min(lookup.segments, lower + 1);
+  const alpha = scaled - lower;
+  const lowerOffset = lower * 3;
+  const upperOffset = upper * 3;
+  targetPoint.set(
+    THREE.MathUtils.lerp(lookup.positions[lowerOffset], lookup.positions[upperOffset], alpha),
+    THREE.MathUtils.lerp(lookup.positions[lowerOffset + 1], lookup.positions[upperOffset + 1], alpha),
+    THREE.MathUtils.lerp(lookup.positions[lowerOffset + 2], lookup.positions[upperOffset + 2], alpha)
+  );
+  targetTangent.set(
+    THREE.MathUtils.lerp(lookup.tangents[lowerOffset], lookup.tangents[upperOffset], alpha),
+    THREE.MathUtils.lerp(lookup.tangents[lowerOffset + 1], lookup.tangents[upperOffset + 1], alpha),
+    THREE.MathUtils.lerp(lookup.tangents[lowerOffset + 2], lookup.tangents[upperOffset + 2], alpha)
+  ).normalize();
+  return { point: targetPoint, tangent: targetTangent };
+}
+
 function makeSpatialDisplayMapper(sourcePoints, displayTuning = {}) {
   const bounds = new THREE.Box3().setFromPoints(sourcePoints);
   const sourceCenter = bounds.getCenter(new THREE.Vector3());

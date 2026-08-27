@@ -1,5 +1,29 @@
 ﻿# Playable Project Progress
 
+## Completed On 2026-08-27 - Spatial guide restoration
+
+- Restored the optimized spatial delivery guide configuration from the complete pre-optimization backup instead of reusing the Heart values across every level family.
+- Final family mapping is Duck `level12 / vehicle 1`, Fish `level13 / vehicle 130`, Heart `level15 / vehicle 157`, and Rainbow normal guide `level7 / vehicle 39`; only Rainbow enables the 3-second first-click guide on `level7 / vehicle 89`.
+- Regenerated and hardened all 32 Unity spatial variants, then replaced the 32 AppLovin and 32 Unity shape files under `D:/文件/可玩-立体轨道`. The overwritten optimized batch is recoverable from `D:/Project/Convert-playable/backups/可玩-立体轨道-optimized-pre-guide-fix-20260827`.
+- All 64 target files are byte-identical to validated outputs and retain the spatial optimization markers. Unity branding/MRAID lifecycle and fail-closed conversion tests pass.
+- Mobile 390x844 QA confirms Rainbow's first-click mask/hand remains visible after loading for about 2.5-2.6 seconds in AppLovin and Unity, matching the backup; Duck and Fish normal guide hands are visibly restored with zero error-level logs.
+
+## Completed On 2026-08-27 - Spatial optimization delivery batch
+
+- Rebuilt the Duck/Level12, Fish/Level13, Heart/Level15, and Rainbow/Level7 spatial bases from the current optimized runtime, then regenerated all Android/IOS base, JP, summer, and winter AppLovin variants.
+- Converted and hardened the matching Unity deliveries, preserving platform Icons, backgrounds, branding runtime, CTA behavior, and the Unity MRAID ready/viewable lifecycle.
+- Replaced 64 same-name HTML files under `D:/文件/可玩-立体轨道`: 32 AppLovin plus 32 Unity. A complete pre-replacement backup is stored at `D:/Project/Convert-playable/backups/可玩-立体轨道-pre-optimization-20260827.zip`.
+- All target hashes match the validated outputs. Maximum sizes are 4,473,968 bytes for AppLovin and 4,421,630 bytes for Unity; all packages retain the spatial payload and optimization markers with zero remote asset tags.
+- Full Unity branding/lifecycle and fail-closed conversion regressions pass. Mobile 390x844 browser QA on representative AppLovin and Unity Android Heart packages shows a populated animated spatial track with zero error-level logs; official platform upload validation remains external.
+
+## Completed On 2026-08-27 - Spatial-only mobile runtime optimization controls
+
+- Added a spatial-only “立体轨道性能优化” editor group with a master switch and independent rollback switches for passenger/shadow instancing, curve lookup, live render state, unused queue allocation, static vehicle/blocker caches, boarding pooling, chunk culling, disabled preview skipping, duplicate boarding updates, and high-performance GPU preference.
+- Spatial passengers and fake shadows now render through color-and-path-chunk THREE.InstancedMesh batches while preserving the existing VAT mesh, animation texture, per-row phase offset, passenger materials, capacity, spacing, speed, and road geometry. Instance wrappers share the original vertex buffers instead of duplicating the passenger model for every batch.
+- Spatial-only CPU work now uses a 4096-sample position/tangent lookup, a reusable live render state, lazy ordinary queue/passenger pools, cached parked transforms and blocker results, pooled boarding visuals, and one boarding update per frame. Ordinary conveyors keep the previous snapshot and per-object rendering paths.
+- Focused spatial tests pass 11/11, the main tuning persistence check passes, syntax checks pass, and the production Vite build passes for the current level15 + ConveyorBeltShape selection. Desktop/mobile browser QA shows the populated spatial track with continuing animation and zero error-level logs after the shader compatibility correction.
+- Existing AppLovin/Unity delivery HTML files were not rebuilt or batch-upgraded in this step. The optimized runtime is currently available in the editor and future builds only.
+
 ## Completed On 2026-08-27 - Spatial shape Unity package batch
 
 - Converted the 32 new AppLovin packages whose suffixes contain `shape`: 16 IOS and 16 Android variants across Duck, Fish, Heart, and Rainbow with base, JP, summer, and winter backgrounds.

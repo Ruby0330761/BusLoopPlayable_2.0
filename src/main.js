@@ -682,6 +682,14 @@ async function startRuntime() {
     const configuredMultiplier = Number(SCENE_TUNING.spatialConveyor?.normalSpeedMultiplier);
     return Number.isFinite(configuredMultiplier) ? Math.max(0.1, configuredMultiplier) : 1;
   }
+  function isSpatialOptimizationEnabled(key) {
+    const optimizations = SCENE_TUNING.spatialConveyor?.optimizations;
+    return Boolean(
+      isSpatialConveyorSelection(SCENE_TUNING.conveyorLayout?.selected)
+      && optimizations?.enabled
+      && optimizations?.[key]
+    );
+  }
   function applyIdleSpeedMultiplier() {
     game.setSpeedMultiplier(getIdleSpeedMultiplier());
   }
@@ -892,7 +900,10 @@ async function startRuntime() {
     const delta = (now - previous) / 1000;
     previous = now;
     game.update(delta);
-    view.update(game.snapshot(), game);
+    const renderState = isSpatialOptimizationEnabled('liveRenderState')
+      ? game.renderState()
+      : game.snapshot();
+    view.update(renderState, game);
     view.render();
     requestAnimationFrame(frame);
   }

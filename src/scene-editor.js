@@ -274,6 +274,25 @@ const FIELD_GROUPS = [
       ['\u957f\u6309\u52a0\u901f\u500d\u7387', 'spatialConveyor.longPressMultiplier', 1, 10, 0.1]
     ]
   },
+  {
+    title: '\u7acb\u4f53\u8f68\u9053\u6027\u80fd\u4f18\u5316',
+    spatialOnly: true,
+    fields: [
+      ['\u542f\u7528\u6027\u80fd\u4f18\u5316', 'spatialConveyor.optimizations.enabled', 0, 1, 1, null, 'toggle'],
+      ['\u4e58\u5ba2\u5b9e\u4f8b\u5316', 'spatialConveyor.optimizations.instancedPassengers', 0, 1, 1, null, 'toggle'],
+      ['\u9634\u5f71\u5b9e\u4f8b\u5316', 'spatialConveyor.optimizations.instancedShadows', 0, 1, 1, null, 'toggle'],
+      ['\u8f68\u9053\u66f2\u7ebf\u67e5\u8868', 'spatialConveyor.optimizations.curveLookup', 0, 1, 1, null, 'toggle'],
+      ['\u590d\u7528\u6e32\u67d3\u72b6\u6001', 'spatialConveyor.optimizations.liveRenderState', 0, 1, 1, null, 'toggle'],
+      ['\u8df3\u8fc7\u666e\u901a\u961f\u5217\u5bf9\u8c61', 'spatialConveyor.optimizations.skipUnusedQueues', 0, 1, 1, null, 'toggle'],
+      ['\u7f13\u5b58\u9759\u6001\u8f66\u8f86', 'spatialConveyor.optimizations.cacheStaticVehicles', 0, 1, 1, null, 'toggle'],
+      ['\u7f13\u5b58\u963b\u6321\u5173\u7cfb', 'spatialConveyor.optimizations.cacheBlockers', 0, 1, 1, null, 'toggle'],
+      ['\u767b\u8f66\u4e58\u5ba2\u5bf9\u8c61\u6c60', 'spatialConveyor.optimizations.poolBoardingPassengers', 0, 1, 1, null, 'toggle'],
+      ['\u5206\u6bb5\u89c6\u9525\u88c1\u526a', 'spatialConveyor.optimizations.frustumCulling', 0, 1, 1, null, 'toggle'],
+      ['\u8df3\u8fc7\u5173\u95ed\u7684\u8def\u5f84\u9884\u89c8', 'spatialConveyor.optimizations.skipDisabledPathPreview', 0, 1, 1, null, 'toggle'],
+      ['\u5408\u5e76\u91cd\u590d\u767b\u8f66\u66f4\u65b0', 'spatialConveyor.optimizations.deduplicateBoardingUpdates', 0, 1, 1, null, 'toggle'],
+      ['\u9ad8\u6027\u80fd GPU \u6a21\u5f0f', 'spatialConveyor.optimizations.highPerformanceRenderer', 0, 1, 1, null, 'toggle']
+    ]
+  },
   ...CONVEYOR_LAYOUT_FIELD_GROUPS,
   {
     title: '\u4e2d\u95f4\u5c0f\u4eba\u5f71\u5b50',

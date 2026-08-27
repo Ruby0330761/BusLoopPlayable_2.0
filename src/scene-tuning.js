@@ -124,7 +124,22 @@ export const SCENE_TUNING = {
     "rotationXDegrees": 15,
     "rotationYDegrees": 180,
     "rotationZDegrees": 0,
-    "mirrorZ": 1
+    "mirrorZ": 1,
+    "optimizations": {
+      "enabled": 1,
+      "instancedPassengers": 1,
+      "instancedShadows": 1,
+      "curveLookup": 1,
+      "liveRenderState": 1,
+      "skipUnusedQueues": 1,
+      "cacheStaticVehicles": 1,
+      "cacheBlockers": 1,
+      "poolBoardingPassengers": 1,
+      "frustumCulling": 1,
+      "skipDisabledPathPreview": 1,
+      "deduplicateBoardingUpdates": 1,
+      "highPerformanceRenderer": 1
+    }
   },
   "conveyorLayouts": {
     "dualQueue2": {

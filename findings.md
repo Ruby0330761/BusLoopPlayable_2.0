@@ -1,5 +1,29 @@
 # Findings
 
+## 2026-08-27 Spatial guide restoration
+
+- The missing guides were a package-configuration regression, not a failure of the spatial performance renderer. The first optimized batch reused Heart's `level15 / vehicle 157` guide values for Duck, Fish, and Rainbow, so level scoping correctly hid those guides.
+- The authoritative backup matrix is Duck normal `level12 / 1`, Fish normal `level13 / 130`, Heart normal `level15 / 157`, and Rainbow normal `level7 / 39`; only Rainbow enables first-click `level7 / 89`. Disabled first-click configs still retain `level7 / 89` for parity.
+- Shared normal-guide motion values are offsets `0.25 / 0.38 / 0.46`, approach `0.62 / -0.11`, size `1.63`, dimensions `0.6 / 0.5`, near/far `1 / 1.14`, and speed `0.55`. Shared first-click values are 3 seconds, opacity `0.8`, padding `15`, and hole scale `0.62 / 0.62`.
+- Mobile timing comparison shows the optimized Rainbow first-click guide remains visible after the loading layer for essentially the same duration as the backup, so no performance-optimization rollback or guide-timer code change is required.
+
+## 2026-08-27 Spatial optimization batch packaging
+
+- The spatial delivery family mapping is Duck -> Level12, Fish -> Level13, Heart -> Level15, and Rainbow -> Level7. Background and Android/IOS variants can be regenerated mechanically after those four optimized bases are built.
+- Rebuilding from source is the accepted upgrade path for these packages. It preserves each level payload while avoiding blind edits to minified runtime code.
+- The current spatial batch keeps the editor's baked values, including capacity 128, normal/long-press speed 2.3/5.4, all visual transforms, all optimization switches enabled, and install threshold 18.
+- Unity packages must continue through the integrated conversion plus runtime-hardening pipeline; copying AppLovin HTML directly would omit the required persistent `viewableChange` lifecycle and pause/resume behavior.
+- The converter's 54 warnings are known scanner false positives from Base64 `//` fragments, XHTML metadata, and the two embedded store URLs. Final target scans confirm zero remote asset tags.
+
+## 2026-08-27 Spatial mobile optimization boundary
+
+- Spatial optimization must remain gated by both the selected spatial conveyor and spatialConveyor.optimizations.enabled. Ordinary conveyors retain their previous snapshot, queue-view, passenger-material, and renderer behavior.
+- The accepted batching unit is passenger color plus four path chunks. It preserves the existing VAT animation and per-row phase while reducing hundreds of passenger/shadow submissions to a bounded set of instance batches with conservative chunk spheres.
+- Instance geometries use lightweight BufferGeometry wrappers with shared source vertex/index attributes and a unique small vatPhaseOffset instance buffer. Cloning the full VAT geometry per color/chunk would trade draw-call savings for unnecessary GPU memory growth.
+- The optimized initial spatial path must not create or upgrade the ordinary conveyor/queue passenger view pools. Those views are allocated lazily only when instancing is disabled, assets fail, or an ordinary conveyor is selected, which preserves the rollback path without paying its startup cost.
+- Per-frame immutable snapshot() remains the external/test/listener contract. Spatial rendering can use renderState() references, but only behind its editor switch; state consumers that retain or mutate render data must continue using snapshot().
+- Structural runtime optimization is available in editor/future builds and has now been published to the 64 spatial delivery files under `D:/文件/可玩-立体轨道`; other historical packages remain unchanged.
+
 ## 2026-08-27 Corrected platform Icon ownership
 
 - The corrected platform filenames are Android `icon-android.jpg` and iOS `icon-ios.png`. Branding tuning, editor options, asset tests, and exact package data-URI validation must use this mapping.
