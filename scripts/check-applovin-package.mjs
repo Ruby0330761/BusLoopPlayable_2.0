@@ -1,9 +1,16 @@
 import { readFile, stat } from 'node:fs/promises';
 import path from 'node:path';
+import { pathToFileURL } from 'node:url';
 
 const ROOT = process.cwd();
 const PACKAGE_FILE = path.join(ROOT, 'artifacts', 'applovin', 'index.html');
+const TUNING_FILE = path.join(ROOT, 'src', 'scene-tuning.js');
+const SPATIAL_PACKAGE_ROOT = path.join(ROOT, 'artifacts', 'spatial-conveyors');
 const MAX_BYTES = 5_000_000;
+const BRANDING_ICON_ASSETS = [
+  '/assets/icon-android.jpg',
+  '/assets/icon-ios.png'
+];
 const ALLOWED_URLS = new Set([
   'https://play.google.com/store/apps/details?id=gridplus.busjam.carpuzzle',
   'https://apps.apple.com/app/id6746743297'
@@ -34,10 +41,40 @@ function inlineModulesAreSyntaxValid(html) {
   }
 }
 
+function mimeForAsset(asset) {
+  return asset.toLowerCase().endsWith('.jpg') || asset.toLowerCase().endsWith('.jpeg')
+    ? 'image/jpeg'
+    : 'image/png';
+}
+
+async function assetDataUri(asset) {
+  const filePath = path.join(ROOT, 'public', asset.replace(/^\//u, ''));
+  const bytes = await readFile(filePath);
+  return `data:${mimeForAsset(asset)};base64,${bytes.toString('base64')}`;
+}
+
 async function main() {
-  const [{ size }, html] = await Promise.all([
+  const tuningUrl = `${pathToFileURL(TUNING_FILE).href}?t=${Date.now()}`;
+  const { SCENE_TUNING } = await import(tuningUrl);
+  const selectedIconAsset = SCENE_TUNING.branding?.icon?.asset;
+  if (!BRANDING_ICON_ASSETS.includes(selectedIconAsset)) {
+    throw new Error(`Unsupported branding Icon asset: ${selectedIconAsset}`);
+  }
+  const unselectedIconAsset = BRANDING_ICON_ASSETS.find((asset) => asset !== selectedIconAsset);
+  const selectedConveyor = SCENE_TUNING.conveyorLayout?.selected;
+  const selectedSpatialId = typeof selectedConveyor === 'string' && selectedConveyor.startsWith('spatial:')
+    ? selectedConveyor.slice('spatial:'.length)
+    : null;
+  const selectedSpatialPackage = selectedSpatialId
+    ? JSON.parse(await readFile(path.join(SPATIAL_PACKAGE_ROOT, `${selectedSpatialId}.json`), 'utf8'))
+    : null;
+  const [{ size }, html, selectedIconDataUri, unselectedIconDataUri, smallLogoDataUri, legacyLogoDataUri] = await Promise.all([
     stat(PACKAGE_FILE),
-    readFile(PACKAGE_FILE, 'utf8')
+    readFile(PACKAGE_FILE, 'utf8'),
+    assetDataUri(selectedIconAsset),
+    assetDataUri(unselectedIconAsset),
+    assetDataUri('/assets/main-loading-icon-small.png'),
+    assetDataUri('/assets/main-loading-icon.png')
   ]);
 
   const checks = [
@@ -102,14 +139,33 @@ async function main() {
       pass: /data:image\//iu.test(html)
     },
     {
+      name: 'selected spatial conveyor package inlined',
+      pass: !selectedSpatialPackage || (
+        selectedSpatialPackage.id === selectedSpatialId &&
+        html.includes(selectedConveyor) &&
+        html.includes(selectedSpatialPackage.visual?.material?.loopTextureDataUrl) &&
+        html.includes(selectedSpatialPackage.visual?.material?.exitTextureDataUrl)
+      ),
+      detail: selectedSpatialPackage ? selectedConveyor : 'ordinary conveyor selected'
+    },
+    {
       name: 'branding overlay markup present',
       pass: /id=["']branding-overlay["']/iu.test(html) &&
         /id=["']branding-text["']/iu.test(html)
     },
     {
-      name: 'branding Icon and Logo images inlined',
-      pass: /<img\b(?=[^>]*\bid=["']branding-icon["'])(?=[^>]*\bsrc=["']data:image\/png;base64,)[^>]*>/iu.test(html) &&
+      name: 'selected branding Icon and small Logo images inlined',
+      pass: html.includes(selectedIconDataUri) &&
+        html.includes(smallLogoDataUri) &&
         /<img\b(?=[^>]*\bid=["']branding-logo["'])(?=[^>]*\bsrc=["']data:image\/png;base64,)[^>]*>/iu.test(html)
+    },
+    {
+      name: 'unselected branding Icon omitted',
+      pass: !html.includes(unselectedIconDataUri)
+    },
+    {
+      name: 'legacy large branding Logo omitted',
+      pass: !html.includes(legacyLogoDataUri)
     },
     {
       name: 'branding Poppins font inlined',

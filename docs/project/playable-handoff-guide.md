@@ -107,7 +107,7 @@ npm run check:applovin
 
 说明：
 
-- `npm run build` 会先生成当前选中关卡的窄生产数据，再执行 Vite 构建。
+- `npm run build` 会先生成当前选中关卡和当前选中立体轨道的窄生产数据，再执行 Vite 构建；若选中的立体轨道 JSON 不存在，构建会直接失败而不是回退普通轨道。
 - `npm run package:applovin` 会把脚本、样式和资源内联为单个 HTML。
 - `npm run check:applovin` 会检查单文件、包体、外部资源、MRAID CTA 等静态要求。
 - 最终默认产物是 `artifacts/applovin/index.html`。

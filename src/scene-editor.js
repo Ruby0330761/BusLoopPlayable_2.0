@@ -1,4 +1,8 @@
 import { LEVEL_OPTIONS } from './level-catalog.js';
+import {
+  isSpatialConveyorSelection,
+  refreshSpatialConveyorPackages
+} from './spatial-conveyor-runtime.js';
 
 const CONVEYOR_LAYOUT_OPTIONS = [
   ['dualQueue2', 'GameSceneDualQueue2'],
@@ -12,6 +16,11 @@ const BACKGROUND_OPTIONS = [
   ['/assets/applovin/textures/BG02_split01_winter_q60.jpg', 'BG02 \u51ac\u5b63'],
   ['/assets/applovin/textures/BG02_split01_summer_q60.jpg', 'BG02 \u590f\u5b63'],
   ['/assets/applovin/textures/BG01_split01_Sakura_q60.jpg', 'BG01 \u6a31\u82b1']
+];
+
+const BRANDING_ICON_OPTIONS = [
+  ['/assets/icon-android.jpg', 'Android'],
+  ['/assets/icon-ios.png', 'iOS']
 ];
 
 function makeConveyorLayoutGroups(layoutId, label) {
@@ -61,6 +70,7 @@ const FIELD_GROUPS = [
       ['\u9884\u89c8\u542f\u7528', 'preview.enabled', 0, 1, 1, null, 'toggle'],
       ['\u6a21\u62df\u5bbd\u5ea6', 'preview.width', 320, 2160, 1],
       ['\u6a21\u62df\u9ad8\u5ea6', 'preview.height', 320, 4320, 1],
+      ['Icon \u7248\u672c', 'branding.icon.asset', 0, 0, 1, BRANDING_ICON_OPTIONS],
       ['Icon \u663e\u793a', 'branding.icon.enabled', 0, 1, 1, null, 'toggle'],
       ['Icon \u9501\u5b9a', 'branding.icon.locked', 0, 1, 1, null, 'toggle'],
       ['Icon X', 'branding.icon.x', 0, 4320, 1],
@@ -228,9 +238,40 @@ const FIELD_GROUPS = [
     ]
   },
   {
-    title: '\u4f20\u9001\u5e26\u5f62\u72b6',
+    title: '\u4f20\u9001\u5e26\u9009\u62e9',
+    spatialImportAnchor: true,
     fields: [
       ['Prefab', 'conveyorLayout.selected', 0, 0, 1, CONVEYOR_LAYOUT_OPTIONS]
+    ]
+  },
+  {
+    title: '\u7acb\u4f53\u8f68\u9053\u4f4d\u7f6e\u4e0e\u7f29\u653e',
+    spatialOnly: true,
+    fields: [
+      ['X \u4f4d\u7f6e', 'spatialConveyor.positionX', -6, 6, 0.05],
+      ['Y \u4f4d\u7f6e', 'spatialConveyor.positionY', -3, 4, 0.05],
+      ['Z \u4f4d\u7f6e', 'spatialConveyor.positionZ', -10, 4, 0.05],
+      ['\u51fa\u53e3 X \u4f4d\u7f6e', 'spatialConveyor.exitPositionX', -4, 4, 0.05],
+      ['\u51fa\u53e3 Z \u4f4d\u7f6e', 'spatialConveyor.exitPositionZ', -4, 4, 0.05],
+      ['\u7edf\u4e00\u7f29\u653e', 'spatialConveyor.scale', 0.5, 2.5, 0.05],
+      ['Y \u8f74\u5782\u76f4\u7f29\u653e', 'spatialConveyor.scaleY', 0.25, 3, 0.05],
+      ['X \u8f74\u7f29\u653e', 'spatialConveyor.scaleX', 0.25, 3, 0.05],
+      ['Z \u8f74\u7f29\u653e', 'spatialConveyor.scaleZ', 0.25, 3, 0.05],
+      ['\u8def\u9762\u5bbd\u5ea6', 'spatialConveyor.roadWidth', 0.25, 3, 0.05],
+      ['X \u8f74\u65cb\u8f6c', 'spatialConveyor.rotationXDegrees', 0, 360, 5],
+      ['Y \u8f74\u65cb\u8f6c', 'spatialConveyor.rotationYDegrees', 0, 360, 5],
+      ['Z \u8f74\u65cb\u8f6c', 'spatialConveyor.rotationZDegrees', 0, 360, 5],
+      ['Unity Z \u8f74\u955c\u50cf\u6821\u6b63', 'spatialConveyor.mirrorZ', 0, 1, 1, null, 'toggle']
+    ]
+  },
+  {
+    title: '\u7acb\u4f53\u8f68\u9053\u961f\u5217',
+    spatialOnly: true,
+    fields: [
+      ['\u7acb\u4f53\u8f68\u9053\u5bb9\u91cf', 'spatialConveyor.capacity', 1, 600, 1],
+      ['\u521d\u59cb\u6ee1\u4eba', 'spatialConveyor.startFilled', 0, 1, 1, null, 'toggle'],
+      ['\u5e38\u89c4\u961f\u5217\u901f\u5ea6', 'spatialConveyor.normalSpeedMultiplier', 0.1, 5, 0.1],
+      ['\u957f\u6309\u52a0\u901f\u500d\u7387', 'spatialConveyor.longPressMultiplier', 1, 10, 0.1]
     ]
   },
   ...CONVEYOR_LAYOUT_FIELD_GROUPS,
@@ -447,6 +488,8 @@ export function createSceneEditor(root, { getTuning, setTuning, clearSavedTuning
     const section = document.createElement('section');
     section.className = 'editor-section';
     if (group.conveyorLayout) section.dataset.conveyorLayout = group.conveyorLayout;
+    if (group.spatialOnly) section.dataset.spatialOnly = 'true';
+    if (group.spatialImportAnchor) section.dataset.spatialImportAnchor = 'true';
     section.innerHTML = `<h3>${group.title}</h3>`;
     for (const [label, path, min, max, step, options, control] of group.fields) {
       const isColor = /color$/i.test(path) || /^passengerMaterial\.solidColors\.\d+$/.test(path);
@@ -532,6 +575,121 @@ export function createSceneEditor(root, { getTuning, setTuning, clearSavedTuning
     fieldsRoot.append(section);
   }
 
+  const spatialSection = document.createElement('section');
+  spatialSection.className = 'editor-section editor-spatial-conveyor';
+  spatialSection.innerHTML = `
+    <h3>\u7acb\u4f53\u8f68\u9053\u7f16\u8f91</h3>
+    <div class="editor-spatial-actions">
+      <button class="editor-spatial-import" type="button">\u5bfc\u5165 Prefab</button>
+      <button class="editor-spatial-refresh" type="button">\u5237\u65b0\u5217\u8868</button>
+      <button class="editor-spatial-open-folder" type="button">\u6253\u5f00\u5b58\u50a8\u6587\u4ef6\u5939</button>
+    </div>
+    <input class="editor-spatial-file" type="file" accept=".prefab" hidden>
+    <p class="editor-spatial-status" aria-live="polite">\u6b63\u5728\u8bfb\u53d6...</p>
+  `;
+  const spatialImportAnchor = fieldsRoot.querySelector('[data-spatial-import-anchor]');
+  spatialImportAnchor.before(spatialSection);
+
+  const spatialImportButton = spatialSection.querySelector('.editor-spatial-import');
+  const spatialRefreshButton = spatialSection.querySelector('.editor-spatial-refresh');
+  const spatialOpenFolderButton = spatialSection.querySelector('.editor-spatial-open-folder');
+  const spatialFileInput = spatialSection.querySelector('.editor-spatial-file');
+  const spatialStatus = spatialSection.querySelector('.editor-spatial-status');
+
+  function setSpatialBusy(busy) {
+    spatialImportButton.disabled = busy;
+    spatialRefreshButton.disabled = busy;
+    spatialOpenFolderButton.disabled = busy;
+  }
+
+  function reloadSelectedSpatialConveyor() {
+    const selected = getTuning().conveyorLayout?.selected;
+    if (!isSpatialConveyorSelection(selected)) return;
+    setTuning(structuredClone(getTuning()), { path: 'conveyorLayout.selected' });
+  }
+
+  async function refreshSpatialConveyorOptions() {
+    const controls = inputs.get('conveyorLayout.selected');
+    if (!controls?.select) return [];
+    for (const option of controls.select.querySelectorAll('[data-spatial-conveyor]')) option.remove();
+
+    const items = await refreshSpatialConveyorPackages();
+    for (const item of items) {
+      const option = document.createElement('option');
+      option.value = item.value;
+      option.textContent = `${item.label} (\u7acb\u4f53)`;
+      option.dataset.spatialConveyor = item.id;
+      controls.select.append(option);
+    }
+    const selected = getTuning().conveyorLayout?.selected;
+    if (controls.select.querySelector(`option[value="${CSS.escape(selected ?? '')}"]`)) {
+      controls.select.value = selected;
+    }
+    spatialStatus.textContent = `\u5df2\u5bfc\u5165 ${items.length} \u4e2a\u7acb\u4f53\u8f68\u9053`;
+    return items;
+  }
+
+  async function importSpatialConveyor(file) {
+    if (!file?.name.toLowerCase().endsWith('.prefab')) {
+      throw new Error('\u8bf7\u9009\u62e9 .prefab \u6587\u4ef6');
+    }
+    const response = await fetch('/__spatial-conveyors/import', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'text/plain; charset=utf-8',
+        'X-Prefab-Filename': encodeURIComponent(file.name)
+      },
+      body: await file.text()
+    });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(payload.error || `HTTP ${response.status}`);
+    const items = await refreshSpatialConveyorOptions();
+    reloadSelectedSpatialConveyor();
+    spatialStatus.textContent = `\u5df2\u5bfc\u5165 ${payload.item.label}\uff0c\u5171 ${items.length} \u4e2a`;
+  }
+
+  spatialImportButton.addEventListener('click', () => spatialFileInput.click());
+  spatialOpenFolderButton.addEventListener('click', async () => {
+    setSpatialBusy(true);
+    spatialStatus.textContent = '\u6b63\u5728\u6253\u5f00\u5b58\u50a8\u6587\u4ef6\u5939...';
+    try {
+      const response = await fetch('/__spatial-conveyors/open-folder', { method: 'POST' });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(payload.error || 'HTTP ' + response.status);
+      spatialStatus.textContent = '\u5df2\u6253\u5f00 ' + payload.path;
+    } catch (error) {
+      spatialStatus.textContent = '\u6253\u5f00\u5931\u8d25\uff1a' + error.message;
+    } finally {
+      setSpatialBusy(false);
+    }
+  });
+  spatialRefreshButton.addEventListener('click', async () => {
+    setSpatialBusy(true);
+    spatialStatus.textContent = '\u6b63\u5728\u5237\u65b0...';
+    try {
+      await refreshSpatialConveyorOptions();
+      reloadSelectedSpatialConveyor();
+    } catch (error) {
+      spatialStatus.textContent = `\u5237\u65b0\u5931\u8d25\uff1a${error.message}`;
+    } finally {
+      setSpatialBusy(false);
+    }
+  });
+  spatialFileInput.addEventListener('change', async () => {
+    const [file] = spatialFileInput.files ?? [];
+    if (!file) return;
+    setSpatialBusy(true);
+    spatialStatus.textContent = `\u6b63\u5728\u5bfc\u5165 ${file.name}...`;
+    try {
+      await importSpatialConveyor(file);
+    } catch (error) {
+      spatialStatus.textContent = `\u5bfc\u5165\u5931\u8d25\uff1a${error.message}`;
+    } finally {
+      spatialFileInput.value = '';
+      setSpatialBusy(false);
+    }
+  });
+
   function updatePassengerMaterialVisibility(tuning) {
     const mode = tuning.passengerMaterial?.mode ?? 'unityTexture';
     for (const [path, controls] of inputs) {
@@ -549,6 +707,9 @@ export function createSceneEditor(root, { getTuning, setTuning, clearSavedTuning
     const selected = tuning.conveyorLayout?.selected ?? 'dualQueue2';
     for (const section of fieldsRoot.querySelectorAll('[data-conveyor-layout]')) {
       section.hidden = section.dataset.conveyorLayout !== selected;
+    }
+    for (const section of fieldsRoot.querySelectorAll('[data-spatial-only]')) {
+      section.hidden = !isSpatialConveyorSelection(selected);
     }
   }
 
@@ -592,5 +753,8 @@ export function createSceneEditor(root, { getTuning, setTuning, clearSavedTuning
 
   if (matchMedia('(max-width: 760px)').matches) setCollapsed(true);
   sync();
-  return { sync, setCollapsed };
+  refreshSpatialConveyorOptions().catch((error) => {
+    spatialStatus.textContent = `\u5217\u8868\u4e0d\u53ef\u7528\uff1a${error.message}`;
+  });
+  return { sync, setCollapsed, refreshSpatialConveyorOptions };
 }

@@ -1,0 +1,29 @@
+{
+  "id": "bus-loop-spatial-v1",
+  "schemaVersion": 1,
+  "templateGuid": "e5a3779fb659c934bbca7df9e4f50681",
+  "pathsGuid": "06b8b8ca14d7b594aaff6eedb91e7adc",
+  "files": {
+    "templatePrefab": "ConveyorBeltTemplate.prefab",
+    "pathsPrefab": "Paths_1.prefab",
+    "loopTexture": "Loop_initial.png",
+    "exitTexture": "Loop_exit.png"
+  },
+  "targets": {
+    "variantMainSpline": "1852251880068840175",
+    "variantSplineMesh": "3144417120642309377",
+    "variantConveyor": "5715585421532965618",
+    "variantQueueGroup": "6447817737181092483",
+    "variantRootTransform": "7494891199344075759",
+    "variantLoopExitTransform": "6527417822792782440",
+    "baseMainSpline": "8902649647148536849",
+    "baseSplineMesh": "5303871868456694783",
+    "basePathsRootTransform": "2173051119636791792",
+    "basePathTransform": "5488801403545598027",
+    "templateRootTransform": "7494891199344075759",
+    "templateConveyor": "5715585421532965618",
+    "templateQueueGroup": "6447817737181092483",
+    "templateLoopExitTransform": "6527417822792782440",
+    "templateLoopExitSpriteRenderer": "3376735705450657268"
+  }
+}

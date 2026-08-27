@@ -5,10 +5,11 @@
   "type": "module",
   "scripts": {
     "dev": "vite --host 127.0.0.1",
-    "prebuild": "node scripts/generate-active-level.mjs",
+    "prebuild": "node scripts/generate-active-level.mjs && node scripts/generate-active-spatial-conveyor.mjs",
     "build": "vite build",
     "levels:extract": "node scripts/extract-unity-levels.mjs",
     "level:generate": "node scripts/generate-active-level.mjs",
+    "spatial:generate": "node scripts/generate-active-spatial-conveyor.mjs",
     "apply:tuning": "node scripts/apply-scene-tuning.mjs",
     "check:applovin": "node scripts/check-applovin-package.mjs",
     "package:applovin": "node scripts/package-applovin-single-html.mjs",

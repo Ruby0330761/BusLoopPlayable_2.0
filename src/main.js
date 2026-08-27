@@ -1,12 +1,22 @@
 ﻿import './styles.css';
 import { BusLoopGame } from './game-model.js';
 import { PLAYABLE_LEVEL_SEQUENCE } from './generated-active-level.js';
+import { ACTIVE_SPATIAL_CONVEYOR_PACKAGE } from './generated-active-spatial-conveyor.js';
 import { LEVEL_1, setActiveLevel } from './level-data.js';
 import { createLevelSession } from './level-session.js';
 import { SceneView } from './scene-view.js';
 import { clampCenteredRectX } from './scene-layout.js';
 import { SCENE_TUNING } from './scene-tuning.js';
 import { createGameAudioController } from './audio-controller.js';
+import {
+  isSpatialConveyorSelection,
+  registerSpatialConveyorPackage,
+  refreshSpatialConveyorPackages
+} from './spatial-conveyor-runtime.js';
+
+if (ACTIVE_SPATIAL_CONVEYOR_PACKAGE) {
+  registerSpatialConveyorPackage(ACTIVE_SPATIAL_CONVEYOR_PACKAGE);
+}
 
 const TUNING_STORAGE_KEY = 'bus-loop-scene-tuning-v3';
 const LEGACY_TUNING_STORAGE_KEY = 'bus-loop-scene-tuning-v2';
@@ -172,6 +182,21 @@ function migrateLegacyPackageTuning(source) {
   migrateLevel12PackageTuning(source);
 }
 
+function migrateSpatialSpeedTuning(source) {
+  const spatial = source?.spatialConveyor;
+  if (!spatial) return false;
+  let changed = false;
+  if (!Number.isFinite(Number(spatial.normalSpeedMultiplier))) {
+    spatial.normalSpeedMultiplier = 1;
+    changed = true;
+  }
+  if (Number(spatial.longPressMultiplier) === 5.2) {
+    spatial.longPressMultiplier = 3;
+    changed = true;
+  }
+  return changed;
+}
+
 function waitForMraidReady(onReady) {
   const mraid = window.mraid;
   if (!mraid?.getState || !mraid?.addEventListener) {
@@ -225,9 +250,10 @@ function loadSavedTuning() {
     if (saved) {
       const savedTuning = JSON.parse(saved);
       const guideHandMotionMigrated = migrateGuideHandMotionTuning(savedTuning);
+      const spatialSpeedMigrated = migrateSpatialSpeedTuning(savedTuning);
       deepMerge(SCENE_TUNING, savedTuning);
       migrateLegacyConveyorTuning(savedTuning);
-      if (guideHandMotionMigrated) {
+      if (guideHandMotionMigrated || spatialSpeedMigrated) {
         localStorage.setItem(TUNING_STORAGE_KEY, JSON.stringify(savedTuning));
       }
       return;
@@ -236,6 +262,7 @@ function loadSavedTuning() {
     if (!legacySaved) return;
     const legacy = JSON.parse(legacySaved);
     migrateGuideHandMotionTuning(legacy);
+    migrateSpatialSpeedTuning(legacy);
     migrateLegacyPackageTuning(legacy);
     const legacyModelScale = legacy.vehicleArea?.modelScale;
     delete legacy.vehicleArea;
@@ -330,6 +357,10 @@ function applyBrandingTuning(backgroundBounds = null) {
         right: backgroundBounds?.right
       });
     const draggable = EDITOR_ENABLED && enabled && !locked;
+    if (key === 'icon') {
+      const asset = typeof config.asset === 'string' ? config.asset : '';
+      if (asset && element.getAttribute('src') !== asset) element.setAttribute('src', asset);
+    }
     if (key === 'text') {
       const content = String(config.content ?? 'Bus Fever-Car Jam Escape');
       element.textContent = content;
@@ -569,6 +600,9 @@ async function startRuntime() {
   let sessionLevels = PLAYABLE_LEVEL_SEQUENCE;
   if (EDITOR_ENABLED) {
     const { getLevelDefinition } = await import('./level-catalog.js');
+    await refreshSpatialConveyorPackages().catch((error) => {
+      console.warn('Spatial conveyor packages could not be loaded.', error);
+    });
     const selectedLevel = getLevelDefinition(SCENE_TUNING.level?.selected);
     sessionLevels = selectedLevel.key === 'level9'
       ? [selectedLevel, getLevelDefinition('level7')]
@@ -643,7 +677,16 @@ async function startRuntime() {
       { ...view.getConveyorConfig(), resetSlots }
     );
   }
+  function getIdleSpeedMultiplier() {
+    if (!isSpatialConveyorSelection(SCENE_TUNING.conveyorLayout?.selected)) return 1;
+    const configuredMultiplier = Number(SCENE_TUNING.spatialConveyor?.normalSpeedMultiplier);
+    return Number.isFinite(configuredMultiplier) ? Math.max(0.1, configuredMultiplier) : 1;
+  }
+  function applyIdleSpeedMultiplier() {
+    game.setSpeedMultiplier(getIdleSpeedMultiplier());
+  }
   initializeGameQueues();
+  applyIdleSpeedMultiplier();
   let editor = { sync: () => {} };
 
   function applyTuningPatch(next, { path, syncEditor = false } = {}) {
@@ -666,16 +709,24 @@ async function startRuntime() {
       return SCENE_TUNING;
     }
     const materialOnly = isPassengerMaterialTuningPath(path);
+    const conveyorStructureChanged = !materialOnly && (
+      path === 'conveyorLayout.selected'
+      || path === 'spatialConveyor.capacity'
+      || path === 'spatialConveyor.startFilled'
+    );
     const colorIndex = getPassengerMaterialColorIndex(path);
     const tuning = view.setTuning(next, { mode: materialOnly ? 'passengerMaterial' : 'full', colorIndex });
     if (!materialOnly) {
-      const layoutChanged = path === 'conveyorLayout.selected';
-      if (layoutChanged) game.reset();
-      initializeGameQueues({ resetSlots: layoutChanged });
+      if (conveyorStructureChanged) game.reset();
+      initializeGameQueues({ resetSlots: conveyorStructureChanged });
+      if (!pressed && (
+        conveyorStructureChanged
+        || path === 'spatialConveyor.normalSpeedMultiplier'
+      )) applyIdleSpeedMultiplier();
       applyPreviewFrame();
       updateCtaPosition();
     }
-    saveTuning(tuning);
+    saveTuning(tuning, { immediate: conveyorStructureChanged });
     if (syncEditor) editor.sync();
     return tuning;
   }
@@ -720,6 +771,7 @@ async function startRuntime() {
         game = new BusLoopGame(nextLevel);
         view.replaceActiveLevel({ animate: true });
         initializeGameQueues({ resetSlots: true });
+        applyIdleSpeedMultiplier();
         unsubscribeGame = game.subscribe(syncHud);
         return;
       }
@@ -794,6 +846,7 @@ async function startRuntime() {
     game = new BusLoopGame(initialLevel);
     view.replaceActiveLevel();
     initializeGameQueues({ resetSlots: true });
+    applyIdleSpeedMultiplier();
     unsubscribeGame = game.subscribe(syncHud);
   }
   $('#reset-button')?.addEventListener('click', reset);
@@ -814,13 +867,20 @@ async function startRuntime() {
     pressed = true;
     clearTimeout(pressTimer);
     pressTimer = setTimeout(() => {
-      if (pressed) game.setSpeedMultiplier(LEVEL_1.longPressMultiplier);
+      if (!pressed) return;
+      const configuredSpatialMultiplier = Number(SCENE_TUNING.spatialConveyor?.longPressMultiplier);
+      const multiplier = isSpatialConveyorSelection(SCENE_TUNING.conveyorLayout?.selected)
+        ? (Number.isFinite(configuredSpatialMultiplier)
+            ? Math.max(1, configuredSpatialMultiplier)
+            : LEVEL_1.longPressMultiplier)
+        : LEVEL_1.longPressMultiplier;
+      game.setSpeedMultiplier(multiplier);
     }, LEVEL_1.longPressThreshold * 1000);
   });
   const release = () => {
     pressed = false;
     clearTimeout(pressTimer);
-    game.setSpeedMultiplier(1);
+    applyIdleSpeedMultiplier();
   };
   window.addEventListener('pointerup', release);
   window.addEventListener('pointercancel', release);

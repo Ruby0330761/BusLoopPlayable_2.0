@@ -1,5 +1,136 @@
 ﻿# Playable Project Progress
 
+## Completed On 2026-08-27 - Spatial shape Unity package batch
+
+- Converted the 32 new AppLovin packages whose suffixes contain `shape`: 16 IOS and 16 Android variants across Duck, Fish, Heart, and Rainbow with base, JP, summer, and winter backgrounds.
+- Published them under the matching `unity/IOS` and `unity/Android` naming scheme without replacing unrelated packages. The final Unity inventory is 50 IOS plus 50 Android packages.
+- All 100 Unity packages pass the branding-preservation and MRAID lifecycle regression suites. The 32 shape packages preserve their spatial payload, platform branding assets/configuration, and embedded font data; they have zero remote asset tags and a maximum size of 4,404,751 bytes. Official Unity upload/preview remains external validation.
+
+## Completed On 2026-08-27 - Corrected Android/iOS Icon filenames
+
+- Updated the branding asset mapping after the platform Icon files were renamed: Android now uses `icon-android.jpg`, and iOS uses `icon-ios.png`; Android remains the baked default.
+- Updated source/export tuning, editor options, package validation, and focused asset regressions. Syntax checks, focused tests 2/2, `npx vite build`, and all 21 AppLovin checks pass.
+- Rebuilt `artifacts/applovin/index.html` at 4,086,902 bytes; SHA-256 is `53142E2EF700D003132EF4E186F8A53DAE85D18A6279BC5CAC7EB1D3EDFD1532`. The selected spatial conveyor package remains inlined.
+
+## Completed On 2026-08-27 - Spatial scale, road width, and saved defaults
+
+- Added spatial-only `X 轴缩放` and `Z 轴缩放` directly below `Y 轴垂直缩放`, both defaulting to `1.0` with the same `0.25-3.0` range.
+- Independent axis scaling is applied around the imported track center before mirroring and user rotation. Prefab points and ordinary conveyor rendering remain unchanged.
+- Added spatial-only `路面宽度`, defaulting to `1.0`. It scales the generated road laterally without moving the centerline or passenger path, and the exit overlay width follows it.
+- Saved the latest full spatial group as source/export defaults: capacity 128, initial fill on, normal/long-press speed `2.3 / 5.4`, position `0 / 0.42 / -2.4`, uniform/Y/X/Z/road-width scales `1.45 / 1.3 / 1.178 / 1.05 / 1.1`, exit offset `-0.15 / 0.6`, rotation `15 / 180 / 0`, and Z mirroring on.
+- Spatial tests pass 8/8, syntax checks and the production build pass, browser QA confirms the road-width control updates and restores correctly with no errors, and all 21 AppLovin checks pass.
+- Rebuilt `artifacts/applovin/index.html` at 4,055,116 bytes. SHA-256: `9AA1B9FD957D71C57FBF74ABF024D777DC2503DF9EE5C1A143C579469177A093`.
+
+## Completed On 2026-08-27 - Spatial normal and long-press speed controls
+
+- Added spatial-only `常规队列速度` between `初始满人` and `长按加速倍率`. It defaults to the ordinary gameplay multiplier `1.0` and supports `0.1-5.0` tuning.
+- Changed the spatial long-press default from `5.2` to the ordinary level-authored value `3.0`. Ordinary conveyors continue using `LEVEL_1.longPressMultiplier` unchanged.
+- Spatial startup, level changes, reset, tuning changes, and pointer release now restore the configured normal speed. Sub-1.0 values slow both gameplay queue/conveyor updates and matching passenger entry visuals.
+- Added a narrow saved-tuning migration that fills a missing normal speed with `1.0` and changes only the previous `5.2` default to `3.0`; other user-authored long-press values are preserved.
+- Spatial tests pass 8/8, the focused main-thread test passes, browser QA confirms the field order and `1.0 / 3.0` values after reload, and all 21 AppLovin checks pass.
+- Rebuilt `artifacts/applovin/index.html` at 4,055,653 bytes. SHA-256: `095726F33BDAEA1302BC2C2FDA7289583F7219F771D7D56FA9D125A02878E34B`.
+
+## Completed On 2026-08-26 - Compressed spatial textures and install threshold 20
+
+- Replaced the editor-owned spatial loop and exit PNGs with dimension-identical compressed files: `Loop_initial` is now 299 bytes at 4x162, and `Loop_exit` is 4,581 bytes at 214x89.
+- Regenerated `ConveyorBeltShape.json`, reducing it from 888,038 bytes to 50,542 bytes, and rebuilt the production spatial payload.
+- Changed `installGate.successfulOperationThreshold` from 10 to 20 in source and exported tuning. The final package contains threshold 20 and no threshold 10 value for that setting.
+- Spatial tests pass 8/8, the focused install-threshold test passes, all 21 AppLovin checks pass, and final-package browser QA shows the compressed textures without visual breaks or error logs.
+- Rebuilt `artifacts/applovin/index.html` at 4,055,378 bytes. SHA-256: `EB876CAB6A1B1AFCA4F024EE9DE809FEEEEE8BFFBEE8B2CE6741A8DA0EFB36E1`.
+
+## Completed On 2026-08-26 - Spatial conveyor production packaging
+
+- Fixed the production-only ordinary-conveyor fallback. The editor catalog remains development-served, while `prebuild` now reads the baked `spatial:*` selection and generates one active spatial package module from `artifacts/spatial-conveyors/<id>.json`.
+- Production registers that generated package before `SceneView` is created. A selected package that is missing or has a mismatched id now fails the build instead of silently rendering an ordinary conveyor.
+- AppLovin validation now requires the selected spatial id plus its embedded loop and exit textures. Focused spatial tests pass 8/8, the production browser render shows `ConveyorBeltShape`, and all 21 AppLovin checks pass.
+- Rebuilt `artifacts/applovin/index.html` at 4,892,876 bytes. SHA-256: `0C169624357FD9DD2DF7DC762DFA67DB061EFE1AB8A60B1BE6C75AC700161C5D`.
+
+## Completed On 2026-08-26 - Spatial conveyor X/Z rotation controls
+
+- Added spatial-only `X 轴旋转` and `Z 轴旋转` controls beside the existing Y-axis rotation under `立体轨道位置与缩放`. Both default to zero and persist through source/exported scene tuning.
+- The runtime keeps the fixed Unity coordinate correction, then applies user X, Y, and Z rotations around the spatial track center. Exit geometry follows the rebuilt curve, and ordinary conveyors remain unchanged.
+- Verification: spatial tests pass 7/7 with explicit 90-degree X/Z center-rotation assertions, and `npm run build` passes with the existing large-chunk warning. Browser interaction was blocked by the local URL security policy before any tuning value was changed.
+
+## Completed On 2026-08-26 - Spatial road texture and saved defaults
+
+- Replaced the editor-owned spatial road segment with the supplied Unity `Loop_initial.png` (4x162) and regenerated `ConveyorBeltShape.json` so the current package and all future imports use the same embedded texture.
+- Saved only the current `spatialConveyor` editor values into both source and exported tuning defaults: capacity 140, initial fill off, long press 5.2, position `0 / 0.65 / -2.25`, scale `1.5`, Y scale `1.35`, exit offset `-0.15 / 0.6`, rotation `0 / 180 / 0`, and Z mirroring on. Ordinary conveyor tuning was not changed.
+- Verification: Unity source, support texture, and embedded package texture share SHA-256 `F5962D10ADD8929C5216AE8BBD278DBBAAD990C8E8D9F73BFD9B3CD8C2C1CF32`; spatial tests pass 7/7, production build passes, and browser QA confirms the new road renders with the saved spatial values and no console errors.
+
+## Completed On 2026-08-26 - Spatial queue startup and editor folder access
+
+- Added `打开存储文件夹` to `立体轨道编辑`. The development-only endpoint creates and opens the fixed `artifacts/spatial-conveyors` directory without accepting arbitrary paths.
+- Added spatial-only `初始满人` and `长按加速倍率` controls under `立体轨道队列`. Initial fill can place passengers directly into belt slots in the same color order as the entrance flow; disabling it restores the original upload process.
+- Spatial long press is independently adjustable from `1.0` to `10.0`; ordinary conveyors continue using the level-authored multiplier.
+- Verification: spatial tests pass 7/7, production build passes with the existing large-chunk warning, and browser QA confirms both defaults plus successful folder opening with no console errors. The full game-model suite currently passes 30/39; its nine failures are unrelated current-worktree assertion mismatches in queue color, camera/preview, and vehicle collision/path tuning.
+
+## Completed On 2026-08-26 - Spatial conveyor capacity control
+
+- Added the spatial-only `立体轨道队列` editor group directly below `立体轨道位置与缩放`, with an editable `立体轨道容量` value.
+- Spatial runtime capacity now uses the editor value, capped by the current level's authored passenger-group count. Reducing the value increases spacing between conveyor rows without changing the imported track shape.
+- Capacity changes reset the current game and rebuild conveyor slots so the gameplay model and rendered passenger spacing remain synchronized.
+- Verification: spatial tests pass 6/6, related conveyor/main-thread tests pass 9/9, browser visibility/input restoration passes with no console errors, and `npm run build` passes with the existing large-chunk warning.
+
+## Completed On 2026-08-26 - Spatial exit 270-degree rotation and depth layering
+
+- Rotated the spatial exit overlay by 270 degrees around its own center and the local conveyor surface normal. Exit size, X/Z offsets, and track geometry remain unchanged.
+- Restored depth testing on the exit overlay while retaining its surface lift, polygon offset, and higher road-level render order. The exit renders above the conveyor road but remains behind opaque passenger models.
+- Verification: spatial tests pass 6/6 and `npm run build` passes with the existing large-chunk warning.
+
+## Completed On 2026-08-26 - Spatial exit visibility and manual position
+
+- Corrected the exit overlay placement so it is lifted above the conveyor surface and rendered without being hidden by the base track depth.
+- Added spatial-only `出口 X 位置` and `出口 Z 位置` controls under `立体轨道位置与缩放`. Both default to zero, persist with scene tuning, and rebuild only the spatial visual when changed.
+- Verification: spatial tests pass 6/6, related conveyor tests pass 8/8, and `npm run build` passes with the existing large-chunk warning.
+
+## Completed On 2026-08-26 - Spatial exit overlay parity and editor placement
+
+- Replaced the exit-segment material substitution with a separate exit overlay anchored to the imported exit percentage and sized from the Unity `Loop_exit` SpriteRenderer. This established the correct layered structure, but its first placement remained below the track surface and required the visibility follow-up above.
+- Moved `立体轨道编辑`, `传送带选择`, and the spatial-only `立体轨道位置与缩放` block directly below `Passenger Material` and immediately above the ordinary per-conveyor tuning groups.
+- Regenerated `ConveyorBeltShape.json` with explicit exit sprite size metadata. Spatial tests pass 6/6, related conveyor tests pass 8/8, and `npm run build` passes with the existing large-chunk warning.
+
+## Completed On 2026-08-26 - Spatial conveyor vertical scale and editor ordering
+
+- Added an independent spatial-track Y-axis scale, centered on the imported track bounds and applied after uniform scale, so height can be adjusted without changing the X/Z footprint or rewriting imported points.
+- Reordered the editor controls to `立体轨道编辑`, `传送带选择`, then `立体轨道位置与缩放`; the position/scale section remains visible only for `spatial:*` selections.
+- Verification: spatial importer/runtime tests pass 6/6, related conveyor tests pass 8/8, and `npm run build` passes with the existing large-chunk warning. In-app visual QA was blocked by the browser URL security policy.
+
+## Completed On 2026-08-26 - Standalone spatial conveyor Prefab importer
+
+- Added the `立体轨道编辑` editor submenu with `.prefab` file selection, import status, and catalog refresh. Imported tracks are discovered from `artifacts/spatial-conveyors/*.json`; deleting one package and refreshing removes its dropdown entry.
+- Added a standalone importer and bundled `bus-loop-spatial-v1` support package containing the required template, Dreamteck path prefab, and loop/exit textures, so future imports do not read the external BusLoop Unity project.
+- Verified `ConveyorBeltShape.prefab` imports as `ConveyorBeltShape.json` with 56 effective 3D points, SplineMesh count 225, capacity 300, one direct start entrance, and exit range `0.85-0.865`.
+- Added selectable `spatial:*` runtime support: imported Unity transforms generate the Three.js path, Dreamteck channel data builds the repeated textured mesh, the ordinary 2D plane is hidden, and authored level queues merge into one direct start source. Point and entrance editing remain pending.
+- Recalibrated the spatial-only display mapping without changing the imported 56-point topology: points are uniformly scaled around their transformed bounding-box center, rotated 180 degrees around world Y to correct the authored front/back direction, and the repeated mesh width is matched to the four-person row. Spatial tracks now use the unchanged shared scene camera.
+- Added spatial-only editor controls for X/Y/Z position, uniform scale, Y-axis model rotation, and Unity Z-axis handedness correction. The default scale is reduced from `1.85` to `1.45`, and the model receives an additional 180-degree Y rotation; changes rebuild the curve and repeated mesh immediately and persist with the normal scene tuning.
+- Corrected the exit material mapping so the complete `Loop_exit` texture spans the imported exit percent range once instead of repeating on every SplineMesh segment.
+- Verification: spatial importer/runtime tests pass 6/6, related existing conveyor tests pass 8/8, real HTTP import succeeds, browser selection persists after reload, the populated narrow-screen composition matches the supplied layered-loop direction, and `npm run build` passes with only the existing large-chunk warning.
+
+## Completed On 2026-08-26 - Selectable platform Icon and small Logo
+
+- Replaced the branding and result-overlay Logo with `main-loading-icon-small.png` and added an Android/iOS Icon selector under `Icon/Logo调整`, defaulting to Android.
+- The selected Icon asset path is saved in scene tuning and applied immediately in the editor. Production tree-shaking plus package checks ensure only the selected Icon is inlined; the unselected Icon and legacy large Logo are omitted.
+- Focused branding/config tests pass 2/2; the separate pre-existing preview-enabled fixed-value assertion remains stale. Syntax checks, `npx vite build`, and all 20 AppLovin checks pass. Browser QA confirms both 512x512 Icon variants switch successfully and the final Android package loads the 518x312 small Logo with no error logs.
+- Rebuilt `artifacts/applovin/index.html` at 4,387,236 bytes; SHA-256 is `F1FE2FE5B578342B42120DA76DBA340F9FA1A4FDC99E248CBBDA9BC0F545A09E`. Official platform preview/upload remains manual QA.
+
+## Completed On 2026-08-24 - Unity branding-preserving full repackage
+
+- Fixed the AppLovin-to-Unity hardening step so non-payload body scripts, including the standalone responsive Icon/Logo/text runtime, remain in the converted HTML instead of being discarded.
+- Reconverted and replaced all 34 IOS plus 34 Android Unity deliveries from their current AppLovin sources. Source-to-output checks preserve branding DOM, images, Poppins font data, and standalone/integrated layout configuration across both package structures.
+- All 68 final packages pass the integrated conversion and MRAID lifecycle suites, contain zero remote asset tags, and remain below 5,000,000 bytes; the maximum is 4,553,529 bytes. Local browser visual automation was unavailable because localhost access was denied, so official Unity preview/upload remains the final visual acceptance step.
+
+## Completed On 2026-08-24 - IOS and Android playable package split
+
+- Renamed the 34 existing AppLovin and Unity deliveries with explicit `_IOS` platform markers, generated 34 matching `_Android` AppLovin packages, and converted all Android variants to hardened Unity single-HTML packages.
+- Replaced only the Android branding Icon with `C:/Users/hi/Downloads/侧面.jpg` and set the effective `branding.icon.y` value to `2026`; canonical IOS/Android comparisons confirm no other playable content changed.
+- Both Unity platform directories pass the integrated lifecycle/hardening check at 34/34. All Android packages have zero remote asset tags and remain below 5,000,000 bytes; real AppLovin/Unity upload validation remains external.
+
+## Completed On 2026-08-24 - AppLovin background variants for DoubleColor, Square, and Massive
+
+- Completed the four-background naming set for DoubleColor, Square, and Massive: winter01 uses no suffix, Sakura uses `_JP`, winter02 uses `_winter`, and summer01 uses `_summer`.
+- Added eight missing packages. Preserved the prior Massive summer package byte-for-byte as `Massive_summer.html`, then corrected the no-suffix `Massive.html` to winter01.
+- Verified all 12 family packages embed the expected optimized background twice, retain the small branding logo, preserve non-background package content within each generated family, and remain below AppLovin's 5,000,000-byte limit.
+
 ## Completed On 2026-08-24 - Branding background-width constraint
 
 - Preserved responsive outward X movement while clamping only the rendered Icon and Logo rectangles to the Three.js background plane's visible canvas width. Saved editor coordinates remain unchanged, and text keeps its existing independent responsive position.

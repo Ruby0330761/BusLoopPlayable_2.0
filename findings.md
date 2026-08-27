@@ -1,5 +1,57 @@
 # Findings
 
+## 2026-08-27 Corrected platform Icon ownership
+
+- The corrected platform filenames are Android `icon-android.jpg` and iOS `icon-ios.png`. Branding tuning, editor options, asset tests, and exact package data-URI validation must use this mapping.
+- Android remains the source/export default, so the current production package includes the Android JPEG and excludes the iOS PNG.
+
+## 2026-08-26 Spatial conveyor production boundary
+
+- Vite development endpoints are editor discovery/import services only. Production cannot rely on `/__spatial-conveyors`; the selected package must be generated into the source graph before Vite bundles the playable.
+- Production includes exactly the baked `spatial:*` package from `SCENE_TUNING.conveyorLayout.selected`. Missing or mismatched package data is a build error so an AppLovin delivery cannot silently fall back to an ordinary conveyor.
+- Dimension-preserving PNG compression reduced the selected generated package from about 864 KB to about 51 KB, mostly by reducing `Loop_exit` from 629,952 bytes to 4,581 bytes. The final AppLovin HTML now has about 945 KB of headroom below 5,000,000 bytes.
+
+## 2026-08-26 Standalone spatial conveyor import boundary
+
+- The supported source family is currently `ConveyorBeltTemplate` with GUID `e5a3779fb659c934bbca7df9e4f50681`. Unity prefab variants must be merged across three layers: bundled `Paths_1`, bundled `ConveyorBeltTemplate`, then the selected variant prefab.
+- Dreamteck serialized point overrides can retain stale `Array.data[n]` entries beyond `_spline.points.Array.size`; the importer must apply the effective array size before emitting points. `ConveyorBeltShape` contains stale entries through index 69 but has only 56 effective points.
+- A self-contained spatial package needs the spline points/transforms, entrance and exit gameplay values, Dreamteck SplineMesh channel geometry, and embedded loop/exit textures. Keeping these in one JSON makes catalog removal a file deletion and avoids a separate registry.
+- The editor now owns the minimum BusLoop/Dreamteck support package under `tools/spatial-conveyor-import-support/`; importing a new variant requires only its `.prefab`, not access to the original Unity project.
+- Imported `spatial:*` options now load the saved JSON package before becoming selectable. The runtime applies `path -> pathsRoot -> prefabRoot` transforms, generates the repeated Dreamteck mesh along the open Catmull-Rom spline, and assigns the exit texture by imported exit range.
+- A spatial layout cannot reuse the ordinary dual-queue model. Runtime initialization merges the authored passenger queues into one hidden source and dequeues directly when a belt slot crosses the single start percent.
+- The imported Unity capacity can exceed the current level's total passenger groups. Runtime view/slot capacity is capped at the current authored group count so initial fill can complete while preserving the imported capacity in the saved package.
+- Spatial row spacing is derived from `path length / spatial capacity`. The editor-owned `spatialConveyor.capacity` overrides the imported capacity for runtime slot generation; changing it must reset the game and rebuild slots so passengers already on the belt are not silently lost.
+- A spatial track can skip the long entrance upload without changing passenger totals by dequeuing directly from its hidden merged source during slot initialization. Slots must be filled from the highest index downward to preserve the same color order produced by successive crossings of the entrance at progress zero.
+- Spatial normal and long-press speeds are editor presentation/gameplay overrides selected in `main.js`, not level-data replacements. Ordinary conveyors remain at normal multiplier `1.0` and continue passing `LEVEL_1.longPressMultiplier`; spatial tracks use `spatialConveyor.normalSpeedMultiplier` while idle and `spatialConveyor.longPressMultiplier` while held.
+- Spatial normal speed supports values below `1.0`. The game-model multiplier floor and the two passenger-entry visual clamps must remain aligned at `0.1`, otherwise queue state and rendered passenger motion drift apart.
+- The editor folder action must remain a fixed development-service operation. The browser sends no path; Vite opens only `artifacts/spatial-conveyors`, which prevents the endpoint from becoming an arbitrary filesystem launcher.
+- Spatial loop textures are embedded into each imported JSON as a PNG data URL. Replacing the support-package `Loop_initial.png` alone affects only future imports; existing packages such as `ConveyorBeltShape.json` must be regenerated to receive the new road texture.
+- The accepted spatial defaults are isolated under `spatialConveyor`: capacity 128, initial fill on, normal speed 2.3, long press 5.4, position `0 / 0.42 / -2.4`, uniform/Y/X/Z/road-width scales `1.45 / 1.3 / 1.178 / 1.05 / 1.1`, exit offset `-0.15 / 0.6`, X/Y/Z rotation `15 / 180 / 0`, and Unity Z mirroring enabled.
+- Spatial X/Y/Z axis scale multipliers are display transforms around the imported point bounds center. They run after uniform scale and before mirroring/rotation; X and Z default to `1.0`, so older saved tuning and ordinary conveyors keep their existing geometry.
+- Spatial road width is separate from point-axis scale: it multiplies only the repeated mesh lateral offset and the exit overlay's final lateral span. This keeps the centerline, passengers, capacity spacing, and imported prefab points unchanged.
+- User-facing spatial rotations are applied after the fixed Unity-coordinate Y correction, in X/Y/Z order around the display center. Keeping X and Z at zero preserves the previously accepted Y-only orientation exactly.
+- Unity transform scale alone makes `ConveyorBeltShape` too small and visually compressed in the HTML scene. Keep imported points immutable, then apply display transforms around their transformed bounding-box center: uniform scale controls overall size, while the optional Y-only scale changes vertical spacing without changing the X/Z footprint or saved prefab points.
+- Spatial track width and orientation are presentation concerns, not prefab data. The repeated mesh uses a separate lateral width multiplier calibrated against the four-person row, while the display points rotate 180 degrees around world Y to correct front/back direction.
+- A spatial-only camera override produced excessive perspective and was rejected. Spatial tracks must use the shared scene camera; size and layer spacing should be corrected through uniform point scaling and translation so ordinary camera composition remains authoritative.
+- Unity path positions are left-handed while Three.js world coordinates are right-handed. After applying all imported Unity transforms, the centered display points need a Z-axis reflection before the authored 180-degree Y rotation; omitting this conversion reverses the spiral winding relative to the Unity reference.
+- The Unity-coordinate orientation correction and the user-facing model rotation are separate operations. Keep the fixed imported-coordinate rotation code-owned, then apply the editor's `spatialConveyor.rotationYDegrees` so a visible 180-degree model turn can be adjusted without changing imported points.
+- `Loop_exit` is not a replacement SplineMesh material in Unity. It is a separate SpriteRenderer with authored size `2.14 x 0.89` and prefab-specific transform overrides. Replacing loop segments with this transparent texture removes the base belt under its transparent corners and creates visible breaks; the web renderer must keep the loop mesh intact, anchor the overlay to the imported exit percentage, and apply its authored sprite size, scale, and offsets in the web curve space.
+- The prefab's small negative local Y offset places the exit overlay below the generated Three.js belt surface when applied literally, so depth testing hides it completely. The web overlay needs a small positive curve-normal lift; editor-facing world X/Z offsets are then the reliable adjustment surface for visual alignment.
+- The web exit sprite requires a fixed 270-degree rotation around the local curve-up axis after it is sized and positioned. Applying this to geometry, rather than only rotating UVs, preserves the intended rectangular orientation and keeps the X/Z editor offsets centered.
+- Exit layering should use normal depth testing with no depth writes, a small curve-normal lift, polygon offset, and a road-level render order above the base belt. Opaque passenger meshes then remain visually above the exit through their depth buffer entries.
+
+## 2026-08-26 Selectable branding assets without package duplication
+
+- Store the selected Icon as `branding.icon.asset` rather than keeping an iOS/Android URL map in the production runtime. The editor-only options can contain both paths while Vite removes that editor module from production.
+- Leave the branding Icon `src` unset in the HTML shell and assign it from baked tuning at runtime. This prevents the default Android asset from being inlined alongside iOS when an iOS package is built.
+- AppLovin validation compares exact asset data URIs: the selected Icon and small Logo must be present, while the unselected Icon and legacy large Logo must be absent.
+
+## 2026-08-24 Unity conversion branding-runtime preservation
+
+- The Unity hardening pass previously removed every ordinary `<body>` script while extracting the delayed game module. Older packaged playables keep their responsive Icon/Logo/text positioning in a separate `branding-runtime` body script, so the converted package retained the DOM and assets but lost the code that applies authored position, size, and text fitting.
+- AppLovin-to-Unity hardening must preserve non-payload body scripts in source order while continuing to isolate and delay only the gameplay module. Regression validation now compares each preserved branding runtime with its AppLovin source, ignoring line-ending normalization only.
+- Current sources contain both forms: 58 packages use the standalone branding runtime and 10 newer packages integrate branding into the main module. The converter must support both without inserting duplicate layout code.
+
 ## 2026-08-24 Branding background-width constraint
 
 - Stage-width responsive X coordinates can place branding over page gutters when the Three.js background is narrower than a landscape canvas. The constraint must use the projected background plane, not the stage width or a hard-coded aspect ratio.

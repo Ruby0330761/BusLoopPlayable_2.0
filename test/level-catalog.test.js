@@ -328,7 +328,8 @@ test('editor level selection reloads the runtime and production build regenerate
   assert.match(mainSource, /path === 'level\.selected'/);
   assert.match(mainSource, /fetch\('\/__playable-level'/);
   assert.match(mainSource, /window\.location\.reload\(\)/);
-  assert.equal(packageJson.scripts.prebuild, 'node scripts/generate-active-level.mjs');
+  assert.match(packageJson.scripts.prebuild, /generate-active-level\.mjs/);
+  assert.match(packageJson.scripts.prebuild, /generate-active-spatial-conveyor\.mjs/);
   const generatorSource = readFileSync('scripts/generate-active-level.mjs', 'utf8');
   assert.match(generatorSource, /selected-level\.txt/);
   assert.match(generatorSource, /SCENE_TUNING\.background\?\.asset/);

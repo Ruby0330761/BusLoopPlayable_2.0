@@ -49,11 +49,11 @@
 - `https://p.applov.in/playablePreview?create=1&qr=1`
 - 实际广告素材后台
 
-## 当前本地基线 - 2026-08-24
+## 当前本地基线 - 2026-08-27
 
-- `artifacts/applovin/index.html`: 4,730,441 bytes, SHA-256 `5682F0F89E3EDD468496EAB43424372E64ACCBDDB7BFEC93E1988B3FD4BEB888`.
-- 18/18 static checks pass, including branding DOM, inlined Icon/Logo PNGs, and inlined Poppins TTF.
-- Final-package browser QA passes at 1280x720 and 390x844: Icon and Logo stay fully inside the visible background width while retaining responsive outward movement; editable text keeps its prior positioning; no error-level console logs.
+- `artifacts/applovin/index.html`: 4,086,902 bytes, SHA-256 `53142E2EF700D003132EF4E186F8A53DAE85D18A6279BC5CAC7EB1D3EDFD1532`.
+- 21/21 static checks pass. The selected `spatial:ConveyorBeltShape` package and both embedded conveyor textures are present; corrected Android `icon-android.jpg` and the small Logo are inlined, while iOS `icon-ios.png` and the legacy large Logo are absent.
+- Production tuning uses spatial X/Z scale `1.178 / 1.05`, road width `1.1`, normal speed `2.3`, long-press multiplier `5.4`, and successful-operation store threshold 20. Editor browser QA confirms the spatial scale/road-width controls, speed controls, and saved-tuning migration. Official AppLovin preview/upload remains the final platform visual acceptance step.
 - Official AppLovin preview/upload and real-device interaction remain pending manual validation.
 
 ## 判定通过前必须确认

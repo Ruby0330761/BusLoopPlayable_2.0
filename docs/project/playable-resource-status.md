@@ -19,6 +19,9 @@
 | `public/assets/unity/conveyors/Loop_03_q80.webp` | wired | `GameSceneDualQueue3.prefab`; paired with its authored closed/queue splines. |
 | `public/assets/unity/conveyors/Loop_06_q80.webp` | wired | `GameSceneDualQueue5.prefab` via nested `ConveyorBelt6.prefab`; paired with merged authored splines. |
 | `public/assets/unity/conveyors/Loop_04_q80.webp` | wired | `GameSceneDualQueue10.prefab`; paired with its authored closed/queue splines. |
+| `tools/spatial-conveyor-import-support/bus-loop-spatial-v1/Loop_initial.png` | wired | Compressed 4x162 spatial road segment, 299 bytes, SHA-256 `1FDF28CF406908C7F8A460E93E3D9756502F2F9017DD5494EA4C03E6A489192D`; embedded into newly imported spatial packages. |
+| `tools/spatial-conveyor-import-support/bus-loop-spatial-v1/Loop_exit.png` | wired | Compressed 214x89 spatial exit overlay, 4,581 bytes, SHA-256 `DBF20835B14ADCCA1694CC9CF5CE2393A5BB254188E7238C018CC2EBBE0204AB`; embedded into newly imported spatial packages. |
+| `artifacts/spatial-conveyors/ConveyorBeltShape.json` | wired | Regenerated at 50,542 bytes with both compressed spatial textures embedded as PNG data URLs. |
 
 ## Effects
 

@@ -208,9 +208,12 @@ export class BusLoopGame {
     conveyorPathLength = this.conveyorPathLength,
     conveyorConfig = {}
   ) {
-    const authoredQueues = this.level.passengerQueues ?? [this.level.passengerSequence];
+    const sourceQueues = this.level.passengerQueues ?? [this.level.passengerSequence];
+    const directEntrance = Boolean(conveyorConfig.directEntrance);
+    const authoredQueues = directEntrance ? [sourceQueues.flat()] : sourceQueues;
+    const canPreserveQueues = !conveyorConfig.resetSlots && this.directEntrance === directEntrance;
     const remainingQueues = authoredQueues.map((queue, index) => {
-      if (conveyorConfig.resetSlots || !this.queues?.[index] || !this.sourceQueues?.[index]) {
+      if (!canPreserveQueues || !this.queues?.[index] || !this.sourceQueues?.[index]) {
         return queue;
       }
       return [...this.queues[index], ...this.sourceQueues[index]].map((passenger) => (
@@ -219,6 +222,7 @@ export class BusLoopGame {
     });
     const nextConveyorCapacity = Math.max(1, Math.floor(conveyorConfig.capacity ?? this.conveyorCapacity));
     const conveyorCapacityChanged = nextConveyorCapacity !== this.conveyorCapacity;
+    this.directEntrance = directEntrance;
     this.conveyorCapacity = nextConveyorCapacity;
     this.entryPercents = [...(conveyorConfig.entryPercents ?? this.entryPercents)];
     this.exitStart = conveyorConfig.exitStart ?? this.exitStart;
@@ -230,6 +234,7 @@ export class BusLoopGame {
       queueLengths[index] ?? ((this.level.queueCapacity - 1) * this.queueSpacing)
     ));
     this.queueCapacities = authoredQueues.map((_, index) => {
+      if (directEntrance) return 0;
       const authoredCapacity = conveyorConfig.queueCapacities?.[index] ?? this.level.queueCapacity;
       return Math.max(0, Math.min(
         Math.floor(authoredCapacity),
@@ -257,6 +262,17 @@ export class BusLoopGame {
         entryIndex: null,
         entryMotion: null
       }));
+      if (directEntrance && conveyorConfig.initiallyFull) {
+        this.initialFillActive = false;
+        for (let index = this.slots.length - 1; index >= 0; index -= 1) {
+          const slot = this.slots[index];
+          const passenger = this.dequeuePassenger(0, true);
+          if (!passenger) break;
+          slot.colorIndex = passenger.colorIndex;
+          slot.entryIndex = 0;
+          this.initialFilledSlotIndices.add(slot.index);
+        }
+      }
     }
     this.failureConditionStartedAt = null;
     this.lastEvent = { type: 'queues-initialized' };
@@ -304,8 +320,8 @@ export class BusLoopGame {
   }
 
   setSpeedMultiplier(multiplier) {
-    const next = multiplier >= this.level.longPressMultiplier
-      ? this.level.longPressMultiplier : 1;
+    const value = Number(multiplier);
+    const next = Number.isFinite(value) ? Math.max(0.1, value) : 1;
     if (next === this.speedMultiplier) return;
     this.speedMultiplier = next;
     this.lastEvent = { type: 'speed', multiplier: next };
@@ -642,6 +658,17 @@ export class BusLoopGame {
 
   dequeuePassenger(queueIndex, includeDetails = false) {
     const queue = this.queues[queueIndex];
+    if (this.directEntrance && !queue?.length) {
+      const source = this.sourceQueues[queueIndex];
+      if (!source?.length) return null;
+      const passenger = {
+        id: this.nextPassengerId++,
+        colorIndex: source.shift(),
+        createdAt: this.time,
+        distanceFromHead: 0
+      };
+      return includeDetails ? passenger : passenger.colorIndex;
+    }
     if (!queue?.length) return null;
     if (queue[0].distanceFromHead > PASSENGER_READY_DISTANCE_THRESHOLD) return null;
     const passenger = queue.shift();

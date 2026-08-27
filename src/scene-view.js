@@ -7,6 +7,13 @@ import {
   getConveyorLayout
 } from './conveyor-layouts.js';
 import { SCENE_TUNING } from './scene-tuning.js';
+import {
+  SPATIAL_CONVEYOR_DISPLAY,
+  buildSpatialConveyorExitGeometry,
+  buildSpatialConveyorGeometry,
+  getSpatialConveyorPackage,
+  getSpatialConveyorWorldPoints
+} from './spatial-conveyor-runtime.js';
 import { VehicleEffects } from './vehicle-effects.js';
 import {
   calculateDesignCoverHalfHeight,
@@ -148,6 +155,21 @@ function makeTunedCurvePoints(points, tuning, anchorMode) {
 
 function getSelectedConveyorLayout() {
   return getConveyorLayout(SCENE_TUNING.conveyorLayout?.selected ?? DEFAULT_CONVEYOR_LAYOUT_ID);
+}
+
+function getSelectedSpatialConveyor() {
+  return getSpatialConveyorPackage(SCENE_TUNING.conveyorLayout?.selected);
+}
+
+function getSpatialRuntimeCapacity(packageData) {
+  const authoredGroupCount = (LEVEL_1.passengerQueues ?? [LEVEL_1.passengerSequence])
+    .reduce((sum, queue) => sum + queue.length, 0);
+  const importedCapacity = Math.max(1, Math.floor(packageData?.gameplay?.capacity ?? 1));
+  const configuredCapacity = Number(SCENE_TUNING.spatialConveyor?.capacity);
+  const requestedCapacity = Number.isFinite(configuredCapacity) && configuredCapacity >= 1
+    ? Math.floor(configuredCapacity)
+    : importedCapacity;
+  return Math.max(1, Math.min(requestedCapacity, authoredGroupCount || requestedCapacity));
 }
 
 function getSelectedConveyorTuning(layoutId = getSelectedConveyorLayout().id) {
@@ -639,9 +661,11 @@ export class SceneView {
       conveyorLayout.assets.loopScene,
       conveyorLayout.assets.loopSpriteRect
     );
+    this.spatialConveyorRoot = new THREE.Group();
+    this.spatialConveyorRoot.name = 'Spatial Conveyor Root';
     this.camera.add(this.backgroundPlane);
     this.scene.add(this.camera);
-    this.layoutRoot.add(this.loopPlane);
+    this.layoutRoot.add(this.loopPlane, this.spatialConveyorRoot);
     this.buildPathCurves();
     this.buildSpots();
     this.buildGuideHand();
@@ -651,12 +675,10 @@ export class SceneView {
       this.vehicleViews.set(vehicle.id, view);
       this.vehicleRoot.add(view);
     }
-    for (let i = 0; i < MAX_CONVEYOR_CAPACITY; i += 1) {
-      const view = makePassengerGroup(SCENE_TUNING.passengers.modelScale);
-      view.visible = false;
-      this.passengerViews.push(view);
-      this.layoutRoot.add(view);
-    }
+    this.ensurePassengerViewCapacity(Math.max(
+      MAX_CONVEYOR_CAPACITY,
+      this.activeConveyorLayout?.conveyorCapacity ?? 0
+    ));
     for (let queueIndex = 0; queueIndex < LEVEL_1.queueCount; queueIndex += 1) {
       for (let i = 0; i < MAX_QUEUE_CAPACITY; i += 1) {
         const view = makePassengerGroup(SCENE_TUNING.passengers.modelScale);
@@ -750,8 +772,31 @@ export class SceneView {
   }
 
   buildPathCurves() {
+    const spatialPackage = getSelectedSpatialConveyor();
+    if (spatialPackage) {
+      const points = getSpatialConveyorWorldPoints(spatialPackage, SCENE_TUNING.spatialConveyor);
+      const capacity = getSpatialRuntimeCapacity(spatialPackage);
+      this.activeSpatialConveyor = spatialPackage;
+      this.activeConveyorLayout = {
+        id: `spatial:${spatialPackage.id}`,
+        kind: 'spatial',
+        conveyorCapacity: capacity,
+        queueCapacities: [0],
+        exitStart: spatialPackage.exit?.startPercent ?? 0.8,
+        exitEnd: spatialPackage.exit?.endPercent ?? 0.9,
+        directEntrance: true
+      };
+      this.curve = makeOpenCurve(points);
+      this.fullQueueCurves = [];
+      this.queueCurves = [];
+      this.entryPercents = [spatialPackage.entrances?.[0]?.percent ?? 0];
+      this.ensurePassengerViewCapacity(capacity);
+      return;
+    }
+
     const layout = getSelectedConveyorLayout();
     const tuning = getSelectedConveyorTuning(layout.id);
+    this.activeSpatialConveyor = null;
     this.activeConveyorLayout = layout;
     this.curve = makeClosedConveyorCurve(
       makeTunedCurvePoints(layout.splinePoints, tuning.curve, 'center'),
@@ -762,6 +807,98 @@ export class SceneView {
     ));
     this.entryPercents = this.calculateConveyorEntryPercents();
     this.updateQueueCurvesForCamera();
+  }
+
+  ensurePassengerViewCapacity(capacity) {
+    let added = false;
+    while (this.passengerViews.length < capacity) {
+      const view = makePassengerGroup(SCENE_TUNING.passengers.modelScale);
+      view.visible = false;
+      this.passengerViews.push(view);
+      this.layoutRoot.add(view);
+      added = true;
+    }
+    if (added && this.personTemplate) this.upgradePassengerViews();
+  }
+
+  clearSpatialConveyorVisual() {
+    for (const mesh of [this.spatialConveyorMesh, this.spatialConveyorExitMesh]) {
+      if (!mesh) continue;
+      this.spatialConveyorRoot.remove(mesh);
+      mesh.geometry.dispose();
+      mesh.material.map?.dispose();
+      mesh.material.dispose();
+    }
+    this.spatialConveyorMesh = null;
+    this.spatialConveyorExitMesh = null;
+    this.activeSpatialConveyorVisualId = null;
+  }
+
+  updateSpatialConveyorVisual(packageData) {
+    const display = SCENE_TUNING.spatialConveyor ?? {};
+    const visualId = [
+      packageData.id,
+      SPATIAL_CONVEYOR_DISPLAY.version,
+      display.scale,
+      display.scaleX,
+      display.scaleY,
+      display.scaleZ,
+      display.roadWidth,
+      display.positionX,
+      display.positionY,
+      display.positionZ,
+      display.exitPositionX,
+      display.exitPositionZ,
+      display.rotationXDegrees,
+      display.rotationYDegrees,
+      display.rotationZDegrees,
+      display.mirrorZ
+    ].join(':');
+    if (
+      this.activeSpatialConveyorVisualId === visualId &&
+      this.spatialConveyorMesh &&
+      this.spatialConveyorExitMesh
+    ) return;
+    this.clearSpatialConveyorVisual();
+    const makeMaterial = (dataUrl, overlay = false) => {
+      const texture = configureColorTexture(this.textureLoader.load(dataUrl));
+      const material = new THREE.MeshBasicMaterial({
+        map: texture,
+        color: 0xffffff,
+        transparent: true,
+        alphaTest: 0.01,
+        depthTest: true,
+        depthWrite: !overlay,
+        side: THREE.DoubleSide,
+        vertexColors: !overlay
+      });
+      if (overlay) {
+        material.polygonOffset = true;
+        material.polygonOffsetFactor = -1;
+        material.polygonOffsetUnits = -1;
+      }
+      material.vertexAlphas = !overlay;
+      return material;
+    };
+    const geometry = buildSpatialConveyorGeometry(packageData, this.curve, display);
+    const exitGeometry = buildSpatialConveyorExitGeometry(packageData, this.curve, display);
+    const mesh = new THREE.Mesh(
+      geometry,
+      makeMaterial(packageData.visual.material.loopTextureDataUrl)
+    );
+    const exitMesh = new THREE.Mesh(
+      exitGeometry,
+      makeMaterial(packageData.visual.material.exitTextureDataUrl, true)
+    );
+    mesh.name = packageData.label || packageData.id;
+    exitMesh.name = `${mesh.name} Exit`;
+    mesh.frustumCulled = false;
+    exitMesh.frustumCulled = false;
+    exitMesh.renderOrder = 1;
+    this.spatialConveyorMesh = mesh;
+    this.spatialConveyorExitMesh = exitMesh;
+    this.activeSpatialConveyorVisualId = visualId;
+    this.spatialConveyorRoot.add(mesh, exitMesh);
   }
 
   calculateConveyorEntryPercents(sampleCount = 2048) {
@@ -1485,16 +1622,25 @@ export class SceneView {
     this.updateVehicleArrowTuning();
     this.updateGuideHandTuning();
 
-    const layout = getSelectedConveyorLayout();
-    const layoutTuning = getSelectedConveyorTuning(layout.id);
-    const conveyor = layoutTuning.art;
-    this.setArtworkPlaneTexture(this.loopPlane, layout.assets.loopScene, layout.assets.loopSpriteRect);
-    this.loopPlane.position.set(conveyor.x, conveyor.y, conveyor.z);
-    this.loopPlane.rotation.set(-Math.PI / 2, 0, 0);
-    this.loopPlane.scale.set(conveyor.width, conveyor.depth, 1);
-    this.loopPlane.material.opacity = conveyor.opacity;
-
     this.buildPathCurves();
+    if (this.activeSpatialConveyor) {
+      this.loopPlane.visible = false;
+      this.spatialConveyorRoot.visible = true;
+      this.updateSpatialConveyorVisual(this.activeSpatialConveyor);
+    } else {
+      const layout = getSelectedConveyorLayout();
+      const layoutTuning = getSelectedConveyorTuning(layout.id);
+      const conveyor = layoutTuning.art;
+      this.clearSpatialConveyorVisual();
+      this.spatialConveyorRoot.visible = false;
+      this.loopPlane.visible = true;
+      this.setArtworkPlaneTexture(this.loopPlane, layout.assets.loopScene, layout.assets.loopSpriteRect);
+      this.loopPlane.position.set(conveyor.x, conveyor.y, conveyor.z);
+      this.loopPlane.rotation.set(-Math.PI / 2, 0, 0);
+      this.loopPlane.scale.set(conveyor.width, conveyor.depth, 1);
+      this.loopPlane.material.opacity = conveyor.opacity;
+    }
+
     const spots = SCENE_TUNING.parkingSpots;
     for (let i = 0; i < this.spotRoots.length; i += 1) {
       const position = this.spotPositions[i];
@@ -1934,6 +2080,7 @@ export class SceneView {
   }
 
   getQueueCapacities() {
+    if (this.activeConveyorLayout?.directEntrance) return [0];
     return this.queueCurves.map((curve, index) => (
       Math.min(
         this.activeConveyorLayout?.queueCapacities?.[index] ?? LEVEL_1.queueCapacity,
@@ -1950,7 +2097,9 @@ export class SceneView {
       queueCapacities: [...layout.queueCapacities],
       entryPercents: [...(this.entryPercents ?? [])],
       exitStart: layout.exitStart,
-      exitEnd: layout.exitEnd
+      exitEnd: layout.exitEnd,
+      directEntrance: Boolean(layout.directEntrance),
+      initiallyFull: layout.kind === 'spatial' && Boolean(SCENE_TUNING.spatialConveyor?.startFilled)
     };
   }
 
@@ -1963,6 +2112,9 @@ export class SceneView {
   }
 
   getInitialEntryPathVisual(key, slot, target, targetTangent, time, delta, speedMultiplier, passengerHeight) {
+    if (this.activeConveyorLayout?.directEntrance || !this.queueCurves?.length) {
+      return { position: target, tangent: targetTangent, snapped: true };
+    }
     const motion = LEVEL_1.passengerEntryMotion;
     const entryPercent = this.entryPercents?.[slot.entryMotion.entryIndex] ?? 0;
     let state = this.initialEntryPathStates.get(key);
@@ -1986,7 +2138,7 @@ export class SceneView {
     const targetDistance = fromQueueDistance + targetConveyorDistance;
     const pathScale = (Math.abs(SCENE_TUNING.path.scaleX) + Math.abs(SCENE_TUNING.path.scaleZ)) * 0.5;
     const elapsed = Math.max(0, time - slot.entryMotion.startedAt);
-    const multiplier = Math.max(1, speedMultiplier);
+    const multiplier = Math.max(0.1, speedMultiplier);
     const catchUpDuration = Math.max(motion.initialFillCatchUpDuration, 0.01);
     const catchUpT = THREE.MathUtils.clamp(elapsed / catchUpDuration, 0, 1);
     const catchUpSpeed = Math.max(0, motion.catchUpExtraSpeed * catchUpT);
@@ -2059,7 +2211,7 @@ export class SceneView {
     }
 
     const speed = Math.max(0.01, motion.passengerSpeed ?? LEVEL_1.conveyorSpeed);
-    const step = speed * Math.max(0, delta) * Math.max(1, speedMultiplier);
+    const step = speed * Math.max(0, delta) * Math.max(0.1, speedMultiplier);
     state.distanceFromHead = Math.max(item.distanceFromHead, state.distanceFromHead - step);
 
     const visualDistance = Math.max(item.distanceFromHead, state.distanceFromHead);

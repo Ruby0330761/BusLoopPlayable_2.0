@@ -214,7 +214,8 @@ test('multi-conveyor editor, renderer, and main-thread handoff stay wired', () =
   assert.match(mainSource, /function initializeGameQueues/);
   assert.match(mainSource, /view\.getConveyorConfig\(\)/);
   assert.match(mainSource, /path === 'conveyorLayout\.selected'/);
-  assert.match(mainSource, /initializeGameQueues\(\{ resetSlots: layoutChanged \}\)/);
+  assert.match(mainSource, /path === 'spatialConveyor\.capacity'/);
+  assert.match(mainSource, /initializeGameQueues\(\{ resetSlots: conveyorStructureChanged \}\)/);
 });
 
 test('queue initialization can use adapted Unity visible capacities without losing passengers', () => {
@@ -521,7 +522,7 @@ test('editor sizing, source background ratio, and passenger shadow anchor stay w
     appearSpeed: 1.45
   });
   assert.deepEqual(SCENE_TUNING.installGate, {
-    successfulOperationThreshold: 10
+    successfulOperationThreshold: 20
   });
   assert.deepEqual(SCENE_TUNING.gameOver, {
     failureDelaySeconds: 2,
@@ -550,7 +551,8 @@ test('editor sizing, source background ratio, and passenger shadow anchor stay w
   assert.equal('conveyorScale' in SCENE_TUNING.passengers, false);
   assert.equal('queueScale' in SCENE_TUNING.passengers, false);
   assert.deepEqual(Object.keys(SCENE_TUNING.passengerShadows), ['conveyor', 'leftQueue', 'rightQueue']);
-  assert.ok(publicAssetExists('/assets/icon.png'));
+  assert.ok(publicAssetExists('/assets/icon-android.jpg'));
+  assert.ok(publicAssetExists('/assets/icon-ios.png'));
   assert.ok(publicAssetExists('/assets/main-guide-hand.png'));
   assert.ok(publicAssetExists('/assets/unity/ui/Main_Prop_GreenBtn.png'));
   assert.match(indexSource, /id="loading-screen"/);
@@ -560,7 +562,7 @@ test('editor sizing, source background ratio, and passenger shadow anchor stay w
   assert.match(indexSource, /id="cta-button"/);
   assert.match(indexSource, /Play Now/);
   assert.match(indexSource, /Bus Fever - Car Jam Escape/);
-  assert.match(indexSource, /\/assets\/main-loading-icon\.png/);
+  assert.match(indexSource, /\/assets\/main-loading-icon-small\.png/);
   assert.match(indexSource, /role="progressbar"/);
   assert.match(indexSource, /id="loading-progress-bar"/);
   assert.match(indexSource, /id="loading-progress-value"/);
@@ -1173,6 +1175,10 @@ test('main thread saves and restores scene tuning from localStorage', () => {
   assert.match(mainSource, /function migrateLevel16PackageTuning/);
   assert.match(mainSource, /function migrateLevel10PackageTuning/);
   assert.match(mainSource, /function migrateLegacyPackageTuning/);
+  assert.match(mainSource, /function migrateSpatialSpeedTuning/);
+  assert.match(mainSource, /spatial\.normalSpeedMultiplier = 1/);
+  assert.match(mainSource, /Number\(spatial\.longPressMultiplier\) === 5\.2/);
+  assert.match(mainSource, /spatial\.longPressMultiplier = 3/);
   assert.match(mainSource, /source\.level\.selected = 'level16'/);
   assert.match(mainSource, /'successfulOperationThreshold', 40, 30/);
   assert.match(mainSource, /'minX', -2\.53, -2\.2/);
@@ -1192,6 +1198,7 @@ test('main thread saves and restores scene tuning from localStorage', () => {
   assert.match(mainSource, /function loadSavedTuning\(\) \{\s+if \(!EDITOR_ENABLED\) return;/);
   assert.match(mainSource, /deepMerge\(SCENE_TUNING, savedTuning\)/);
   assert.match(mainSource, /migrateLegacyConveyorTuning\(savedTuning\)/);
+  assert.match(mainSource, /migrateSpatialSpeedTuning\(savedTuning\)/);
   const currentStorageBranch = mainSource.slice(
     mainSource.indexOf('if (saved) {'),
     mainSource.indexOf('const legacySaved =')
@@ -1216,7 +1223,8 @@ test('main thread saves and restores scene tuning from localStorage', () => {
   assert.match(mainSource, /function initializeGameQueues/);
   assert.match(mainSource, /view\.getConveyorConfig\(\)/);
   assert.match(mainSource, /path === 'conveyorLayout\.selected'/);
-  assert.match(mainSource, /initializeGameQueues\(\{ resetSlots: layoutChanged \}\)/);
+  assert.match(mainSource, /path === 'spatialConveyor\.capacity'/);
+  assert.match(mainSource, /initializeGameQueues\(\{ resetSlots: conveyorStructureChanged \}\)/);
   assert.match(mainSource, /createGameAudioController\(LEVEL_1\.assets\.audio\)/);
   assert.match(mainSource, /audio\.handleGameEvent\(state\.lastEvent, state\.time\)/);
   assert.match(mainSource, /audio\.playPassengerUp\(\)/);
@@ -1305,7 +1313,9 @@ test('main thread saves and restores scene tuning from localStorage', () => {
   assert.match(checkSource, /data URL fetch compatibility layer present/);
   assert.match(checkSource, /inline binary data assets present/);
   assert.match(checkSource, /branding overlay markup present/);
-  assert.match(checkSource, /branding Icon and Logo images inlined/);
+  assert.match(checkSource, /selected branding Icon and small Logo images inlined/);
+  assert.match(checkSource, /unselected branding Icon omitted/);
+  assert.match(checkSource, /legacy large branding Logo omitted/);
   assert.match(checkSource, /branding Poppins font inlined/);
   assert.match(mainSource, /--cta-width', scaledPx\(width, uiScale\)/);
   assert.match(mainSource, /--cta-height', scaledPx\(height, uiScale\)/);
@@ -1330,12 +1340,15 @@ test('Icon, Logo, and text overlays expose independent responsive editor control
   const editorSource = readFileSync(join('src', 'scene-editor.js'), 'utf8');
   const styleSource = readFileSync(join('src', 'styles.css'), 'utf8');
 
-  assert.equal(existsSync(join('public', 'assets', 'icon.png')), true);
-  assert.equal(existsSync(join('public', 'assets', 'main-loading-icon.png')), true);
+  assert.equal(existsSync(join('public', 'assets', 'icon-android.jpg')), true);
+  assert.equal(existsSync(join('public', 'assets', 'icon-ios.png')), true);
+  assert.equal(existsSync(join('public', 'assets', 'main-loading-icon-small.png')), true);
   assert.equal(existsSync(join('public', 'assets', 'unity', 'fonts', 'Poppins-Bold.ttf')), true);
   assert.match(indexSource, /id="branding-overlay"/);
-  assert.match(indexSource, /id="branding-icon"[^>]+src="\/assets\/icon\.png"/);
-  assert.match(indexSource, /id="branding-logo"[^>]+src="\/assets\/main-loading-icon\.png"/);
+  assert.match(indexSource, /id="branding-icon"[^>]*>/);
+  assert.doesNotMatch(indexSource, /id="branding-icon"[^>]+src=/);
+  assert.match(indexSource, /id="branding-logo"[^>]+src="\/assets\/main-loading-icon-small\.png"/);
+  assert.match(indexSource, /id="game-over-logo"[^>]+src="\/assets\/main-loading-icon-small\.png"/);
   assert.match(indexSource, /id="branding-text"[^>]*>Bus Fever-Car Jam Escape<\/div>/);
 
   for (const key of ['icon', 'logo', 'text']) {
@@ -1346,13 +1359,14 @@ test('Icon, Logo, and text overlays expose independent responsive editor control
       assert.equal(Number.isFinite(config[field]), true, `${key}.${field}`);
     }
   }
+  assert.equal(SCENE_TUNING.branding.icon.asset, '/assets/icon-android.jpg');
   assert.equal(typeof SCENE_TUNING.branding.text.content, 'string');
 
   assert.match(editorSource, /Icon\/Logo\\u8c03\\u6574/);
   assert.match(editorSource, /preview\.width/);
   assert.match(editorSource, /preview\.height/);
   for (const path of [
-    'branding.icon.enabled', 'branding.icon.locked', 'branding.icon.x', 'branding.icon.y',
+    'branding.icon.asset', 'branding.icon.enabled', 'branding.icon.locked', 'branding.icon.x', 'branding.icon.y',
     'branding.icon.width', 'branding.icon.height', 'branding.logo.enabled', 'branding.logo.locked',
     'branding.logo.x', 'branding.logo.y', 'branding.logo.width', 'branding.logo.height',
     'branding.text.enabled', 'branding.text.locked', 'branding.text.content', 'branding.text.x',
@@ -1362,6 +1376,8 @@ test('Icon, Logo, and text overlays expose independent responsive editor control
   }
   assert.match(editorSource, /class="editor-checkbox" type="checkbox" role="switch"/);
   assert.match(editorSource, /class="editor-text" type="text"/);
+  assert.match(editorSource, /\/assets\/icon-android\.jpg/);
+  assert.match(editorSource, /\/assets\/icon-ios\.png/);
 
   assert.match(mainSource, /function getBrandingStageMetrics/);
   assert.match(mainSource, /const positionScaleX = stageWidth \/ designWidth/);
@@ -1374,6 +1390,7 @@ test('Icon, Logo, and text overlays expose independent responsive editor control
   assert.match(mainSource, /path\?\.startsWith\('branding\.'\)/);
   assert.match(mainSource, /branding\.\$\{key\}\.position/);
   assert.match(mainSource, /config\.locked/);
+  assert.match(mainSource, /element\.setAttribute\('src', asset\)/);
   assert.match(mainSource, /element\.textContent = content/);
   assert.match(mainSource, /element\.style\.left = `\$\{renderedCenterX\}px`/);
   assert.match(mainSource, /element\.style\.top = `\$\{y \* metrics\.positionScaleY\}px`/);
@@ -1402,7 +1419,7 @@ test('successful operation store redirect uses the baked threshold and remains e
   const mainSource = readFileSync(join('src', 'main.js'), 'utf8');
   const editorSource = readFileSync(join('src', 'scene-editor.js'), 'utf8');
 
-  assert.equal(SCENE_TUNING.installGate.successfulOperationThreshold, 10);
+  assert.equal(SCENE_TUNING.installGate.successfulOperationThreshold, 20);
   assert.match(editorSource, /installGate\.successfulOperationThreshold/);
   assert.match(mainSource, /SCENE_TUNING\.installGate\?\.successfulOperationThreshold/);
   assert.match(mainSource, /^\s*if \(result\?\.ok && markInstallVehicle\(vehicleId\)\) InstallFullGame\(\);/m);

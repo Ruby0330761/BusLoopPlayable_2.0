@@ -320,6 +320,14 @@ button:hover { transform: translateY(-1px); background: #fff; }
   width: 100%; min-width: 0; padding: 7px 8px; border: 1px solid rgba(16,35,61,.14);
   border-radius: 8px; background: #fff; color: #173451; font: 700 11px/1.2 Inter, sans-serif;
 }
+.editor-spatial-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.editor-spatial-actions button {
+  min-width: 0; padding: 8px 6px; border-radius: 8px; box-shadow: none; font-size: 11px;
+}
+.editor-spatial-open-folder { grid-column: 1 / -1; }
+.editor-spatial-status {
+  margin: 8px 0 0; overflow-wrap: anywhere; color: #62788c; font-size: 10px; line-height: 1.4;
+}
 .editor-reset { width: 100%; border-radius: 12px; box-shadow: none; }
 .scene-editor.is-collapsed { flex-basis: 76px; width: 76px; }
 .scene-editor.is-collapsed .editor-header { justify-content: center; padding: 12px; }
