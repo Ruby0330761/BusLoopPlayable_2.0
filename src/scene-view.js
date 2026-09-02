@@ -598,6 +598,7 @@ export class SceneView {
     this.vehicleEntrance = null;
     this.camera = new THREE.PerspectiveCamera(SCENE_TUNING.camera.fovDegrees, 1, 0.1, 1000);
     this.raycaster = new THREE.Raycaster();
+    this.inputEnabled = true;
     this.pointer = new THREE.Vector2();
     this.loadingManager = new THREE.LoadingManager();
     this.loadingManager.onProgress = (_url, loaded, total) => {
@@ -1201,6 +1202,7 @@ export class SceneView {
     const display = SCENE_TUNING.spatialConveyor ?? {};
     const visualId = [
       packageData.id,
+      packageData.editor?.revision ?? 0,
       SPATIAL_CONVEYOR_DISPLAY.version,
       display.scale,
       display.scaleX,
@@ -1211,6 +1213,7 @@ export class SceneView {
       display.positionY,
       display.positionZ,
       display.exitPositionX,
+      display.exitPositionY,
       display.exitPositionZ,
       display.rotationXDegrees,
       display.rotationYDegrees,
@@ -1222,7 +1225,6 @@ export class SceneView {
       this.spatialConveyorMesh &&
       this.spatialConveyorExitMesh
     ) return;
-    this.clearSpatialConveyorVisual();
     const makeMaterial = (dataUrl, overlay = false) => {
       const texture = configureColorTexture(this.textureLoader.load(dataUrl));
       const material = new THREE.MeshBasicMaterial({
@@ -1245,6 +1247,16 @@ export class SceneView {
     };
     const geometry = buildSpatialConveyorGeometry(packageData, this.curve, display);
     const exitGeometry = buildSpatialConveyorExitGeometry(packageData, this.curve, display);
+    if (this.spatialConveyorMesh && this.spatialConveyorExitMesh) {
+      this.spatialConveyorMesh.geometry.dispose();
+      this.spatialConveyorExitMesh.geometry.dispose();
+      this.spatialConveyorMesh.geometry = geometry;
+      this.spatialConveyorExitMesh.geometry = exitGeometry;
+      this.spatialConveyorMesh.name = packageData.label || packageData.id;
+      this.spatialConveyorExitMesh.name = `${this.spatialConveyorMesh.name} Exit`;
+      this.activeSpatialConveyorVisualId = visualId;
+      return;
+    }
     const mesh = new THREE.Mesh(
       geometry,
       makeMaterial(packageData.visual.material.loopTextureDataUrl)
@@ -2173,6 +2185,15 @@ export class SceneView {
     }
   }
 
+  setInputEnabled(enabled) {
+    this.inputEnabled = Boolean(enabled);
+  }
+
+  refreshSpatialConveyorDraft() {
+    this.activeSpatialConveyorVisualId = null;
+    this.applyTuning();
+  }
+
   prepareSpatialBlockerCache(snapshot) {
     this.blockerCacheAvailable = false;
     if (!this.isSpatialOptimizationEnabled('cacheBlockers')) {
@@ -2921,6 +2942,7 @@ export class SceneView {
   }
 
   pick(event) {
+    if (!this.inputEnabled) return;
     const rect = this.canvas.getBoundingClientRect();
     this.pointer.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
     this.pointer.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;

@@ -16,6 +16,7 @@ Use this file before code changes. Pick the closest change area, then read only 
 | Conveyor layouts and prefab-derived paths | `src/conveyor-layouts.js` | `src/scene-view.js`, `src/game-model.js`, `src/scene-tuning.js`, `test/game-model.test.js` |
 | Unity conveyor prefab extraction | `scripts/extract-unity-conveyor-layouts.mjs` | `src/conveyor-layouts.js`, `artifacts/unity-conveyor-layouts.json` |
 | Standalone spatial conveyor import, production generation, runtime catalog, and rendering | `scripts/spatial-conveyor-importer.mjs` | `scripts/generate-active-spatial-conveyor.mjs`, `src/generated-active-spatial-conveyor.js`, `src/spatial-conveyor-runtime.js`, `vite.config.js`, `src/scene-editor.js`, `src/scene-view.js`, `src/game-model.js`, `test/spatial-conveyor-importer.test.js`, `tools/spatial-conveyor-import-support/bus-loop-spatial-v1/` |
+| On-demand spatial conveyor point editing, selection, transforms, history, and explicit JSON saves | `src/spatial-conveyor-editor.js` | `src/spatial-conveyor-edit-model.js`, `src/spatial-conveyor-editor.css`, `src/spatial-conveyor-runtime.js`, `src/scene-editor.js`, `src/scene-view.js`, `src/main.js`, `vite.config.js`, `test/spatial-conveyor-editor.test.js` |
 | Three.js scene rendering, camera, picking, assets, vehicles, passengers, shadows | `src/scene-view.js` | `src/scene-tuning.js`, `src/scene-layout.js`, `test/game-model.test.js`, `test/guide-hand.test.js` |
 | Scene/editor tuning values | `src/scene-tuning.js` | `src/scene-editor.js`, `src/scene-view.js`, `scripts/apply-scene-tuning.mjs`, relevant tests |
 | Editor UI controls, toggle/text fields, Icon/Logo/text adjustment, and control grouping | `src/scene-editor.js` | `src/scene-tuning.js`, `src/styles.css` |
@@ -61,6 +62,9 @@ Use this file before code changes. Pick the closest change area, then read only 
 - `src/scene-tuning.js`: Single mutable tuning object. Owns editor-facing values for preview/crop, branding image/text visibility/lock/content/geometry, camera, facing, path transforms, background, conveyor art, parking spots, seat boards, vehicle paths, vehicle area mapping, passengers, shadows, arrows, and effects.
 - `src/scene-editor.js`: Generated editor panel. Owns `FIELD_GROUPS`, input/range/select/toggle/text bindings, Icon/Logo/text adjustment controls, nested tuning path get/set helpers, collapsed UI behavior, reset-to-default hook, and editor labels.
 - `src/spatial-conveyor-runtime.js`: Shared spatial package registry plus Unity transform application and Dreamteck repeated-mesh geometry generation. Development packages come from Vite endpoints; production registers the generated active package before scene creation.
+- `src/spatial-conveyor-edit-model.js`: Pure spatial-point editing state. Owns stable imported pivots, selection, curve-sampled insertion, prepend/append/delete, and bounded undo/redo history.
+- `src/spatial-conveyor-editor.js`: Development-only on-demand spatial point editor. Owns Three.js point handles, TransformControls, box/range/multi-selection, numeric point editing, live preview, explicit save/save-as, and unsaved-change handling.
+- `src/spatial-conveyor-editor.css`: Development-only overlay, toolbar, point-property panel, and mobile layout for the spatial point editor.
 - `src/scene-layout.js`: Pure layout helpers. Owns orthographic half-height calculation, perspective distance calculation, and curve coordinate transform logic used by the renderer and tests.
 - `src/vehicle-motion.js`: Unity-style vehicle motion math. Owns motion constants, Unity AnimationCurve sampling, path construction to stations, station exit paths, rounded path baking, path evaluation, station/collision speed selection, collision distance, hit direction, and hit clip sampling.
 - `src/vehicle-effects.js`: Particle/effect runtime. Owns Unity effect defaults, Effect_Ribbon departure burst, Ribbon_01 3x3 atlas frame sampling, ParticleSmoke, boarding smoke, speed-over-lifetime sampling, movement range clamping, particle disposal, and per-frame effect updates.
@@ -79,6 +83,7 @@ Use this file before code changes. Pick the closest change area, then read only 
 - `test/vehicle-collision.test.js`: Focused geometry graph, vehicle-size, reset, station-ordering, contact, and blocked-click regressions.
 - `test/guide-hand.test.js`: Focused guide target, active-level scope, timed mask, editor wiring, and horizontal art/motion mirroring regressions.
 - `test/spatial-conveyor-importer.test.js`: Spatial prefab array-size trimming, 3D point overrides, embedded visual support, output naming, input rejection, and editor/dev-service wiring.
+- `test/spatial-conveyor-editor.test.js`: Spatial point insertion/history, stable pivot, minimum point count, forward/inverse coordinate mapping, and on-demand editor/save wiring regressions.
 
 ### Conveyor layout subsystem
 

@@ -252,6 +252,7 @@ const FIELD_GROUPS = [
       ['Y \u4f4d\u7f6e', 'spatialConveyor.positionY', -3, 4, 0.05],
       ['Z \u4f4d\u7f6e', 'spatialConveyor.positionZ', -10, 4, 0.05],
       ['\u51fa\u53e3 X \u4f4d\u7f6e', 'spatialConveyor.exitPositionX', -4, 4, 0.05],
+      ['\u51fa\u53e3 Y \u4f4d\u7f6e', 'spatialConveyor.exitPositionY', -4, 4, 0.05],
       ['\u51fa\u53e3 Z \u4f4d\u7f6e', 'spatialConveyor.exitPositionZ', -4, 4, 0.05],
       ['\u7edf\u4e00\u7f29\u653e', 'spatialConveyor.scale', 0.5, 2.5, 0.05],
       ['Y \u8f74\u5782\u76f4\u7f29\u653e', 'spatialConveyor.scaleY', 0.25, 3, 0.05],
@@ -483,7 +484,12 @@ function formatColor(value) {
   return `#${hex.toString(16).padStart(6, '0')}`;
 }
 
-export function createSceneEditor(root, { getTuning, setTuning, clearSavedTuning = () => {} }) {
+export function createSceneEditor(root, {
+  getTuning,
+  setTuning,
+  clearSavedTuning = () => {},
+  openSpatialPointEditor = async () => {}
+}) {
   const defaults = structuredClone(getTuning());
   root.innerHTML = `
     <header class="editor-header">
@@ -601,6 +607,7 @@ export function createSceneEditor(root, { getTuning, setTuning, clearSavedTuning
     <div class="editor-spatial-actions">
       <button class="editor-spatial-import" type="button">\u5bfc\u5165 Prefab</button>
       <button class="editor-spatial-refresh" type="button">\u5237\u65b0\u5217\u8868</button>
+      <button class="editor-spatial-edit-points" type="button">\u7f16\u8f91\u8f68\u9053\u70b9\u4f4d</button>
       <button class="editor-spatial-open-folder" type="button">\u6253\u5f00\u5b58\u50a8\u6587\u4ef6\u5939</button>
     </div>
     <input class="editor-spatial-file" type="file" accept=".prefab" hidden>
@@ -611,6 +618,7 @@ export function createSceneEditor(root, { getTuning, setTuning, clearSavedTuning
 
   const spatialImportButton = spatialSection.querySelector('.editor-spatial-import');
   const spatialRefreshButton = spatialSection.querySelector('.editor-spatial-refresh');
+  const spatialEditPointsButton = spatialSection.querySelector('.editor-spatial-edit-points');
   const spatialOpenFolderButton = spatialSection.querySelector('.editor-spatial-open-folder');
   const spatialFileInput = spatialSection.querySelector('.editor-spatial-file');
   const spatialStatus = spatialSection.querySelector('.editor-spatial-status');
@@ -618,6 +626,7 @@ export function createSceneEditor(root, { getTuning, setTuning, clearSavedTuning
   function setSpatialBusy(busy) {
     spatialImportButton.disabled = busy;
     spatialRefreshButton.disabled = busy;
+    spatialEditPointsButton.disabled = busy || !isSpatialConveyorSelection(getTuning().conveyorLayout?.selected);
     spatialOpenFolderButton.disabled = busy;
   }
 
@@ -668,6 +677,18 @@ export function createSceneEditor(root, { getTuning, setTuning, clearSavedTuning
   }
 
   spatialImportButton.addEventListener('click', () => spatialFileInput.click());
+  spatialEditPointsButton.addEventListener('click', async () => {
+    setSpatialBusy(true);
+    spatialStatus.textContent = '\u6b63\u5728\u6253\u5f00\u70b9\u4f4d\u7f16\u8f91\u5668...';
+    try {
+      await openSpatialPointEditor();
+      spatialStatus.textContent = '\u70b9\u4f4d\u7f16\u8f91\u5668\u5df2\u6253\u5f00';
+    } catch (error) {
+      spatialStatus.textContent = `\u6253\u5f00\u5931\u8d25\uff1a${error.message}`;
+    } finally {
+      setSpatialBusy(false);
+    }
+  });
   spatialOpenFolderButton.addEventListener('click', async () => {
     setSpatialBusy(true);
     spatialStatus.textContent = '\u6b63\u5728\u6253\u5f00\u5b58\u50a8\u6587\u4ef6\u5939...';
@@ -730,6 +751,8 @@ export function createSceneEditor(root, { getTuning, setTuning, clearSavedTuning
     for (const section of fieldsRoot.querySelectorAll('[data-spatial-only]')) {
       section.hidden = !isSpatialConveyorSelection(selected);
     }
+    spatialEditPointsButton.hidden = !isSpatialConveyorSelection(selected);
+    spatialEditPointsButton.disabled = !isSpatialConveyorSelection(selected);
   }
 
   function sync() {

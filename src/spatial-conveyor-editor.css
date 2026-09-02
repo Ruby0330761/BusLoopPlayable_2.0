@@ -1,0 +1,55 @@
+.spatial-point-editor {
+  position: fixed; z-index: 60; inset: 0; pointer-events: none; color: #173451;
+}
+.spatial-point-toolbar {
+  position: absolute; top: 14px; left: 50%; display: flex; flex-wrap: wrap; justify-content: center;
+  gap: 6px; max-width: calc(100vw - 380px); padding: 7px; pointer-events: auto;
+  transform: translateX(-50%); border: 1px solid rgba(16,35,61,.16); border-radius: 8px;
+  background: rgba(247,251,255,.96); box-shadow: 0 10px 28px rgba(18,48,74,.18);
+}
+.spatial-point-toolbar button,
+.spatial-point-save-actions button,
+.spatial-point-close {
+  min-width: 0; padding: 8px 10px; border-radius: 6px; box-shadow: none; backdrop-filter: none;
+}
+.spatial-point-toolbar button.is-icon { width: 34px; padding-inline: 0; font-size: 16px; }
+.spatial-point-toolbar button.is-active { color: #fff; border-color: #13769e; background: #137fa9; }
+.spatial-point-toolbar .spatial-point-toolbar-handle {
+  cursor: grab; touch-action: none; color: #526f84; background: rgba(20, 77, 110, .06);
+}
+.spatial-point-toolbar .spatial-point-toolbar-handle.is-dragging { cursor: grabbing; }
+.spatial-point-panel {
+  position: absolute; top: 12px; right: 12px; bottom: 12px; width: 330px; overflow-y: auto;
+  padding: 14px; pointer-events: auto; border: 1px solid rgba(16,35,61,.16); border-radius: 8px;
+  background: rgba(247,251,255,.97); box-shadow: 0 16px 42px rgba(18,48,74,.22);
+}
+.spatial-point-panel header { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.spatial-point-panel header span { color: #5d7d92; font: 800 9px/1 Inter, sans-serif; letter-spacing: .16em; }
+.spatial-point-panel h2 { margin: 4px 0 0; font: 800 18px/1.15 Inter, sans-serif; overflow-wrap: anywhere; }
+.spatial-point-panel h3 { margin: 0 0 8px; font-size: 12px; }
+.spatial-point-panel section { margin-top: 12px; padding-top: 12px; border-top: 1px solid rgba(16,35,61,.1); }
+.spatial-point-summary { margin-top: 12px; color: #526f84; font-size: 11px; }
+.spatial-point-vector { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 7px; }
+.spatial-point-field { display: grid; gap: 4px; color: #5a7085; font-size: 10px; }
+.spatial-point-field input {
+  width: 100%; min-width: 0; padding: 7px 6px; border: 1px solid rgba(16,35,61,.16);
+  border-radius: 6px; background: #fff; color: #173451; font: 700 11px/1 Inter, sans-serif;
+}
+.spatial-point-entrance-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: end; gap: 7px; }
+.spatial-point-entrance-row button { min-height: 31px; padding: 7px 9px; border-radius: 6px; }
+.spatial-point-entrance-range { width: 100%; margin-top: 9px; accent-color: #1ba866; }
+.spatial-point-entrance-range.is-boarding { accent-color: #d946ef; }
+.spatial-point-boarding-width { margin-top: 8px; }
+.spatial-point-status { min-height: 30px; margin: 12px 0; color: #526f84; font-size: 10px; line-height: 1.45; }
+.spatial-point-save-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; }
+.spatial-point-save-actions .is-primary { color: #fff; border-color: #13769e; background: #137fa9; }
+.spatial-point-save-actions button:last-child { grid-column: 1 / -1; }
+.spatial-point-selection-box {
+  position: fixed; pointer-events: none; border: 1px solid #16a5d6; background: rgba(22,165,214,.14);
+}
+.spatial-point-selection-box[hidden] { display: none; }
+
+@media (max-width: 760px) {
+  .spatial-point-toolbar { left: 8px; right: 8px; max-width: none; transform: none; justify-content: flex-start; }
+  .spatial-point-panel { top: auto; left: 8px; right: 8px; bottom: 8px; width: auto; max-height: 42vh; }
+}

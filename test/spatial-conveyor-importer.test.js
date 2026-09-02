@@ -115,6 +115,7 @@ test('spatial conveyor runtime builds repeated mesh geometry from transformed 3D
     positionY: 0,
     positionZ: 0,
     exitPositionX: 1.25,
+    exitPositionY: 0.5,
     exitPositionZ: -0.75,
     mirrorZ: 0,
     rotationYDegrees: 180
@@ -287,7 +288,7 @@ test('spatial conveyor runtime builds repeated mesh geometry from transformed 3D
   assert.ok(Math.abs(exitWidthDirection.dot(exitTangent) - 1) < 1e-6);
   for (let index = 0; index < exitPositions.count; index += 1) {
     assert.ok(Math.abs(shiftedExitCorner(index).x - exitCorner(index).x - 1.25) < 1e-6);
-    assert.ok(Math.abs(shiftedExitCorner(index).y - exitCorner(index).y) < 1e-6);
+    assert.ok(Math.abs(shiftedExitCorner(index).y - exitCorner(index).y - 0.5) < 1e-6);
     assert.ok(Math.abs(shiftedExitCorner(index).z - exitCorner(index).z + 0.75) < 1e-6);
   }
   geometry.dispose();
@@ -445,6 +446,7 @@ test('HTML editor, renderer, Vite service, and production build expose selectabl
   assert.match(editorSource, /spatialConveyor\.scaleZ/);
   assert.match(editorSource, /spatialConveyor\.roadWidth/);
   assert.match(editorSource, /spatialConveyor\.exitPositionX/);
+  assert.match(editorSource, /spatialConveyor\.exitPositionY/);
   assert.match(editorSource, /spatialConveyor\.exitPositionZ/);
   assert.match(editorSource, /spatialConveyor\.rotationXDegrees/);
   assert.match(editorSource, /spatialConveyor\.rotationYDegrees/);

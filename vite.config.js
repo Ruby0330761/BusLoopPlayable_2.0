@@ -1,5 +1,6 @@
 import { spawn } from 'node:child_process';
-import { mkdir, readdir, readFile, writeFile } from 'node:fs/promises';
+import { createHash } from 'node:crypto';
+import { copyFile, mkdir, readdir, readFile, rename, unlink, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { defineConfig } from 'vite';
 import {
@@ -13,6 +14,19 @@ const LEVEL_IDS = new Set([
 ]);
 
 const MAX_PREFAB_BYTES = 12 * 1024 * 1024;
+const MAX_SPATIAL_PACKAGE_BYTES = 4 * 1024 * 1024;
+const SPATIAL_BACKUP_ROOT = path.resolve('artifacts', 'spatial-conveyor-backups');
+
+function validateSpatialPackageId(packageId) {
+  if (!packageId || /[<>:"/\\|?*\x00-\x1f]/.test(packageId) || path.basename(packageId) !== packageId) {
+    throw new Error('Spatial conveyor package id is invalid.');
+  }
+  return packageId;
+}
+
+function spatialRevision(source) {
+  return createHash('sha256').update(source).digest('hex');
+}
 
 function sendJson(response, statusCode, payload) {
   response.statusCode = statusCode;
@@ -53,14 +67,81 @@ async function listSpatialConveyors() {
 }
 
 async function readSpatialConveyorPackage(packageId) {
-  if (!packageId || /[<>:"/\\|?*\x00-\x1f]/.test(packageId) || path.basename(packageId) !== packageId) {
-    throw new Error('Spatial conveyor package id is invalid.');
-  }
-  const packageData = JSON.parse(await readFile(path.join(DEFAULT_OUTPUT_ROOT, `${packageId}.json`), 'utf8'));
+  validateSpatialPackageId(packageId);
+  const source = await readFile(path.join(DEFAULT_OUTPUT_ROOT, `${packageId}.json`), 'utf8');
+  const packageData = JSON.parse(source);
   if (packageData?.kind !== 'spatial' || packageData.id !== packageId) {
     throw new Error('Spatial conveyor package data is invalid.');
   }
-  return packageData;
+  return { packageData, revision: spatialRevision(source) };
+}
+
+function validateSpatialPackageData(packageData, packageId) {
+  if (packageData?.kind !== 'spatial' || packageData.id !== packageId) {
+    throw new Error('Spatial conveyor package identity is invalid.');
+  }
+  const points = packageData.path?.points;
+  if (!Array.isArray(points) || points.length < 3 || points.length > 2000) {
+    throw new Error('Spatial conveyor must contain between 3 and 2000 points.');
+  }
+  const ids = new Set();
+  for (const point of points) {
+    if (typeof point?.id !== 'string' || !point.id || ids.has(point.id)) {
+      throw new Error('Spatial conveyor point ids must be unique.');
+    }
+    ids.add(point.id);
+    for (const axis of ['x', 'y', 'z']) {
+      if (!Number.isFinite(Number(point.position?.[axis]))) {
+        throw new Error(`Spatial conveyor point ${point.id} has an invalid ${axis} coordinate.`);
+      }
+    }
+    if (!Number.isFinite(Number(point.size)) || Number(point.size) <= 0) {
+      throw new Error(`Spatial conveyor point ${point.id} has an invalid size.`);
+    }
+  }
+}
+
+async function saveSpatialConveyorPackage({ packageData, baseRevision }) {
+  const packageId = validateSpatialPackageId(packageData?.id);
+  validateSpatialPackageData(packageData, packageId);
+  await mkdir(DEFAULT_OUTPUT_ROOT, { recursive: true });
+  const targetPath = path.join(DEFAULT_OUTPUT_ROOT, `${packageId}.json`);
+  let currentSource = null;
+  try {
+    currentSource = await readFile(targetPath, 'utf8');
+  } catch (error) {
+    if (error.code !== 'ENOENT') throw error;
+  }
+  if (currentSource && baseRevision !== spatialRevision(currentSource)) {
+    const error = new Error('The spatial conveyor file changed outside the editor. Refresh before saving.');
+    error.statusCode = 409;
+    throw error;
+  }
+  if (!currentSource && baseRevision) {
+    const error = new Error('The spatial conveyor file was removed outside the editor.');
+    error.statusCode = 409;
+    throw error;
+  }
+  const source = `${JSON.stringify(packageData, null, 2)}\n`;
+  if (Buffer.byteLength(source) > MAX_SPATIAL_PACKAGE_BYTES) {
+    const error = new Error('Spatial conveyor package exceeds the editor save limit.');
+    error.statusCode = 413;
+    throw error;
+  }
+  if (currentSource) {
+    await mkdir(SPATIAL_BACKUP_ROOT, { recursive: true });
+    const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+    await copyFile(targetPath, path.join(SPATIAL_BACKUP_ROOT, `${packageId}-${stamp}.json`));
+  }
+  const temporaryPath = path.join(DEFAULT_OUTPUT_ROOT, `.${packageId}.${process.pid}.tmp`);
+  try {
+    await writeFile(temporaryPath, source, 'utf8');
+    await rename(temporaryPath, targetPath);
+  } catch (error) {
+    await unlink(temporaryPath).catch(() => {});
+    throw error;
+  }
+  return { packageData, revision: spatialRevision(source), targetPath };
 }
 
 async function openSpatialConveyorFolder() {
@@ -171,9 +252,25 @@ export default defineConfig({
         if (packageMatch && request.method === 'GET') {
           try {
             const packageId = decodeURIComponent(packageMatch[1]);
-            sendJson(response, 200, { packageData: await readSpatialConveyorPackage(packageId) });
+            sendJson(response, 200, await readSpatialConveyorPackage(packageId));
           } catch (error) {
             sendJson(response, error.code === 'ENOENT' ? 404 : 400, { error: error.message });
+          }
+          return;
+        }
+        if (packageMatch && request.method === 'PUT') {
+          try {
+            const packageId = decodeURIComponent(packageMatch[1]);
+            const body = JSON.parse(await readRequestBody(request, MAX_SPATIAL_PACKAGE_BYTES));
+            if (body.packageData?.id !== packageId) throw new Error('Package URL and payload id do not match.');
+            const result = await saveSpatialConveyorPackage(body);
+            sendJson(response, 200, {
+              packageData: result.packageData,
+              revision: result.revision,
+              savedPath: path.relative(process.cwd(), result.targetPath).replaceAll('\\', '/')
+            });
+          } catch (error) {
+            sendJson(response, error.statusCode ?? 400, { error: error.message });
           }
           return;
         }

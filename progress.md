@@ -1,5 +1,12 @@
 ﻿# Progress
 
+## 2026-08-28 Google strict package correction completed
+
+- Added strict root `index.html`, `index.js`, and `style.css` output, exact portrait/320x480 metadata, and decimal 5,000,000-byte validation to the AppLovin-to-Google pipeline.
+- Fixed converted Google CTAs so `ExitApi.exit()` is no longer gated by AppLovin/MRAID availability.
+- Reconverted and overwrote all 16 Android shape packages under `D:/Project/Convert-playable/google/Android`; independent ZIP inspection passed every package, with sizes from 1,701,642 to 2,078,215 bytes.
+- Google, integrated conversion, and Unity regression suites pass. Official Google Ads preview/backend upload validation remains pending.
+
 ## 2026-08-27 Spatial guide restoration completed
 
 - Traced the missing guide hands to the prior batch build reusing Heart's guide scope/vehicle across Duck, Fish, and Rainbow; spatial rendering optimization itself was not the cause.

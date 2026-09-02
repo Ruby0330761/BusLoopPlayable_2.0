@@ -1,5 +1,32 @@
 ﻿# Playable Project Progress
 
+## Completed On 2026-09-02 - Spatial exit Y position control
+
+- Added a spatial-only `出口 Y 位置` control beside the existing exit X/Z controls. It offsets only the independent exit artwork and participates in the spatial visual rebuild cache without moving the track or gameplay anchors. The editor-authored exit defaults are now X `-0.15`, Y `0.15`, and Z `0.65`.
+- Focused spatial tests pass 20/20, the production build passes with the existing chunk-size warning, and production output still excludes the development-only point editor.
+
+## Completed On 2026-09-02 - Spatial point editor navigation and boarding anchors
+
+- Added a dedicated editor camera profile with a 40-degree field of view, fixed 0.01-100000 clipping range, broad zoom limits, cursor-centered zoom, right-drag rotation, middle-drag panning, selection focus, and reset-view actions. The gameplay camera and background are restored when the point editor closes, and draft rebuilds no longer reset the temporary editor view.
+- Made the top point toolbar draggable with viewport clamping, added visible entrance/exit markers, and added an undoable passenger entrance percent control plus a set-from-active-point action.
+- Point insertion, prepend/append, and deletion now reproject entrance and exit percentages so their physical curve anchors remain stable when Catmull-Rom parameterization changes.
+- Clarified spatial gameplay anchors in the point editor: passenger track entry and same-color vehicle boarding detection are separate undoable controls, while exit artwork now keeps an independent position/orientation anchor and no longer follows point-level track transforms.
+- Focused spatial editor/import tests pass 20/20, browser QA confirms entrance edit/undo/close with zero error logs, production build passes, and production output contains no point-editor or Orbit/TransformControls markers.
+
+## Completed On 2026-09-02 - On-demand spatial conveyor point editor v1
+
+- Added a spatial-only `编辑轨道点位` entry that opens a full overlay and temporarily removes the ordinary tuning sidebar without taking permanent editor space. Gameplay, vehicle picking, and long-press updates pause while it is open.
+- Added click/Ctrl/Shift/box selection, move/rotate/XYZ-scale TransformControls, world/local axes, selection-center/active-point pivots, numeric point coordinates, cross-section rotation, point width, prepend/curve-sampled insert/append/delete, and 100-step undo/redo with live track preview.
+- Spatial JSON saves are now explicit, validated, atomic, protected by external-change revisions, and backed up outside the scanned package folder. Save-as creates a separately selectable spatial package; unsaved edits can be discarded without touching hand-tuned spatial display/game parameters.
+- Spatial road generation now interpolates imported point normals and sizes, and the imported pivot remains stable after edge-point edits without shifting the original track. Focused spatial tests pass 16/16, production build passes, production output contains no point-editor code/style markers, and browser QA confirms open/edit/undo/close behavior with zero error logs.
+
+## Completed On 2026-08-28 - Google Android shape package batch
+
+- Converted the 16 AppLovin packages whose filenames contain both `Android` and `shape` into Google Ads ZIP deliveries across Duck, Fish, Heart, and Rainbow base, JP, summer, and winter variants.
+- Published the validated outputs under `D:/Project/Convert-playable/google/Android` using the `*_google_Android_*_shape*` naming scheme and replaced the stale Duck summer output.
+- Tightened the Google pipeline after external static validation: every ZIP now has root-level `index.html`, `index.js`, and `style.css`; exact `ad.orientation=portrait` and `ad.size=width=320,height=480`; and an `ExitApi.exit()` CTA that no longer depends on `window.mraid.open` availability.
+- Reconverted and overwrote all 16 Android shape outputs. Independent ZIP inspection passed `16/16`; sizes range from 1,701,642 to 2,078,215 bytes under the strict 5,000,000-byte limit. Google, Unity, and integrated conversion regressions pass; official Google Ads upload/preview remains external validation.
+
 ## Completed On 2026-08-27 - Spatial guide restoration
 
 - Restored the optimized spatial delivery guide configuration from the complete pre-optimization backup instead of reusing the Heart values across every level family.

@@ -1,5 +1,11 @@
 # Findings
 
+## 2026-08-28 Google strict ZIP validator compatibility
+
+- The current delivery validator is stricter than the generic Google package baseline: it requires root `index.html`, `index.js`, and `style.css`, plus both exact portrait orientation and `320x480` size metadata. The project converter now emits this stricter superset by default.
+- Detecting an `ExitApi.exit()` string is insufficient for runtime safety. The prior converted CTA remained inside a `window.mraid?.open` guard, which can suppress clicks in Google environments without MRAID; Google output must validate that the Exit API path is independent of MRAID open availability.
+- Use the decimal 5,000,000-byte package limit in local validation and reports to match the external checker rather than relying on a 5 MiB interpretation.
+
 ## 2026-08-27 Spatial guide restoration
 
 - The missing guides were a package-configuration regression, not a failure of the spatial performance renderer. The first optimized batch reused Heart's `level15 / vehicle 157` guide values for Duck, Fish, and Rainbow, so level scoping correctly hid those guides.

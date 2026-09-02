@@ -2,11 +2,19 @@
 
 ## Current Goal
 
-Restore every optimized spatial package's guide-hand configuration and visible behavior to the pre-optimization backup, especially Rainbow's first-step guide, without removing the mobile performance optimizations.
+Keep AppLovin-to-Google delivery fail-closed against the current strict validator and publish corrected Android shape packages.
 
 ## Current Phase
 
-Complete: the backup guide matrix, 32 corrected AppLovin variants, 32 rebuilt/hardened Unity variants, target replacement, exact-hash checks, regressions, and mobile visual comparison are complete.
+Complete: the strict three-file Google wrapper, portrait/320x480 metadata, MRAID-independent Exit API bridge, tests, 16-package overwrite, and independent ZIP verification are complete.
+
+## Current Google Packaging Phases
+
+1. **Complete:** Added root `index.html`, `index.js`, and `style.css` generation and validation.
+2. **Complete:** Defaulted Google delivery to portrait and required matching `320x480` metadata.
+3. **Complete:** Removed the MRAID open dependency from converted Google CTA paths.
+4. **Complete:** Passed Google, integrated conversion, and Unity regression suites.
+5. **Complete:** Reconverted and independently validated all 16 Android shape ZIPs.
 
 ## Current Spatial Guide Restoration Phases
 

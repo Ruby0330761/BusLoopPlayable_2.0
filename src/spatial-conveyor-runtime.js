@@ -63,35 +63,161 @@ export async function refreshSpatialConveyorPackages() {
   return items;
 }
 
-function applyTransform(vector, transform = {}) {
+function makeTransformMatrix(transform = {}) {
   const scale = transform.scale ?? { x: 1, y: 1, z: 1 };
   const rotation = transform.rotation ?? { x: 0, y: 0, z: 0, w: 1 };
   const position = transform.position ?? { x: 0, y: 0, z: 0 };
-  vector.multiply(new THREE.Vector3(scale.x ?? 1, scale.y ?? 1, scale.z ?? 1));
-  vector.applyQuaternion(new THREE.Quaternion(
-    rotation.x ?? 0,
-    rotation.y ?? 0,
-    rotation.z ?? 0,
-    rotation.w ?? 1
-  ).normalize());
-  vector.add(new THREE.Vector3(position.x ?? 0, position.y ?? 0, position.z ?? 0));
-  return vector;
+  return new THREE.Matrix4().compose(
+    new THREE.Vector3(position.x ?? 0, position.y ?? 0, position.z ?? 0),
+    new THREE.Quaternion(
+      rotation.x ?? 0,
+      rotation.y ?? 0,
+      rotation.z ?? 0,
+      rotation.w ?? 1
+    ).normalize(),
+    new THREE.Vector3(scale.x ?? 1, scale.y ?? 1, scale.z ?? 1)
+  );
+}
+
+function getSpatialSourceMatrix(packageData) {
+  const transforms = packageData?.transforms ?? {};
+  return new THREE.Matrix4()
+    .multiply(makeTransformMatrix(transforms.prefabRoot))
+    .multiply(makeTransformMatrix(transforms.pathsRoot))
+    .multiply(makeTransformMatrix(transforms.path));
+}
+
+function getSpatialRawPivot(packageData) {
+  const configured = packageData?.path?.editorPivot;
+  if (configured) {
+    return new THREE.Vector3(
+      Number(configured.x) || 0,
+      Number(configured.y) || 0,
+      Number(configured.z) || 0
+    );
+  }
+  const rawPoints = (packageData?.path?.points ?? []).map((point) => new THREE.Vector3(
+    Number(point.position?.x) || 0,
+    Number(point.position?.y) || 0,
+    Number(point.position?.z) || 0
+  ));
+  return rawPoints.length
+    ? new THREE.Box3().setFromPoints(rawPoints).getCenter(new THREE.Vector3())
+    : new THREE.Vector3();
+}
+
+function getSpatialDisplayMatrix(packageData, displayTuning = {}) {
+  const sourceMatrix = getSpatialSourceMatrix(packageData);
+  const sourceCenter = getSpatialRawPivot(packageData).applyMatrix4(sourceMatrix);
+  const displayScale = Number.isFinite(Number(displayTuning.scale))
+    ? Number(displayTuning.scale)
+    : SPATIAL_CONVEYOR_DISPLAY.pointScale;
+  const scale = new THREE.Vector3(
+    displayScale * (Number.isFinite(Number(displayTuning.scaleX)) ? Number(displayTuning.scaleX) : 1),
+    displayScale * (Number.isFinite(Number(displayTuning.scaleY)) ? Number(displayTuning.scaleY) : 1),
+    displayScale * (Number.isFinite(Number(displayTuning.scaleZ)) ? Number(displayTuning.scaleZ) : 1)
+      * (Number(displayTuning.mirrorZ ?? SPATIAL_CONVEYOR_DISPLAY.mirrorZ) !== 0 ? -1 : 1)
+  );
+  const coordinateRotationY = THREE.MathUtils.degToRad(SPATIAL_CONVEYOR_DISPLAY.rotationYDegrees);
+  const rotationX = THREE.MathUtils.degToRad(
+    Number(displayTuning.rotationXDegrees ?? SPATIAL_CONVEYOR_DISPLAY.modelRotationXDegrees)
+  );
+  const rotationY = THREE.MathUtils.degToRad(
+    Number(displayTuning.rotationYDegrees ?? SPATIAL_CONVEYOR_DISPLAY.modelRotationYDegrees)
+  );
+  const rotationZ = THREE.MathUtils.degToRad(
+    Number(displayTuning.rotationZDegrees ?? SPATIAL_CONVEYOR_DISPLAY.modelRotationZDegrees)
+  );
+  const center = new THREE.Vector3(
+    Number(displayTuning.positionX ?? SPATIAL_CONVEYOR_DISPLAY.center.x),
+    Number(displayTuning.positionY ?? SPATIAL_CONVEYOR_DISPLAY.center.y),
+    Number(displayTuning.positionZ ?? SPATIAL_CONVEYOR_DISPLAY.center.z)
+  );
+  return new THREE.Matrix4()
+    .makeTranslation(center.x, center.y, center.z)
+    .multiply(new THREE.Matrix4().makeRotationZ(rotationZ))
+    .multiply(new THREE.Matrix4().makeRotationY(rotationY))
+    .multiply(new THREE.Matrix4().makeRotationX(rotationX))
+    .multiply(new THREE.Matrix4().makeRotationY(coordinateRotationY))
+    .multiply(new THREE.Matrix4().makeScale(scale.x, scale.y, scale.z))
+    .multiply(new THREE.Matrix4().makeTranslation(-sourceCenter.x, -sourceCenter.y, -sourceCenter.z))
+    .multiply(sourceMatrix);
+}
+
+export function mapSpatialPackagePointToWorld(packageData, point, displayTuning = {}) {
+  return new THREE.Vector3(
+    Number(point?.x) || 0,
+    Number(point?.y) || 0,
+    Number(point?.z) || 0
+  ).applyMatrix4(getSpatialDisplayMatrix(packageData, displayTuning));
+}
+
+export function mapSpatialWorldPointToPackage(packageData, point, displayTuning = {}) {
+  return new THREE.Vector3(
+    Number(point?.x) || 0,
+    Number(point?.y) || 0,
+    Number(point?.z) || 0
+  ).applyMatrix4(getSpatialDisplayMatrix(packageData, displayTuning).invert());
 }
 
 export function getSpatialConveyorWorldPoints(packageData, displayTuning = {}) {
-  const transforms = packageData?.transforms ?? {};
-  const sourcePoints = (packageData?.path?.points ?? []).map((point) => {
-    const position = point.position ?? {};
-    const vector = new THREE.Vector3(position.x ?? 0, position.y ?? 0, position.z ?? 0);
-    applyTransform(vector, transforms.path);
-    applyTransform(vector, transforms.pathsRoot);
-    applyTransform(vector, transforms.prefabRoot);
-    return vector;
-  });
-  if (!sourcePoints.length) return sourcePoints;
+  return (packageData?.path?.points ?? []).map((point) => (
+    mapSpatialPackagePointToWorld(packageData, point.position, displayTuning)
+  ));
+}
 
-  const mapDisplayPoint = makeSpatialDisplayMapper(sourcePoints, displayTuning);
-  return sourcePoints.map(mapDisplayPoint);
+export function getSpatialConveyorWorldNormals(packageData, displayTuning = {}) {
+  const normalMatrix = new THREE.Matrix3().getNormalMatrix(
+    getSpatialDisplayMatrix(packageData, displayTuning)
+  );
+  return (packageData?.path?.points ?? []).map((point) => {
+    const normal = new THREE.Vector3(
+      Number(point.normal?.x) || 0,
+      Number(point.normal?.y) || 1,
+      Number(point.normal?.z) || 0
+    );
+    const rotation = point.editorRotationDegrees;
+    if (rotation) {
+      normal.applyEuler(new THREE.Euler(
+        THREE.MathUtils.degToRad(Number(rotation.x) || 0),
+        THREE.MathUtils.degToRad(Number(rotation.y) || 0),
+        THREE.MathUtils.degToRad(Number(rotation.z) || 0),
+        'XYZ'
+      ));
+    }
+    return normal.applyMatrix3(normalMatrix).normalize();
+  });
+}
+
+function makeSpatialFrameSampler(packageData, curve, displayTuning = {}) {
+  const normals = getSpatialConveyorWorldNormals(packageData, displayTuning);
+  const points = packageData?.path?.points ?? [];
+  return (progress) => {
+    const tangent = curve.getTangent(progress).normalize();
+    const scaled = THREE.MathUtils.clamp(progress, 0, 1) * Math.max(0, normals.length - 1);
+    const lower = Math.min(Math.max(0, normals.length - 1), Math.floor(scaled));
+    const upper = Math.min(Math.max(0, normals.length - 1), lower + 1);
+    const alpha = scaled - lower;
+    const preferredUp = normals[lower]?.clone().lerp(normals[upper] ?? normals[lower], alpha).normalize()
+      ?? new THREE.Vector3(0, 1, 0);
+    preferredUp.addScaledVector(tangent, -preferredUp.dot(tangent));
+    if (preferredUp.lengthSq() < 0.000001) {
+      preferredUp.copy(Math.abs(tangent.y) > 0.98
+        ? new THREE.Vector3(0, 0, 1)
+        : new THREE.Vector3(0, 1, 0));
+      preferredUp.addScaledVector(tangent, -preferredUp.dot(tangent));
+    }
+    const up = preferredUp.normalize();
+    const lateral = up.clone().cross(tangent).normalize();
+    const lowerSize = Number(points[lower]?.size) || 1;
+    const upperSize = Number(points[upper]?.size) || lowerSize;
+    return {
+      tangent,
+      lateral,
+      up: tangent.clone().cross(lateral).normalize(),
+      size: THREE.MathUtils.lerp(lowerSize, upperSize, alpha)
+    };
+  };
 }
 
 export function createSpatialCurveLookup(curve, sampleCount = 4096) {
@@ -142,64 +268,6 @@ export function sampleSpatialCurveLookup(
   return { point: targetPoint, tangent: targetTangent };
 }
 
-function makeSpatialDisplayMapper(sourcePoints, displayTuning = {}) {
-  const bounds = new THREE.Box3().setFromPoints(sourcePoints);
-  const sourceCenter = bounds.getCenter(new THREE.Vector3());
-  const displayScale = Number.isFinite(Number(displayTuning.scale))
-    ? Number(displayTuning.scale)
-    : SPATIAL_CONVEYOR_DISPLAY.pointScale;
-  const displayScaleX = Number.isFinite(Number(displayTuning.scaleX))
-    ? Number(displayTuning.scaleX)
-    : 1;
-  const displayScaleY = Number.isFinite(Number(displayTuning.scaleY))
-    ? Number(displayTuning.scaleY)
-    : 1;
-  const displayScaleZ = Number.isFinite(Number(displayTuning.scaleZ))
-    ? Number(displayTuning.scaleZ)
-    : 1;
-  const displayCenter = new THREE.Vector3(
-    Number.isFinite(Number(displayTuning.positionX))
-      ? Number(displayTuning.positionX)
-      : SPATIAL_CONVEYOR_DISPLAY.center.x,
-    Number.isFinite(Number(displayTuning.positionY))
-      ? Number(displayTuning.positionY)
-      : SPATIAL_CONVEYOR_DISPLAY.center.y,
-    Number.isFinite(Number(displayTuning.positionZ))
-      ? Number(displayTuning.positionZ)
-      : SPATIAL_CONVEYOR_DISPLAY.center.z
-  );
-  const mirrorZ = Number(displayTuning.mirrorZ ?? SPATIAL_CONVEYOR_DISPLAY.mirrorZ) !== 0;
-  const rotationAxisX = new THREE.Vector3(1, 0, 0);
-  const rotationAxisY = new THREE.Vector3(0, 1, 0);
-  const rotationAxisZ = new THREE.Vector3(0, 0, 1);
-  const modelRotationX = Number.isFinite(Number(displayTuning.rotationXDegrees))
-    ? Number(displayTuning.rotationXDegrees)
-    : SPATIAL_CONVEYOR_DISPLAY.modelRotationXDegrees;
-  const modelRotationY = Number.isFinite(Number(displayTuning.rotationYDegrees))
-    ? Number(displayTuning.rotationYDegrees)
-    : SPATIAL_CONVEYOR_DISPLAY.modelRotationYDegrees;
-  const modelRotationZ = Number.isFinite(Number(displayTuning.rotationZDegrees))
-    ? Number(displayTuning.rotationZDegrees)
-    : SPATIAL_CONVEYOR_DISPLAY.modelRotationZDegrees;
-  const coordinateRotationY = THREE.MathUtils.degToRad(SPATIAL_CONVEYOR_DISPLAY.rotationYDegrees);
-  const rotationX = THREE.MathUtils.degToRad(modelRotationX);
-  const rotationY = THREE.MathUtils.degToRad(modelRotationY);
-  const rotationZ = THREE.MathUtils.degToRad(modelRotationZ);
-  return (point) => {
-    const displayPoint = point.clone().sub(sourceCenter).multiplyScalar(displayScale);
-    displayPoint.x *= displayScaleX;
-    displayPoint.y *= displayScaleY;
-    displayPoint.z *= displayScaleZ;
-    if (mirrorZ) displayPoint.z *= -1;
-    return displayPoint
-      .applyAxisAngle(rotationAxisY, coordinateRotationY)
-      .applyAxisAngle(rotationAxisX, rotationX)
-      .applyAxisAngle(rotationAxisY, rotationY)
-      .applyAxisAngle(rotationAxisZ, rotationZ)
-      .add(displayCenter);
-  };
-}
-
 export function buildSpatialConveyorExitGeometry(packageData, curve, displayTuning = {}) {
   const transforms = packageData?.transforms ?? {};
   const geometry = new THREE.BufferGeometry();
@@ -220,22 +288,59 @@ export function buildSpatialConveyorExitGeometry(packageData, curve, displayTuni
   const exitStart = packageData?.exit?.startPercent ?? 0.8;
   const exitEnd = packageData?.exit?.endPercent ?? 0.9;
   const exitProgress = THREE.MathUtils.clamp((exitStart + exitEnd) * 0.5, 0, 1);
-  const frame = makeFrame(curve, exitProgress);
+  const visualAnchor = packageData?.exit?.visualAnchor;
+  let frame;
+  let anchorCenter;
+  if (visualAnchor?.position && visualAnchor?.tangent && visualAnchor?.normal) {
+    const displayMatrix = getSpatialDisplayMatrix(packageData, displayTuning);
+    const tangent = new THREE.Vector3(
+      Number(visualAnchor.tangent.x) || 0,
+      Number(visualAnchor.tangent.y) || 0,
+      Number(visualAnchor.tangent.z) || 1
+    ).transformDirection(displayMatrix).normalize();
+    const preferredUp = new THREE.Vector3(
+      Number(visualAnchor.normal.x) || 0,
+      Number(visualAnchor.normal.y) || 1,
+      Number(visualAnchor.normal.z) || 0
+    ).applyMatrix3(new THREE.Matrix3().getNormalMatrix(displayMatrix));
+    preferredUp.addScaledVector(tangent, -preferredUp.dot(tangent));
+    if (preferredUp.lengthSq() < 0.000001) {
+      preferredUp.copy(Math.abs(tangent.y) > 0.98
+        ? new THREE.Vector3(0, 0, 1)
+        : new THREE.Vector3(0, 1, 0));
+      preferredUp.addScaledVector(tangent, -preferredUp.dot(tangent));
+    }
+    preferredUp.normalize();
+    const lateral = preferredUp.clone().cross(tangent).normalize();
+    frame = {
+      tangent,
+      lateral,
+      up: tangent.clone().cross(lateral).normalize(),
+      size: Number(visualAnchor.size) || 1
+    };
+    anchorCenter = mapSpatialPackagePointToWorld(packageData, visualAnchor.position, displayTuning);
+  } else {
+    frame = makeSpatialFrameSampler(packageData, curve, displayTuning)(exitProgress);
+    anchorCenter = curve.getPoint(exitProgress);
+  }
   const exitPositionX = Number.isFinite(Number(displayTuning.exitPositionX))
     ? Number(displayTuning.exitPositionX)
+    : 0;
+  const exitPositionY = Number.isFinite(Number(displayTuning.exitPositionY))
+    ? Number(displayTuning.exitPositionY)
     : 0;
   const exitPositionZ = Number.isFinite(Number(displayTuning.exitPositionZ))
     ? Number(displayTuning.exitPositionZ)
     : 0;
-  const center = curve.getPoint(exitProgress)
+  const center = anchorCenter
     .addScaledVector(frame.lateral, (transforms.loopExit.position?.x ?? 0) * displayScale)
     .addScaledVector(frame.up, 0.018 * displayScaleY)
-    .add(new THREE.Vector3(exitPositionX, 0, exitPositionZ));
+    .add(new THREE.Vector3(exitPositionX, exitPositionY, exitPositionZ));
   const corners = [
-    center.clone().addScaledVector(frame.lateral, -halfWidth).addScaledVector(frame.tangent, -halfLength),
-    center.clone().addScaledVector(frame.lateral, halfWidth).addScaledVector(frame.tangent, -halfLength),
-    center.clone().addScaledVector(frame.lateral, halfWidth).addScaledVector(frame.tangent, halfLength),
-    center.clone().addScaledVector(frame.lateral, -halfWidth).addScaledVector(frame.tangent, halfLength)
+    center.clone().addScaledVector(frame.lateral, -halfWidth * frame.size).addScaledVector(frame.tangent, -halfLength * frame.size),
+    center.clone().addScaledVector(frame.lateral, halfWidth * frame.size).addScaledVector(frame.tangent, -halfLength * frame.size),
+    center.clone().addScaledVector(frame.lateral, halfWidth * frame.size).addScaledVector(frame.tangent, halfLength * frame.size),
+    center.clone().addScaledVector(frame.lateral, -halfWidth * frame.size).addScaledVector(frame.tangent, halfLength * frame.size)
   ];
   for (const corner of corners) {
     corner.sub(center).applyAxisAngle(frame.up, Math.PI * 1.5).add(center);
@@ -267,16 +372,6 @@ function getCombinedScale(packageData) {
   return result;
 }
 
-function makeFrame(curve, progress) {
-  const tangent = curve.getTangent(progress).normalize();
-  const preferredUp = Math.abs(tangent.y) > 0.98
-    ? new THREE.Vector3(0, 0, 1)
-    : new THREE.Vector3(0, 1, 0);
-  const lateral = preferredUp.clone().cross(tangent).normalize();
-  const up = tangent.clone().cross(lateral).normalize();
-  return { tangent, lateral, up };
-}
-
 export function buildSpatialConveyorGeometry(packageData, curve, displayTuning = {}) {
   const channel = packageData?.visual?.channel ?? {};
   const sourceVertices = channel.vertices ?? [];
@@ -299,6 +394,7 @@ export function buildSpatialConveyorGeometry(packageData, curve, displayTuning =
   const uv = [];
   const indices = [];
   const groups = [];
+  const sampleFrame = makeSpatialFrameSampler(packageData, curve, displayTuning);
 
   for (let segment = 0; segment < segmentCount; segment += 1) {
     const vertexOffset = segment * sourceVertices.length;
@@ -307,13 +403,13 @@ export function buildSpatialConveyorGeometry(packageData, curve, displayTuning =
       const longitudinal = ((Number(vertex.z) || 0) - minZ) / zRange;
       const progress = THREE.MathUtils.clamp((segment + longitudinal) / segmentCount, 0, 1);
       const center = curve.getPoint(progress);
-      const frame = makeFrame(curve, progress);
+      const frame = sampleFrame(progress);
       const position = center.clone()
         .addScaledVector(
           frame.lateral,
-          (Number(vertex.x) || 0) * scale.x * SPATIAL_CONVEYOR_DISPLAY.trackWidthScale * roadWidth
+          (Number(vertex.x) || 0) * scale.x * SPATIAL_CONVEYOR_DISPLAY.trackWidthScale * roadWidth * frame.size
         )
-        .addScaledVector(frame.up, (Number(vertex.y) || 0) * scale.y);
+        .addScaledVector(frame.up, (Number(vertex.y) || 0) * scale.y * frame.size);
       positions.push(position.x, position.y, position.z);
 
       const normal = sourceNormals[index] ?? { x: 0, y: 1, z: 0 };

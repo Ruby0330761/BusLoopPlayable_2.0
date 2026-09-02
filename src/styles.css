@@ -324,12 +324,14 @@ button:hover { transform: translateY(-1px); background: #fff; }
 .editor-spatial-actions button {
   min-width: 0; padding: 8px 6px; border-radius: 8px; box-shadow: none; font-size: 11px;
 }
+.editor-spatial-edit-points,
 .editor-spatial-open-folder { grid-column: 1 / -1; }
 .editor-spatial-status {
   margin: 8px 0 0; overflow-wrap: anywhere; color: #62788c; font-size: 10px; line-height: 1.4;
 }
 .editor-reset { width: 100%; border-radius: 12px; box-shadow: none; }
 .scene-editor.is-collapsed { flex-basis: 76px; width: 76px; }
+.scene-editor.is-spatial-point-editing { display: none; }
 .scene-editor.is-collapsed .editor-header { justify-content: center; padding: 12px; }
 .scene-editor.is-collapsed .editor-header > div,
 .scene-editor.is-collapsed .editor-body { display: none; }

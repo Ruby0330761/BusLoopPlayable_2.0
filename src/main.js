@@ -9,6 +9,7 @@ import { clampCenteredRectX } from './scene-layout.js';
 import { SCENE_TUNING } from './scene-tuning.js';
 import { createGameAudioController } from './audio-controller.js';
 import {
+  getSpatialConveyorId,
   isSpatialConveyorSelection,
   registerSpatialConveyorPackage,
   refreshSpatialConveyorPackages
@@ -618,6 +619,8 @@ async function startRuntime() {
   let pressTimer = 0;
   let pressed = false;
   let gameOverActive = false;
+  let spatialEditorActive = false;
+  let spatialPointEditor = null;
   let unsubscribeGame = () => {};
   const gameOverTimers = new Set();
   const INSTALL_GATE_VEHICLE_STATES = new Set(['at-spot', 'boarding-final', 'departing', 'done']);
@@ -697,6 +700,60 @@ async function startRuntime() {
   applyIdleSpeedMultiplier();
   let editor = { sync: () => {} };
 
+  async function openSpatialPointEditor() {
+    if (spatialEditorActive) return;
+    const selected = SCENE_TUNING.conveyorLayout?.selected;
+    if (!isSpatialConveyorSelection(selected)) {
+      throw new Error('\u53ea\u6709\u7acb\u4f53\u8f68\u9053\u53ef\u4ee5\u7f16\u8f91\u70b9\u4f4d');
+    }
+    const packageId = getSpatialConveyorId(selected);
+    const response = await fetch(`/__spatial-conveyors/package/${encodeURIComponent(packageId)}`, {
+      cache: 'no-store'
+    });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(payload.error || `HTTP ${response.status}`);
+    registerSpatialConveyorPackage(payload.packageData);
+    view.refreshSpatialConveyorDraft();
+    spatialEditorActive = true;
+    pressed = false;
+    clearTimeout(pressTimer);
+    sceneEditorRoot?.classList.add('is-spatial-point-editing');
+    view.resize();
+    try {
+      const { createSpatialConveyorEditor } = await import('./spatial-conveyor-editor.js');
+      spatialPointEditor = createSpatialConveyorEditor({
+        view,
+        packageData: payload.packageData,
+        displayTuning: SCENE_TUNING.spatialConveyor,
+        baseRevision: payload.revision,
+        onSaved: async ({ packageData, isClone }) => {
+          await editor.refreshSpatialConveyorOptions?.();
+          if (isClone) {
+            const next = structuredClone(SCENE_TUNING);
+            next.conveyorLayout.selected = `spatial:${packageData.id}`;
+            applyTuningPatch(next, { path: 'conveyorLayout.selected', syncEditor: true });
+          }
+        },
+        onClose: () => {
+          spatialPointEditor = null;
+          spatialEditorActive = false;
+          sceneEditorRoot?.classList.remove('is-spatial-point-editing');
+          view.resize();
+          game.reset();
+          initializeGameQueues({ resetSlots: true });
+          applyIdleSpeedMultiplier();
+          view.setInputEnabled(true);
+        }
+      });
+    } catch (error) {
+      spatialEditorActive = false;
+      sceneEditorRoot?.classList.remove('is-spatial-point-editing');
+      view.resize();
+      view.setInputEnabled(true);
+      throw error;
+    }
+  }
+
   function applyTuningPatch(next, { path, syncEditor = false } = {}) {
     if (path === 'level.selected') {
       saveTuning(next, { immediate: true });
@@ -753,7 +810,8 @@ async function startRuntime() {
       editor = createSceneEditor(sceneEditorRoot, {
         getTuning: () => SCENE_TUNING,
         setTuning: applyTuningPatch,
-        clearSavedTuning
+        clearSavedTuning,
+        openSpatialPointEditor
       });
     }).catch((error) => {
       console.warn('Scene editor could not be loaded.', error);
@@ -864,6 +922,7 @@ async function startRuntime() {
     InstallFullGame();
   });
   canvas.addEventListener('pointerdown', (event) => {
+    if (spatialEditorActive) return;
     if (levelSession.shouldOpenStore()) {
       event.stopImmediatePropagation();
       InstallFullGame();
@@ -871,6 +930,7 @@ async function startRuntime() {
     }
   }, { capture: true });
   canvas.addEventListener('pointerdown', () => {
+    if (spatialEditorActive) return;
     audio.unlock();
     pressed = true;
     clearTimeout(pressTimer);
@@ -899,7 +959,7 @@ async function startRuntime() {
   function frame(now) {
     const delta = (now - previous) / 1000;
     previous = now;
-    game.update(delta);
+    if (!spatialEditorActive) game.update(delta);
     const renderState = isSpatialOptimizationEnabled('liveRenderState')
       ? game.renderState()
       : game.snapshot();
