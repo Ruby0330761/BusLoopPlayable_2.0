@@ -486,11 +486,12 @@ function formatColor(value) {
 
 export function createSceneEditor(root, {
   getTuning,
+  defaultTuning = getTuning(),
   setTuning,
   clearSavedTuning = () => {},
   openSpatialPointEditor = async () => {}
 }) {
-  const defaults = structuredClone(getTuning());
+  const defaults = structuredClone(defaultTuning);
   root.innerHTML = `
     <header class="editor-header">
       <div>
@@ -599,6 +600,87 @@ export function createSceneEditor(root, {
     }
     fieldsRoot.append(section);
   }
+
+  const levelSection = inputs.get('level.selected')?.row.closest('.editor-section');
+  const levelActions = document.createElement('div');
+  levelActions.className = 'editor-level-tools';
+  levelActions.innerHTML = `
+    <div class="editor-level-actions">
+      <button class="editor-level-import" type="button">\u5bfc\u5165\u5173\u5361</button>
+      <button class="editor-level-open-folder" type="button">\u6253\u5f00\u5173\u5361\u6587\u4ef6\u5939</button>
+    </div>
+    <input class="editor-level-file" type="file" accept=".asset" hidden>
+    <p class="editor-level-status" aria-live="polite">\u5c31\u7eea</p>
+  `;
+  levelSection?.append(levelActions);
+
+  const levelImportButton = levelActions.querySelector('.editor-level-import');
+  const levelOpenFolderButton = levelActions.querySelector('.editor-level-open-folder');
+  const levelFileInput = levelActions.querySelector('.editor-level-file');
+  const levelStatus = levelActions.querySelector('.editor-level-status');
+
+  function setLevelBusy(busy) {
+    levelImportButton.disabled = busy;
+    levelOpenFolderButton.disabled = busy;
+  }
+
+  async function importUnityLevel(file) {
+    if (!/^level[1-9]\d*\.asset$/i.test(file?.name ?? '')) {
+      throw new Error('\u6587\u4ef6\u540d\u5fc5\u987b\u4e3a level<number>.asset');
+    }
+    const response = await fetch('/__unity-levels/import', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'text/plain; charset=utf-8',
+        'X-Level-Filename': encodeURIComponent(file.name)
+      },
+      body: await file.text()
+    });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(payload.error || `HTTP ${response.status}`);
+    const controls = inputs.get('level.selected');
+    if (controls?.select && !controls.select.querySelector(`option[value="${CSS.escape(payload.level.key)}"]`)) {
+      const option = document.createElement('option');
+      option.value = payload.level.key;
+      option.textContent = `${payload.level.key} (${payload.level.filename})`;
+      controls.select.append(option);
+    }
+    const action = payload.replaced ? '\u5df2\u66f4\u65b0' : '\u5df2\u5bfc\u5165';
+    levelStatus.textContent = `${action} ${payload.level.key}\uff1a${payload.level.vehicleCount} \u8f86\u8f66\uff0c${payload.level.passengerCount} \u540d\u4e58\u5ba2\u3002\u6b63\u5728\u5207\u6362...`;
+    const next = structuredClone(getTuning());
+    next.level.selected = payload.level.key;
+    setTuning(next, { path: 'level.selected' });
+  }
+
+  levelImportButton.addEventListener('click', () => levelFileInput.click());
+  levelOpenFolderButton.addEventListener('click', async () => {
+    setLevelBusy(true);
+    levelStatus.textContent = '\u6b63\u5728\u6253\u5f00\u5173\u5361\u6587\u4ef6\u5939...';
+    try {
+      const response = await fetch('/__unity-levels/open-folder', { method: 'POST' });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(payload.error || `HTTP ${response.status}`);
+      levelStatus.textContent = `\u5df2\u6253\u5f00 ${payload.path}`;
+    } catch (error) {
+      levelStatus.textContent = `\u6253\u5f00\u5931\u8d25\uff1a${error.message}`;
+    } finally {
+      setLevelBusy(false);
+    }
+  });
+  levelFileInput.addEventListener('change', async () => {
+    const [file] = levelFileInput.files ?? [];
+    if (!file) return;
+    setLevelBusy(true);
+    levelStatus.textContent = `\u6b63\u5728\u9a8c\u8bc1 ${file.name}...`;
+    try {
+      await importUnityLevel(file);
+    } catch (error) {
+      levelStatus.textContent = `\u5bfc\u5165\u5931\u8d25\uff1a${error.message}`;
+    } finally {
+      levelFileInput.value = '';
+      setLevelBusy(false);
+    }
+  });
 
   const spatialSection = document.createElement('section');
   spatialSection.className = 'editor-section editor-spatial-conveyor';
@@ -788,8 +870,11 @@ export function createSceneEditor(root, {
   };
   toggle.addEventListener('click', () => setCollapsed(!root.classList.contains('is-collapsed')));
   root.querySelector('.editor-reset').addEventListener('click', () => {
+    const shouldReloadLevel = defaults.level?.selected !== getTuning().level?.selected;
     clearSavedTuning();
-    setTuning(structuredClone(defaults));
+    setTuning(structuredClone(defaults), {
+      path: shouldReloadLevel ? 'level.selected' : undefined
+    });
     sync();
   });
 

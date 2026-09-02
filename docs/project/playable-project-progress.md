@@ -1,5 +1,17 @@
 ﻿# Playable Project Progress
 
+## Completed On 2026-09-02 - Fish shape editor defaults restored
+
+- Restored `src/scene-tuning.js`, `artifacts/scene-tuning.json`, and the durable level selection from the supplied Fish shape AppLovin package. The baked defaults now select level13 and `ConveyorBeltShape`, including guide vehicle 130 and spatial exit Z `0.6`; the newer independent exit Y `0.15` remains available.
+- Fixed the editor reset baseline so `恢复默认参数` uses the pristine baked tuning captured before localStorage is merged. A differing saved level now reloads into the baked default level instead of leaving gameplay on the cached level.
+- Targeted tuning/editor tests pass, source and exported tuning are identical, and browser QA confirms the expected defaults with no error-level console logs.
+
+## Completed On 2026-09-02 - Validated Unity level import controls
+
+- Added `导入关卡` and `打开关卡文件夹` actions directly under the editor level selector. Accepted `level<number>.asset` sources are stored under `artifacts/unity-level-sources/`, merged into the generated development catalog, selected, and loaded after refresh.
+- Added validation for Unity text YAML identity, supported vehicles/containers, unique ids, transforms, queue continuity, per-color passenger/seat totals, depth references, file size, and currently unsupported mechanism sections. Failed validation and failed catalog regeneration leave existing source/catalog files unchanged.
+- Focused importer tests pass 8/8, existing `level17.asset` and renamed `level18.asset` pass validation, invalid HTTP imports return 400 without creating a file, the production build passes with the existing chunk-size warning, and browser QA confirms the controls render without overlap.
+
 ## Completed On 2026-09-02 - Spatial exit Y position control
 
 - Added a spatial-only `出口 Y 位置` control beside the existing exit X/Z controls. It offsets only the independent exit artwork and participates in the spatial visual rebuild cache without moving the track or gameplay anchors. The editor-authored exit defaults are now X `-0.15`, Y `0.15`, and Z `0.65`.

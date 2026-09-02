@@ -7,11 +7,17 @@ import {
   DEFAULT_OUTPUT_ROOT,
   importSpatialConveyorPrefab
 } from './scripts/spatial-conveyor-importer.mjs';
+import {
+  DEFAULT_UNITY_LEVEL_SOURCE_ROOT,
+  MAX_UNITY_LEVEL_BYTES,
+  importUnityLevelAsset
+} from './scripts/unity-level-importer.mjs';
 
-const LEVEL_IDS = new Set([
+const BUILTIN_LEVEL_IDS = new Set([
   'level5', 'level8', 'level9', 'level10', 'level12', 'level13', 'level15', 'level16',
   'level17', 'level18'
 ]);
+const LEVEL_ARTIFACT_PATH = path.resolve('artifacts', 'unity-levels.json');
 
 const MAX_PREFAB_BYTES = 12 * 1024 * 1024;
 const MAX_SPATIAL_PACKAGE_BYTES = 4 * 1024 * 1024;
@@ -144,8 +150,8 @@ async function saveSpatialConveyorPackage({ packageData, baseRevision }) {
   return { packageData, revision: spatialRevision(source), targetPath };
 }
 
-async function openSpatialConveyorFolder() {
-  const folderPath = path.resolve(DEFAULT_OUTPUT_ROOT);
+async function openFolder(folderRoot) {
+  const folderPath = path.resolve(folderRoot);
   await mkdir(folderPath, { recursive: true });
   const command = process.platform === 'win32'
     ? 'explorer.exe'
@@ -159,6 +165,17 @@ async function openSpatialConveyorFolder() {
     });
   });
   return folderPath;
+}
+
+async function isKnownPlayableLevel(levelId) {
+  if (!/^level[1-9]\d*$/.test(levelId)) return false;
+  if (BUILTIN_LEVEL_IDS.has(levelId)) return true;
+  try {
+    const artifact = JSON.parse(await readFile(LEVEL_ARTIFACT_PATH, 'utf8'));
+    return artifact.levels?.some((level) => level?.key === levelId) ?? false;
+  } catch {
+    return false;
+  }
 }
 
 function decodePrefabFilename(request) {
@@ -176,7 +193,22 @@ function decodePrefabFilename(request) {
   return filename;
 }
 
-function readRequestBody(request, maxBytes) {
+function decodeLevelFilename(request) {
+  const rawFilename = request.headers['x-level-filename'];
+  if (typeof rawFilename !== 'string') throw new Error('Missing Unity level filename.');
+  let filename;
+  try {
+    filename = decodeURIComponent(rawFilename);
+  } catch {
+    throw new Error('Unity level filename encoding is invalid.');
+  }
+  if (path.extname(filename).toLowerCase() !== '.asset' || path.basename(filename) !== filename) {
+    throw new Error('Only one local .asset file can be imported.');
+  }
+  return filename;
+}
+
+function readRequestBody(request, maxBytes, label = 'Prefab') {
   return new Promise((resolve, reject) => {
     const chunks = [];
     let byteLength = 0;
@@ -191,7 +223,7 @@ function readRequestBody(request, maxBytes) {
     });
     request.on('end', () => {
       if (tooLarge) {
-        const error = new Error(`Prefab exceeds the ${Math.round(maxBytes / 1024 / 1024)} MB import limit.`);
+        const error = new Error(`${label} exceeds the ${Math.round(maxBytes / 1024 / 1024)} MB import limit.`);
         error.statusCode = 413;
         reject(error);
         return;
@@ -206,29 +238,47 @@ export default defineConfig({
   plugins: [{
     name: 'playable-editor-services',
     configureServer(server) {
-      server.middlewares.use('/__playable-level', (request, response, next) => {
+      server.middlewares.use('/__playable-level', async (request, response, next) => {
         if (request.method !== 'POST') return next();
-        let body = '';
-        request.setEncoding('utf8');
-        request.on('data', (chunk) => {
-          body += chunk;
-          if (body.length > 64) request.destroy();
-        });
-        request.on('end', async () => {
-          const levelId = body.trim();
-          if (!LEVEL_IDS.has(levelId)) {
-            response.statusCode = 400;
-            response.end('Unknown level');
-            return;
-          }
+        try {
+          const levelId = (await readRequestBody(request, 64, 'Level selection')).trim();
+          if (!await isKnownPlayableLevel(levelId)) throw new Error('Unknown level.');
           await writeFile(path.resolve('artifacts', 'selected-level.txt'), `${levelId}\n`, 'utf8');
           response.statusCode = 204;
           response.end();
-        });
+        } catch (error) {
+          sendJson(response, error.statusCode ?? 400, { error: error.message });
+        }
       });
 
       server.middlewares.use(async (request, response, next) => {
         const pathname = new URL(request.url, 'http://localhost').pathname;
+        if (pathname === '/__unity-levels/open-folder' && request.method === 'POST') {
+          try {
+            const folderPath = await openFolder(DEFAULT_UNITY_LEVEL_SOURCE_ROOT);
+            sendJson(response, 200, {
+              path: path.relative(process.cwd(), folderPath).replaceAll('\\', '/')
+            });
+          } catch (error) {
+            sendJson(response, 500, { error: error.message });
+          }
+          return;
+        }
+        if (pathname === '/__unity-levels/import' && request.method === 'POST') {
+          try {
+            const filename = decodeLevelFilename(request);
+            const source = await readRequestBody(request, MAX_UNITY_LEVEL_BYTES, 'Unity level');
+            const result = await importUnityLevelAsset({ filename, source });
+            sendJson(response, 201, {
+              level: result.level,
+              replaced: result.replaced,
+              savedPath: path.relative(process.cwd(), result.outputPath).replaceAll('\\', '/')
+            });
+          } catch (error) {
+            sendJson(response, error.statusCode ?? 400, { error: error.message });
+          }
+          return;
+        }
         if (pathname === '/__spatial-conveyors' && request.method === 'GET') {
           try {
             sendJson(response, 200, { items: await listSpatialConveyors() });
@@ -239,7 +289,7 @@ export default defineConfig({
         }
         if (pathname === '/__spatial-conveyors/open-folder' && request.method === 'POST') {
           try {
-            const folderPath = await openSpatialConveyorFolder();
+            const folderPath = await openFolder(DEFAULT_OUTPUT_ROOT);
             sendJson(response, 200, {
               path: path.relative(process.cwd(), folderPath).replaceAll('\\', '/')
             });

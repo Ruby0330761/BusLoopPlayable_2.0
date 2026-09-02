@@ -1167,6 +1167,7 @@ test('parking spot visual scale changes do not move the authored vehicle path ce
 
 test('main thread saves and restores scene tuning from localStorage', () => {
   const mainSource = readFileSync(join('src', 'main.js'), 'utf8');
+  const sceneEditorSource = readFileSync(join('src', 'scene-editor.js'), 'utf8');
   assert.match(mainSource, /bus-loop-scene-tuning-v3/);
   assert.match(mainSource, /bus-loop-scene-tuning-v2/);
   assert.match(mainSource, /LEGACY_TUNING_STORAGE_KEY/);
@@ -1211,6 +1212,15 @@ test('main thread saves and restores scene tuning from localStorage', () => {
   assert.match(mainSource, /function writeTuning\(value\) \{\s+if \(!EDITOR_ENABLED\) return;/);
   assert.match(mainSource, /function clearSavedTuning\(\) \{\s+if \(!EDITOR_ENABLED\) return;/);
   assert.match(mainSource, /clearSavedTuning/);
+  assert.match(mainSource, /const DEFAULT_SCENE_TUNING = structuredClone\(SCENE_TUNING\);/);
+  assert.match(mainSource, /defaultTuning: DEFAULT_SCENE_TUNING/);
+  assert.ok(
+    mainSource.indexOf('const DEFAULT_SCENE_TUNING = structuredClone(SCENE_TUNING);')
+      < mainSource.indexOf('loadSavedTuning();')
+  );
+  assert.match(sceneEditorSource, /defaultTuning = getTuning\(\)/);
+  assert.match(sceneEditorSource, /const defaults = structuredClone\(defaultTuning\);/);
+  assert.match(sceneEditorSource, /shouldReloadLevel \? 'level\.selected' : undefined/);
   assert.match(mainSource, /isPassengerMaterialTuningPath/);
   assert.match(mainSource, /PASSENGER_MATERIAL_TUNING_PREFIX = 'passengerMaterial\.'/);
   assert.match(mainSource, /PASSENGER_MATERIAL_COLOR_INDEX_PATTERN/);

@@ -12,6 +12,7 @@ Use this file before code changes. Pick the closest change area, then read only 
 | Runtime vehicle collision graph, Unity vehicle sizes, oriented contact edges | `src/vehicle-collision.js` | `src/game-model.js`, `test/vehicle-collision.test.js` |
 | Level constants, colors, fixed passenger sequence, vehicle/spot source data | `src/level-data.js` | `src/game-model.js`, `test/game-model.test.js` |
 | Imported Unity level catalog and narrow production session selection | `src/level-catalog.js` | `src/generated-active-level.js`, `scripts/extract-unity-levels.mjs`, `scripts/generate-active-level.mjs`, `test/level-catalog.test.js` |
+| Editor-side Unity level validation, import, source storage, and folder access | `scripts/unity-level-importer.mjs` | `vite.config.js`, `src/scene-editor.js`, `src/styles.css`, `scripts/extract-unity-levels.mjs`, `test/unity-level-importer.test.js` |
 | Multi-level playable session order, shared CTA operation count, and win handoff | `src/level-session.js` | `src/main.js`, `src/generated-active-level.js`, `src/scene-view.js`, `test/level-session.test.js` |
 | Conveyor layouts and prefab-derived paths | `src/conveyor-layouts.js` | `src/scene-view.js`, `src/game-model.js`, `src/scene-tuning.js`, `test/game-model.test.js` |
 | Unity conveyor prefab extraction | `scripts/extract-unity-conveyor-layouts.mjs` | `src/conveyor-layouts.js`, `artifacts/unity-conveyor-layouts.json` |
@@ -43,6 +44,7 @@ Use this file before code changes. Pick the closest change area, then read only 
 - `scripts/check-applovin-package.mjs`: AppLovin static upload precheck for `artifacts/applovin/index.html`, including size, single-file, inline-resource, WAV, remote URL, and MRAID CTA checks.
 - `scripts/apply-scene-tuning.mjs`: Applies exported editor tuning JSON from `artifacts/scene-tuning.json` (or `--input`) into `src/scene-tuning.js` and synchronizes `artifacts/selected-level.txt` before production packaging.
 - `scripts/spatial-conveyor-importer.mjs`: Standalone Node importer for the BusLoop `ConveyorBeltTemplate` spatial-track family. Merges prefab overrides with bundled Dreamteck/template support, embeds required textures, and writes one removable JSON package per imported prefab under `artifacts/spatial-conveyors/`.
+- `scripts/unity-level-importer.mjs`: Validates editor-imported `level<number>.asset` Unity YAML, rejects unsupported mechanisms and invalid vehicle/container/queue references, rolls back failed catalog updates, and stores accepted sources under `artifacts/unity-level-sources/`.
 - `scripts/generate-active-spatial-conveyor.mjs`: Reads the baked conveyor selection, validates the matching imported JSON package, and generates the single spatial conveyor payload included in production builds.
 - `tools/spatial-conveyor-import-support/bus-loop-spatial-v1/`: Editor-owned Unity/Dreamteck support package used by the spatial importer; imports do not read the external BusLoop Unity project.
 - `tools/unity-vat-export/Packages/manifest.json`: Unity package manifest for the VAT export helper project.
@@ -79,6 +81,7 @@ Use this file before code changes. Pick the closest change area, then read only 
 - `scripts/extract-unity-levels.mjs`: Parses supplied Unity level YAML into the development catalog/artifact, applies authored vehicle/queue overrides, and validates per-color passenger totals against vehicle seats.
 - `scripts/generate-active-level.mjs`: Reads baked scene tuning and emits the selected production session (Level9 followed by Level7 when Level9 is selected) before Vite builds.
 - `test/level-catalog.test.js`: Imported level counts, queue pairing, narrow production-session boundary, and editor/build wiring regressions.
+- `test/unity-level-importer.test.js`: Unity level filename/YAML/data validation, unsupported-mechanism rejection, source replacement, rollback, and editor/Vite service wiring.
 - `test/level-session.test.js`: Level9-to-Level7 production sequence, shared CTA/install count continuity, repeated-id namespacing, vehicle-only entrance/stationary-conveyor wiring, two-sided queue restart, and end-page suppression regressions.
 - `test/vehicle-collision.test.js`: Focused geometry graph, vehicle-size, reset, station-ordering, contact, and blocked-click regressions.
 - `test/guide-hand.test.js`: Focused guide target, active-level scope, timed mask, editor wiring, and horizontal art/motion mirroring regressions.

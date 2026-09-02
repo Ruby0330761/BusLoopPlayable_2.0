@@ -15,6 +15,8 @@ import {
   refreshSpatialConveyorPackages
 } from './spatial-conveyor-runtime.js';
 
+const DEFAULT_SCENE_TUNING = structuredClone(SCENE_TUNING);
+
 if (ACTIVE_SPATIAL_CONVEYOR_PACKAGE) {
   registerSpatialConveyorPackage(ACTIVE_SPATIAL_CONVEYOR_PACKAGE);
 }
@@ -809,6 +811,7 @@ async function startRuntime() {
     import('./scene-editor.js').then(({ createSceneEditor }) => {
       editor = createSceneEditor(sceneEditorRoot, {
         getTuning: () => SCENE_TUNING,
+        defaultTuning: DEFAULT_SCENE_TUNING,
         setTuning: applyTuningPatch,
         clearSavedTuning,
         openSpatialPointEditor
