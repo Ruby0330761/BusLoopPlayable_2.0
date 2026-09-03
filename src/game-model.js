@@ -9,7 +9,8 @@ import {
   evaluateUnityCurve,
   getCollisionMotion,
   getHitDirection,
-  getStationMotion
+  getStationMotion,
+  TURN_VEHICLE_MOTION
 } from './vehicle-motion.js';
 import {
   createVehicleCollisionContext,
@@ -21,6 +22,10 @@ const wrap01 = (value) => ((value % 1) + 1) % 1;
 const clampNumber = (value, min, max) => Math.max(min, Math.min(max, value));
 const INITIAL_ENTRY_OFFSET_PERCENT = 0.0001;
 const PASSENGER_READY_DISTANCE_THRESHOLD = 0.02;
+
+function isTurnVehicleRotating(vehicle) {
+  return Boolean(vehicle?.turnRotation?.active);
+}
 
 function visualToVehicleAreaPoint(x, z) {
   const area = SCENE_TUNING.vehicleArea;
@@ -182,7 +187,11 @@ export class BusLoopGame {
     this.sourceQueues = authoredQueues.map((queue, index) => queue.slice(this.queueCapacities[index]));
     this.vehicles = this.level.vehicles.map((vehicle) => ({
       ...vehicle, state: 'parked', spotIndex: null, boardedGroups: 0, motion: 0,
-      motionData: null, collision: null, hit: null
+      motionData: null, collision: null, hit: null, turnRotation: null,
+      ambulanceRemainingSteps: Number.isInteger(vehicle.ambulanceStepLimit)
+        ? vehicle.ambulanceStepLimit
+        : null,
+      ambulanceActive: Number.isInteger(vehicle.ambulanceStepLimit) && vehicle.ambulanceStepLimit > 0
     }));
     const spotCount = SCENE_TUNING.parkingSpots.count ?? this.level.spotCount;
     this.spots = Array.from({ length: spotCount }, (_, index) => ({
@@ -350,7 +359,7 @@ export class BusLoopGame {
   }
 
   canMoveToStation(vehicle) {
-    return Boolean(vehicle && vehicle.state === 'parked');
+    return Boolean(vehicle && vehicle.state === 'parked' && !isTurnVehicleRotating(vehicle));
   }
 
   isVehicleBlocking(candidate) {
@@ -365,6 +374,45 @@ export class BusLoopGame {
         ? candidate.id
         : `container:${candidate.id}:${candidate.role}`
     ));
+  }
+
+  consumeAmbulanceStep(dispatchedVehicle) {
+    if (dispatchedVehicle.ambulanceActive) dispatchedVehicle.ambulanceActive = false;
+    const updates = [];
+    let failed = false;
+    for (const vehicle of this.vehicles) {
+      if (!vehicle.ambulanceActive || vehicle.state !== 'parked') continue;
+      vehicle.ambulanceRemainingSteps -= 1;
+      updates.push({ vehicleId: vehicle.id, remainingSteps: vehicle.ambulanceRemainingSteps });
+      if (vehicle.ambulanceRemainingSteps === 0) failed = true;
+    }
+    return { updates, failed };
+  }
+
+  startTurnVehicleRotation(dispatchedVehicle) {
+    const duration = Number(this.level.turnVehicleRotateDuration);
+    const rotateDuration = Number.isFinite(duration) && duration >= 0
+      ? duration
+      : TURN_VEHICLE_MOTION.rotateDuration;
+    const completedVehicleIds = [];
+    for (const vehicle of this.vehicles) {
+      if (!vehicle.isTurnVehicle || vehicle.id === dispatchedVehicle.id || vehicle.state === 'done') continue;
+      const rotation = vehicle.turnRotation;
+      const startYaw = vehicle.yaw;
+      const targetYaw = (rotation?.active ? rotation.targetYaw : startYaw) + 180;
+      vehicle.turnRotation = {
+        active: rotateDuration > 0,
+        elapsed: 0,
+        duration: rotateDuration,
+        startYaw,
+        targetYaw
+      };
+      if (rotateDuration <= 0) {
+        vehicle.yaw = targetYaw;
+        completedVehicleIds.push(vehicle.id);
+      }
+    }
+    return completedVehicleIds;
   }
 
   clickVehicle(id) {
@@ -427,7 +475,30 @@ export class BusLoopGame {
       state: 'moving-to-spot', spotIndex: spot.index, motion: 0,
       motionData: { path, duration: stationMotion.duration, curve: stationMotion.curve }
     });
-    this.lastEvent = { type: 'vehicle-dispatched', vehicleId: id, spotIndex: spot.index };
+    const ambulanceResult = this.consumeAmbulanceStep(vehicle);
+    const completedTurnVehicleIds = this.startTurnVehicleRotation(vehicle);
+    const turnEvent = completedTurnVehicleIds.length > 0
+      ? { turnVehicleIds: completedTurnVehicleIds }
+      : {};
+    if (ambulanceResult.failed) {
+      this.status = 'lost';
+      this.lastEvent = {
+        type: 'lose',
+        reason: 'ambulance-exceed-step',
+        vehicleId: id,
+        spotIndex: spot.index,
+        ambulanceUpdates: ambulanceResult.updates,
+        ...turnEvent
+      };
+    } else {
+      this.lastEvent = {
+        type: 'vehicle-dispatched',
+        vehicleId: id,
+        spotIndex: spot.index,
+        ambulanceUpdates: ambulanceResult.updates,
+        ...turnEvent
+      };
+    }
     this.emit();
     return { ok: true, spotIndex: spot.index };
   }
@@ -437,11 +508,28 @@ export class BusLoopGame {
     const delta = Math.max(0, Math.min(deltaSeconds, 0.1));
     this.time += delta;
     let changed = false;
+    const completedTurnVehicleIds = [];
 
     for (const vehicle of this.vehicles) {
       if (vehicle.hit && this.time - vehicle.hit.startedAt >= UNITY_VEHICLE_MOTION.hitDuration) {
         vehicle.hit = null;
       }
+    }
+
+    for (const vehicle of this.vehicles) {
+      const rotation = vehicle.turnRotation;
+      if (!rotation?.active) continue;
+      rotation.elapsed += delta;
+      const progress = rotation.duration <= 0
+        ? 1
+        : clamp01(rotation.elapsed / rotation.duration);
+      vehicle.yaw = rotation.startYaw + (rotation.targetYaw - rotation.startYaw)
+        * evaluateUnityCurve(TURN_VEHICLE_MOTION.rotateCurve, progress);
+      if (progress >= 1) {
+        rotation.active = false;
+        completedTurnVehicleIds.push(vehicle.id);
+      }
+      changed = true;
     }
 
     for (const vehicle of this.vehicles) {
@@ -611,6 +699,12 @@ export class BusLoopGame {
 
     const previousStatus = this.status;
     this.checkEndState();
+    if (completedTurnVehicleIds.length > 0) {
+      this.lastEvent = {
+        ...this.lastEvent,
+        turnVehicleIds: completedTurnVehicleIds
+      };
+    }
     if (changed || this.status !== previousStatus) this.emit();
   }
 

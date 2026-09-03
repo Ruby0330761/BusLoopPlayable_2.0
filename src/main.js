@@ -57,6 +57,14 @@ const brandingItems = {
 const sceneEditorRoot = EDITOR_ENABLED ? $('#scene-editor') : null;
 const PASSENGER_MATERIAL_TUNING_PREFIX = 'passengerMaterial.';
 const PASSENGER_MATERIAL_COLOR_INDEX_PATTERN = /^passengerMaterial\.(?:solidColors|colors)\.(\d+)(?:\.|$)/;
+const AMBULANCE_AUDIO_CONFIG = Object.freeze({
+  clips: ['/assets/unity/audio/ambulance_countdown_V2.wav'],
+  volume: 0.72
+});
+const TURN_VEHICLE_AUDIO_CONFIG = Object.freeze({
+  clips: ['/assets/unity/audio/guidemove.bin'],
+  volume: 0.7
+});
 const isPassengerMaterialTuningPath = (path) => path?.startsWith(PASSENGER_MATERIAL_TUNING_PREFIX);
 const getPassengerMaterialColorIndex = (path) => {
   const match = path?.match(PASSENGER_MATERIAL_COLOR_INDEX_PATTERN);
@@ -616,7 +624,11 @@ async function startRuntime() {
   applyPreviewFrame();
 
   let game = new BusLoopGame(levelSession.currentLevel());
-  audio = createGameAudioController(LEVEL_1.assets.audio);
+  audio = createGameAudioController({
+    ...LEVEL_1.assets.audio,
+    ambulance_countdown: AMBULANCE_AUDIO_CONFIG,
+    turn_vehicle_complete: TURN_VEHICLE_AUDIO_CONFIG
+  });
   const endPanel = $('#end-panel');
   let pressTimer = 0;
   let pressed = false;
@@ -828,7 +840,7 @@ async function startRuntime() {
     updateInstallGate(state);
     if (state.status === 'lost') {
       endPanel.hidden = true;
-      showResultOverlay('Game Over');
+      showResultOverlay(state.lastEvent.reason === 'ambulance-exceed-step' ? 'Ambulance Failed' : 'Game Over');
       return;
     }
     if (state.status === 'won') {

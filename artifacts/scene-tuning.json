@@ -13,16 +13,16 @@
       "locked": 1,
       "asset": "/assets/icon-android.jpg",
       "x": 966,
-      "y": 2026,
+      "y": 2018,
       "width": 180,
       "height": 123
     },
     "logo": {
       "enabled": 1,
       "locked": 1,
-      "x": 161,
-      "y": 2032,
-      "width": 420,
+      "x": 0,
+      "y": 2023,
+      "width": 230,
       "height": 123
     },
     "text": {

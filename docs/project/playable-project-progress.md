@@ -1,4 +1,61 @@
-﻿# Playable Project Progress
+# Playable Project Progress
+
+## Completed On 2026-09-03 - Turn vehicle completion audio correction
+
+- Replaced the incorrectly selected gear-repair completion cue with the user-confirmed Unity `guidemove.wav`; the delivery asset is stored as `public/assets/unity/audio/guidemove.bin`.
+- Re-encoded the 44.1 kHz stereo source as 16 kHz mono 16-bit PCM, reducing it from 49,568 to 8,632 bytes.
+- Added a deduplicated `turn_vehicle_complete` event so one sound plays when one or more turn vehicles finish their 180-degree rotation, including same-frame completions.
+- Production build, focused turn-vehicle tests, AppLovin packaging, and static checks pass after the replacement. Final single HTML is 4,724,564 bytes; the replacement audio adds 11,516 bytes after base64 inlining, leaving 275,436 bytes below the 5,000,000-byte limit.
+
+## Completed On 2026-09-03 - Turn vehicle visual parity correction
+
+- Added Unity's dedicated `Arrow_02` turn-vehicle marker as a compressed editor-owned asset; turn vehicles now use it while ordinary vehicles keep `Arrow_01`.
+- Reset turn-vehicle orientation to the normal parking-spot orientation after arrival, so the 180-degree garage turn does not persist in the station.
+- Added focused visual source/asset regression coverage. Production build and AppLovin checks pass; the refreshed single HTML is `4,892,146` bytes.
+- Fixed the compressed marker asset's `.gz` URL, which Vite was transparently decoding before the runtime decoder; the raw gzip bytes now use `Arrow_02.fbx.bin` and preserve real Unity vehicle rendering.
+- Reduced the turn marker to 80%, moved it along the runtime vehicle `+Z` forward axis within the body-length limit, and excluded marker meshes from pointer picking so the adjustment cannot steal clicks from nearby vehicles.
+- Wrapped both marker variants in a centered visual node so their geometry center, rather than the imported model root's offset origin, follows the vehicle rotation axis. This prevents the turn marker from drifting relative to the vehicle during the 180-degree rotation.
+- Focused turn-vehicle tests pass 3/3, syntax check passes, production build and AppLovin static checks pass; the refreshed single HTML is `4,724,700` bytes.
+
+## Completed On 2026-09-03 - Unity turn vehicle import and runtime parity
+
+- Extended the existing Unity `level<number>.asset` importer and extractor to preserve `isTurnVehicle`, report turn-vehicle counts, and keep accepted sources in the editor-owned catalog path.
+- Added Unity turn-vehicle behavior: after any successful vehicle dispatch, every other turn vehicle rotates clockwise 180 degrees over `0.25s`; turn vehicles cannot be selected during the rotation and regain availability when it completes.
+- Verified the real Unity samples `level16.asset`, `level17.asset`, and `level114.asset` as editor-importable with 13, 19, and 25 turn vehicles. Production build, AppLovin packaging, and all AppLovin static checks pass; final package size is `4,861,770` bytes.
+
+## Completed On 2026-09-03 - Ambulance countdown audio compression
+
+- Re-encoded the imported one-second ambulance warning sound as mono 22.05 kHz PCM WAV, reducing it from 179,350 to 44,324 bytes while preserving browser-native decoding.
+- Rebuilt the AppLovin package at 4,712,584 bytes; the audio budget test, package checks, and packaged-page load check pass.
+## Completed On 2026-09-03 - Ambulance step indicator second scale pass
+
+- Enlarged the ambulance step indicator by another 20% and increased only the countdown font by 10%; its lower position and non-pickable behavior remain unchanged.
+- Rebuilt and checked the AppLovin package at 4,892,620 bytes; packaged-page load has one canvas and no error-level console logs.
+## Completed On 2026-09-03 - Ambulance step indicator sizing and hit isolation
+
+- Enlarged the ambulance step countdown indicator by 20% and lowered it by 10% relative to its previous vertical offset.
+- Disabled raycast interaction on the indicator so its larger visual footprint cannot expand vehicle click targets or interfere with nearby vehicle selection.
+- Ambulance indicator test, production build, AppLovin packaging, and final packaged-page load check pass; package size is 4,892,575 bytes.
+## Completed On 2026-09-03 - Ambulance passenger forward direction
+
+- Removed the incorrect extra yaw compensation from the ambulance VAT passenger, which was making the rescuer walk backward relative to the runtime path.
+- Rebuilt the AppLovin package at 4,861,768 bytes; the final packaged page loads with a canvas and no error-level console logs.
+## Completed On 2026-09-03 - Ambulance passenger display correction
+
+- Replaced the ambulance passenger's fragile RGB VAT sampling path with runtime RGBA8 expansion while retaining the compressed VAT payload, and regenerated the animation map without Unity's `none_anim` frame.
+- Restored the authored Idle/Move frame ranges, rebuilt the production output, and verified the AppLovin package embeds the ambulance assets at 4,861,770 bytes, below the 5,000,000-byte limit.
+- The ambulance-focused source/asset test passes; the broader game-model suite remains at 33/44 because of 11 unrelated pre-existing tuning and collision expectations.
+
+## Completed On 2026-09-03 - Ambulance mechanism import and playable parity
+
+- Added validated `vehicleAmbulances` import/extraction, six-seat color-13 ambulance gameplay, per-successful-dispatch countdown/failure rules, warning audio, special result messaging, ambulance/rescuer models and materials, and the world-space heart countdown UI.
+- Corrected the rescuer FBX from authored Z-up to runtime Y-up before shared passenger height normalization, so ambulance passengers now stand upright and match ordinary passenger scale/orientation.
+- Ambulance/importer tests pass 5/5, browser QA shows the corrected passengers with zero error logs, production build passes, and AppLovin packaging passes at `4,827,060` bytes with all six ambulance assets embedded. The broader combined test run still has 11 unrelated stale tuning/collision/source-contract expectations.
+
+## Completed On 2026-09-02 - Branding default adjustment
+
+- Updated the baked and exported branding defaults to Icon Y `2018`, Logo X `0`, Logo Y `2023`, and Logo width `230`; unspecified Icon/Logo fields remain unchanged.
+- The focused branding editor test and production build pass, and the current editor values were synchronized without browser errors.
 
 ## Completed On 2026-09-02 - Fish shape editor defaults restored
 

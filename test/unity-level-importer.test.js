@@ -12,13 +12,19 @@ import {
 function makeLevelSource({
   name = 'level19',
   vehicleIds = [1],
+  vehicleSeats = 4,
+  vehicleColorIndex = 2,
+  turnVehicleIds = [],
   passengerColors = [2, 2, 2, 2],
-  mechanismSection = '  vehicleExt: []'
+  mechanismSection = '  vehicleExt: []',
+  ambulanceSection = '  vehicleAmbulances: []',
+  firetruckSection = '  vehicleFiretrucks: []'
 } = {}) {
   const vehicles = vehicleIds.map((id) => `  - id: ${id}
-    seats: 4
+    seats: ${vehicleSeats}
     isHidden: 0
-    colorIndex: 2
+    isTurnVehicle: ${turnVehicleIds.includes(id) ? 1 : 0}
+    colorIndex: ${vehicleColorIndex}
     priority: 0
     position: {x: ${id}, y: 0, z: 0}
     rotation: {x: 0, y: 0, z: 0, w: 1}
@@ -46,6 +52,8 @@ ${mechanismSection}
   vehicleLinkages: []
   vehicleWrenches: []
   vehicleCombinations: []
+${ambulanceSection}
+${firetruckSection}
   vehicleAnchors: []
   vehiclePassengerLocations: []
   vehicleDepthes: []
@@ -66,6 +74,8 @@ test('validates a supported Unity level and reports import counts', () => {
     unityId: 19,
     mapScale: 1,
     vehicleCount: 1,
+    turnVehicleCount: 0,
+    ambulanceCount: 0,
     containerCount: 1,
     queueCounts: [2, 2],
     passengerCount: 4
@@ -116,6 +126,14 @@ test('rejects missing required top-level values', () => {
   );
 });
 
+test('accepts Unity turn vehicle flags and reports their count', () => {
+  const result = validateUnityLevelSource({
+    filename: 'level19.asset',
+    source: makeLevelSource({ turnVehicleIds: [1] })
+  });
+  assert.equal(result.turnVehicleCount, 1);
+});
+
 test('rejects mechanism sections that are not supported by the current editor', () => {
   assert.throws(
     () => validateUnityLevelSource({
@@ -123,6 +141,49 @@ test('rejects mechanism sections that are not supported by the current editor', 
       source: makeLevelSource({ mechanismSection: '  vehicleExt:\n  - id: 1' })
     }),
     /vehicleExt contains a mechanism/
+  );
+  assert.throws(
+    () => validateUnityLevelSource({
+      filename: 'level19.asset',
+      source: makeLevelSource({ firetruckSection: '  vehicleFiretrucks:\n  - vid: 1' })
+    }),
+    /vehicleFiretrucks contains a mechanism/
+  );
+});
+
+test('validates ambulance vehicle identity, color, seats, and step limit', () => {
+  const result = validateUnityLevelSource({
+    filename: 'level19.asset',
+    source: makeLevelSource({
+      vehicleSeats: 6,
+      vehicleColorIndex: 13,
+      passengerColors: Array(6).fill(13),
+      ambulanceSection: '  vehicleAmbulances:\n  - vid: 1\n    stepLimit: 35'
+    })
+  });
+  assert.equal(result.ambulanceCount, 1);
+  assert.throws(
+    () => validateUnityLevelSource({
+      filename: 'level19.asset',
+      source: makeLevelSource({
+        vehicleSeats: 6,
+        vehicleColorIndex: 13,
+        passengerColors: Array(6).fill(13)
+      })
+    }),
+    /has no vehicleAmbulances configuration/
+  );
+  assert.throws(
+    () => validateUnityLevelSource({
+      filename: 'level19.asset',
+      source: makeLevelSource({
+        vehicleSeats: 6,
+        vehicleColorIndex: 13,
+        passengerColors: Array(6).fill(13),
+        ambulanceSection: '  vehicleAmbulances:\n  - vid: 1\n    stepLimit: 0'
+      })
+    }),
+    /stepLimit/
   );
 });
 

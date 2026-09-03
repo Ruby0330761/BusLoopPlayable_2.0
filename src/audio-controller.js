@@ -9,13 +9,20 @@ function chooseClip(clips) {
 }
 
 function getEventKey(event, time = '') {
-  if (!event?.type) return '';
+  if (!event?.type && !event?.turnVehicleIds?.length) return '';
   const timeKey = Number.isFinite(time) ? time.toFixed(3) : time;
+  const keys = [];
   if (event.type === 'vehicle-collision-contact') {
-    return `${event.type}:${event.vehicleId}:${event.targetId}:${timeKey}`;
+    keys.push(`${event.type}:${event.vehicleId}:${event.targetId}:${timeKey}`);
   }
-  if (event.type === 'vehicle-full') return `${event.type}:${event.vehicleId}:${timeKey}`;
-  return '';
+  if (event.type === 'vehicle-full') keys.push(`${event.type}:${event.vehicleId}:${timeKey}`);
+  if (event.ambulanceUpdates?.some((entry) => entry.remainingSteps <= 5)) {
+    keys.push(`ambulance:${event.vehicleId}:${event.ambulanceUpdates.map((entry) => `${entry.vehicleId}:${entry.remainingSteps}`).join(',')}:${timeKey}`);
+  }
+  if (event.turnVehicleIds?.length) {
+    keys.push(`turn:${event.turnVehicleIds.join(',')}:${timeKey}`);
+  }
+  return keys.join('|');
 }
 
 export class GameAudioController {
@@ -81,12 +88,18 @@ export class GameAudioController {
   }
 
   handleGameEvent(event, time = '') {
-    const name = AUDIO_EVENT_NAMES[event?.type];
-    if (!name) return;
+    const names = [];
+    if (event?.ambulanceUpdates?.some((entry) => entry.remainingSteps <= 5)) {
+      names.push('ambulance_countdown');
+    }
+    const eventName = AUDIO_EVENT_NAMES[event?.type];
+    if (eventName) names.push(eventName);
+    if (event?.turnVehicleIds?.length) names.push('turn_vehicle_complete');
+    if (names.length === 0) return;
     const key = getEventKey(event, time);
     if (key && key === this.lastGameEventKey) return;
     this.lastGameEventKey = key;
-    this.play(name);
+    for (const name of names) this.play(name);
   }
 
   playPassengerUp() {

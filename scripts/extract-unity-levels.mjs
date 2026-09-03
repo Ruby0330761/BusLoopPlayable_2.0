@@ -183,6 +183,13 @@ function parsePassengerQueues(source) {
   return queues.map((queue) => queue ?? []);
 }
 
+function parseAmbulances(source) {
+  return records(section(source, 'vehicleAmbulances', 'vehicleFiretrucks'), 'vid').map((entry) => ({
+    vid: Number(entry.vid),
+    stepLimit: Number(entry.stepLimit)
+  }));
+}
+
 function colorCounts(values) {
   const counts = {};
   for (const value of values) counts[value] = (counts[value] ?? 0) + 1;
@@ -200,6 +207,24 @@ function validateLevel(level) {
   if (mismatches.length > 0) {
     throw new Error(`${level.key}: passenger/seat color totals differ for ${mismatches.join(', ')}`);
   }
+  const ambulanceIds = new Set();
+  for (const ambulance of level.vehicleAmbulances ?? []) {
+    const vehicle = level.vehicles.find((candidate) => candidate.id === ambulance.vid);
+    if (!vehicle) throw new Error(`${level.key}: ambulance vehicle ${ambulance.vid} does not exist`);
+    if (ambulanceIds.has(ambulance.vid)) throw new Error(`${level.key}: ambulance vehicle ${ambulance.vid} is duplicated`);
+    ambulanceIds.add(ambulance.vid);
+    if (vehicle.seats !== 6 || vehicle.colorIndex !== 13) {
+      throw new Error(`${level.key}: ambulance vehicle ${ambulance.vid} must use 6 seats and color index 13`);
+    }
+    if (!Number.isInteger(ambulance.stepLimit) || ambulance.stepLimit < 1) {
+      throw new Error(`${level.key}: ambulance vehicle ${ambulance.vid} has an invalid step limit`);
+    }
+  }
+  for (const vehicle of level.vehicles) {
+    if (vehicle.colorIndex === 13 && !ambulanceIds.has(vehicle.id)) {
+      throw new Error(`${level.key}: vehicle ${vehicle.id} is missing ambulance configuration`);
+    }
+  }
 }
 
 function applyVehicleOverrides(level) {
@@ -215,6 +240,8 @@ function parseUnityLevel(path, baseLevel) {
   const source = readFileSync(path, 'utf8');
   const fileName = basename(path);
   const key = fileName.replace(/\.asset$/i, '');
+  const ambulanceEntries = parseAmbulances(source);
+  const ambulanceStepLimits = new Map(ambulanceEntries.map((entry) => [entry.vid, entry.stepLimit]));
   const vehicles = records(section(source, 'vehicles', 'containers')).map((vehicle) => ({
     id: vehicle.id,
     seats: vehicle.seats,
@@ -223,8 +250,12 @@ function parseUnityLevel(path, baseLevel) {
     z: vehicle.position?.z ?? 0,
     yaw: yawFromQuaternion(vehicle.rotation ?? {}),
     isHidden: Boolean(vehicle.isHidden),
+    isTurnVehicle: Boolean(vehicle.isTurnVehicle),
     containerType: vehicle.containerType,
-    containerId: vehicle.containerId
+    containerId: vehicle.containerId,
+    ...(ambulanceStepLimits.has(vehicle.id)
+      ? { ambulanceStepLimit: ambulanceStepLimits.get(vehicle.id) }
+      : {})
   }));
   const containers = records(section(source, 'containers', 'vehicleExt')).map((container) => ({
     id: container.id,
@@ -247,6 +278,8 @@ function parseUnityLevel(path, baseLevel) {
     mapScale,
     sceneName: String(scalar(source, 'sceneName', baseLevel.sceneName)),
     vehicles,
+    turnVehicleCount: vehicles.filter((vehicle) => vehicle.isTurnVehicle).length,
+    vehicleAmbulances: ambulanceEntries,
     containers,
     vehicleDepthes: parseDepths(source),
     passengerQueues,

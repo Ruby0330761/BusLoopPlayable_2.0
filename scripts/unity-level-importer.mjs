@@ -19,8 +19,11 @@ const UNSUPPORTED_MECHANISM_SECTIONS = [
   'vehicleWrenches',
   'vehicleCombinations',
   'vehicleAnchors',
-  'vehiclePassengerLocations'
+  'vehiclePassengerLocations',
+  'vehicleFiretrucks'
 ];
+const STANDARD_COLOR_INDEX_MAX = 10;
+const AMBULANCE_COLOR_INDEX = 13;
 const NUMBER_PATTERN = '[-+]?(?:\\d+(?:\\.\\d*)?|\\.\\d+)(?:e[-+]?\\d+)?';
 
 function invalid(message) {
@@ -142,8 +145,14 @@ function validateVehicles(source) {
     if (!SUPPORTED_SEAT_COUNTS.has(seats)) {
       throw invalid(`Vehicle ${id} uses unsupported seat count ${seats}; supported values are 4, 6, and 10.`);
     }
-    const colorIndex = requireInteger(record.colorIndex, `${label}.colorIndex`, { min: 0, max: 10 });
+    const colorIndex = requireInteger(record.colorIndex, `${label}.colorIndex`, { min: 0, max: AMBULANCE_COLOR_INDEX });
+    if (colorIndex > STANDARD_COLOR_INDEX_MAX && colorIndex !== AMBULANCE_COLOR_INDEX) {
+      throw invalid(`Vehicle ${id} uses unsupported color index ${colorIndex}.`);
+    }
     const isHidden = requireInteger(record.isHidden, `${label}.isHidden`, { min: 0, max: 1 });
+    const isTurnVehicle = record.isTurnVehicle == null
+      ? false
+      : requireInteger(record.isTurnVehicle, `${label}.isTurnVehicle`, { min: 0, max: 1 });
     const containerType = requireInteger(record.containerType, `${label}.containerType`, { min: 0, max: 1000 });
     const containerId = requireInteger(record.containerId, `${label}.containerId`, { min: 0 });
     if (containerType !== 1) {
@@ -153,9 +162,47 @@ function validateVehicles(source) {
     const rotation = requireVector(record.rotation, ['x', 'y', 'z', 'w'], `${label}.rotation`);
     const rotationMagnitude = Math.hypot(rotation.x, rotation.y, rotation.z, rotation.w);
     if (rotationMagnitude < 0.000001) throw invalid(`Vehicle ${id} has an invalid zero rotation.`);
-    return { id, seats, colorIndex, isHidden, containerType, containerId, position, rotation };
+    return {
+      id,
+      seats,
+      colorIndex,
+      isHidden,
+      isTurnVehicle: Boolean(isTurnVehicle),
+      containerType,
+      containerId,
+      position,
+      rotation
+    };
   });
   return { vehicles, vehicleIds: ids };
+}
+
+function validateAmbulances(source, vehicles) {
+  const records = section(source, 'vehicleAmbulances')
+    ? parseRecords(source, 'vehicleAmbulances', 'vid')
+    : [];
+  const vehiclesById = new Map(vehicles.map((vehicle) => [vehicle.id, vehicle]));
+  const configuredIds = new Set();
+  const ambulances = records.map((record, index) => {
+    const label = `vehicleAmbulances[${index}]`;
+    const vid = requireInteger(record.vid, `${label}.vid`);
+    if (configuredIds.has(vid)) throw invalid(`Ambulance vehicle ${vid} is configured more than once.`);
+    configuredIds.add(vid);
+    const vehicle = vehiclesById.get(vid);
+    if (!vehicle) throw invalid(`Ambulance vehicle ${vid} does not exist.`);
+    if (vehicle.seats !== 6) throw invalid(`Ambulance vehicle ${vid} must use 6 seats.`);
+    if (vehicle.colorIndex !== AMBULANCE_COLOR_INDEX) {
+      throw invalid(`Ambulance vehicle ${vid} must use color index ${AMBULANCE_COLOR_INDEX}.`);
+    }
+    const stepLimit = requireInteger(record.stepLimit, `${label}.stepLimit`, { min: 1, max: 1000000 });
+    return { vid, stepLimit };
+  });
+  for (const vehicle of vehicles) {
+    if (vehicle.colorIndex === AMBULANCE_COLOR_INDEX && !configuredIds.has(vehicle.id)) {
+      throw invalid(`Vehicle ${vehicle.id} uses ambulance color index ${AMBULANCE_COLOR_INDEX} but has no vehicleAmbulances configuration.`);
+    }
+  }
+  return ambulances;
 }
 
 function validateContainers(source, vehicles) {
@@ -197,7 +244,10 @@ function validatePassengerQueues(source, vehicles) {
     }
     const colorMatch = line.match(/^    colorIndex:\s*(-?\d+)\s*$/);
     if (colorMatch && queueId != null) {
-      const colorIndex = requireInteger(colorMatch[1], 'fixedPassengerSequence.colorIndex', { min: 0, max: 10 });
+      const colorIndex = requireInteger(colorMatch[1], 'fixedPassengerSequence.colorIndex', { min: 0, max: AMBULANCE_COLOR_INDEX });
+      if (colorIndex > STANDARD_COLOR_INDEX_MAX && colorIndex !== AMBULANCE_COLOR_INDEX) {
+        throw invalid(`Passenger uses unsupported color index ${colorIndex}.`);
+      }
       if (!queues.has(queueId)) queues.set(queueId, []);
       queues.get(queueId).push(colorIndex);
       awaitingColor = false;
@@ -230,6 +280,7 @@ function validatePassengerQueues(source, vehicles) {
 }
 
 function validateDepthReferences(source, vehicleIds) {
+  if (!section(source, 'vehicleDepthes')) return;
   const records = parseRecords(source, 'vehicleDepthes', 'vid');
   const owners = new Set();
   for (const record of records) {
@@ -274,6 +325,7 @@ export function validateUnityLevelSource({ filename, source }) {
   const mapScale = requireFinite(topLevelValue(source, 'mapScale'), 'mapScale', { min: 0.01, max: 10 });
   validateNoUnsupportedMechanisms(source);
   const { vehicles, vehicleIds } = validateVehicles(source);
+  const ambulances = validateAmbulances(source, vehicles);
   const containers = validateContainers(source, vehicles);
   const passengerQueues = validatePassengerQueues(source, vehicles);
   validateDepthReferences(source, vehicleIds);
@@ -283,6 +335,8 @@ export function validateUnityLevelSource({ filename, source }) {
     unityId,
     mapScale,
     vehicleCount: vehicles.length,
+    turnVehicleCount: vehicles.filter((vehicle) => vehicle.isTurnVehicle).length,
+    ambulanceCount: ambulances.length,
     containerCount: containers.length,
     queueCounts: passengerQueues.map((queue) => queue.length),
     passengerCount: passengerQueues.reduce((sum, queue) => sum + queue.length, 0)

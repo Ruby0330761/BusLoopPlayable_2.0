@@ -8,9 +8,11 @@ public static class VatMeshExporter
 {
     public static void Export()
     {
-        const string modelPath = "Assets/Idle_boy01.fbx";
+        var modelPath = Environment.GetEnvironmentVariable("VAT_EXPORT_MODEL");
+        if (string.IsNullOrWhiteSpace(modelPath)) modelPath = "Assets/Idle_boy01.fbx";
+        var modelName = Path.GetFileName(modelPath);
         var importer = AssetImporter.GetAtPath(modelPath) as ModelImporter;
-        if (importer == null) throw new InvalidOperationException("Idle_boy01.fbx importer was not found.");
+        if (importer == null) throw new InvalidOperationException($"{modelName} importer was not found.");
         if (!importer.isReadable)
         {
             importer.isReadable = true;
@@ -21,7 +23,7 @@ public static class VatMeshExporter
             .OfType<Mesh>()
             .OrderByDescending(candidate => candidate.vertexCount)
             .FirstOrDefault();
-        if (mesh == null) throw new InvalidOperationException("Idle_boy01.fbx contains no mesh.");
+        if (mesh == null) throw new InvalidOperationException($"{modelName} contains no mesh.");
 
         var output = Environment.GetEnvironmentVariable("VAT_EXPORT_OUTPUT");
         if (string.IsNullOrWhiteSpace(output)) throw new InvalidOperationException("VAT_EXPORT_OUTPUT is missing.");

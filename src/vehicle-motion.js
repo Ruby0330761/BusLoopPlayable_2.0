@@ -49,6 +49,11 @@ export const UNITY_CURVES = Object.freeze({
   ]
 });
 
+export const TURN_VEHICLE_MOTION = Object.freeze({
+  rotateDuration: 0.25,
+  rotateCurve: [key(0, 0, 0, 0), key(1, 1, 0, 0)]
+});
+
 export function evaluateUnityCurve(keys, time) {
   if (time <= keys[0].time) return keys[0].value;
   const last = keys[keys.length - 1];

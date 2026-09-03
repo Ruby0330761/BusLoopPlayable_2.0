@@ -33,6 +33,22 @@ const advance = (game, seconds, step = .05) => {
   for (let time = 0; time < seconds; time += step) game.update(step);
 };
 
+const makeAmbulanceLevel = (vehicles) => {
+  const level = structuredClone(LEVEL_CATALOG.level16);
+  level.vehicles = vehicles;
+  level.containers = [];
+  level.vehicleDepthes = {};
+  level.vehicleAmbulances = vehicles
+    .filter((vehicle) => Number.isInteger(vehicle.ambulanceStepLimit))
+    .map((vehicle) => ({ vid: vehicle.id, stepLimit: vehicle.ambulanceStepLimit }));
+  level.passengerQueues = [[]];
+  level.passengerSequence = [];
+  level.queueCapacity = 0;
+  level.conveyorCapacity = 1;
+  level.spotCount = 6;
+  return level;
+};
+
 const publicAssetExists = (url) => existsSync(join('public', url.replace(/^\//, '')));
 
 const readImageDimensions = (buffer) => {
@@ -389,6 +405,18 @@ test('Unity visual assets and tunable camera configuration are complete', () => 
     ...Object.values(LEVEL_1.assets.textures.vehicleShadowBySeats)
   ];
   assert.ok(urls.every(publicAssetExists));
+  for (const url of [
+    '/assets/unity/models/Ambulance_001.fbx',
+    '/assets/unity/models/Idle_girl_rescuer.fbx',
+    '/assets/unity/models/Idle_girl_rescuer_vatmesh.bin',
+    '/assets/unity/models/Idle_girl_rescuer_anim_map.vatq',
+    '/assets/unity/textures/Ambulance.png',
+    '/assets/unity/textures/Idle_girl_rescuer.png',
+    '/assets/unity/textures/Main_Gamepanel_BubbleLove.png',
+    '/assets/unity/audio/ambulance_countdown_V2.wav'
+  ]) {
+    assert.ok(publicAssetExists(url), url);
+  }
   assert.deepEqual(LEVEL_1.assets.audio.bus_hit, {
     clips: ['/assets/unity/audio/bus_hit_V5.mp3'],
     volume: 0.503268
@@ -406,6 +434,155 @@ test('Unity visual assets and tunable camera configuration are complete', () => 
     volume: 0.50023913
   });
   assert.equal(LEVEL_1.assets.passengerAnimations.move.duration, 0.60000014);
+});
+
+test('ambulance departure removes itself before decrementing other ambulances', () => {
+  const game = new BusLoopGame(makeAmbulanceLevel([
+    { id: 1, seats: 6, colorIndex: 13, ambulanceStepLimit: 2, x: 0, z: 0, yaw: 0, containerType: 1, containerId: 0 },
+    { id: 2, seats: 6, colorIndex: 13, ambulanceStepLimit: 2, x: 2, z: 0, yaw: 0, containerType: 1, containerId: 0 },
+    { id: 3, seats: 4, colorIndex: 0, x: 4, z: 0, yaw: 0, containerType: 1, containerId: 0 }
+  ]));
+  const result = game.clickVehicle(1);
+  const state = game.snapshot();
+  assert.equal(result.ok, true);
+  assert.equal(state.status, 'playing');
+  assert.equal(state.vehicles.find((vehicle) => vehicle.id === 1).ambulanceActive, false);
+  assert.equal(state.vehicles.find((vehicle) => vehicle.id === 1).ambulanceRemainingSteps, 2);
+  assert.equal(state.vehicles.find((vehicle) => vehicle.id === 2).ambulanceRemainingSteps, 1);
+  assert.deepEqual(state.lastEvent.ambulanceUpdates, [{ vehicleId: 2, remainingSteps: 1 }]);
+});
+
+test('ambulance countdown audio stays below the delivery size budget', () => {
+  const audio = readFileSync(join('public', 'assets', 'unity', 'audio', 'ambulance_countdown_V2.wav'));
+  assert.ok(audio.length < 50_000);
+  assert.equal(audio.toString('ascii', 0, 4), 'RIFF');
+  assert.equal(audio.readUInt16LE(22), 1);
+  assert.equal(audio.readUInt32LE(24), 22050);
+  assert.equal(audio.readUInt16LE(34), 16);
+});
+
+test('blocked vehicle clicks do not consume ambulance moves', () => {
+  const game = new BusLoopGame(makeAmbulanceLevel([
+    { id: 1, seats: 6, colorIndex: 13, ambulanceStepLimit: 2, x: 0, z: 0, yaw: 0, containerType: 1, containerId: 0 },
+    { id: 2, seats: 4, colorIndex: 0, x: 2, z: 0, yaw: 0, containerType: 1, containerId: 0 },
+    { id: 3, seats: 4, colorIndex: 0, x: 2, z: 1, yaw: 0, containerType: 1, containerId: 0 }
+  ]));
+  const result = game.clickVehicle(2);
+  assert.equal(result.ok, false);
+  assert.equal(result.reason, 'blocked');
+  assert.equal(game.getVehicle(1).ambulanceRemainingSteps, 2);
+  assert.equal(game.status, 'playing');
+});
+
+test('an active ambulance reaching zero moves fails immediately', () => {
+  const game = new BusLoopGame(makeAmbulanceLevel([
+    { id: 1, seats: 6, colorIndex: 13, ambulanceStepLimit: 1, x: 0, z: 0, yaw: 0, containerType: 1, containerId: 0 },
+    { id: 2, seats: 4, colorIndex: 0, x: 2, z: 0, yaw: 0, containerType: 1, containerId: 0 }
+  ]));
+  const result = game.clickVehicle(2);
+  const state = game.snapshot();
+  assert.equal(result.ok, true);
+  assert.equal(state.status, 'lost');
+  assert.equal(state.lastEvent.reason, 'ambulance-exceed-step');
+  assert.equal(state.vehicles.find((vehicle) => vehicle.id === 1).ambulanceRemainingSteps, 0);
+});
+
+test('ambulance passenger uses its own VAT clips and forward-facing correction', () => {
+  const viewSource = readFileSync(join('src', 'scene-view.js'), 'utf8');
+  const mesh = readFileSync(join('public', 'assets', 'unity', 'models', 'Idle_girl_rescuer_vatmesh.bin'));
+  const texture = readFileSync(join('public', 'assets', 'unity', 'models', 'Idle_girl_rescuer_anim_map.vatq'));
+  assert.equal(mesh.subarray(0, 4).toString('ascii'), 'VATM');
+  assert.equal(mesh.readUInt32LE(8), 859);
+  assert.equal(mesh.readUInt32LE(12), 3513);
+  assert.equal(texture.subarray(0, 4).toString('ascii'), 'VATQ');
+  assert.equal(texture.readUInt32LE(8), 859);
+  assert.equal(texture.readUInt32LE(12), 79);
+  assert.ok(texture.length < 110_000);
+  assert.match(viewSource, /AMBULANCE_PASSENGER_YAW_OFFSET_DEGREES = 0/);
+  assert.match(viewSource, /loadPackedVatTexture\(AMBULANCE_ASSETS\.passengerVatTexture/);
+  assert.match(viewSource, /THREE\.RGBAFormat/);
+  assert.match(viewSource, /textureWidth: 859/);
+  assert.match(viewSource, /textureHeight: 79/);
+  assert.match(viewSource, /animation: AMBULANCE_PASSENGER_ANIMATIONS/);
+  assert.match(viewSource, /state\?\.animation\?\.\[clipName\]/);
+  assert.match(viewSource, /root\.userData\.vatMaterial = material/);
+});
+
+test('ambulance step board is enlarged, lowered, and excluded from vehicle picking', () => {
+  const viewSource = readFileSync(join('src', 'scene-view.js'), 'utf8');
+  assert.match(viewSource, /AMBULANCE_STEP_BOARD_BASE_SCALE = 0\.56 \* 1\.2 \* 1\.2/);
+  assert.match(viewSource, /AMBULANCE_STEP_BOARD_OFFSET_Y = 0\.42 \* 0\.9/);
+  assert.match(viewSource, /AMBULANCE_STEP_BOARD_FONT_SIZE = 76 \* 1\.1/);
+  assert.match(viewSource, /900 \$\{AMBULANCE_STEP_BOARD_FONT_SIZE\}px Arial/);
+  assert.match(viewSource, /size\.y \+ AMBULANCE_STEP_BOARD_OFFSET_Y/);
+  assert.match(viewSource, /sprite\.raycast = \(\) => \{\}/);
+});
+
+test('turn vehicles rotate together after a successful dispatch and stay unavailable while rotating', () => {
+  const level = makeAmbulanceLevel([
+    { id: 1, seats: 4, colorIndex: 0, isTurnVehicle: true, x: 0, z: 0, yaw: 0, containerType: 1, containerId: 0 },
+    { id: 2, seats: 4, colorIndex: 0, isTurnVehicle: true, x: 2, z: 0, yaw: 0, containerType: 1, containerId: 0 },
+    { id: 3, seats: 4, colorIndex: 0, isTurnVehicle: false, x: 4, z: 0, yaw: 0, containerType: 1, containerId: 0 }
+  ]);
+  const game = new BusLoopGame(level);
+  const events = [];
+  game.subscribe((state) => events.push(state.lastEvent));
+
+  assert.equal(game.clickVehicle(3).ok, true);
+  assert.equal(game.clickVehicle(2).reason, 'unavailable');
+  assert.equal(game.getVehicle(1).turnRotation.active, true);
+  assert.equal(game.getVehicle(1).yaw, 0);
+
+  game.update(0.1);
+  assert.ok(game.getVehicle(1).yaw > 0 && game.getVehicle(1).yaw < 180);
+  game.update(0.1);
+  game.update(0.05);
+  assert.equal(game.getVehicle(1).yaw, 180);
+  assert.equal(game.getVehicle(1).turnRotation.active, false);
+  assert.deepEqual(events.at(-1).turnVehicleIds, [1, 2]);
+  assert.equal(game.clickVehicle(2).ok, true);
+});
+
+test('turn vehicle completion audio is bundled in a compact playable-safe format', () => {
+  const audioPath = join('public', 'assets', 'unity', 'audio', 'guidemove.bin');
+  const audio = readFileSync(audioPath);
+  const audioSource = readFileSync(join('src', 'audio-controller.js'), 'utf8');
+  const mainSource = readFileSync(join('src', 'main.js'), 'utf8');
+
+  assert.equal(audio.subarray(0, 4).toString('ascii'), 'RIFF');
+  assert.equal(audio.subarray(8, 12).toString('ascii'), 'WAVE');
+  assert.equal(audio.readUInt16LE(20), 1);
+  assert.equal(audio.readUInt16LE(22), 1);
+  assert.equal(audio.readUInt32LE(24), 16_000);
+  assert.equal(audio.readUInt16LE(34), 16);
+  assert.ok(audio.length < 100_000);
+  assert.match(audioSource, /turn_vehicle_complete/);
+  assert.match(audioSource, /event\?\.turnVehicleIds\?\.length/);
+  assert.match(audioSource, /for \(const name of names\) this\.play\(name\)/);
+  assert.match(mainSource, /clips: \['\/assets\/unity\/audio\/guidemove\.bin'\]/);
+  assert.match(mainSource, /turn_vehicle_complete: TURN_VEHICLE_AUDIO_CONFIG/);
+});
+
+test('turn vehicles use the dedicated Unity arrow and normal parking orientation', () => {
+  const viewSource = readFileSync(join('src', 'scene-view.js'), 'utf8');
+  const turnArrow = readFileSync(join('public', 'assets', 'unity', 'models', 'Arrow_02.fbx.bin'));
+  assert.equal(turnArrow[0], 0x1f);
+  assert.equal(turnArrow[1], 0x8b);
+  assert.ok(turnArrow.length < 30_000);
+  assert.match(viewSource, /TURN_ARROW_ASSET_URL = '\/assets\/unity\/models\/Arrow_02\.fbx\.bin'/);
+  assert.match(viewSource, /const TURN_ARROW_SCALE = 0\.8/);
+  assert.match(viewSource, /const TURN_ARROW_FORWARD_OFFSET = 0\.18/);
+  assert.match(viewSource, /loadPackedFbx\(TURN_ARROW_ASSET_URL/);
+  assert.match(viewSource, /const arrowTemplate = vehicle\.isTurnVehicle && this\.turnArrowTemplate/);
+  assert.match(viewSource, /function makeCenteredArrow\(template\)/);
+  assert.match(viewSource, /const arrow = makeCenteredArrow\(arrowTemplate\)/);
+  assert.match(viewSource, /arrow\.scale\.multiplyScalar\(TURN_ARROW_SCALE\)/);
+  assert.match(viewSource, /markerDepth = \(arrow\.userData\.fittedSize\?\.z \?\? 0\.56\) \* \(isTurnVehicle \? TURN_ARROW_SCALE : 1\)/);
+  assert.match(viewSource, /maxForwardOffset = Math\.max\(0, \(size\.z - markerDepth\) \* 0\.5\)/);
+  assert.match(viewSource, /arrow\.position\.set\(tuning\.offsetX, size\.y \+ tuning\.offsetY, tuning\.offsetZ \+ forwardOffset\)/);
+  assert.match(viewSource, /arrow\.rotation\.y = deg\(vehicle\.isTurnVehicle \? 0 : SCENE_TUNING\.facing\.arrowYawDegrees\)/);
+  assert.match(viewSource, /view\.rotation\.y = deg\(SCENE_TUNING\.facing\.parkingSpotYawDegrees \+ 180\) \+ vehicleYawOffset/);
+  assert.doesNotMatch(viewSource, /view\.rotation\.y = vehicle\.isTurnVehicle\s*\?/);
 });
 
 test('background asset selection uses the optimized Sakura image and remains editor-switchable', () => {
@@ -736,7 +913,9 @@ test('editor sizing, source background ratio, and passenger shadow anchor stay w
   assert.match(viewSource, /addArrowOutline\(this\.arrowTemplate, \{/);
   assert.match(viewSource, /const hitRoot = new THREE\.Group\(\)/);
   assert.match(viewSource, /view\.userData\.hitMeshes = \[hitRoot\]/);
+  assert.match(viewSource, /view\.userData\.pickMeshes = bodyMeshes/);
   assert.match(viewSource, /hitRoot\.add\(model, arrow\)/);
+  assert.match(viewSource, /intersectObjects\(pickMeshes, true\)/);
   assert.match(viewSource, /triggerVehicleBoardingPulse/);
   assert.match(viewSource, /getVehicleBoardingPulseScale/);
   assert.match(viewSource, /GUIDE_HAND_TEXTURE_URL/);
@@ -1235,7 +1414,7 @@ test('main thread saves and restores scene tuning from localStorage', () => {
   assert.match(mainSource, /path === 'conveyorLayout\.selected'/);
   assert.match(mainSource, /path === 'spatialConveyor\.capacity'/);
   assert.match(mainSource, /initializeGameQueues\(\{ resetSlots: conveyorStructureChanged \}\)/);
-  assert.match(mainSource, /createGameAudioController\(LEVEL_1\.assets\.audio\)/);
+  assert.match(mainSource, /createGameAudioController\(\{[\s\S]*\.\.\.LEVEL_1\.assets\.audio,[\s\S]*ambulance_countdown: AMBULANCE_AUDIO_CONFIG[\s\S]*\}\)/);
   assert.match(mainSource, /audio\.handleGameEvent\(state\.lastEvent, state\.time\)/);
   assert.match(mainSource, /audio\.playPassengerUp\(\)/);
   assert.match(mainSource, /audio\.unlock\(\)/);
@@ -1256,7 +1435,7 @@ test('main thread saves and restores scene tuning from localStorage', () => {
   assert.match(mainSource, /Math\.max\(1, Math\.floor\(configuredThreshold\)\)/);
   assert.doesNotMatch(mainSource, /INSTALL_GATE_AFTER_SUCCESSFUL_OPERATIONS_ENABLED/);
   assert.match(mainSource, /function applyCtaTuning/);
-  assert.match(mainSource, /showResultOverlay\('Game Over'\)/);
+  assert.match(mainSource, /showResultOverlay\(state\.lastEvent\.reason === 'ambulance-exceed-step' \? 'Ambulance Failed' : 'Game Over'\)/);
   assert.match(mainSource, /^\s*showResultOverlay\('You Win!'\);/m);
   assert.match(mainSource, /gameOverTitle\.textContent = title/);
   assert.match(mainSource, /function getGameOverTitleFontFamily/);

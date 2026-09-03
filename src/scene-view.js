@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { FBXLoader } from 'three/addons/loaders/FBXLoader.js';
+import { gunzipSync, unzlibSync } from 'three/addons/libs/fflate.module.js';
 import { COLORS, LEVEL_1, PASSENGER_COUNT_BOARD_COLORS } from './level-data.js';
 import {
   MAX_CONVEYOR_CAPACITY,
@@ -43,8 +44,31 @@ const ease = (t) => 1 - Math.pow(1 - t, 3);
 const deg = (value) => THREE.MathUtils.degToRad(value);
 const ARROW_OUTLINE_SCALE = 1.28;
 const GUIDE_HAND_TEXTURE_URL = '/assets/applovin/main-guide-hand_q80.webp';
+const TURN_ARROW_ASSET_URL = '/assets/unity/models/Arrow_02.fbx.bin';
+const TURN_ARROW_SCALE = 0.8;
+const TURN_ARROW_FORWARD_OFFSET = 0.18;
 const DEFAULT_CONVEYOR_LAYOUT_ID = 'dualQueue2';
 const SPATIAL_PASSENGER_CHUNK_COUNT = 4;
+const AMBULANCE_COLOR_INDEX = 13;
+// The VAT mesh already uses the runtime forward axis; no extra yaw is needed.
+const AMBULANCE_PASSENGER_YAW_OFFSET_DEGREES = 0;
+const AMBULANCE_STEP_BOARD_BASE_SCALE = 0.56 * 1.2 * 1.2;
+const AMBULANCE_STEP_BOARD_OFFSET_Y = 0.42 * 0.9;
+const AMBULANCE_STEP_BOARD_FONT_SIZE = 76 * 1.1;
+const AMBULANCE_ASSETS = Object.freeze({
+  vehicleModel: '/assets/unity/models/Ambulance_001.fbx',
+  vehicleTexture: '/assets/unity/textures/Ambulance.png',
+  passengerVatMesh: '/assets/unity/models/Idle_girl_rescuer_vatmesh.bin',
+  passengerVatTexture: '/assets/unity/models/Idle_girl_rescuer_anim_map.vatq',
+  passengerTexture: '/assets/unity/textures/Idle_girl_rescuer.png',
+  stepBubble: '/assets/unity/textures/Main_Gamepanel_BubbleLove.png'
+});
+const AMBULANCE_PASSENGER_ANIMATIONS = Object.freeze({
+  textureWidth: 859,
+  textureHeight: 79,
+  idle: { uvMin: 0, uvMax: 59 / 79, duration: 2 },
+  move: { uvMin: 60 / 79, uvMax: 78 / 79, duration: 0.60000014 }
+});
 const PASSENGER_DEFAULT_MATERIAL_COLORS = Object.freeze([
   { baseColor: 0xffffff, emissionColor: 0x36a6ff },
   { baseColor: 0xffffff, emissionColor: 0xadd98a },
@@ -375,6 +399,87 @@ async function loadVatTexture(url, width, height, loadingManager) {
   return texture;
 }
 
+async function loadPackedVatTexture(url, loadingManager) {
+  loadingManager?.itemStart(url);
+  let buffer;
+  try {
+    buffer = await fetch(url).then((response) => {
+      if (!response.ok) throw new Error(`Packed VAT texture request failed: ${response.status}`);
+      return response.arrayBuffer();
+    });
+    loadingManager?.itemEnd(url);
+  } catch (error) {
+    loadingManager?.itemError(url);
+    loadingManager?.itemEnd(url);
+    throw error;
+  }
+  const view = new DataView(buffer);
+  const magic = String.fromCharCode(...new Uint8Array(buffer, 0, 4));
+  if (magic !== 'VATQ' || view.getUint32(4, true) !== 1) {
+    throw new Error('Unsupported packed VAT texture binary.');
+  }
+  const width = view.getUint32(8, true);
+  const height = view.getUint32(12, true);
+  const positionMin = new THREE.Vector3(
+    view.getFloat32(16, true),
+    view.getFloat32(20, true),
+    view.getFloat32(24, true)
+  );
+  const positionMax = new THREE.Vector3(
+    view.getFloat32(28, true),
+    view.getFloat32(32, true),
+    view.getFloat32(36, true)
+  );
+  const packed = unzlibSync(new Uint8Array(buffer, 40));
+  if (packed.byteLength !== width * height * 3) throw new Error('Unexpected packed VAT texture size.');
+  // Use RGBA8 on the GPU for broader WebGL/WebView compatibility than RGB8.
+  const data = new Uint8Array(width * height * 4);
+  for (let source = 0, target = 0; source < packed.length; source += 3, target += 4) {
+    data[target] = packed[source];
+    data[target + 1] = packed[source + 1];
+    data[target + 2] = packed[source + 2];
+    data[target + 3] = 255;
+  }
+  const texture = new THREE.DataTexture(
+    data,
+    width,
+    height,
+    THREE.RGBAFormat,
+    THREE.UnsignedByteType
+  );
+  texture.minFilter = THREE.NearestFilter;
+  texture.magFilter = THREE.NearestFilter;
+  texture.wrapS = THREE.ClampToEdgeWrapping;
+  texture.wrapT = THREE.ClampToEdgeWrapping;
+  texture.generateMipmaps = false;
+  texture.flipY = false;
+  texture.needsUpdate = true;
+  return {
+    texture,
+    width,
+    height,
+    positionMin,
+    positionRange: positionMax.sub(positionMin)
+  };
+}
+
+async function loadPackedFbx(url, loader, loadingManager) {
+  loadingManager?.itemStart(url);
+  try {
+    const buffer = await fetch(url).then((response) => {
+      if (!response.ok) throw new Error(`Packed FBX request failed: ${response.status}`);
+      return response.arrayBuffer();
+    });
+    const bytes = gunzipSync(new Uint8Array(buffer));
+    loadingManager?.itemEnd(url);
+    return loader.parse(bytes.buffer, url.slice(0, url.lastIndexOf('/') + 1));
+  } catch (error) {
+    loadingManager?.itemError(url);
+    loadingManager?.itemEnd(url);
+    throw error;
+  }
+}
+
 function setMaterial(root, material, meshFilter = null) {
   const meshes = [];
   root.traverse((child) => {
@@ -523,6 +628,14 @@ function normalizeObject(root, targets) {
   return root;
 }
 
+function makeCenteredArrow(template) {
+  const visual = template.clone(true);
+  const root = new THREE.Group();
+  root.userData.fittedSize = visual.userData.fittedSize?.clone?.() ?? visual.userData.fittedSize;
+  root.add(visual);
+  return root;
+}
+
 function makeVehiclePlaceholder(vehicle) {
   const root = new THREE.Group();
   root.userData.vehicleId = vehicle.id;
@@ -544,6 +657,7 @@ function makeVehiclePlaceholder(vehicle) {
   root.add(arrow);
   root.userData.bodyMeshes = [body];
   root.userData.hitMeshes = [body, arrow];
+  root.userData.pickMeshes = [body];
   storeHitBase(body);
   storeHitBase(arrow);
   return root;
@@ -621,6 +735,13 @@ export class SceneView {
     this.unityAssetsFailed = false;
     this.vehicleMaterials = [];
     this.vehicleColorTextures = [];
+    this.turnArrowTemplate = null;
+    this.ambulanceVehicleTemplate = null;
+    this.ambulanceVehicleMaterial = null;
+    this.ambulancePassengerTemplate = null;
+    this.ambulancePassengerTexture = null;
+    this.ambulancePassengerVat = null;
+    this.ambulanceStepBubbleTexture = null;
     this.vatTimeUniform = { value: 0 };
     this.boardingViews = [];
     this.vehicleBoardingPulses = new Map();
@@ -905,7 +1026,12 @@ export class SceneView {
 
   shouldUseSpatialPassengerInstancing() {
     return this.isSpatialOptimizationEnabled('instancedPassengers')
-      && this.isSpatialOptimizationEnabled('instancedShadows');
+      && this.isSpatialOptimizationEnabled('instancedShadows')
+      && !this.hasAmbulanceVehicles();
+  }
+
+  hasAmbulanceVehicles() {
+    return LEVEL_1.vehicles.some((vehicle) => Number.isInteger(vehicle.ambulanceStepLimit));
   }
 
   sampleActiveCurve(progress, targetPoint = new THREE.Vector3(), targetTangent = new THREE.Vector3()) {
@@ -1489,6 +1615,7 @@ export class SceneView {
         passengerVatTexture,
         shadowFbx,
         arrowFbx,
+        turnArrowFbx,
         carFbx,
         vanFbx,
         busFbx,
@@ -1520,6 +1647,7 @@ export class SceneView {
         ),
         this.fbxLoader.loadAsync(modelPaths.shadow),
         this.fbxLoader.loadAsync(modelPaths.arrow),
+        loadPackedFbx(TURN_ARROW_ASSET_URL, this.fbxLoader, this.loadingManager),
         this.fbxLoader.loadAsync(vehiclePaths[4]),
         this.fbxLoader.loadAsync(vehiclePaths[6]),
         this.fbxLoader.loadAsync(vehiclePaths[10]),
@@ -1623,6 +1751,13 @@ export class SceneView {
         scale: SCENE_TUNING.vehicleArrow.outlineScale,
         depthTest: SCENE_TUNING.vehicleArrow.outlineDepthTest
       });
+      this.turnArrowTemplate = normalizeObject(toStaticMeshGroup(turnArrowFbx), { depth: 0.56 });
+      setMaterial(this.turnArrowTemplate, new THREE.MeshBasicMaterial({ color: 0xffffff, side: THREE.DoubleSide }));
+      addArrowOutline(this.turnArrowTemplate, {
+        color: SCENE_TUNING.vehicleArrow.outlineColor,
+        scale: SCENE_TUNING.vehicleArrow.outlineScale,
+        depthTest: SCENE_TUNING.vehicleArrow.outlineDepthTest
+      });
       this.parkingTemplate = normalizeObject(toStaticMeshGroup(parkingFbx), {
         width: SCENE_TUNING.parkingSpots.modelWidth,
         depth: SCENE_TUNING.parkingSpots.modelDepth
@@ -1639,6 +1774,7 @@ export class SceneView {
         6: this.prepareVehicleShadowTemplate(vanShadowFbx, 6),
         10: this.prepareVehicleShadowTemplate(busShadowFbx, 10)
       };
+      if (this.hasAmbulanceVehicles()) await this.loadAmbulanceAssets();
       this.upgradePassengerViews();
       this.upgradeVehicleViews();
       this.upgradeSpotViews();
@@ -1661,8 +1797,52 @@ export class SceneView {
     return normalizeObject(toStaticMeshGroup(source), { depth: targetDepth });
   }
 
-  createVatMaterial(colorIndex = 0, { instanced = false } = {}) {
-    const animation = LEVEL_1.assets.passengerAnimations;
+  async loadAmbulanceAssets() {
+    const [
+      vehicleFbx,
+      passengerVatGeometry,
+      passengerVatTexture,
+      vehicleTexture,
+      passengerTexture,
+      stepBubbleTexture
+    ] = await Promise.all([
+      this.fbxLoader.loadAsync(AMBULANCE_ASSETS.vehicleModel),
+      loadVatGeometry(AMBULANCE_ASSETS.passengerVatMesh, this.loadingManager),
+      loadPackedVatTexture(AMBULANCE_ASSETS.passengerVatTexture, this.loadingManager),
+      this.textureLoader.loadAsync(AMBULANCE_ASSETS.vehicleTexture),
+      this.textureLoader.loadAsync(AMBULANCE_ASSETS.passengerTexture),
+      this.textureLoader.loadAsync(AMBULANCE_ASSETS.stepBubble)
+    ]);
+    [vehicleTexture, passengerTexture, stepBubbleTexture].forEach(configureColorTexture);
+    this.ambulanceVehicleTemplate = this.prepareVehicleTemplate(vehicleFbx, 6);
+    this.ambulanceVehicleMaterial = new THREE.MeshStandardMaterial({
+      map: vehicleTexture,
+      emissiveMap: vehicleTexture,
+      emissive: 0x101010,
+      emissiveIntensity: 0.35,
+      roughness: 0.42,
+      metalness: 0
+    });
+    const passengerVatRoot = new THREE.Group();
+    const passengerVatMesh = new THREE.Mesh(passengerVatGeometry);
+    passengerVatMesh.userData.isVatPassenger = true;
+    passengerVatMesh.frustumCulled = false;
+    passengerVatRoot.add(passengerVatMesh);
+    this.ambulancePassengerTemplate = normalizeObject(passengerVatRoot, {
+      height: SCENE_TUNING.passengers.modelHeight
+    });
+    this.ambulancePassengerTexture = passengerTexture;
+    this.ambulancePassengerVat = {
+      ...passengerVatTexture,
+      animation: AMBULANCE_PASSENGER_ANIMATIONS,
+      key: 'ambulance-rgba8-packed'
+    };
+    this.ambulanceStepBubbleTexture = stepBubbleTexture;
+  }
+
+  createVatMaterial(colorIndex = 0, { instanced = false, vat = null, colorMap = null } = {}) {
+    const animation = vat?.animation ?? LEVEL_1.assets.passengerAnimations;
+    const vatTexture = vat?.texture ?? this.passengerVatTexture;
     const idle = animation.idle;
     const clip = new THREE.Vector4(idle.uvMin, idle.uvMax, 1 / idle.duration, 0);
     const map = this.passengerColorTextures[colorIndex] ?? this.passengerColorTextures[0];
@@ -1671,17 +1851,30 @@ export class SceneView {
       metalness: 0,
       side: THREE.DoubleSide
     });
-    applyPassengerMaterial(material, colorIndex, map);
-    material.userData.vat = { clip, clipName: null };
+    if (colorMap) {
+      setPassengerMaterialMaps(material, colorMap, null);
+      material.color.setHex(0xffffff);
+      material.emissive.setHex(0x000000);
+      material.emissiveIntensity = 0;
+      material.userData.passengerColorIndex = colorIndex;
+    } else {
+      applyPassengerMaterial(material, colorIndex, map);
+    }
+    material.userData.vat = { animation, clip, clipName: null };
     material.userData.vatInstanced = instanced;
     material.onBeforeCompile = (shader) => {
-      shader.uniforms.vatMap = { value: this.passengerVatTexture };
+      shader.uniforms.vatMap = { value: vatTexture };
       shader.uniforms.vatTime = this.vatTimeUniform;
       shader.uniforms.vatClip = { value: clip };
+      if (vat?.positionMin && vat?.positionRange) {
+        shader.uniforms.vatPositionMin = { value: vat.positionMin };
+        shader.uniforms.vatPositionRange = { value: vat.positionRange };
+      }
       let vertexShader = `
         uniform sampler2D vatMap;
         uniform float vatTime;
         uniform vec4 vatClip;
+        ${vat?.positionMin ? 'uniform vec3 vatPositionMin; uniform vec3 vatPositionRange;' : ''}
         attribute float vatIndex;
         ${instanced ? 'attribute float vatPhaseOffset;' : ''}
       ` + shader.vertexShader.replace(
@@ -1691,13 +1884,16 @@ export class SceneView {
           float vatX = (vatIndex + 0.5) / ${animation.textureWidth.toFixed(1)};
           float vatY = mix(vatClip.x, vatClip.y, vatPhase)
             + 0.5 / ${animation.textureHeight.toFixed(1)};
-          vec3 transformed = texture2D(vatMap, vec2(vatX, vatY)).xyz;
+          vec3 vatPosition = texture2D(vatMap, vec2(vatX, vatY)).xyz;
+          vec3 transformed = ${vat?.positionMin
+            ? 'vatPositionMin + vatPosition * vatPositionRange'
+            : 'vatPosition'};
         `
       );
       shader.vertexShader = vertexShader;
     };
     material.customProgramCacheKey = () => (
-      instanced ? 'busloop-passenger-vat-instanced-v1' : 'busloop-passenger-vat-v1'
+      `busloop-passenger-vat-${vat?.key ?? 'default'}-${instanced ? 'instanced' : 'single'}-v2`
     );
     this.setVatAnimation(material, 'idle');
     return material;
@@ -1705,7 +1901,7 @@ export class SceneView {
 
   setVatAnimation(material, clipName, normalizedPhase = 0) {
     const state = material?.userData?.vat;
-    const clip = LEVEL_1.assets.passengerAnimations[clipName];
+    const clip = state?.animation?.[clipName];
     if (!state || !clip || state.clipName === clipName) return;
     state.clipName = clipName;
     state.clip.set(
@@ -1729,17 +1925,30 @@ export class SceneView {
       SCENE_TUNING.passengers.shadowScale * 1.2,
       shadowKind
     );
-    const person = this.personTemplate.clone(true);
+    const useAmbulancePassenger = colorIndex === AMBULANCE_COLOR_INDEX
+      && this.ambulancePassengerTemplate
+      && this.ambulancePassengerVat;
+    const person = (useAmbulancePassenger ? this.ambulancePassengerTemplate : this.personTemplate).clone(true);
     const personPivot = new THREE.Group();
-    personPivot.rotation.y = deg(SCENE_TUNING.facing.passengerModelYawDegrees);
+    personPivot.rotation.y = deg(
+      SCENE_TUNING.facing.passengerModelYawDegrees
+      + (useAmbulancePassenger ? AMBULANCE_PASSENGER_YAW_OFFSET_DEGREES : 0)
+    );
     personPivot.position.y = SCENE_TUNING.shadows.y + 0.002;
     personPivot.add(person);
-    const material = this.createVatMaterial(colorIndex);
+    const material = useAmbulancePassenger
+      ? this.createVatMaterial(colorIndex, {
+          vat: this.ambulancePassengerVat,
+          colorMap: this.ambulancePassengerTexture
+        })
+      : this.createVatMaterial(colorIndex);
     setMaterial(person, material);
     root.add(shadow, personPivot);
     root.userData.modelRoot = person;
     root.userData.modelPivot = personPivot;
     root.userData.vatMaterial = material;
+    root.userData.material = material;
+    root.userData.isAmbulancePassenger = Boolean(useAmbulancePassenger);
     return root;
   }
 
@@ -1813,13 +2022,14 @@ export class SceneView {
       ...this.boardingViews.map((entry) => entry.root)
     ];
     for (const root of roots) {
-      if (root.userData.vatMaterial) {
+      if (root.userData.vatMaterial && !root.userData.isAmbulancePassenger) {
         const colorIndex = root.userData.vatMaterial.userData.passengerColorIndex ?? root.userData.colorIndex ?? 0;
         if (!shouldUpdateColor(colorIndex)) continue;
         const map = this.passengerColorTextures[colorIndex] ?? this.passengerColorTextures[0];
         applyPassengerMaterial(root.userData.vatMaterial, colorIndex, map);
       }
       for (const slot of root.userData.personSlots ?? []) {
+        if (slot.userData.visualRoot?.userData.isAmbulancePassenger) continue;
         const material = slot.userData.vatMaterial;
         if (!material) continue;
         const colorIndex = material.userData.passengerColorIndex ?? root.userData.colorIndex ?? 0;
@@ -1835,7 +2045,7 @@ export class SceneView {
     for (const view of allViews) {
       if (!view.userData.modelReady) continue;
       for (const slot of view.userData.personSlots) {
-        slot.userData.vatMaterial?.dispose();
+        slot.userData.visualRoot?.userData.material?.dispose();
         slot.clear();
         slot.userData.visualRoot = null;
         slot.userData.modelRoot = null;
@@ -1860,6 +2070,7 @@ export class SceneView {
         const shadowKind = queueIndex === 0 ? 'leftQueue' : (queueIndex === 1 ? 'rightQueue' : 'conveyor');
         const visual = this.createPassengerVisual(0, shadowKind);
         slot.add(visual);
+        slot.userData.shadowKind = shadowKind;
         slot.userData.visualRoot = visual;
         slot.userData.modelRoot = visual.userData.modelRoot;
         slot.userData.vatMaterial = visual.userData.vatMaterial;
@@ -1872,24 +2083,42 @@ export class SceneView {
   upgradeVehicleViews() {
     for (const vehicle of LEVEL_1.vehicles) {
       const view = this.vehicleViews.get(vehicle.id);
-      const template = this.vehicleTemplates[vehicle.seats] ?? this.vehicleTemplates[10];
+      const isAmbulance = Number.isInteger(vehicle.ambulanceStepLimit);
+      const template = isAmbulance && this.ambulanceVehicleTemplate
+        ? this.ambulanceVehicleTemplate
+        : (this.vehicleTemplates[vehicle.seats] ?? this.vehicleTemplates[10]);
       const size = template.userData.fittedSize;
-      const material = this.vehicleMaterials[vehicle.colorIndex].clone();
+      const material = isAmbulance && this.ambulanceVehicleMaterial
+        ? this.ambulanceVehicleMaterial.clone()
+        : (this.vehicleMaterials[vehicle.colorIndex] ?? this.vehicleMaterials[0]).clone();
       view.clear();
       const shadow = this.makeVehicleShadow(vehicle.seats);
       const model = template.clone(true);
       const bodyMeshes = setMaterial(model, material);
-      const arrow = this.arrowTemplate.clone(true);
+      const arrowTemplate = vehicle.isTurnVehicle && this.turnArrowTemplate
+        ? this.turnArrowTemplate
+        : this.arrowTemplate;
+      const arrow = makeCenteredArrow(arrowTemplate);
       const hitRoot = new THREE.Group();
-      this.applyVehicleArrowTuning(arrow, size);
-      arrow.rotation.y = deg(SCENE_TUNING.facing.arrowYawDegrees);
+      this.applyVehicleArrowTuning(arrow, size, { isTurnVehicle: vehicle.isTurnVehicle });
+      arrow.rotation.y = deg(vehicle.isTurnVehicle ? 0 : SCENE_TUNING.facing.arrowYawDegrees);
+      if (vehicle.isTurnVehicle) arrow.scale.multiplyScalar(TURN_ARROW_SCALE);
       hitRoot.add(model, arrow);
       for (const child of [hitRoot, shadow]) {
         child.traverse((object) => { object.userData.vehicleId = vehicle.id; });
       }
       view.add(shadow, hitRoot);
+      if (isAmbulance && this.ambulanceStepBubbleTexture) {
+        const board = this.createAmbulanceStepBoard();
+        board.position.set(0, size.y + AMBULANCE_STEP_BOARD_OFFSET_Y, 0);
+        view.add(board);
+        view.userData.ambulanceStepBoard = board;
+      } else {
+        view.userData.ambulanceStepBoard = null;
+      }
       view.userData.bodyMeshes = bodyMeshes;
       view.userData.hitMeshes = [hitRoot];
+      view.userData.pickMeshes = bodyMeshes;
       view.userData.modelRoot = model;
       view.userData.arrowRoot = arrow;
       view.userData.templateSize = size;
@@ -1899,9 +2128,69 @@ export class SceneView {
     }
   }
 
-  applyVehicleArrowTuning(arrow, size) {
+  createAmbulanceStepBoard() {
+    const canvas = document.createElement('canvas');
+    canvas.width = 192;
+    canvas.height = 192;
+    const texture = new THREE.CanvasTexture(canvas);
+    texture.colorSpace = THREE.SRGBColorSpace;
+    const sprite = new THREE.Sprite(new THREE.SpriteMaterial({
+      map: texture,
+      transparent: true,
+      depthTest: false,
+      depthWrite: false
+    }));
+    sprite.scale.set(AMBULANCE_STEP_BOARD_BASE_SCALE, AMBULANCE_STEP_BOARD_BASE_SCALE, 1);
+    sprite.renderOrder = 120;
+    // The board is visual-only; vehicle picking must remain limited to the body and arrow.
+    sprite.raycast = () => {};
+    sprite.userData.canvas = canvas;
+    sprite.userData.texture = texture;
+    sprite.userData.remainingSteps = null;
+    sprite.userData.warning = null;
+    return sprite;
+  }
+
+  updateAmbulanceStepBoard(board, vehicle, time) {
+    const visible = vehicle.state === 'parked' && vehicle.ambulanceActive;
+    board.visible = visible;
+    if (!visible) return;
+    const remainingSteps = vehicle.ambulanceRemainingSteps;
+    const warning = remainingSteps <= 5;
+    if (board.userData.remainingSteps !== remainingSteps || board.userData.warning !== warning) {
+      const canvas = board.userData.canvas;
+      const context = canvas.getContext('2d');
+      context.clearRect(0, 0, canvas.width, canvas.height);
+      context.drawImage(this.ambulanceStepBubbleTexture.image, 8, 8, 176, 176);
+      context.font = `900 ${AMBULANCE_STEP_BOARD_FONT_SIZE}px Arial, sans-serif`;
+      context.textAlign = 'center';
+      context.textBaseline = 'middle';
+      context.lineJoin = 'round';
+      context.lineWidth = 12;
+      context.strokeStyle = warning ? '#721313' : '#5b1820';
+      context.fillStyle = warning ? '#ffe45e' : '#ffffff';
+      context.strokeText(String(remainingSteps), 96, 91);
+      context.fillText(String(remainingSteps), 96, 91);
+      board.userData.texture.needsUpdate = true;
+      board.userData.remainingSteps = remainingSteps;
+      board.userData.warning = warning;
+    }
+    const pulse = warning ? 1 + (Math.sin(time * Math.PI * 4) + 1) * 0.07 : 1;
+    board.scale.set(
+      AMBULANCE_STEP_BOARD_BASE_SCALE * pulse,
+      AMBULANCE_STEP_BOARD_BASE_SCALE * pulse,
+      1
+    );
+  }
+
+  applyVehicleArrowTuning(arrow, size, { isTurnVehicle = false } = {}) {
     const tuning = SCENE_TUNING.vehicleArrow;
-    arrow.position.set(tuning.offsetX, size.y + tuning.offsetY, tuning.offsetZ);
+    const markerDepth = (arrow.userData.fittedSize?.z ?? 0.56) * (isTurnVehicle ? TURN_ARROW_SCALE : 1);
+    const maxForwardOffset = Math.max(0, (size.z - markerDepth) * 0.5);
+    const forwardOffset = isTurnVehicle
+      ? Math.min(TURN_ARROW_FORWARD_OFFSET, maxForwardOffset)
+      : 0;
+    arrow.position.set(tuning.offsetX, size.y + tuning.offsetY, tuning.offsetZ + forwardOffset);
     applyArrowOutlineTuning(arrow, {
       color: tuning.outlineColor,
       scale: tuning.outlineScale,
@@ -1910,8 +2199,9 @@ export class SceneView {
   }
 
   updateVehicleArrowTuning() {
-    if (this.arrowTemplate) {
-      applyArrowOutlineTuning(this.arrowTemplate, {
+    for (const template of [this.arrowTemplate, this.turnArrowTemplate]) {
+      if (!template) continue;
+      applyArrowOutlineTuning(template, {
         color: SCENE_TUNING.vehicleArrow.outlineColor,
         scale: SCENE_TUNING.vehicleArrow.outlineScale,
         depthTest: SCENE_TUNING.vehicleArrow.outlineDepthTest
@@ -1922,8 +2212,8 @@ export class SceneView {
       const arrow = view?.userData.arrowRoot;
       const size = view?.userData.templateSize;
       if (arrow && size) {
-        this.applyVehicleArrowTuning(arrow, size);
-        arrow.rotation.y = deg(SCENE_TUNING.facing.arrowYawDegrees);
+        this.applyVehicleArrowTuning(arrow, size, { isTurnVehicle: vehicle.isTurnVehicle });
+        arrow.rotation.y = deg(vehicle.isTurnVehicle ? 0 : SCENE_TUNING.facing.arrowYawDegrees);
       }
       const hitRoot = view?.userData.hitMeshes?.[0];
       if (hitRoot) storeHitBase(hitRoot);
@@ -2018,8 +2308,21 @@ export class SceneView {
       return;
     }
     for (const slot of view.userData.personSlots) {
+      const visual = slot.userData.visualRoot;
+      const wantsAmbulancePassenger = colorIndex === AMBULANCE_COLOR_INDEX
+        && this.ambulancePassengerTemplate
+        && this.ambulancePassengerVat;
+      if (visual && visual.userData.isAmbulancePassenger !== Boolean(wantsAmbulancePassenger)) {
+        visual.userData.material?.dispose();
+        slot.clear();
+        const replacement = this.createPassengerVisual(colorIndex, slot.userData.shadowKind ?? 'conveyor');
+        slot.add(replacement);
+        slot.userData.visualRoot = replacement;
+        slot.userData.modelRoot = replacement.userData.modelRoot;
+        slot.userData.vatMaterial = replacement.userData.vatMaterial;
+      }
       const material = slot.userData.vatMaterial;
-      if (material) {
+      if (material && colorIndex !== AMBULANCE_COLOR_INDEX) {
         const map = this.passengerColorTextures[colorIndex] ?? this.passengerColorTextures[0];
         applyPassengerMaterial(material, colorIndex, map);
       }
@@ -2261,6 +2564,7 @@ export class SceneView {
     for (const vehicle of snapshot.vehicles) {
       const view = this.vehicleViews.get(vehicle.id);
       const useStaticCache = vehicle.state === 'parked'
+        && !vehicle.isTurnVehicle
         && this.isSpatialOptimizationEnabled('cacheStaticVehicles');
       const staticTransform = useStaticCache ? this.getStaticVehicleTransform(vehicle) : null;
       const layoutStart = staticTransform ? null : mapVehicleAreaPoint(vehicle);
@@ -2345,6 +2649,7 @@ export class SceneView {
       }
       view.userData.spatialHadActiveHit = activeHit;
       const isMovable = vehicle.state === 'parked'
+        && !vehicle.turnRotation?.active
         && this.getVehicleBlockers(game, vehicle.id).length === 0;
       if (view.userData.spatialMovable !== isMovable) {
         view.userData.spatialMovable = isMovable;
@@ -2355,6 +2660,9 @@ export class SceneView {
         }
       }
       view.userData.boardedGroups = vehicle.boardedGroups;
+      if (view.userData.ambulanceStepBoard) {
+        this.updateAmbulanceStepBoard(view.userData.ambulanceStepBoard, vehicle, snapshot.time);
+      }
       if (vehicle.spotIndex != null && snapshot.spots[vehicle.spotIndex]?.vehicleId === vehicle.id) {
         const board = this.seatCountBoards[vehicle.spotIndex];
         if (board) this.updateSeatCountBoard(board, vehicle, snapshot.time);
@@ -2812,20 +3120,29 @@ export class SceneView {
 
   disposeBoardingVisualPool() {
     for (const visual of this.boardingVisualPool) {
-      visual.userData.vatMaterial?.dispose();
+      visual.userData.material?.dispose();
     }
     this.boardingVisualPool.length = 0;
   }
 
   acquireBoardingVisual(colorIndex) {
-    const usePool = this.isSpatialOptimizationEnabled('poolBoardingPassengers');
-    const visual = usePool && this.boardingVisualPool.length
+    const wantsAmbulancePassenger = colorIndex === AMBULANCE_COLOR_INDEX;
+    const usePool = this.isSpatialOptimizationEnabled('poolBoardingPassengers') && !wantsAmbulancePassenger;
+    let visual = usePool && this.boardingVisualPool.length
       ? this.boardingVisualPool.pop()
       : this.createPassengerVisual(colorIndex);
+    if (visual.userData.isAmbulancePassenger !== wantsAmbulancePassenger) {
+      visual.userData.material?.dispose();
+      visual = this.createPassengerVisual(colorIndex);
+    }
     const material = visual.userData.vatMaterial;
-    const map = this.passengerColorTextures[colorIndex] ?? this.passengerColorTextures[0];
-    applyPassengerMaterial(material, colorIndex, map);
-    this.setVatAnimation(material, 'move');
+    if (material) {
+      if (!wantsAmbulancePassenger) {
+        const map = this.passengerColorTextures[colorIndex] ?? this.passengerColorTextures[0];
+        applyPassengerMaterial(material, colorIndex, map);
+      }
+      this.setVatAnimation(material, 'move');
+    }
     visual.visible = true;
     return visual;
   }
@@ -2833,13 +3150,14 @@ export class SceneView {
   releaseBoardingVisual(visual) {
     if (
       this.isSpatialOptimizationEnabled('poolBoardingPassengers')
+      && !visual.userData.isAmbulancePassenger
       && this.boardingVisualPool.length < 64
     ) {
       visual.visible = false;
       this.boardingVisualPool.push(visual);
       return;
     }
-    visual.userData.vatMaterial?.dispose();
+    visual.userData.material?.dispose();
   }
 
   triggerVehicleBoardingPulse(vehicleId, time) {
@@ -2947,7 +3265,9 @@ export class SceneView {
     this.pointer.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
     this.pointer.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
     this.raycaster.setFromCamera(this.pointer, this.camera);
-    const hits = this.raycaster.intersectObjects([...this.vehicleViews.values()], true);
+    const pickMeshes = [...this.vehicleViews.values()]
+      .flatMap((view) => view.userData.pickMeshes ?? view.userData.bodyMeshes ?? []);
+    const hits = this.raycaster.intersectObjects(pickMeshes, true);
     let object = hits[0]?.object;
     while (object && object.userData.vehicleId == null) object = object.parent;
     if (object?.userData.vehicleId != null) this.onVehicleClick(object.userData.vehicleId);

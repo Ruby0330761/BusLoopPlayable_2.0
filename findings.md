@@ -1,5 +1,39 @@
 # Findings
 
+## 2026-09-03 Turn vehicle completion audio correction
+
+- The user-confirmed turn-vehicle cue is Unity's `guidemove.wav`; `gear_complete.wav` belongs to the `Effect_Fix` gear-repair prefab and must not be used for turn vehicles.
+- The playable stores `guidemove.wav` as `.bin` containing a browser-decodable 16 kHz mono 16-bit PCM WAV so the AppLovin WAV filename check does not reject the package.
+- Completion IDs are attached after the model finishes processing the frame, preventing later passenger or vehicle events from hiding the turn cue. The audio controller deduplicates the ID set and plays one cue for simultaneous completions.
+- The source is reduced from 49,568 to 8,632 bytes before packaging; base64 inlining adds 11,516 bytes to the final single HTML, which remains under 5,000,000 bytes.
+
+## 2026-09-03 Turn vehicle visual parity
+
+- Unity's turn-vehicle marker is a separate `Arrow_02` mesh, not the normal `Arrow_01` mesh. The playable keeps both assets and selects the turn marker from `vehicle.isTurnVehicle`.
+- The turn animation changes the vehicle's garage yaw only. Once the vehicle reaches `at-spot` or `boarding-final`, rendering must use the shared parking-spot orientation so a prior 180-degree garage rotation is not shown at the station.
+- `Arrow_02.fbx` is stored as gzip bytes in `Arrow_02.fbx.bin` and decoded before `FBXLoader.parse`; the non-`.gz` extension prevents Vite from applying automatic HTTP gzip decoding before the runtime decoder runs.
+- The turn marker is scaled to `0.8` and moved along the vehicle's local `+Z` forward axis by up to `0.18` world units, clamped so its depth remains inside the vehicle. `+X` is the vehicle's lateral axis in the runtime and must not be used for forward placement. Vehicle picking uses body meshes only; the marker remains under the shared hit root for visual hit animation without expanding the clickable area.
+- The imported arrow's normalized model root is not guaranteed to have its geometry center at its local pivot. Turn and ordinary markers are therefore cloned under a centered wrapper; placement, scale, and yaw are applied to that wrapper so vehicle rotation cannot make the marker orbit around an offset axis.
+
+## 2026-09-03 Unity turn vehicle import boundary
+
+- Unity marks turn vehicles with `vehicles[].isTurnVehicle`; the existing level importer can accept this optional flag without changing ordinary levels or requiring Unity at runtime.
+- Unity triggers all other turn vehicles after a successful dispatch, including vehicles already represented in the scene, using `turnVehicleRotateDuration = 0.25` and the configured rotation curve. The playable stores the animated yaw in game state, blocks selection while the tween is active, and renders turn vehicles from live rather than cached transforms.
+- Real Unity samples `level16.asset`, `level17.asset`, and `level114.asset` validate successfully with 13, 19, and 25 turn vehicles. The production boundary is the generated catalog plus bundled assets; the playable package has no dependency on the source Unity project.
+
+## 2026-09-03 Ambulance passenger VAT compatibility
+
+- The rescuer animation source contains a `none_anim` row before Passenger_Idle and Passenger_Move; packed exports must select source rows 1-60,61-79 rather than starting at row zero.
+- RGB8 DataTexture sampling is not reliable enough as the delivery path for the ambulance VAT. The compressed payload is still RGB8, but the runtime expands it to RGBA8 before creating the GPU texture, preserving the package-size advantage while improving WebGL/WebView compatibility.
+
+
+
+## 2026-09-03 Ambulance Unity parity
+
+- Ambulance level data uses `vehicleAmbulances: [{ vid, stepLimit }]`; the referenced vehicle is color index `13`, has six seats, and requires six color-13 rescuer passengers.
+- Every successful vehicle dispatch decrements each active ambulance still parked. Dispatching the ambulance deactivates it before the decrement; blocked or full-spot clicks do not consume a step; reaching exactly zero fails immediately with `ambulance-exceed-step`; warning presentation begins at five steps.
+- `Idle_girl_rescuer.fbx` is authored Z-up when loaded by Three.js. It must receive a `-90` degree X-axis correction before Y-height normalization; otherwise the model is measured across its body thickness, becomes oversized, and appears to lie along the conveyor.
+
 ## 2026-08-28 Google strict ZIP validator compatibility
 
 - The current delivery validator is stricter than the generic Google package baseline: it requires root `index.html`, `index.js`, and `style.css`, plus both exact portrait orientation and `320x480` size metadata. The project converter now emits this stricter superset by default.
