@@ -19,6 +19,7 @@ Use this file before code changes. Pick the closest change area, then read only 
 | Unity conveyor prefab extraction | `scripts/extract-unity-conveyor-layouts.mjs` | `src/conveyor-layouts.js`, `artifacts/unity-conveyor-layouts.json` |
 | Standalone spatial conveyor import, production generation, runtime catalog, and rendering | `scripts/spatial-conveyor-importer.mjs` | `scripts/generate-active-spatial-conveyor.mjs`, `src/generated-active-spatial-conveyor.js`, `src/spatial-conveyor-runtime.js`, `vite.config.js`, `src/scene-editor.js`, `src/scene-view.js`, `src/game-model.js`, `test/spatial-conveyor-importer.test.js`, `tools/spatial-conveyor-import-support/bus-loop-spatial-v1/` |
 | On-demand spatial conveyor point editing, selection, transforms, history, and explicit JSON saves | `src/spatial-conveyor-editor.js` | `src/spatial-conveyor-edit-model.js`, `src/spatial-conveyor-editor.css`, `src/spatial-conveyor-runtime.js`, `src/scene-editor.js`, `src/scene-view.js`, `src/main.js`, `vite.config.js`, `test/spatial-conveyor-editor.test.js` |
+| Full-level web authoring, validation, transforms, inspectors, export, persistence, and playable preview | `src/level-layout-editor.js` | `src/level-editor-model.js`, `src/level-layout-editor.css`, `src/scene-editor.js`, `src/main.js`, `vite.config.js`, `test/level-editor-model.test.js`, `test/level-layout-editor.test.js` |
 | Three.js scene rendering, camera, picking, assets, vehicles, passengers, shadows | `src/scene-view.js` | `src/scene-tuning.js`, `src/scene-layout.js`, `test/game-model.test.js`, `test/guide-hand.test.js` |
 | Scene/editor tuning values | `src/scene-tuning.js` | `src/scene-editor.js`, `src/scene-view.js`, `scripts/apply-scene-tuning.mjs`, relevant tests |
 | Editor UI controls, toggle/text fields, Icon/Logo/text adjustment, and control grouping | `src/scene-editor.js` | `src/scene-tuning.js`, `src/styles.css` |
@@ -70,6 +71,9 @@ Use this file before code changes. Pick the closest change area, then read only 
 - `src/spatial-conveyor-edit-model.js`: Pure spatial-point editing state. Owns stable imported pivots, selection, curve-sampled insertion, prepend/append/delete, and bounded undo/redo history.
 - `src/spatial-conveyor-editor.js`: Development-only on-demand spatial point editor. Owns Three.js point handles, TransformControls, box/range/multi-selection, numeric point editing, live preview, explicit save/save-as, and unsaved-change handling.
 - `src/spatial-conveyor-editor.css`: Development-only overlay, toolbar, point-property panel, and mobile layout for the spatial point editor.
+- `src/level-editor-model.js`: Pure full-level authoring model. Owns normalized editable documents, selection/history/clipboard, transforms and snapping, alignment/mirroring, container and queue editing, depth rebuild, validation, Unity/CSV/Excel export, and playable runtime conversion.
+- `src/level-layout-editor.js`: Development-only full-screen level workspace. Owns the authoring canvas, element creation and selection, keyboard commands, inspectors, imports/exports, revisioned saves, and authored playable preview.
+- `src/level-layout-editor.css`: Development-only desktop/mobile layout, toolbar, canvas, inspector, and authoring-control styling for the full-level workspace.
 - `src/scene-layout.js`: Pure layout helpers. Owns orthographic half-height calculation, perspective distance calculation, and curve coordinate transform logic used by the renderer and tests.
 - `src/vehicle-motion.js`: Unity-style vehicle motion math. Owns motion constants, Unity AnimationCurve sampling, path construction to stations, station exit paths, rounded path baking, path evaluation, station/collision speed selection, collision distance, hit direction, and hit clip sampling.
 - `src/vehicle-effects.js`: Particle/effect runtime. Owns Unity effect defaults, Effect_Ribbon departure burst, Ribbon_01 3x3 atlas frame sampling, ParticleSmoke, boarding smoke, speed-over-lifetime sampling, movement range clamping, particle disposal, and per-frame effect updates.
@@ -91,6 +95,8 @@ Use this file before code changes. Pick the closest change area, then read only 
 - `test/spatial-conveyor-importer.test.js`: Spatial prefab array-size trimming, 3D point overrides, embedded visual support, output naming, input rejection, and editor/dev-service wiring.
 - `test/spatial-conveyor-editor.test.js`: Spatial point insertion/history, stable pivot, minimum point count, forward/inverse coordinate mapping, and on-demand editor/save wiring regressions.
 - `test/mechanism-resources.test.js`: Mechanism resource ownership, imported level mechanism metadata, and mechanism type derivation.
+- `test/level-editor-model.test.js`: Full-level document normalization, editing commands, snapping/alignment, depth rebuild, parity validation, runtime conversion, and export regressions.
+- `test/level-layout-editor.test.js`: Full-level workspace entry, responsive styling, and revisioned development save-service wiring regressions.
 
 ### Conveyor layout subsystem
 

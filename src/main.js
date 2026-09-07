@@ -649,7 +649,17 @@ async function startRuntime() {
     await refreshSpatialConveyorPackages().catch((error) => {
       console.warn('Spatial conveyor packages could not be loaded.', error);
     });
-    const selectedLevel = getLevelDefinition(SCENE_TUNING.level?.selected);
+    let selectedLevel = getLevelDefinition(SCENE_TUNING.level?.selected);
+    try {
+      const previewSource = localStorage.getItem('bus-loop-level-editor-preview-v1');
+      const previewDocument = previewSource ? JSON.parse(previewSource) : null;
+      if (previewDocument?.key === selectedLevel.key) {
+        const { levelDocumentToRuntime } = await import('./level-editor-model.js');
+        selectedLevel = levelDocumentToRuntime(previewDocument, selectedLevel);
+      }
+    } catch (error) {
+      console.warn('Authored level preview could not be restored.', error);
+    }
     sessionLevels = selectedLevel.key === 'level9'
       ? [selectedLevel, getLevelDefinition('level7')]
       : [selectedLevel];
@@ -674,6 +684,7 @@ async function startRuntime() {
   let gameOverActive = false;
   let spatialEditorActive = false;
   let spatialPointEditor = null;
+  let levelLayoutEditor = null;
   let unsubscribeGame = () => {};
   const gameOverTimers = new Set();
   const INSTALL_GATE_VEHICLE_STATES = new Set(['at-spot', 'boarding-final', 'departing', 'done']);
@@ -807,6 +818,34 @@ async function startRuntime() {
     }
   }
 
+  async function openLevelLayoutEditor() {
+    if (levelLayoutEditor) return;
+    pressed = false;
+    clearTimeout(pressTimer);
+    view.setInputEnabled(false);
+    sceneEditorRoot?.classList.add('is-level-layout-editing');
+    try {
+      const [{ createLevelLayoutEditor }, { getLevelDefinition }] = await Promise.all([
+        import('./level-layout-editor.js'),
+        import('./level-catalog.js')
+      ]);
+      levelLayoutEditor = await createLevelLayoutEditor({
+        baseLevel: getLevelDefinition(SCENE_TUNING.level?.selected),
+        onPreview: () => window.location.reload(),
+        onClose: () => {
+          levelLayoutEditor = null;
+          sceneEditorRoot?.classList.remove('is-level-layout-editing');
+          view.setInputEnabled(true);
+          view.resize();
+        }
+      });
+    } catch (error) {
+      sceneEditorRoot?.classList.remove('is-level-layout-editing');
+      view.setInputEnabled(true);
+      throw error;
+    }
+  }
+
   function applyTuningPatch(next, { path, syncEditor = false } = {}) {
     if (path === 'level.selected') {
       saveTuning(next, { immediate: true });
@@ -865,7 +904,8 @@ async function startRuntime() {
         defaultTuning: DEFAULT_SCENE_TUNING,
         setTuning: applyTuningPatch,
         clearSavedTuning,
-        openSpatialPointEditor
+        openSpatialPointEditor,
+        openLevelLayoutEditor
       });
     }).catch((error) => {
       console.warn('Scene editor could not be loaded.', error);

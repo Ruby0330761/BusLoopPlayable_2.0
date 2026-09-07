@@ -76,6 +76,14 @@
 - Hidden delivery resources total 191,113 raw bytes. The compressed model files are gzip FBX payloads; `hidden_reveal.bin` is a browser-decodable 16 kHz mono 16-bit PCM WAV with no `.wav` filename. Base64 inlining contributes approximately 254,824 bytes to the single-file package.
 - The first hidden-body implementation incorrectly used transparent meshes, which produced purple question-mark blocks in the playable. A follow-up incorrectly replaced the authored hidden material with the normal vehicle texture and reset the revealed model scale to `1`, producing mismatched colors and oversized revealed vehicles. The corrected implementation uses a charcoal hidden material, multiplies the existing hidden normalized scale, and leaves the revealed normal model scale untouched; the explicit white-alpha question texture remains a separate visual-only layer, and reveal audio uses a persistent per-event history so unrelated events cannot cause a prior vehicle cue to replay.
 
+## 2026-09-07 Web LevelEditor runtime boundary
+
+- Unity anchor rotation caches `(selectionMin + selectionMax) / 2` when entering `StateRotateAnchor`, then applies `Quaternion.Euler(0, 0, -angle)` to every selected position relative to that fixed center before adding the angle. Recomputing the center per step or using the opposite 2D rotation sign does not match Unity.
+- `bus-loop-web-level-v1` is the editable browser document format. Explicit saves live under `artifacts/web-levels/level<number>.json`; Vite uses optimistic revisions and stores overwritten versions under `artifacts/web-level-backups/`.
+- The browser editor preserves the inventoried Unity authoring fields and exports them, including linkage, wrench/gear, combination, ambulance, firetruck, garage, gate, conveyor, and elevator data.
+- Authoring/export parity is broader than current playable simulation parity. The existing runtime maps ambulance step limits and firetruck time limits, but linkage, wrench/gear, combination, garage, gate, elevator, and the complete firetruck behavior require separate runtime implementation and testing.
+- Unity-compatible export must serialize `GateQueuePathShape` as numeric enum values (`0`/`1`). Excel export is SpreadsheetML `.xls`, not tab-delimited text.
+
 ## 2026-09-03 Turn vehicle completion audio correction
 
 - The user-confirmed turn-vehicle cue is Unity's `guidemove.wav`; `gear_complete.wav` belongs to the `Effect_Fix` gear-repair prefab and must not be used for turn vehicles.
@@ -697,3 +705,14 @@ Full detailed 2026-07-07 findings were archived to:
 - Conveyor presentation values that were confirmed through the manual adjustment pass must not live in browser-saved `SCENE_TUNING`: the shipped contract is isolated in `src/conveyor-mechanism-config.js`.
 - The confirmed values are visual root scale `1.375` (the prior `1.25` pass plus `10%`), left door outward factor `1.17`, right door outward factor `1.20`, and right-side vehicle visibility factor `0.93`.
 - The imported component baseline is explicit zero position/unit scale/zero rotation for belt, arrow, both doors, and both side overlays. The temporary editor menu now stores independent component overrides on top of that baseline; the fixed mechanism values remain outside this mutable object.
+
+# Web LevelEditor Migration - 2026-09-07
+
+- The authoritative Unity editor is under `D:\UnityProjects\BusLoop\Assets\BusJam\Game\Editor\LevelEditor`.
+- Its scope includes canvas pan/zoom, grid movement, normal/anchor rotation, scale/rotate, box selection, parking-element/group movement, clipboard duplicate/cut/copy/paste, undo/redo, serialization, and inspectors for vehicles plus parking area, gate queue, garage, elevator, and conveyor groups.
+- Vehicle authoring includes at least color, seat count, turn state, hidden/combination/linkage/wrench-related data, ambulance, and firetruck mechanisms. Existing web import deliberately rejects several of these mechanisms, so full parity requires extending the web data/runtime boundary rather than only adding UI.
+- Existing web ownership is split among `src/scene-editor.js`, `src/scene-view.js`, Unity level import/generation, and the standalone spatial conveyor editor. There is no editable full-level document model yet.
+- Unity's exact top-level authoring schema includes `id`, `mapScale`, `difficulty`, `conveyorBeltName`, background material, passenger method, vehicles, containers, conveyor belt widths, fixed passenger sequence, and five vehicle-mechanism lists.
+- Vehicle records contain id, seats, hidden/turn flags, color, position, quaternion rotation, container type/id, and elevator layer. Mechanisms are linkage head/tail/distance; wrench/gear pair/color; second combination color; ambulance step limit; and firetruck time limit.
+- Container records cover ParkingArea, Garage, ConveyorBelt, GateQueue, and Elevator. Gate queues add path shape, lock, gap, and path points; elevators add a 2D size and upper/lower layers; conveyor groups add exit width.
+- Unity shortcuts include save/copy/paste/cut/duplicate/undo, delete, mirror, reset view, and toggles for vehicle snap/alignment guides/grid snap. Toolbar operations include depth rebuild, validation, CSV/Excel export, equal spacing, centering, vehicle-to-gate conversion, and vehicle lookup.

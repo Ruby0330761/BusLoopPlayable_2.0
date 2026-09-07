@@ -327,6 +327,7 @@ button:hover { transform: translateY(-1px); background: #fff; }
 .editor-spatial-actions button {
   min-width: 0; padding: 8px 6px; border-radius: 8px; box-shadow: none; font-size: 11px;
 }
+.editor-level-edit { grid-column: 1 / -1; }
 .editor-spatial-edit-points,
 .editor-spatial-open-folder { grid-column: 1 / -1; }
 .editor-level-status,

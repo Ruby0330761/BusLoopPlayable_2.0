@@ -2,7 +2,20 @@
 
 ## Current Goal
 
-Keep AppLovin-to-Google delivery fail-closed against the current strict validator and publish corrected Android shape packages.
+Port the original Unity `LevelEditor` feature set into the web playable editor so levels can be authored, validated, saved, and played directly in the browser.
+
+## Current Web Level Editor Phases
+
+1. **Complete:** Inventoried the Unity `LevelEditor` commands, element types, inspectors, serialization contract, and shortcuts and mapped them to web ownership.
+2. **Complete:** Added the editable-level document model with selection, transforms, clipboard, undo/redo, validation, depth rebuild, queues, exports, and playable runtime conversion.
+3. **Complete:** Added the on-canvas authoring workspace with grid, pan/zoom, box selection, transforms, snapping/guides, and live playable preview.
+4. **Complete:** Added inspectors for vehicles, containers, queues, dependencies, and the Unity vehicle-mechanism fields.
+5. **Complete:** Added browser preview persistence, JSON import/export, Unity/CSV/Excel export, and revisioned Vite saves with backups.
+6. **Complete:** Focused tests, production build, desktop/mobile browser QA, durable Level9 save, and project documentation are complete.
+
+## Current Web Level Editor Status
+
+Complete: the browser authoring workflow preserves the Unity editor's authoring fields and saves `bus-loop-web-level-v1` documents. Runtime simulation remains limited to mechanisms already implemented by the playable runtime.
 
 ## Current Phase
 
@@ -270,6 +283,10 @@ Complete: the strict three-file Google wrapper, portrait/320x480 metadata, MRAID
 
 | Error | Attempt | Resolution |
 | --- | --- | --- |
+| Browser QA showed the unsaved marker remained after undo restored the original document | 1 | Compare the current serialized document with the saved baseline instead of comparing monotonic change counters. |
+| Browser read-only evaluation could not call `getContext()` on the canvas proxy | 1 | Use rendered screenshots plus exact DOM boundary/overflow checks; the visible canvas was nonblank and correctly framed. |
+| Model test compared `0.5800000000000001` to `0.58` with strict equality | 1 | Use an epsilon assertion for the expected JavaScript floating-point representation. |
+| Planning session catch-up could not start because `python` is unavailable on PATH | 1 | Continue from the existing planning files and current workspace inspection; do not block the LevelEditor migration on the optional recovery helper. |
 | PowerShell blocked `npm.ps1`, so the parallel generation step did not run and dependent tests still read the old Level10 module | 1 | Use direct `node scripts/generate-active-level.mjs` and `npm.cmd` commands, then rerun dependent checks serially. |
 | Broad visual-config test also hit the pre-existing camera elevation expectation `55` versus current tuning `61` | 1 | Do not change unrelated camera tuning; verify this request with narrower Level12/background/guide/install assertions. |
 | Inline Node marker command was mangled by PowerShell quote parsing and produced an invalid regular expression | 1 | Use native PowerShell string/byte checks for the packaged artifact instead of retrying the same quoting pattern. |

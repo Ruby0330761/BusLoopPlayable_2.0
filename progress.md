@@ -68,6 +68,13 @@
 - Rebuilt `artifacts/applovin/index.html` at 6,738,170 bytes. All six garage resources are inlined and audio decoding succeeds; the only static failure is the deferred 5 MB package limit.
 - Inspected real Unity garage levels do not provide the playable's required authored fixed passenger sequence, so no production/editor level was synthesized or imported. The next garage-level import needs an authored queue source or an approved generation rule.
 
+## 2026-09-07 Web LevelEditor migration completed
+
+- Completed the browser authoring model and full-screen workspace for the inventoried Unity LevelEditor elements, transforms, inspectors, queues, validation, exports, persistence, and playable preview.
+- Desktop and 390x844 browser QA passed without horizontal overflow or new error-level logs; Level9 rendered 37 vehicles and 262 passengers, add/undo and validation behaved correctly, and dirty tracking now compares document content.
+- The visible save action succeeded with `已保存 artifacts/web-levels/level9.json`; the saved `bus-loop-web-level-v1` document parses with 37 vehicles, two queues, and one container.
+- Verification: 19/19 focused editor/import tests pass, `npm.cmd run build` passes, and `git diff --check` reports only existing line-ending warnings.
+
 ## 2026-08-28 Google strict package correction completed
 
 - Added strict root `index.html`, `index.js`, and `style.css` output, exact portrait/320x480 metadata, and decimal 5,000,000-byte validation to the AppLovin-to-Google pipeline.
@@ -486,3 +493,13 @@ No build was run during this documentation cleanup. Verification was limited to 
 - Focused garage collision/resource tests and syntax checks pass. Production build and AppLovin packaging pass; the deferred size check remains over 5 MB (`6,813,719` bytes) by current user scope.
 
 
+# 2026-09-07 Web LevelEditor Migration
+
+- Located the authoritative Unity `LevelEditor` source tree and confirmed the request is a full authoring-system migration, not an extension of the current level selector.
+- Started a feature-by-feature inventory and mapped the implementation into document-model, canvas-interaction, inspector/mechanism, persistence/export, and QA phases.
+- The optional planning recovery helper could not run because Python is absent; continued from the existing project records.
+- Completed the first schema/command inventory pass across the Unity window, context, serializer, element groups, vehicle inspector, and shortcuts.
+- Added `src/level-editor-model.js` and focused tests for document normalization, transforms, clipboard/history, alignment/mirroring, gate conversion, depth rebuild, parity validation, runtime conversion, and CSV output. The first run passed 4/5; the sole failure was corrected to use floating-point tolerance.
+- Added the full-screen three-pane layout editor, development save/load service with optimistic revisions and backups, JSON/Unity/CSV/Excel export, JSON import, and in-browser playable preview restore.
+- Desktop browser QA rendered 37 Level9 vehicles, added a vehicle, exposed its full inspector, undid to 37 vehicles, and passed validation. Exact element bounds showed no horizontal overflow; 390x844 responsive QA also had no overflow.
+- Browser QA found the dirty marker stayed after undoing back to the original document; switched dirty tracking to document-content comparison.

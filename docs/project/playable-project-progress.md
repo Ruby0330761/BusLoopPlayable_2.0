@@ -129,6 +129,15 @@
 - Matched the Unity `bus_c_4/6/10.prefab` hidden `Arrow_01` placement by moving the question marker to the vehicle's forward edge with a small in-bounds inset. The marker remains visual-only and does not expand the vehicle pick target.
 - Corrected hidden vehicle visuals: restore the authored black hidden material, apply hidden-model size matching on top of its existing normalized scale, and preserve the normal model's normalized scale through reveal so hidden vehicles do not become oversized.
 
+## Completed On 2026-09-07 - Web LevelEditor migration
+
+- Added a full-screen browser level authoring workspace for vehicles, garages, conveyors, gate queues, elevators, passenger queues, dependencies, and Unity vehicle-mechanism fields.
+- Added selection/box selection, move/rotate/mirror/align/center, grid and vehicle snapping, guides, clipboard commands, undo/redo, depth rebuild, validation, JSON import/export, Unity/CSV/Excel export, and playable preview.
+- Added vehicle rotation shortcuts: `Q/E` rotates every selected vehicle in place by 15 degrees, while `Alt+Q/E` follows Unity's anchor rotation by changing both coordinates and angles around one fixed selection center for the full Alt hold.
+- Added revisioned development saves with overwrite conflict detection and backups. Browser QA saved the first durable Level9 baseline to `artifacts/web-levels/level9.json` with 37 vehicles and 262 passengers.
+- Focused editor/import tests pass 19/19; production build passes with only the existing Vite chunk-size warning. Desktop and 390x844 browser QA found no horizontal overflow or new error-level logs.
+- The authoring schema preserves all inventoried Unity mechanism fields, but the current playable runtime does not yet simulate every linkage, wrench/gear, combination, garage, gate, elevator, or firetruck behavior.
+
 ## Completed On 2026-09-03 - Turn vehicle completion audio correction
 
 - Replaced the incorrectly selected gear-repair completion cue with the user-confirmed Unity `guidemove.wav`; the delivery asset is stored as `public/assets/unity/audio/guidemove.bin`.

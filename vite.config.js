@@ -18,6 +18,9 @@ const BUILTIN_LEVEL_IDS = new Set([
   'level17', 'level18'
 ]);
 const LEVEL_ARTIFACT_PATH = path.resolve('artifacts', 'unity-levels.json');
+const WEB_LEVEL_ROOT = path.resolve('artifacts', 'web-levels');
+const WEB_LEVEL_BACKUP_ROOT = path.resolve('artifacts', 'web-level-backups');
+const MAX_WEB_LEVEL_BYTES = 2 * 1024 * 1024;
 
 const MAX_PREFAB_BYTES = 12 * 1024 * 1024;
 const MAX_SPATIAL_PACKAGE_BYTES = 4 * 1024 * 1024;
@@ -32,6 +35,81 @@ function validateSpatialPackageId(packageId) {
 
 function spatialRevision(source) {
   return createHash('sha256').update(source).digest('hex');
+}
+
+function validateWebLevelId(levelId) {
+  if (!/^level[1-9]\d*$/.test(levelId)) throw new Error('Web level id must use level<number>.');
+  return levelId;
+}
+
+function validateWebLevelDocument(document, levelId) {
+  if (document?.format !== 'bus-loop-web-level-v1' || document?.key !== levelId) {
+    throw new Error('Web level document identity is invalid.');
+  }
+  if (!Array.isArray(document.vehicles) || document.vehicles.length > 2000) {
+    throw new Error('Web level vehicles are invalid.');
+  }
+  if (!Array.isArray(document.containers) || document.containers.length > 200) {
+    throw new Error('Web level containers are invalid.');
+  }
+  if (!Array.isArray(document.passengerQueues) || document.passengerQueues.length > 20) {
+    throw new Error('Web level passenger queues are invalid.');
+  }
+  const ids = new Set();
+  for (const vehicle of document.vehicles) {
+    if (!Number.isInteger(vehicle?.id) || vehicle.id < 1 || ids.has(vehicle.id)) throw new Error('Vehicle ids must be unique positive integers.');
+    if (![4, 6, 10].includes(vehicle.seats)) throw new Error(`Vehicle ${vehicle.id} has an invalid seat count.`);
+    if (![vehicle.x, vehicle.z, vehicle.yaw].every(Number.isFinite)) throw new Error(`Vehicle ${vehicle.id} has an invalid transform.`);
+    ids.add(vehicle.id);
+  }
+}
+
+async function readWebLevelDocument(levelId) {
+  validateWebLevelId(levelId);
+  const source = await readFile(path.join(WEB_LEVEL_ROOT, `${levelId}.json`), 'utf8');
+  const document = JSON.parse(source);
+  validateWebLevelDocument(document, levelId);
+  return { document, revision: spatialRevision(source) };
+}
+
+async function saveWebLevelDocument(levelId, { document, baseRevision }) {
+  validateWebLevelId(levelId);
+  validateWebLevelDocument(document, levelId);
+  await mkdir(WEB_LEVEL_ROOT, { recursive: true });
+  const targetPath = path.join(WEB_LEVEL_ROOT, `${levelId}.json`);
+  let currentSource = null;
+  try { currentSource = await readFile(targetPath, 'utf8'); }
+  catch (error) { if (error.code !== 'ENOENT') throw error; }
+  if (currentSource && baseRevision !== spatialRevision(currentSource)) {
+    const error = new Error('The level changed outside this editor. Reopen it before saving.');
+    error.statusCode = 409;
+    throw error;
+  }
+  if (!currentSource && baseRevision) {
+    const error = new Error('The saved level was removed outside this editor.');
+    error.statusCode = 409;
+    throw error;
+  }
+  const source = `${JSON.stringify(document, null, 2)}\n`;
+  if (Buffer.byteLength(source) > MAX_WEB_LEVEL_BYTES) {
+    const error = new Error('Web level document exceeds the 2 MB save limit.');
+    error.statusCode = 413;
+    throw error;
+  }
+  if (currentSource) {
+    await mkdir(WEB_LEVEL_BACKUP_ROOT, { recursive: true });
+    const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+    await copyFile(targetPath, path.join(WEB_LEVEL_BACKUP_ROOT, `${levelId}-${stamp}.json`));
+  }
+  const temporaryPath = path.join(WEB_LEVEL_ROOT, `.${levelId}.${process.pid}.tmp`);
+  try {
+    await writeFile(temporaryPath, source, 'utf8');
+    await rename(temporaryPath, targetPath);
+  } catch (error) {
+    await unlink(temporaryPath).catch(() => {});
+    throw error;
+  }
+  return { document, revision: spatialRevision(source), targetPath };
 }
 
 function sendJson(response, statusCode, payload) {
@@ -253,6 +331,26 @@ export default defineConfig({
 
       server.middlewares.use(async (request, response, next) => {
         const pathname = new URL(request.url, 'http://localhost').pathname;
+        const webLevelMatch = pathname.match(/^\/__level-authoring\/(level[1-9]\d*)$/);
+        if (webLevelMatch && request.method === 'GET') {
+          try { sendJson(response, 200, await readWebLevelDocument(webLevelMatch[1])); }
+          catch (error) { sendJson(response, error.code === 'ENOENT' ? 404 : 400, { error: error.message }); }
+          return;
+        }
+        if (webLevelMatch && request.method === 'PUT') {
+          try {
+            const body = JSON.parse(await readRequestBody(request, MAX_WEB_LEVEL_BYTES, 'Web level'));
+            const result = await saveWebLevelDocument(webLevelMatch[1], body);
+            sendJson(response, 200, {
+              document: result.document,
+              revision: result.revision,
+              savedPath: path.relative(process.cwd(), result.targetPath).replaceAll('\\', '/')
+            });
+          } catch (error) {
+            sendJson(response, error.statusCode ?? 400, { error: error.message });
+          }
+          return;
+        }
         if (pathname === '/__unity-levels/open-folder' && request.method === 'POST') {
           try {
             const folderPath = await openFolder(DEFAULT_UNITY_LEVEL_SOURCE_ROOT);

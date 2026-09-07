@@ -489,7 +489,8 @@ export function createSceneEditor(root, {
   defaultTuning = getTuning(),
   setTuning,
   clearSavedTuning = () => {},
-  openSpatialPointEditor = async () => {}
+  openSpatialPointEditor = async () => {},
+  openLevelLayoutEditor = async () => {}
 }) {
   const defaults = structuredClone(defaultTuning);
   root.innerHTML = `
@@ -606,6 +607,7 @@ export function createSceneEditor(root, {
   levelActions.className = 'editor-level-tools';
   levelActions.innerHTML = `
     <div class="editor-level-actions">
+      <button class="editor-level-edit" type="button">编辑关卡布局</button>
       <button class="editor-level-import" type="button">\u5bfc\u5165\u5173\u5361</button>
       <button class="editor-level-open-folder" type="button">\u6253\u5f00\u5173\u5361\u6587\u4ef6\u5939</button>
     </div>
@@ -615,14 +617,29 @@ export function createSceneEditor(root, {
   levelSection?.append(levelActions);
 
   const levelImportButton = levelActions.querySelector('.editor-level-import');
+  const levelEditButton = levelActions.querySelector('.editor-level-edit');
   const levelOpenFolderButton = levelActions.querySelector('.editor-level-open-folder');
   const levelFileInput = levelActions.querySelector('.editor-level-file');
   const levelStatus = levelActions.querySelector('.editor-level-status');
 
   function setLevelBusy(busy) {
+    levelEditButton.disabled = busy;
     levelImportButton.disabled = busy;
     levelOpenFolderButton.disabled = busy;
   }
+
+  levelEditButton.addEventListener('click', async () => {
+    setLevelBusy(true);
+    levelStatus.textContent = '正在打开关卡布局编辑器...';
+    try {
+      await openLevelLayoutEditor();
+      levelStatus.textContent = '关卡布局编辑器已打开';
+    } catch (error) {
+      levelStatus.textContent = `打开失败：${error.message}`;
+    } finally {
+      setLevelBusy(false);
+    }
+  });
 
   async function importUnityLevel(file) {
     if (!/^level[1-9]\d*\.asset$/i.test(file?.name ?? '')) {
