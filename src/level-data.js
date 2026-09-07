@@ -12,7 +12,8 @@ export const COLORS = Object.freeze({
   8: { name: 'Brown', hex: 0x542c16, css: '#542c16' },
   9: { name: 'DarkGreen', hex: 0x206d53, css: '#206d53' },
   10: { name: 'DarkBlue', hex: 0x15209e, css: '#15209e' },
-  13: { name: 'Ambulance', hex: 0xffffff, css: '#ffffff' }
+  13: { name: 'Ambulance', hex: 0xffffff, css: '#ffffff' },
+  15: { name: 'Luxury', hex: 0xd7b477, css: '#d7b477' }
 });
 
 export const PASSENGER_COUNT_BOARD_COLORS = Object.freeze({
@@ -27,7 +28,8 @@ export const PASSENGER_COUNT_BOARD_COLORS = Object.freeze({
   8: { background: 0xb46551, outline: '#702a09' },
   9: { background: 0x35ac93, outline: '#226355' },
   10: { background: 0x3e45ff, outline: '#161b6f' },
-  13: { background: 0xf04449, outline: '#8a171b' }
+  13: { background: 0xf04449, outline: '#8a171b' },
+  15: { background: 0xd8ad6a, outline: '#6d421f' }
 });
 
 export let LEVEL_1 = ACTIVE_LEVEL;

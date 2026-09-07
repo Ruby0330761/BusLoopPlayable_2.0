@@ -15,6 +15,10 @@ function makeLevelSource({
   vehicleSeats = 4,
   vehicleColorIndex = 2,
   turnVehicleIds = [],
+  hiddenVehicleIds = [],
+  garageVehicleIds = [],
+  conveyorVehicleIds = [],
+  conveyorSection = '  conveyorBelts: []',
   passengerColors = [2, 2, 2, 2],
   mechanismSection = '  vehicleExt: []',
   ambulanceSection = '  vehicleAmbulances: []',
@@ -22,14 +26,14 @@ function makeLevelSource({
 } = {}) {
   const vehicles = vehicleIds.map((id) => `  - id: ${id}
     seats: ${vehicleSeats}
-    isHidden: 0
+    isHidden: ${hiddenVehicleIds.includes(id) ? 1 : 0}
     isTurnVehicle: ${turnVehicleIds.includes(id) ? 1 : 0}
     colorIndex: ${vehicleColorIndex}
     priority: 0
     position: {x: ${id}, y: 0, z: 0}
     rotation: {x: 0, y: 0, z: 0, w: 1}
-    containerType: 1
-    containerId: 0`).join('\n');
+    containerType: ${conveyorVehicleIds.includes(id) ? 3 : garageVehicleIds.includes(id) ? 2 : 1}
+    containerId: ${conveyorVehicleIds.includes(id) ? 4 : garageVehicleIds.includes(id) ? 1 : 0}`).join('\n');
   const passengers = passengerColors.map((colorIndex, index) => `  - queueId: ${index % 2}
     colorIndex: ${colorIndex}`).join('\n');
   return `%YAML 1.1
@@ -48,7 +52,16 @@ ${vehicles}
     type: 1
     position: {x: 0, y: 0, z: 0}
     rotation: {x: 0, y: 0, z: 0, w: 1}
-${mechanismSection}
+${garageVehicleIds.length > 0 ? `  - id: 1
+    type: 2
+    position: {x: 1, y: 0, z: -1}
+    rotation: {x: 0, y: 0, z: 0, w: 1}
+` : ''}${conveyorVehicleIds.length > 0 ? `  - id: 4
+    type: 3
+    position: {x: 0, y: 0, z: -1}
+    rotation: {x: 0, y: 0, z: 0, w: 1}
+${conveyorSection}
+` : ''}${mechanismSection}
   vehicleLinkages: []
   vehicleWrenches: []
   vehicleCombinations: []
@@ -76,7 +89,24 @@ test('validates a supported Unity level and reports import counts', () => {
     vehicleCount: 1,
     turnVehicleCount: 0,
     ambulanceCount: 0,
+    luxuryCount: 0,
+    garageCount: 0,
+    garageVehicleCount: 0,
     containerCount: 1,
+    garageCount: 0,
+    garageVehicleCount: 0,
+    mechanics: {
+      isMechanicLevel: false,
+      types: ['ordinaryConveyor'],
+      counts: {
+        luxuryVehicle: 0,
+        ambulance: 0,
+        turnVehicle: 0,
+        hiddenVehicle: 0,
+        garage: 0,
+        vehicleTransportBelt: 0
+      }
+    },
     queueCounts: [2, 2],
     passengerCount: 4
   });
@@ -134,6 +164,105 @@ test('accepts Unity turn vehicle flags and reports their count', () => {
   assert.equal(result.turnVehicleCount, 1);
 });
 
+test('preserves Unity hidden vehicle flags during import', async () => {
+  const outputRoot = await mkdtemp(path.join(os.tmpdir(), 'busloop-hidden-import-'));
+  const result = await importUnityLevelAsset({
+    filename: 'level19.asset',
+    source: makeLevelSource({ hiddenVehicleIds: [1] })
+  }, {
+    outputRoot,
+    metadataPaths: [],
+    updateCatalog: async () => {}
+  });
+  assert.match(await readFile(result.outputPath, 'utf8'), /isHidden: 1/);
+});
+
+test('accepts garage containers and reports their vehicle counts', () => {
+  const result = validateUnityLevelSource({
+    filename: 'level19.asset',
+    source: makeLevelSource({ garageVehicleIds: [1] })
+  });
+  assert.equal(result.containerCount, 2);
+  assert.equal(result.garageCount, 1);
+  assert.equal(result.garageVehicleCount, 1);
+});
+
+test('accepts conveyor-belt containers and reports their vehicle counts', () => {
+  const result = validateUnityLevelSource({
+    filename: 'level19.asset',
+    source: makeLevelSource({
+      vehicleIds: [1, 2],
+      conveyorVehicleIds: [1, 2],
+      passengerColors: Array(8).fill(2),
+      conveyorSection: `  conveyorBelts:
+  - vcId: 4
+    width: 3.8`
+    })
+  });
+  assert.equal(result.containerCount, 2);
+  assert.equal(result.conveyorBeltCount, 1);
+  assert.equal(result.conveyorVehicleCount, 2);
+});
+
+test('rejects conveyor belts without a matching container or vehicle', () => {
+  const source = makeLevelSource({
+    vehicleIds: [1],
+    conveyorVehicleIds: [1],
+    passengerColors: Array(4).fill(2),
+    conveyorSection: `  conveyorBelts:
+  - vcId: 9
+    width: 3.8`
+  });
+  assert.throws(
+    () => validateUnityLevelSource({ filename: 'level19.asset', source }),
+    /references a missing container/
+  );
+  const empty = makeLevelSource({
+    conveyorVehicleIds: [],
+    mechanismSection: `  conveyorBelts:
+  - vcId: 4
+    width: 3.8`
+  });
+  assert.throws(
+    () => validateUnityLevelSource({ filename: 'level19.asset', source: empty }),
+    /references a missing container/
+  );
+  const missingConfig = makeLevelSource({
+    vehicleIds: [1],
+    conveyorVehicleIds: [1],
+    passengerColors: Array(4).fill(2),
+    conveyorSection: '  conveyorBelts: []'
+  });
+  assert.throws(
+    () => validateUnityLevelSource({ filename: 'level19.asset', source: missingConfig }),
+    /missing conveyorBelts configuration/
+  );
+  const wrongType = makeLevelSource({
+    vehicleIds: [1],
+    conveyorVehicleIds: [],
+    passengerColors: Array(4).fill(2)
+  }).replace(
+    '  vehicleLinkages: []',
+    `  conveyorBelts:
+  - vcId: 0
+    width: 3.8
+  vehicleLinkages: []`
+  );
+  assert.throws(
+    () => validateUnityLevelSource({ filename: 'level19.asset', source: wrongType }),
+    /must reference a type 3 conveyor container/
+  );
+});
+
+test('rejects vehicle and container type mismatches', () => {
+  const source = makeLevelSource({ garageVehicleIds: [1] })
+    .replace('containerType: 2', 'containerType: 1');
+  assert.throws(
+    () => validateUnityLevelSource({ filename: 'level19.asset', source }),
+    /does not match container 1 type 2/
+  );
+});
+
 test('rejects mechanism sections that are not supported by the current editor', () => {
   assert.throws(
     () => validateUnityLevelSource({
@@ -184,6 +313,40 @@ test('validates ambulance vehicle identity, color, seats, and step limit', () =>
       })
     }),
     /stepLimit/
+  );
+});
+
+test('validates luxury vehicles and passengers without requiring a mechanism section', () => {
+  const result = validateUnityLevelSource({
+    filename: 'level19.asset',
+    source: makeLevelSource({
+      vehicleSeats: 6,
+      vehicleColorIndex: 15,
+      passengerColors: Array(6).fill(15)
+    })
+  });
+  assert.equal(result.luxuryCount, 1);
+  assert.throws(
+    () => validateUnityLevelSource({
+      filename: 'level19.asset',
+      source: makeLevelSource({
+        vehicleSeats: 4,
+        vehicleColorIndex: 15,
+        passengerColors: Array(4).fill(15)
+      })
+    }),
+    /Luxury vehicle 1 must use 6 seats/
+  );
+  assert.throws(
+    () => validateUnityLevelSource({
+      filename: 'level19.asset',
+      source: makeLevelSource({
+        vehicleSeats: 6,
+        vehicleColorIndex: 15,
+        passengerColors: Array(6).fill(14)
+      })
+    }),
+    /unsupported color index 14/
   );
 });
 

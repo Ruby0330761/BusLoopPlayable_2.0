@@ -15,6 +15,7 @@ Use this file before code changes. Pick the closest change area, then read only 
 | Editor-side Unity level validation, import, source storage, and folder access | `scripts/unity-level-importer.mjs` | `vite.config.js`, `src/scene-editor.js`, `src/styles.css`, `scripts/extract-unity-levels.mjs`, `test/unity-level-importer.test.js` |
 | Multi-level playable session order, shared CTA operation count, and win handoff | `src/level-session.js` | `src/main.js`, `src/generated-active-level.js`, `src/scene-view.js`, `test/level-session.test.js` |
 | Conveyor layouts and prefab-derived paths | `src/conveyor-layouts.js` | `src/scene-view.js`, `src/game-model.js`, `src/scene-tuning.js`, `test/game-model.test.js` |
+| Fixed conveyor mechanism presentation and visibility contract | `src/conveyor-mechanism-config.js` | `src/scene-view.js`, `src/game-model.js`, `src/main.js`, `scripts/apply-scene-tuning.mjs`, `test/conveyor-mechanism-config.test.js` |
 | Unity conveyor prefab extraction | `scripts/extract-unity-conveyor-layouts.mjs` | `src/conveyor-layouts.js`, `artifacts/unity-conveyor-layouts.json` |
 | Standalone spatial conveyor import, production generation, runtime catalog, and rendering | `scripts/spatial-conveyor-importer.mjs` | `scripts/generate-active-spatial-conveyor.mjs`, `src/generated-active-spatial-conveyor.js`, `src/spatial-conveyor-runtime.js`, `vite.config.js`, `src/scene-editor.js`, `src/scene-view.js`, `src/game-model.js`, `test/spatial-conveyor-importer.test.js`, `tools/spatial-conveyor-import-support/bus-loop-spatial-v1/` |
 | On-demand spatial conveyor point editing, selection, transforms, history, and explicit JSON saves | `src/spatial-conveyor-editor.js` | `src/spatial-conveyor-edit-model.js`, `src/spatial-conveyor-editor.css`, `src/spatial-conveyor-runtime.js`, `src/scene-editor.js`, `src/scene-view.js`, `src/main.js`, `vite.config.js`, `test/spatial-conveyor-editor.test.js` |
@@ -29,7 +30,8 @@ Use this file before code changes. Pick the closest change area, then read only 
 | Build/test scripts or dependency changes | `package.json` | Lockfile if dependency versions change |
 | Vite development server and durable editor level selection | `vite.config.js` | `artifacts/selected-level.txt`, `src/main.js`, `scripts/generate-active-level.mjs` |
 | AppLovin single-HTML packaging | `scripts/package-applovin-single-html.mjs` | `scripts/check-applovin-package.mjs`, `package.json`, `docs/platforms/applovin-playable-audit.md` |
-| Unity VAT extraction utility | `scripts/extract-unity-vat.mjs` | `tools/unity-vat-export/Packages/manifest.json` |
+| Unity VAT extraction utility | `scripts/extract-unity-vat.mjs` | `scripts/extract-unity-passenger-animation.mjs`, `tools/unity-vat-export/Packages/manifest.json` |
+| Unity wealthy passenger animation extraction | `scripts/extract-unity-passenger-animation.mjs` | `src/scene-view.js`, `test/game-model.test.js` |
 | Game model regressions | `test/game-model.test.js` | `src/game-model.js`, `src/vehicle-motion.js`, `src/scene-tuning.js` |
 | Scene layout regressions | `test/scene-layout.test.js` | `src/scene-layout.js` |
 | Effect regressions | `test/vehicle-effects.test.js` | `src/vehicle-effects.js` |
@@ -61,6 +63,7 @@ Use this file before code changes. Pick the closest change area, then read only 
 - `src/generated-active-level.js`: Generated narrow production payload containing the selected active level and any explicit in-session follow-up level.
 - `src/generated-active-spatial-conveyor.js`: Generated narrow production payload containing the selected imported spatial conveyor, or `null` for an ordinary conveyor selection.
 - `src/scene-view.js`: Main Three.js renderer. Owns scene construction, camera/background fit, texture/model/VAT loading, path curves, parking spots, vehicle/passenger visuals, shadows, arrows, seat boards, effects integration, picking, snapshot rendering, resize, and per-frame render.
+- `src/conveyor-mechanism-config.js`: Non-editor, baked conveyor mechanism values. Owns the confirmed 1.375 visual root scale, asymmetric door spacing, right-edge visibility boundary, and explicit imported-component transform baseline so reset/localStorage cannot change them.
 - `src/scene-tuning.js`: Single mutable tuning object. Owns editor-facing values for preview/crop, branding image/text visibility/lock/content/geometry, camera, facing, path transforms, background, conveyor art, parking spots, seat boards, vehicle paths, vehicle area mapping, passengers, shadows, arrows, and effects.
 - `src/scene-editor.js`: Generated editor panel. Owns `FIELD_GROUPS`, input/range/select/toggle/text bindings, Icon/Logo/text adjustment controls, nested tuning path get/set helpers, collapsed UI behavior, reset-to-default hook, and editor labels.
 - `src/spatial-conveyor-runtime.js`: Shared spatial package registry plus Unity transform application and Dreamteck repeated-mesh geometry generation. Development packages come from Vite endpoints; production registers the generated active package before scene creation.
@@ -87,6 +90,7 @@ Use this file before code changes. Pick the closest change area, then read only 
 - `test/guide-hand.test.js`: Focused guide target, active-level scope, timed mask, editor wiring, and horizontal art/motion mirroring regressions.
 - `test/spatial-conveyor-importer.test.js`: Spatial prefab array-size trimming, 3D point overrides, embedded visual support, output naming, input rejection, and editor/dev-service wiring.
 - `test/spatial-conveyor-editor.test.js`: Spatial point insertion/history, stable pivot, minimum point count, forward/inverse coordinate mapping, and on-demand editor/save wiring regressions.
+- `test/mechanism-resources.test.js`: Mechanism resource ownership, imported level mechanism metadata, and mechanism type derivation.
 
 ### Conveyor layout subsystem
 

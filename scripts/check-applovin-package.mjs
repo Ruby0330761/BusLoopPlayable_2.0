@@ -42,9 +42,16 @@ function inlineModulesAreSyntaxValid(html) {
 }
 
 function mimeForAsset(asset) {
-  return asset.toLowerCase().endsWith('.jpg') || asset.toLowerCase().endsWith('.jpeg')
-    ? 'image/jpeg'
-    : 'image/png';
+  const extension = path.extname(asset).toLowerCase();
+  return new Map([
+    ['.jpg', 'image/jpeg'],
+    ['.jpeg', 'image/jpeg'],
+    ['.png', 'image/png'],
+    ['.mp3', 'audio/mpeg'],
+    ['.wav', 'audio/wav'],
+    ['.webp', 'image/webp'],
+    ['.ttf', 'font/ttf']
+  ]).get(extension) ?? 'application/octet-stream';
 }
 
 async function assetDataUri(asset) {
@@ -54,6 +61,14 @@ async function assetDataUri(asset) {
 }
 
 async function main() {
+  const [{ PLAYABLE_LEVEL_SEQUENCE }, {
+    MECHANISM_RESOURCE_MANIFEST,
+    getMechanismResourcePaths,
+    getMechanismTypesForLevels
+  }] = await Promise.all([
+    import('../src/generated-active-level.js'),
+    import('../src/mechanism-resources.js')
+  ]);
   const tuningUrl = `${pathToFileURL(TUNING_FILE).href}?t=${Date.now()}`;
   const { SCENE_TUNING } = await import(tuningUrl);
   const selectedIconAsset = SCENE_TUNING.branding?.icon?.asset;
@@ -68,6 +83,23 @@ async function main() {
   const selectedSpatialPackage = selectedSpatialId
     ? JSON.parse(await readFile(path.join(SPATIAL_PACKAGE_ROOT, `${selectedSpatialId}.json`), 'utf8'))
     : null;
+  const mechanismTypes = getMechanismTypesForLevels(PLAYABLE_LEVEL_SEQUENCE, {
+    spatialSelection: selectedConveyor
+  });
+  const selectedMechanismUrls = getMechanismResourcePaths(mechanismTypes);
+  const allMechanismUrls = getMechanismResourcePaths(Object.keys(MECHANISM_RESOURCE_MANIFEST));
+  const selectedMechanismDataUris = await Promise.all(
+    selectedMechanismUrls.map((asset) => assetDataUri(asset))
+  );
+  const omittedMechanismUrls = allMechanismUrls.filter((asset) => !selectedMechanismUrls.includes(asset));
+
+  function containsMechanismReference(asset) {
+    if (html.includes(asset)) return true;
+    if (!asset.startsWith('/assets/unity/mechanisms/')) return false;
+    const tail = asset.slice('/assets/unity/mechanisms'.length)
+      .replace(/[.*+?^${}()|[\]\\]/gu, '\\$&');
+    return new RegExp(`\\$\\{[A-Za-z_$][\\w$]*\\}${tail}`, 'u').test(html);
+  }
   const [{ size }, html, selectedIconDataUri, unselectedIconDataUri, smallLogoDataUri, legacyLogoDataUri] = await Promise.all([
     stat(PACKAGE_FILE),
     readFile(PACKAGE_FILE, 'utf8'),
@@ -122,6 +154,16 @@ async function main() {
     {
       name: 'inline binary data assets present',
       pass: /data:application\/octet-stream;base64/iu.test(html)
+    },
+    {
+      name: 'selected mechanism resources inlined',
+      pass: selectedMechanismDataUris.every((dataUri) => html.includes(dataUri)),
+      detail: mechanismTypes.join(', ')
+    },
+    {
+      name: 'unselected mechanism resources omitted',
+      pass: omittedMechanismUrls.every((asset) => !containsMechanismReference(asset)),
+      detail: `${omittedMechanismUrls.length} resources omitted`
     },
     {
       name: 'iOS App Store direct scheme present',

@@ -10,6 +10,7 @@
     "levels:extract": "node scripts/extract-unity-levels.mjs",
     "level:generate": "node scripts/generate-active-level.mjs",
     "spatial:generate": "node scripts/generate-active-spatial-conveyor.mjs",
+    "luxury:animation:extract": "node scripts/extract-unity-passenger-animation.mjs",
     "apply:tuning": "node scripts/apply-scene-tuning.mjs",
     "check:applovin": "node scripts/check-applovin-package.mjs",
     "package:applovin": "node scripts/package-applovin-single-html.mjs",

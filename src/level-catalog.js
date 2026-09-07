@@ -3252,6 +3252,20 @@ export const LEVEL_CATALOG = Object.freeze({
         "width": 0.6333333333333333,
         "length": 0.7999999999999999
       }
+    },
+    "mechanics": {
+      "isMechanicLevel": false,
+      "types": [
+        "ordinaryConveyor"
+      ],
+      "counts": {
+        "luxuryVehicle": 0,
+        "ambulance": 0,
+        "turnVehicle": 0,
+        "hiddenVehicle": 0,
+        "garage": 0,
+        "vehicleTransportBelt": 0
+      }
     }
   },
   "level5": {
@@ -5480,7 +5494,21 @@ export const LEVEL_CATALOG = Object.freeze({
         "z": 0,
         "yaw": 0
       }
-    ]
+    ],
+    "mechanics": {
+      "isMechanicLevel": false,
+      "types": [
+        "ordinaryConveyor"
+      ],
+      "counts": {
+        "luxuryVehicle": 0,
+        "ambulance": 0,
+        "turnVehicle": 0,
+        "hiddenVehicle": 0,
+        "garage": 0,
+        "vehicleTransportBelt": 0
+      }
+    }
   },
   "level7": {
     "id": 7,
@@ -9797,7 +9825,21 @@ export const LEVEL_CATALOG = Object.freeze({
         "z": 0,
         "yaw": 0
       }
-    ]
+    ],
+    "mechanics": {
+      "isMechanicLevel": false,
+      "types": [
+        "ordinaryConveyor"
+      ],
+      "counts": {
+        "luxuryVehicle": 0,
+        "ambulance": 0,
+        "turnVehicle": 0,
+        "hiddenVehicle": 0,
+        "garage": 0,
+        "vehicleTransportBelt": 0
+      }
+    }
   },
   "level8": {
     "id": 0,
@@ -11772,7 +11814,21 @@ export const LEVEL_CATALOG = Object.freeze({
         "z": 0,
         "yaw": 0
       }
-    ]
+    ],
+    "mechanics": {
+      "isMechanicLevel": false,
+      "types": [
+        "ordinaryConveyor"
+      ],
+      "counts": {
+        "luxuryVehicle": 0,
+        "ambulance": 0,
+        "turnVehicle": 0,
+        "hiddenVehicle": 0,
+        "garage": 0,
+        "vehicleTransportBelt": 0
+      }
+    }
   },
   "level9": {
     "id": 0,
@@ -13875,7 +13931,21 @@ export const LEVEL_CATALOG = Object.freeze({
         "z": 0,
         "yaw": 0
       }
-    ]
+    ],
+    "mechanics": {
+      "isMechanicLevel": false,
+      "types": [
+        "ordinaryConveyor"
+      ],
+      "counts": {
+        "luxuryVehicle": 0,
+        "ambulance": 0,
+        "turnVehicle": 0,
+        "hiddenVehicle": 0,
+        "garage": 0,
+        "vehicleTransportBelt": 0
+      }
+    }
   },
   "level10": {
     "id": 0,
@@ -16325,7 +16395,21 @@ export const LEVEL_CATALOG = Object.freeze({
         "z": 0,
         "yaw": 0
       }
-    ]
+    ],
+    "mechanics": {
+      "isMechanicLevel": false,
+      "types": [
+        "ordinaryConveyor"
+      ],
+      "counts": {
+        "luxuryVehicle": 0,
+        "ambulance": 0,
+        "turnVehicle": 0,
+        "hiddenVehicle": 0,
+        "garage": 0,
+        "vehicleTransportBelt": 0
+      }
+    }
   },
   "level12": {
     "id": 0,
@@ -19870,7 +19954,21 @@ export const LEVEL_CATALOG = Object.freeze({
         "z": 0,
         "yaw": 0
       }
-    ]
+    ],
+    "mechanics": {
+      "isMechanicLevel": false,
+      "types": [
+        "ordinaryConveyor"
+      ],
+      "counts": {
+        "luxuryVehicle": 0,
+        "ambulance": 0,
+        "turnVehicle": 0,
+        "hiddenVehicle": 0,
+        "garage": 0,
+        "vehicleTransportBelt": 0
+      }
+    }
   },
   "level13": {
     "id": 0,
@@ -22557,7 +22655,21 @@ export const LEVEL_CATALOG = Object.freeze({
         "z": 0,
         "yaw": 0
       }
-    ]
+    ],
+    "mechanics": {
+      "isMechanicLevel": false,
+      "types": [
+        "ordinaryConveyor"
+      ],
+      "counts": {
+        "luxuryVehicle": 0,
+        "ambulance": 0,
+        "turnVehicle": 0,
+        "hiddenVehicle": 0,
+        "garage": 0,
+        "vehicleTransportBelt": 0
+      }
+    }
   },
   "level15": {
     "id": 15,
@@ -26254,7 +26366,21 @@ export const LEVEL_CATALOG = Object.freeze({
         "z": 0,
         "yaw": 0
       }
-    ]
+    ],
+    "mechanics": {
+      "isMechanicLevel": false,
+      "types": [
+        "ordinaryConveyor"
+      ],
+      "counts": {
+        "luxuryVehicle": 0,
+        "ambulance": 0,
+        "turnVehicle": 0,
+        "hiddenVehicle": 0,
+        "garage": 0,
+        "vehicleTransportBelt": 0
+      }
+    }
   },
   "level16": {
     "id": 14,
@@ -27676,7 +27802,21 @@ export const LEVEL_CATALOG = Object.freeze({
         "z": 0,
         "yaw": 0
       }
-    ]
+    ],
+    "mechanics": {
+      "isMechanicLevel": false,
+      "types": [
+        "ordinaryConveyor"
+      ],
+      "counts": {
+        "luxuryVehicle": 0,
+        "ambulance": 0,
+        "turnVehicle": 0,
+        "hiddenVehicle": 0,
+        "garage": 0,
+        "vehicleTransportBelt": 0
+      }
+    }
   },
   "level17": {
     "id": 17,
@@ -30660,7 +30800,21 @@ export const LEVEL_CATALOG = Object.freeze({
         "z": 0,
         "yaw": 0
       }
-    ]
+    ],
+    "mechanics": {
+      "isMechanicLevel": false,
+      "types": [
+        "ordinaryConveyor"
+      ],
+      "counts": {
+        "luxuryVehicle": 0,
+        "ambulance": 0,
+        "turnVehicle": 0,
+        "hiddenVehicle": 0,
+        "garage": 0,
+        "vehicleTransportBelt": 0
+      }
+    }
   },
   "level18": {
     "id": 16,
@@ -34148,6 +34302,1738 @@ export const LEVEL_CATALOG = Object.freeze({
         "z": 0,
         "yaw": 0
       }
+    ],
+    "mechanics": {
+      "isMechanicLevel": false,
+      "types": [
+        "ordinaryConveyor"
+      ],
+      "counts": {
+        "luxuryVehicle": 0,
+        "ambulance": 0,
+        "turnVehicle": 0,
+        "hiddenVehicle": 0,
+        "garage": 0,
+        "vehicleTransportBelt": 0
+      }
+    }
+  },
+  "level22": {
+    "id": 22,
+    "mapScale": 1.33,
+    "sceneName": "GameSceneDualQueue2",
+    "groupSize": 4,
+    "spotCount": 6,
+    "conveyorCapacity": 32,
+    "conveyorSpeed": 0.5,
+    "conveyorPathLength": 4.591284809513923,
+    "queueCount": 2,
+    "queueCapacity": 24,
+    "entryPercents": [
+      0,
+      0.421
+    ],
+    "longPressThreshold": 0.2,
+    "longPressMultiplier": 3,
+    "exitStart": 0.605,
+    "exitEnd": 0.78,
+    "boardingDepartureDelay": 1.6,
+    "passengerQueue": {
+      "spacing": 0.4,
+      "screenEdgeOffsetSpacing": 4
+    },
+    "passengerEntryMotion": {
+      "passengerSpeed": 2,
+      "conveyorSpeed": 0.5,
+      "initialFillCatchUpDuration": 0.2,
+      "catchUpExtraSpeed": 1,
+      "snapDistance": 0.02
+    },
+    "vehicleSize": {
+      "width": 0.35910000000000003,
+      "length": 0.902524301
+    },
+    "vehicleMotion": {
+      "spotStartX": -1.2419354838709677,
+      "spotSpacing": 0.3548387096774194,
+      "spotZ": 1.4774193548387096,
+      "spotYaw": 0,
+      "spotApproachOffsetZ": 0.5,
+      "spotApproachDirection": "screen-down"
+    },
+    "vehicles": [
+      {
+        "id": 1,
+        "seats": 6,
+        "colorIndex": 5,
+        "x": -1.374648,
+        "z": 0.7119815,
+        "yaw": -89.99999818714232,
+        "isHidden": false,
+        "isTurnVehicle": false,
+        "isLuxury": false,
+        "containerType": 1,
+        "containerId": 0
+      },
+      {
+        "id": 2,
+        "seats": 6,
+        "colorIndex": 2,
+        "x": -1.854077,
+        "z": 0.21618646,
+        "yaw": 0,
+        "isHidden": false,
+        "isTurnVehicle": false,
+        "isLuxury": false,
+        "containerType": 1,
+        "containerId": 0
+      },
+      {
+        "id": 3,
+        "seats": 4,
+        "colorIndex": 0,
+        "x": 0.417091,
+        "z": 0.34341347,
+        "yaw": 89.99999818714232,
+        "isHidden": false,
+        "isTurnVehicle": false,
+        "isLuxury": false,
+        "containerType": 1,
+        "containerId": 0
+      },
+      {
+        "id": 4,
+        "seats": 6,
+        "colorIndex": 2,
+        "x": 1.798271,
+        "z": 0.17034048,
+        "yaw": 0,
+        "isHidden": false,
+        "isTurnVehicle": false,
+        "isLuxury": false,
+        "containerType": 1,
+        "containerId": 0
+      },
+      {
+        "id": 5,
+        "seats": 6,
+        "colorIndex": 5,
+        "x": 0.104029,
+        "z": -0.0063865185,
+        "yaw": 89.99999818714232,
+        "isHidden": false,
+        "isTurnVehicle": false,
+        "isLuxury": false,
+        "containerType": 1,
+        "containerId": 0
+      },
+      {
+        "id": 6,
+        "seats": 4,
+        "colorIndex": 5,
+        "x": -1.418292,
+        "z": 0.32469448,
+        "yaw": 89.99999818714232,
+        "isHidden": false,
+        "isTurnVehicle": false,
+        "isLuxury": false,
+        "containerType": 1,
+        "containerId": 0
+      },
+      {
+        "id": 7,
+        "seats": 6,
+        "colorIndex": 5,
+        "x": 1.591665,
+        "z": 0.70847845,
+        "yaw": 89.99999818714232,
+        "isHidden": false,
+        "isTurnVehicle": false,
+        "isLuxury": false,
+        "containerType": 1,
+        "containerId": 0
+      },
+      {
+        "id": 8,
+        "seats": 6,
+        "colorIndex": 4,
+        "x": 1.884007,
+        "z": 1.2364055,
+        "yaw": 0,
+        "isHidden": false,
+        "isTurnVehicle": false,
+        "isLuxury": false,
+        "containerType": 1,
+        "containerId": 0
+      },
+      {
+        "id": 9,
+        "seats": 6,
+        "colorIndex": 5,
+        "x": -0.273298,
+        "z": 1.5687875,
+        "yaw": -89.99999818714232,
+        "isHidden": false,
+        "isTurnVehicle": false,
+        "isLuxury": false,
+        "containerType": 1,
+        "containerId": 0
+      },
+      {
+        "id": 10,
+        "seats": 6,
+        "colorIndex": 3,
+        "x": -0.718743,
+        "z": 0.7083775,
+        "yaw": -89.99999818714232,
+        "isHidden": false,
+        "isTurnVehicle": false,
+        "isLuxury": false,
+        "containerType": 1,
+        "containerId": 0
+      },
+      {
+        "id": 11,
+        "seats": 6,
+        "colorIndex": 3,
+        "x": 0.859133,
+        "z": 0.48915845,
+        "yaw": 0,
+        "isHidden": false,
+        "isTurnVehicle": false,
+        "isLuxury": false,
+        "containerType": 1,
+        "containerId": 0
+      },
+      {
+        "id": 12,
+        "seats": 4,
+        "colorIndex": 1,
+        "x": -0.561836,
+        "z": -0.018548518,
+        "yaw": -89.99999818714232,
+        "isHidden": false,
+        "isTurnVehicle": false,
+        "isLuxury": false,
+        "containerType": 1,
+        "containerId": 0
+      },
+      {
+        "id": 13,
+        "seats": 6,
+        "colorIndex": 1,
+        "x": -0.729954,
+        "z": 1.1390074,
+        "yaw": -89.99999818714232,
+        "isHidden": false,
+        "isTurnVehicle": false,
+        "isLuxury": false,
+        "containerType": 1,
+        "containerId": 0
+      },
+      {
+        "id": 14,
+        "seats": 6,
+        "colorIndex": 4,
+        "x": -1.86654,
+        "z": 0.8518715,
+        "yaw": 0,
+        "isHidden": false,
+        "isTurnVehicle": false,
+        "isLuxury": false,
+        "containerType": 1,
+        "containerId": 0
+      },
+      {
+        "id": 15,
+        "seats": 4,
+        "colorIndex": 0,
+        "x": 1.523497,
+        "z": 1.2203895,
+        "yaw": 0,
+        "isHidden": false,
+        "isTurnVehicle": false,
+        "isLuxury": false,
+        "containerType": 1,
+        "containerId": 0
+      },
+      {
+        "id": 16,
+        "seats": 4,
+        "colorIndex": 4,
+        "x": 0.752727,
+        "z": 0.0056254864,
+        "yaw": 89.99999818714232,
+        "isHidden": false,
+        "isTurnVehicle": false,
+        "isLuxury": false,
+        "containerType": 1,
+        "containerId": 0
+      },
+      {
+        "id": 17,
+        "seats": 4,
+        "colorIndex": 5,
+        "x": 1.38591,
+        "z": -0.0065365136,
+        "yaw": 89.99999818714232,
+        "isHidden": false,
+        "isTurnVehicle": false,
+        "isLuxury": false,
+        "containerType": 1,
+        "containerId": 0
+      },
+      {
+        "id": 18,
+        "seats": 6,
+        "colorIndex": 0,
+        "x": -1.360484,
+        "z": 1.1500695,
+        "yaw": -89.99999818714232,
+        "isHidden": false,
+        "isTurnVehicle": false,
+        "isLuxury": false,
+        "containerType": 1,
+        "containerId": 0
+      },
+      {
+        "id": 19,
+        "seats": 4,
+        "colorIndex": 3,
+        "x": -0.212638,
+        "z": 0.35437447,
+        "yaw": 89.99999818714232,
+        "isHidden": false,
+        "isTurnVehicle": false,
+        "isLuxury": false,
+        "containerType": 1,
+        "containerId": 0
+      },
+      {
+        "id": 20,
+        "seats": 4,
+        "colorIndex": 3,
+        "x": 1.263787,
+        "z": 0.36838847,
+        "yaw": 89.99999818714232,
+        "isHidden": false,
+        "isTurnVehicle": false,
+        "isLuxury": false,
+        "containerType": 1,
+        "containerId": 0
+      },
+      {
+        "id": 21,
+        "seats": 4,
+        "colorIndex": 1,
+        "x": 0.211886,
+        "z": 1.2311504,
+        "yaw": 0,
+        "isHidden": false,
+        "isTurnVehicle": false,
+        "isLuxury": false,
+        "containerType": 1,
+        "containerId": 0
+      },
+      {
+        "id": 22,
+        "seats": 6,
+        "colorIndex": 1,
+        "x": 0.334859,
+        "z": 0.71753645,
+        "yaw": 89.99999818714232,
+        "isHidden": false,
+        "isTurnVehicle": false,
+        "isLuxury": false,
+        "containerType": 1,
+        "containerId": 0
+      },
+      {
+        "id": 23,
+        "seats": 4,
+        "colorIndex": 0,
+        "x": -1.20628,
+        "z": -0.029058516,
+        "yaw": -89.99999818714232,
+        "isHidden": false,
+        "isTurnVehicle": false,
+        "isLuxury": false,
+        "containerType": 1,
+        "containerId": 0
+      },
+      {
+        "id": 24,
+        "seats": 6,
+        "colorIndex": 4,
+        "x": -0.837061,
+        "z": 0.34161147,
+        "yaw": 89.99999818714232,
+        "isHidden": false,
+        "isTurnVehicle": false,
+        "isLuxury": false,
+        "containerType": 1,
+        "containerId": 0
+      },
+      {
+        "id": 25,
+        "seats": 4,
+        "colorIndex": 2,
+        "x": -0.179004,
+        "z": 0.9380075,
+        "yaw": 0,
+        "isHidden": false,
+        "isTurnVehicle": false,
+        "isLuxury": false,
+        "containerType": 1,
+        "containerId": 0
+      },
+      {
+        "id": 26,
+        "seats": 4,
+        "colorIndex": 5,
+        "x": 0.625349,
+        "z": 1.2230915,
+        "yaw": 0,
+        "isHidden": false,
+        "isTurnVehicle": false,
+        "isLuxury": false,
+        "containerType": 1,
+        "containerId": 0
+      },
+      {
+        "id": 27,
+        "seats": 4,
+        "colorIndex": 2,
+        "x": 1.063938,
+        "z": 1.2278464,
+        "yaw": 0,
+        "isHidden": false,
+        "isTurnVehicle": false,
+        "isLuxury": false,
+        "containerType": 1,
+        "containerId": 0
+      },
+      {
+        "id": 28,
+        "seats": 4,
+        "colorIndex": 5,
+        "x": -0.851876,
+        "z": 1.5838025,
+        "yaw": -89.99999818714232,
+        "isHidden": false,
+        "isTurnVehicle": false,
+        "isLuxury": false,
+        "containerType": 1,
+        "containerId": 0
+      },
+      {
+        "id": 29,
+        "seats": 10,
+        "colorIndex": 0,
+        "x": 0.474899,
+        "z": 1.7155335,
+        "yaw": -89.99999818714232,
+        "isHidden": false,
+        "isTurnVehicle": false,
+        "isLuxury": false,
+        "containerType": 1,
+        "containerId": 0
+      },
+      {
+        "id": 30,
+        "seats": 10,
+        "colorIndex": 5,
+        "x": 1.380554,
+        "z": 1.7297485,
+        "yaw": -89.99999818714232,
+        "isHidden": false,
+        "isTurnVehicle": false,
+        "isLuxury": false,
+        "containerType": 1,
+        "containerId": 0
+      },
+      {
+        "id": 31,
+        "seats": 4,
+        "colorIndex": 1,
+        "x": -1.412736,
+        "z": 1.5872055,
+        "yaw": -89.99999818714232,
+        "isHidden": false,
+        "isTurnVehicle": false,
+        "isLuxury": false,
+        "containerType": 1,
+        "containerId": 0
+      },
+      {
+        "id": 32,
+        "seats": 6,
+        "colorIndex": 4,
+        "x": -1.884007,
+        "z": 1.4916105,
+        "yaw": 0,
+        "isHidden": false,
+        "isTurnVehicle": false,
+        "isLuxury": false,
+        "containerType": 1,
+        "containerId": 0
+      },
+      {
+        "id": 33,
+        "seats": 10,
+        "colorIndex": 6,
+        "x": 0,
+        "z": -0.105,
+        "yaw": 0,
+        "isHidden": false,
+        "isTurnVehicle": false,
+        "isLuxury": false,
+        "containerType": 3,
+        "containerId": 1502201
+      },
+      {
+        "id": 34,
+        "seats": 6,
+        "colorIndex": 3,
+        "x": 0,
+        "z": -0.105,
+        "yaw": 0,
+        "isHidden": false,
+        "isTurnVehicle": false,
+        "isLuxury": false,
+        "containerType": 3,
+        "containerId": 1502201
+      },
+      {
+        "id": 35,
+        "seats": 10,
+        "colorIndex": 4,
+        "x": 0,
+        "z": -0.105,
+        "yaw": 0,
+        "isHidden": false,
+        "isTurnVehicle": false,
+        "isLuxury": false,
+        "containerType": 3,
+        "containerId": 1502201
+      },
+      {
+        "id": 36,
+        "seats": 6,
+        "colorIndex": 0,
+        "x": 0,
+        "z": -0.105,
+        "yaw": 0,
+        "isHidden": false,
+        "isTurnVehicle": false,
+        "isLuxury": false,
+        "containerType": 3,
+        "containerId": 1502201
+      },
+      {
+        "id": 37,
+        "seats": 6,
+        "colorIndex": 1,
+        "x": 0,
+        "z": -0.105,
+        "yaw": 0,
+        "isHidden": false,
+        "isTurnVehicle": false,
+        "isLuxury": false,
+        "containerType": 3,
+        "containerId": 1502201
+      },
+      {
+        "id": 38,
+        "seats": 10,
+        "colorIndex": 3,
+        "x": 0,
+        "z": -0.105,
+        "yaw": 0,
+        "isHidden": false,
+        "isTurnVehicle": false,
+        "isLuxury": false,
+        "containerType": 3,
+        "containerId": 1502201
+      },
+      {
+        "id": 39,
+        "seats": 10,
+        "colorIndex": 6,
+        "x": 0,
+        "z": -0.105,
+        "yaw": 0,
+        "isHidden": false,
+        "isTurnVehicle": false,
+        "isLuxury": false,
+        "containerType": 3,
+        "containerId": 1502201
+      },
+      {
+        "id": 40,
+        "seats": 10,
+        "colorIndex": 5,
+        "x": 0,
+        "z": -0.105,
+        "yaw": 0,
+        "isHidden": false,
+        "isTurnVehicle": false,
+        "isLuxury": false,
+        "containerType": 3,
+        "containerId": 1502201
+      }
+    ],
+    "vehicleDepthes": {},
+    "passengerSequence": [
+      4,
+      4,
+      4,
+      4,
+      4,
+      4,
+      0,
+      0,
+      0,
+      0,
+      5,
+      5,
+      5,
+      5,
+      5,
+      5,
+      5,
+      2,
+      2,
+      2,
+      2,
+      4,
+      4,
+      4,
+      4,
+      4,
+      4,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      5,
+      5,
+      5,
+      5,
+      5,
+      5,
+      1,
+      1,
+      1,
+      1,
+      6,
+      6,
+      6,
+      6,
+      6,
+      6,
+      3,
+      3,
+      3,
+      3,
+      1,
+      1,
+      1,
+      1,
+      2,
+      2,
+      2,
+      2,
+      3,
+      3,
+      3,
+      3,
+      5,
+      5,
+      5,
+      5,
+      1,
+      1,
+      1,
+      1,
+      0,
+      0,
+      0,
+      0,
+      5,
+      5,
+      5,
+      5,
+      5,
+      5,
+      4,
+      4,
+      4,
+      4,
+      6,
+      6,
+      6,
+      6,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      3,
+      3,
+      3,
+      3,
+      3,
+      3,
+      5,
+      5,
+      5,
+      5,
+      4,
+      4,
+      4,
+      4,
+      3,
+      3,
+      3,
+      3,
+      3,
+      3,
+      5,
+      5,
+      5,
+      5,
+      5,
+      5,
+      0,
+      0,
+      0,
+      0,
+      6,
+      6,
+      6,
+      6,
+      5,
+      5,
+      5,
+      2,
+      2,
+      2,
+      2,
+      2,
+      2,
+      2,
+      2,
+      4,
+      4,
+      4,
+      4,
+      4,
+      4,
+      0,
+      0,
+      0,
+      0,
+      2,
+      2,
+      2,
+      2,
+      6,
+      6,
+      6,
+      6,
+      6,
+      6,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      5,
+      5,
+      5,
+      5,
+      5,
+      5,
+      3,
+      3,
+      3,
+      3,
+      4,
+      4,
+      4,
+      4,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      5,
+      5,
+      5,
+      5,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      5,
+      5,
+      5,
+      5,
+      4,
+      4,
+      4,
+      4,
+      3,
+      3,
+      3,
+      3,
+      5,
+      5,
+      5,
+      5,
+      3,
+      3,
+      3,
+      3,
+      4,
+      4,
+      4,
+      4,
+      3,
+      3,
+      3,
+      3,
+      5,
+      5,
+      5,
+      5,
+      5,
+      5
+    ],
+    "passengerQueues": [
+      [
+        4,
+        4,
+        4,
+        4,
+        4,
+        4,
+        0,
+        0,
+        0,
+        0,
+        5,
+        5,
+        5,
+        5,
+        5,
+        5,
+        5,
+        2,
+        2,
+        2,
+        2,
+        4,
+        4,
+        4,
+        4,
+        4,
+        4,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        5,
+        5,
+        5,
+        5,
+        5,
+        5,
+        1,
+        1,
+        1,
+        1,
+        6,
+        6,
+        6,
+        6,
+        6,
+        6,
+        3,
+        3,
+        3,
+        3,
+        1,
+        1,
+        1,
+        1,
+        2,
+        2,
+        2,
+        2,
+        3,
+        3,
+        3,
+        3,
+        5,
+        5,
+        5,
+        5,
+        1,
+        1,
+        1,
+        1,
+        0,
+        0,
+        0,
+        0,
+        5,
+        5,
+        5,
+        5,
+        5,
+        5,
+        4,
+        4,
+        4,
+        4,
+        6,
+        6,
+        6,
+        6,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        5,
+        5,
+        5,
+        5,
+        4,
+        4,
+        4,
+        4,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        5,
+        5,
+        5,
+        5,
+        5,
+        5,
+        0,
+        0,
+        0,
+        0,
+        6,
+        6,
+        6,
+        6
+      ],
+      [
+        5,
+        5,
+        5,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        4,
+        4,
+        4,
+        4,
+        4,
+        4,
+        0,
+        0,
+        0,
+        0,
+        2,
+        2,
+        2,
+        2,
+        6,
+        6,
+        6,
+        6,
+        6,
+        6,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        5,
+        5,
+        5,
+        5,
+        5,
+        5,
+        3,
+        3,
+        3,
+        3,
+        4,
+        4,
+        4,
+        4,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        5,
+        5,
+        5,
+        5,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        5,
+        5,
+        5,
+        5,
+        4,
+        4,
+        4,
+        4,
+        3,
+        3,
+        3,
+        3,
+        5,
+        5,
+        5,
+        5,
+        3,
+        3,
+        3,
+        3,
+        4,
+        4,
+        4,
+        4,
+        3,
+        3,
+        3,
+        3,
+        5,
+        5,
+        5,
+        5,
+        5,
+        5
+      ]
+    ],
+    "assets": {
+      "loopScene": "/assets/applovin/Loop_02_q80.webp",
+      "loopSpriteRect": {
+        "x": 0,
+        "y": 57,
+        "width": 2100,
+        "height": 1243,
+        "imageWidth": 2100,
+        "imageHeight": 1300
+      },
+      "background": "/assets/applovin/textures/BG02_split01_summer_q60.jpg",
+      "audio": {
+        "bus_hit": {
+          "clips": [
+            "/assets/unity/audio/bus_hit_V5.mp3"
+          ],
+          "volume": 0.503268
+        },
+        "passenger_up": {
+          "clips": [
+            "/assets/unity/audio/passenger_up_01.mp3",
+            "/assets/unity/audio/passenger_up_02.mp3",
+            "/assets/unity/audio/passenger_up_03.mp3"
+          ],
+          "volume": 0.825528
+        },
+        "bus_full": {
+          "clips": [
+            "/assets/unity/audio/bus_full.mp3"
+          ],
+          "volume": 0.50023913
+        }
+      },
+      "colorTextures": [
+        "/assets/applovin/textures/color_0_blue_q85.webp",
+        "/assets/applovin/textures/color_1_green_q85.webp",
+        "/assets/applovin/textures/color_2_pink_q85.webp",
+        "/assets/applovin/textures/color_3_purple_q85.webp",
+        "/assets/applovin/textures/color_4_red_q85.webp",
+        "/assets/applovin/textures/color_5_yellow_q85.webp",
+        "/assets/applovin/textures/color_6_orange_q85.webp",
+        "/assets/applovin/textures/color_7_lightblue_q85.webp",
+        "/assets/applovin/textures/color_8_brown_q85.webp",
+        "/assets/applovin/textures/color_9_darkgreen_q85.webp",
+        "/assets/applovin/textures/color_10_darkblue_q85.webp"
+      ],
+      "models": {
+        "passengerVatMesh": "/assets/unity/models/Idle_boy01_vatmesh.bin",
+        "passengerVatTexture": "/assets/unity/models/Idle_boy01_anim_map.rgba16f",
+        "shadow": "/assets/unity/models/Shadow_01.fbx",
+        "arrow": "/assets/unity/models/Arrow_01.fbx",
+        "parkingSpot": "/assets/unity/models/Car_P.fbx",
+        "vehicleBySeats": {
+          "4": "/assets/unity/models/Car_001.fbx",
+          "6": "/assets/unity/models/Van_001.fbx",
+          "10": "/assets/unity/models/Bus_001.fbx"
+        },
+        "vehicleShadowBySeats": {
+          "4": "/assets/unity/models/Car_FakeShadow.fbx",
+          "6": "/assets/unity/models/Van_FakeShadow.fbx",
+          "10": "/assets/unity/models/Bus_FakeShadow.fbx"
+        }
+      },
+      "textures": {
+        "shadow": "/assets/unity/textures/Shadow_01.png",
+        "parkingSpot": "/assets/unity/textures/Car_P2.png",
+        "seatCountBoard": "/assets/unity/textures/count_al.png",
+        "effects": {
+          "aboardSmoke": "/assets/unity/effects/Round_01.png",
+          "ribbon": "/assets/unity/effects/Ribbon_01.png",
+          "ribbonSmoke": "/assets/applovin/effects/Smoke_08_q80.webp",
+          "hitCircle": "/assets/unity/effects/Circle_01.png",
+          "hitRound2": "/assets/applovin/effects/Round_02_q80.webp",
+          "hitRound1": "/assets/unity/effects/Round_01.png",
+          "smokeTrail": "/assets/unity/effects/Round_01.png"
+        },
+        "vehicleShadowBySeats": {
+          "4": "/assets/unity/textures/Car_FakeShadow.png",
+          "6": "/assets/unity/textures/Van_FakeShadow.png",
+          "10": "/assets/unity/textures/Bus_FakeShadow.png"
+        }
+      },
+      "passengerAnimations": {
+        "textureWidth": 512,
+        "textureHeight": 128,
+        "move": {
+          "uvMin": 0.00390625,
+          "uvMax": 0.15234375,
+          "duration": 0.60000014
+        },
+        "idle": {
+          "uvMin": 0.15234375,
+          "uvMax": 0.62109375,
+          "duration": 2
+        }
+      }
+    },
+    "splinePoints": [
+      [
+        -0.8212245,
+        15.494487
+      ],
+      [
+        -0.6354121,
+        15.661096
+      ],
+      [
+        -0.42046472,
+        15.735908
+      ],
+      [
+        -0.17919716,
+        15.77747
+      ],
+      [
+        0.053118944,
+        15.787669
+      ],
+      [
+        0.28579113,
+        15.765001
+      ],
+      [
+        0.52796626,
+        15.715597
+      ],
+      [
+        0.7419717,
+        15.592928
+      ],
+      [
+        0.8692199,
+        15.390943
+      ],
+      [
+        0.8745683,
+        15.120195
+      ],
+      [
+        0.7092973,
+        14.91469
+      ],
+      [
+        0.49285337,
+        14.816255
+      ],
+      [
+        0.25666875,
+        14.771048
+      ],
+      [
+        0.026976904,
+        14.763357
+      ],
+      [
+        -0.18797053,
+        14.771669
+      ],
+      [
+        -0.44673413,
+        14.801695
+      ],
+      [
+        -0.6660774,
+        14.884888
+      ],
+      [
+        -0.8289872,
+        15.029538
+      ],
+      [
+        -0.8942264,
+        15.262102
+      ]
+    ],
+    "queuePaths": [
+      [
+        [
+          -1.1523999,
+          15.670884
+        ],
+        [
+          -1.3029,
+          15.742984
+        ],
+        [
+          -1.4361999,
+          15.832043
+        ],
+        [
+          -1.5436999,
+          15.950794
+        ],
+        [
+          -1.6211,
+          16.090746
+        ],
+        [
+          -1.6812999,
+          16.27311
+        ],
+        [
+          -1.7156999,
+          16.455479
+        ],
+        [
+          -1.7544,
+          16.680248
+        ],
+        [
+          -1.7844999,
+          16.858372
+        ],
+        [
+          -1.806,
+          17.006807
+        ],
+        [
+          -1.8232,
+          17.248547
+        ],
+        [
+          -1.8489999,
+          17.375778
+        ],
+        [
+          -1.8705,
+          17.63024
+        ],
+        [
+          -1.9049,
+          17.825327
+        ],
+        [
+          -1.9478999,
+          18.00345
+        ],
+        [
+          -1.9951999,
+          18.177332
+        ],
+        [
+          -2.0683,
+          18.346973
+        ],
+        [
+          -2.1844,
+          18.465721
+        ],
+        [
+          -2.3091,
+          18.563267
+        ],
+        [
+          -2.4596,
+          18.635365
+        ]
+      ],
+      [
+        [
+          1.1394999,
+          15.666645
+        ],
+        [
+          1.29,
+          15.747223
+        ],
+        [
+          1.4232999,
+          15.836285
+        ],
+        [
+          1.5264999,
+          15.950794
+        ],
+        [
+          1.6082,
+          16.099228
+        ],
+        [
+          1.6683999,
+          16.27311
+        ],
+        [
+          1.7113999,
+          16.476679
+        ],
+        [
+          1.7458,
+          16.676008
+        ],
+        [
+          1.7716,
+          16.858372
+        ],
+        [
+          1.7974,
+          17.083147
+        ],
+        [
+          1.8232,
+          17.2231
+        ],
+        [
+          1.8403999,
+          17.3885
+        ],
+        [
+          1.8661999,
+          17.592072
+        ],
+        [
+          1.8963,
+          17.816845
+        ],
+        [
+          1.9350001,
+          17.994968
+        ],
+        [
+          1.9866,
+          18.181572
+        ],
+        [
+          2.064,
+          18.346973
+        ],
+        [
+          2.1715,
+          18.465721
+        ],
+        [
+          2.3091,
+          18.563267
+        ],
+        [
+          2.4596,
+          18.631124
+        ]
+      ]
+    ],
+    "key": "level22",
+    "displayName": "level22 (level22.asset)",
+    "sourceFile": "level22.asset",
+    "unityId": 22,
+    "collision": {
+      "vehicleSizes": {
+        "4": {
+          "width": 0.27,
+          "length": 0.47157902
+        },
+        "6": {
+          "width": 0.27,
+          "length": 0.486
+        },
+        "10": {
+          "width": 0.27,
+          "length": 0.6785897
+        }
+      },
+      "maxVehicleSize": {
+        "width": 0.27,
+        "length": 0.6785897
+      },
+      "garageSize": {
+        "width": 0.50425464,
+        "length": 0.668775
+      },
+      "conveyor": {
+        "size": {
+          "width": 1.4,
+          "length": 1
+        },
+        "exitWidth": 2.4699998,
+        "wallThickness": 0.02
+      }
+    },
+    "mechanics": {
+      "isMechanicLevel": true,
+      "types": [
+        "ordinaryConveyor",
+        "vehicleTransportBelt"
+      ],
+      "counts": {
+        "luxuryVehicle": 0,
+        "ambulance": 0,
+        "turnVehicle": 0,
+        "hiddenVehicle": 0,
+        "garage": 0,
+        "vehicleTransportBelt": 1
+      }
+    },
+    "garage": {
+      "size": {
+        "width": 0.50425464,
+        "length": 0.668775
+      },
+      "parkOffset": 0.7,
+      "outDelay": 0.3,
+      "outDuration": 0.6
+    },
+    "conveyorBeltName": "ConveyorBelt5",
+    "turnVehicleCount": 0,
+    "luxuryCount": 0,
+    "vehicleAmbulances": [],
+    "containers": [
+      {
+        "id": 0,
+        "type": 1,
+        "x": 0,
+        "z": 0,
+        "yaw": 0
+      },
+      {
+        "id": 1502201,
+        "type": 3,
+        "x": 0,
+        "z": -1.0347486,
+        "yaw": 0
+      }
+    ],
+    "conveyorBelts": [
+      {
+        "vcId": 1502201,
+        "colorIndices": [
+          4,
+          4,
+          4,
+          4,
+          4,
+          4,
+          0,
+          0,
+          0,
+          0,
+          5,
+          5,
+          5,
+          5,
+          5,
+          5,
+          5,
+          2,
+          2,
+          2,
+          2,
+          4,
+          4,
+          4,
+          4,
+          4,
+          4,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          5,
+          5,
+          5,
+          5,
+          5,
+          5,
+          1,
+          1,
+          1,
+          1,
+          6,
+          6,
+          6,
+          6,
+          6,
+          6,
+          3,
+          3,
+          3,
+          3,
+          1,
+          1,
+          1,
+          1,
+          2,
+          2,
+          2,
+          2,
+          3,
+          3,
+          3,
+          3,
+          5,
+          5,
+          5,
+          5,
+          1,
+          1,
+          1,
+          1,
+          0,
+          0,
+          0,
+          0,
+          5,
+          5,
+          5,
+          5,
+          5,
+          5,
+          4,
+          4,
+          4,
+          4,
+          6,
+          6,
+          6,
+          6,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          3,
+          3,
+          3,
+          3,
+          3,
+          3,
+          5,
+          5,
+          5,
+          5,
+          4,
+          4,
+          4,
+          4,
+          3,
+          3,
+          3,
+          3,
+          3,
+          3,
+          5,
+          5,
+          5,
+          5,
+          5,
+          5,
+          0,
+          0,
+          0,
+          0,
+          6,
+          6,
+          6,
+          6,
+          5,
+          5,
+          5,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          4,
+          4,
+          4,
+          4,
+          4,
+          4,
+          0,
+          0,
+          0,
+          0,
+          2,
+          2,
+          2,
+          2,
+          6,
+          6,
+          6,
+          6,
+          6,
+          6,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          5,
+          5,
+          5,
+          5,
+          5,
+          5,
+          3,
+          3,
+          3,
+          3,
+          4,
+          4,
+          4,
+          4,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          5,
+          5,
+          5,
+          5,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          5,
+          5,
+          5,
+          5,
+          4,
+          4,
+          4,
+          4,
+          3,
+          3,
+          3,
+          3,
+          5,
+          5,
+          5,
+          5,
+          3,
+          3,
+          3,
+          3,
+          4,
+          4,
+          4,
+          4,
+          3,
+          3,
+          3,
+          3,
+          5,
+          5,
+          5,
+          5,
+          5,
+          5
+        ],
+        "width": 2.4699998
+      }
     ]
   },
   "level26": {
@@ -36210,7 +38096,22 @@ export const LEVEL_CATALOG = Object.freeze({
         "z": 0,
         "yaw": 0
       }
-    ]
+    ],
+    "mechanics": {
+      "isMechanicLevel": true,
+      "types": [
+        "ordinaryConveyor",
+        "ambulance"
+      ],
+      "counts": {
+        "luxuryVehicle": 0,
+        "ambulance": 1,
+        "turnVehicle": 0,
+        "hiddenVehicle": 0,
+        "garage": 0,
+        "vehicleTransportBelt": 0
+      }
+    }
   },
   "level28": {
     "id": 28,
@@ -38336,6 +40237,4577 @@ export const LEVEL_CATALOG = Object.freeze({
         "x": 0,
         "z": 0,
         "yaw": 0
+      }
+    ],
+    "mechanics": {
+      "isMechanicLevel": true,
+      "types": [
+        "ordinaryConveyor",
+        "turnVehicle"
+      ],
+      "counts": {
+        "luxuryVehicle": 0,
+        "ambulance": 0,
+        "turnVehicle": 36,
+        "hiddenVehicle": 0,
+        "garage": 0,
+        "vehicleTransportBelt": 0
+      }
+    }
+  },
+  "level29": {
+    "id": 29,
+    "mapScale": 1.33,
+    "sceneName": "GameSceneDualQueue2",
+    "groupSize": 4,
+    "spotCount": 6,
+    "conveyorCapacity": 32,
+    "conveyorSpeed": 0.5,
+    "conveyorPathLength": 4.591284809513923,
+    "queueCount": 2,
+    "queueCapacity": 24,
+    "entryPercents": [
+      0,
+      0.421
+    ],
+    "longPressThreshold": 0.2,
+    "longPressMultiplier": 3,
+    "exitStart": 0.605,
+    "exitEnd": 0.78,
+    "boardingDepartureDelay": 1.6,
+    "passengerQueue": {
+      "spacing": 0.4,
+      "screenEdgeOffsetSpacing": 4
+    },
+    "passengerEntryMotion": {
+      "passengerSpeed": 2,
+      "conveyorSpeed": 0.5,
+      "initialFillCatchUpDuration": 0.2,
+      "catchUpExtraSpeed": 1,
+      "snapDistance": 0.02
+    },
+    "vehicleSize": {
+      "width": 0.35910000000000003,
+      "length": 0.902524301
+    },
+    "vehicleMotion": {
+      "spotStartX": -1.2419354838709677,
+      "spotSpacing": 0.3548387096774194,
+      "spotZ": 1.4774193548387096,
+      "spotYaw": 0,
+      "spotApproachOffsetZ": 0.5,
+      "spotApproachDirection": "screen-down"
+    },
+    "vehicles": [
+      {
+        "id": 39,
+        "seats": 6,
+        "colorIndex": 4,
+        "x": 0.09265622,
+        "z": -1.8034813,
+        "yaw": -179.99999499104368,
+        "isHidden": false,
+        "isTurnVehicle": true,
+        "isLuxury": false,
+        "containerType": 1,
+        "containerId": 0
+      },
+      {
+        "id": 40,
+        "seats": 6,
+        "colorIndex": 3,
+        "x": -0.41734383,
+        "z": -1.5534813,
+        "yaw": -40.00000690644839,
+        "isHidden": false,
+        "isTurnVehicle": false,
+        "isLuxury": false,
+        "containerType": 1,
+        "containerId": 0
+      },
+      {
+        "id": 41,
+        "seats": 6,
+        "colorIndex": 4,
+        "x": 0.6126559,
+        "z": -1.5834811,
+        "yaw": 45.00000277446678,
+        "isHidden": false,
+        "isTurnVehicle": false,
+        "isLuxury": false,
+        "containerType": 1,
+        "containerId": 0
+      },
+      {
+        "id": 42,
+        "seats": 6,
+        "colorIndex": 5,
+        "x": 0.07265607,
+        "z": -1.2334813,
+        "yaw": -179.99999499104368,
+        "isHidden": false,
+        "isTurnVehicle": true,
+        "isLuxury": false,
+        "containerType": 1,
+        "containerId": 0
+      },
+      {
+        "id": 43,
+        "seats": 10,
+        "colorIndex": 0,
+        "x": 0.8226557,
+        "z": -1.0634816,
+        "yaw": 89.99998684315639,
+        "isHidden": false,
+        "isTurnVehicle": false,
+        "isLuxury": false,
+        "containerType": 1,
+        "containerId": 0
+      },
+      {
+        "id": 44,
+        "seats": 10,
+        "colorIndex": 5,
+        "x": -1.1973444,
+        "z": -0.7034824,
+        "yaw": -89.99999818714232,
+        "isHidden": false,
+        "isTurnVehicle": false,
+        "isLuxury": false,
+        "containerType": 1,
+        "containerId": 0
+      },
+      {
+        "id": 45,
+        "seats": 10,
+        "colorIndex": 4,
+        "x": 0.052655958,
+        "z": -0.52348197,
+        "yaw": 0.000010017912654601458,
+        "isHidden": false,
+        "isTurnVehicle": true,
+        "isLuxury": false,
+        "containerType": 1,
+        "containerId": 0
+      },
+      {
+        "id": 46,
+        "seats": 10,
+        "colorIndex": 6,
+        "x": 0.64265573,
+        "z": -0.3034817,
+        "yaw": 89.99998684315639,
+        "isHidden": false,
+        "isTurnVehicle": false,
+        "isLuxury": false,
+        "containerType": 1,
+        "containerId": 0
+      },
+      {
+        "id": 47,
+        "seats": 10,
+        "colorIndex": 0,
+        "x": -0.62734383,
+        "z": -0.3134817,
+        "yaw": 89.99998684315639,
+        "isHidden": false,
+        "isTurnVehicle": false,
+        "isLuxury": false,
+        "containerType": 1,
+        "containerId": 0
+      },
+      {
+        "id": 48,
+        "seats": 6,
+        "colorIndex": 6,
+        "x": -0.51734376,
+        "z": -0.70348203,
+        "yaw": -89.99999818714232,
+        "isHidden": false,
+        "isTurnVehicle": false,
+        "isLuxury": false,
+        "containerType": 1,
+        "containerId": 0
+      },
+      {
+        "id": 49,
+        "seats": 6,
+        "colorIndex": 5,
+        "x": -0.83734316,
+        "z": -1.0534813,
+        "yaw": -89.99999818714232,
+        "isHidden": false,
+        "isTurnVehicle": false,
+        "isLuxury": false,
+        "containerType": 1,
+        "containerId": 0
+      },
+      {
+        "id": 50,
+        "seats": 6,
+        "colorIndex": 3,
+        "x": -1.3673435,
+        "z": -0.3034817,
+        "yaw": 89.99998684315639,
+        "isHidden": false,
+        "isTurnVehicle": false,
+        "isLuxury": false,
+        "containerType": 1,
+        "containerId": 0
+      },
+      {
+        "id": 51,
+        "seats": 6,
+        "colorIndex": 4,
+        "x": 1.3426554,
+        "z": -0.303482,
+        "yaw": 89.99999818714232,
+        "isHidden": false,
+        "isTurnVehicle": false,
+        "isLuxury": false,
+        "containerType": 1,
+        "containerId": 0
+      },
+      {
+        "id": 52,
+        "seats": 6,
+        "colorIndex": 5,
+        "x": 1.2426556,
+        "z": -0.69348156,
+        "yaw": -89.99999818714232,
+        "isHidden": false,
+        "isTurnVehicle": false,
+        "isLuxury": false,
+        "containerType": 1,
+        "containerId": 0
+      },
+      {
+        "id": 53,
+        "seats": 6,
+        "colorIndex": 6,
+        "x": 0.61265594,
+        "z": -0.68348193,
+        "yaw": -89.99999818714232,
+        "isHidden": false,
+        "isTurnVehicle": false,
+        "isLuxury": false,
+        "containerType": 1,
+        "containerId": 0
+      },
+      {
+        "id": 54,
+        "seats": 6,
+        "colorIndex": 3,
+        "x": 0.042655982,
+        "z": 0.16651823,
+        "yaw": 0.000010017912654601458,
+        "isHidden": false,
+        "isTurnVehicle": true,
+        "isLuxury": false,
+        "containerType": 1,
+        "containerId": 0
+      },
+      {
+        "id": 55,
+        "seats": 6,
+        "colorIndex": 6,
+        "x": -0.5173439,
+        "z": 0.086518355,
+        "yaw": 89.99999818714232,
+        "isHidden": false,
+        "isTurnVehicle": false,
+        "isLuxury": false,
+        "containerType": 1,
+        "containerId": 0
+      },
+      {
+        "id": 56,
+        "seats": 6,
+        "colorIndex": 0,
+        "x": -1.1073438,
+        "z": 0.06651815,
+        "yaw": 89.99999818714232,
+        "isHidden": false,
+        "isTurnVehicle": false,
+        "isLuxury": false,
+        "containerType": 1,
+        "containerId": 0
+      },
+      {
+        "id": 57,
+        "seats": 6,
+        "colorIndex": 4,
+        "x": 0.5826555,
+        "z": 0.1165185,
+        "yaw": 89.99999818714232,
+        "isHidden": false,
+        "isTurnVehicle": false,
+        "isLuxury": false,
+        "containerType": 1,
+        "containerId": 0
+      },
+      {
+        "id": 58,
+        "seats": 6,
+        "colorIndex": 0,
+        "x": 1.1326547,
+        "z": 0.10651853,
+        "yaw": 89.99999818714232,
+        "isHidden": false,
+        "isTurnVehicle": false,
+        "isLuxury": false,
+        "containerType": 1,
+        "containerId": 0
+      },
+      {
+        "id": 59,
+        "seats": 10,
+        "colorIndex": 5,
+        "x": 1.772655,
+        "z": 0.28651837,
+        "yaw": 29.99999868431647,
+        "isHidden": false,
+        "isTurnVehicle": false,
+        "isLuxury": false,
+        "containerType": 1,
+        "containerId": 0
+      },
+      {
+        "id": 60,
+        "seats": 10,
+        "colorIndex": 3,
+        "x": -1.6973431,
+        "z": 0.27651864,
+        "yaw": -30.00000998077334,
+        "isHidden": false,
+        "isTurnVehicle": false,
+        "isLuxury": false,
+        "containerType": 1,
+        "containerId": 0
+      },
+      {
+        "id": 61,
+        "seats": 10,
+        "colorIndex": 0,
+        "x": -1.347344,
+        "z": 0.8865175,
+        "yaw": 89.99999818714232,
+        "isHidden": false,
+        "isTurnVehicle": false,
+        "isLuxury": false,
+        "containerType": 1,
+        "containerId": 0
+      },
+      {
+        "id": 62,
+        "seats": 10,
+        "colorIndex": 5,
+        "x": 0.032655872,
+        "z": 1.6265178,
+        "yaw": 0.000010017912654601458,
+        "isHidden": false,
+        "isTurnVehicle": true,
+        "isLuxury": false,
+        "containerType": 1,
+        "containerId": 0
+      },
+      {
+        "id": 63,
+        "seats": 6,
+        "colorIndex": 4,
+        "x": 0.5226562,
+        "z": 1.7965161,
+        "yaw": 54.99999707414993,
+        "isHidden": false,
+        "isTurnVehicle": false,
+        "isLuxury": false,
+        "containerType": 1,
+        "containerId": 0
+      },
+      {
+        "id": 64,
+        "seats": 6,
+        "colorIndex": 0,
+        "x": -0.49734372,
+        "z": 1.7965168,
+        "yaw": -55.000005773389994,
+        "isHidden": false,
+        "isTurnVehicle": false,
+        "isLuxury": false,
+        "containerType": 1,
+        "containerId": 0
+      },
+      {
+        "id": 65,
+        "seats": 10,
+        "colorIndex": 1,
+        "x": -0.587344,
+        "z": 0.88651776,
+        "yaw": 89.99998684315639,
+        "isHidden": false,
+        "isTurnVehicle": false,
+        "isLuxury": false,
+        "containerType": 1,
+        "containerId": 0
+      },
+      {
+        "id": 66,
+        "seats": 10,
+        "colorIndex": 6,
+        "x": 0.032656826,
+        "z": 0.8465178,
+        "yaw": 0,
+        "isHidden": false,
+        "isTurnVehicle": true,
+        "isLuxury": false,
+        "containerType": 1,
+        "containerId": 0
+      },
+      {
+        "id": 67,
+        "seats": 10,
+        "colorIndex": 5,
+        "x": -1.3673441,
+        "z": 1.3165181,
+        "yaw": -104.99999433376264,
+        "isHidden": false,
+        "isTurnVehicle": false,
+        "isLuxury": false,
+        "containerType": 1,
+        "containerId": 0
+      },
+      {
+        "id": 68,
+        "seats": 10,
+        "colorIndex": 1,
+        "x": -0.6173441,
+        "z": 1.3565176,
+        "yaw": -89.99999818714232,
+        "isHidden": false,
+        "isTurnVehicle": false,
+        "isLuxury": false,
+        "containerType": 1,
+        "containerId": 0
+      },
+      {
+        "id": 69,
+        "seats": 10,
+        "colorIndex": 1,
+        "x": 0.6326558,
+        "z": 0.89651823,
+        "yaw": 89.99998684315639,
+        "isHidden": false,
+        "isTurnVehicle": false,
+        "isLuxury": false,
+        "containerType": 1,
+        "containerId": 0
+      },
+      {
+        "id": 70,
+        "seats": 10,
+        "colorIndex": 5,
+        "x": 0.6226554,
+        "z": 1.3865181,
+        "yaw": 89.99998684315639,
+        "isHidden": false,
+        "isTurnVehicle": false,
+        "isLuxury": false,
+        "containerType": 1,
+        "containerId": 0
+      },
+      {
+        "id": 71,
+        "seats": 6,
+        "colorIndex": 15,
+        "x": 1.4026546,
+        "z": 1.3165177,
+        "yaw": 104.99999433376264,
+        "isHidden": false,
+        "isTurnVehicle": false,
+        "isLuxury": true,
+        "containerType": 1,
+        "containerId": 0
+      },
+      {
+        "id": 72,
+        "seats": 10,
+        "colorIndex": 1,
+        "x": 1.4126548,
+        "z": 0.86651844,
+        "yaw": 89.99999818714232,
+        "isHidden": false,
+        "isTurnVehicle": false,
+        "isLuxury": false,
+        "containerType": 1,
+        "containerId": 0
+      },
+      {
+        "id": 73,
+        "seats": 4,
+        "colorIndex": 5,
+        "x": 1.1226546,
+        "z": 0.4565181,
+        "yaw": 89.99999818714232,
+        "isHidden": false,
+        "isTurnVehicle": false,
+        "isLuxury": false,
+        "containerType": 1,
+        "containerId": 0
+      },
+      {
+        "id": 74,
+        "seats": 4,
+        "colorIndex": 1,
+        "x": 0.5826552,
+        "z": 0.46651837,
+        "yaw": 89.99999818714232,
+        "isHidden": false,
+        "isTurnVehicle": false,
+        "isLuxury": false,
+        "containerType": 1,
+        "containerId": 0
+      },
+      {
+        "id": 75,
+        "seats": 4,
+        "colorIndex": 0,
+        "x": -0.5573447,
+        "z": 0.45651853,
+        "yaw": -89.99999818714232,
+        "isHidden": false,
+        "isTurnVehicle": false,
+        "isLuxury": false,
+        "containerType": 1,
+        "containerId": 0
+      },
+      {
+        "id": 76,
+        "seats": 4,
+        "colorIndex": 5,
+        "x": -1.1373444,
+        "z": 0.46651867,
+        "yaw": -89.99999818714232,
+        "isHidden": false,
+        "isTurnVehicle": false,
+        "isLuxury": false,
+        "containerType": 1,
+        "containerId": 0
+      }
+    ],
+    "vehicleDepthes": {},
+    "passengerSequence": [
+      15,
+      15,
+      15,
+      15,
+      15,
+      15,
+      3,
+      3,
+      3,
+      3,
+      3,
+      3,
+      3,
+      3,
+      3,
+      3,
+      3,
+      3,
+      3,
+      3,
+      3,
+      3,
+      6,
+      6,
+      6,
+      6,
+      6,
+      6,
+      6,
+      6,
+      6,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      0,
+      0,
+      0,
+      0,
+      4,
+      4,
+      4,
+      4,
+      5,
+      5,
+      5,
+      5,
+      5,
+      5,
+      5,
+      5,
+      5,
+      5,
+      6,
+      6,
+      6,
+      6,
+      6,
+      6,
+      6,
+      6,
+      6,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      4,
+      4,
+      4,
+      4,
+      4,
+      4,
+      4,
+      4,
+      4,
+      4,
+      5,
+      5,
+      5,
+      5,
+      5,
+      5,
+      5,
+      3,
+      3,
+      3,
+      3,
+      3,
+      6,
+      6,
+      6,
+      6,
+      6,
+      6,
+      6,
+      6,
+      6,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      5,
+      5,
+      5,
+      5,
+      5,
+      5,
+      5,
+      5,
+      5,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      4,
+      4,
+      4,
+      4,
+      4,
+      4,
+      4,
+      4,
+      4,
+      4,
+      5,
+      5,
+      5,
+      5,
+      5,
+      5,
+      5,
+      5,
+      5,
+      5,
+      5,
+      5,
+      5,
+      6,
+      6,
+      6,
+      6,
+      6,
+      6,
+      6,
+      6,
+      6,
+      3,
+      3,
+      3,
+      3,
+      3,
+      3,
+      3,
+      4,
+      4,
+      4,
+      4,
+      4,
+      4,
+      4,
+      4,
+      4,
+      4,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      5,
+      5,
+      5,
+      5,
+      5,
+      5,
+      5,
+      5,
+      5,
+      5,
+      5,
+      5,
+      5,
+      5,
+      5,
+      5,
+      5,
+      5,
+      5,
+      5,
+      5,
+      5,
+      5,
+      5,
+      5,
+      5,
+      5,
+      5,
+      5,
+      5,
+      6,
+      6,
+      5,
+      5,
+      5,
+      5,
+      5,
+      5,
+      5,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      4,
+      4,
+      4,
+      4,
+      4,
+      4,
+      0,
+      0,
+      0
+    ],
+    "passengerQueues": [
+      [
+        15,
+        15,
+        15,
+        15,
+        15,
+        15,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        6,
+        6,
+        6,
+        6,
+        6,
+        6,
+        6,
+        6,
+        6,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        0,
+        0,
+        0,
+        0,
+        4,
+        4,
+        4,
+        4,
+        5,
+        5,
+        5,
+        5,
+        5,
+        5,
+        5,
+        5,
+        5,
+        5,
+        6,
+        6,
+        6,
+        6,
+        6,
+        6,
+        6,
+        6,
+        6,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        4,
+        4,
+        4,
+        4,
+        4,
+        4,
+        4,
+        4,
+        4,
+        4,
+        5,
+        5,
+        5,
+        5,
+        5,
+        5,
+        5
+      ],
+      [
+        3,
+        3,
+        3,
+        3,
+        3,
+        6,
+        6,
+        6,
+        6,
+        6,
+        6,
+        6,
+        6,
+        6,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        5,
+        5,
+        5,
+        5,
+        5,
+        5,
+        5,
+        5,
+        5,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        4,
+        4,
+        4,
+        4,
+        4,
+        4,
+        4,
+        4,
+        4,
+        4,
+        5,
+        5,
+        5,
+        5,
+        5,
+        5,
+        5,
+        5,
+        5,
+        5,
+        5,
+        5,
+        5,
+        6,
+        6,
+        6,
+        6,
+        6,
+        6,
+        6,
+        6,
+        6,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        4,
+        4,
+        4,
+        4,
+        4,
+        4,
+        4,
+        4,
+        4,
+        4,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        5,
+        5,
+        5,
+        5,
+        5,
+        5,
+        5,
+        5,
+        5,
+        5,
+        5,
+        5,
+        5,
+        5,
+        5,
+        5,
+        5,
+        5,
+        5,
+        5,
+        5,
+        5,
+        5,
+        5,
+        5,
+        5,
+        5,
+        5,
+        5,
+        5,
+        6,
+        6,
+        5,
+        5,
+        5,
+        5,
+        5,
+        5,
+        5,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        4,
+        4,
+        4,
+        4,
+        4,
+        4,
+        0,
+        0,
+        0
+      ]
+    ],
+    "assets": {
+      "loopScene": "/assets/applovin/Loop_02_q80.webp",
+      "loopSpriteRect": {
+        "x": 0,
+        "y": 57,
+        "width": 2100,
+        "height": 1243,
+        "imageWidth": 2100,
+        "imageHeight": 1300
+      },
+      "background": "/assets/applovin/textures/BG02_split01_summer_q60.jpg",
+      "audio": {
+        "bus_hit": {
+          "clips": [
+            "/assets/unity/audio/bus_hit_V5.mp3"
+          ],
+          "volume": 0.503268
+        },
+        "passenger_up": {
+          "clips": [
+            "/assets/unity/audio/passenger_up_01.mp3",
+            "/assets/unity/audio/passenger_up_02.mp3",
+            "/assets/unity/audio/passenger_up_03.mp3"
+          ],
+          "volume": 0.825528
+        },
+        "bus_full": {
+          "clips": [
+            "/assets/unity/audio/bus_full.mp3"
+          ],
+          "volume": 0.50023913
+        }
+      },
+      "colorTextures": [
+        "/assets/applovin/textures/color_0_blue_q85.webp",
+        "/assets/applovin/textures/color_1_green_q85.webp",
+        "/assets/applovin/textures/color_2_pink_q85.webp",
+        "/assets/applovin/textures/color_3_purple_q85.webp",
+        "/assets/applovin/textures/color_4_red_q85.webp",
+        "/assets/applovin/textures/color_5_yellow_q85.webp",
+        "/assets/applovin/textures/color_6_orange_q85.webp",
+        "/assets/applovin/textures/color_7_lightblue_q85.webp",
+        "/assets/applovin/textures/color_8_brown_q85.webp",
+        "/assets/applovin/textures/color_9_darkgreen_q85.webp",
+        "/assets/applovin/textures/color_10_darkblue_q85.webp"
+      ],
+      "models": {
+        "passengerVatMesh": "/assets/unity/models/Idle_boy01_vatmesh.bin",
+        "passengerVatTexture": "/assets/unity/models/Idle_boy01_anim_map.rgba16f",
+        "shadow": "/assets/unity/models/Shadow_01.fbx",
+        "arrow": "/assets/unity/models/Arrow_01.fbx",
+        "parkingSpot": "/assets/unity/models/Car_P.fbx",
+        "vehicleBySeats": {
+          "4": "/assets/unity/models/Car_001.fbx",
+          "6": "/assets/unity/models/Van_001.fbx",
+          "10": "/assets/unity/models/Bus_001.fbx"
+        },
+        "vehicleShadowBySeats": {
+          "4": "/assets/unity/models/Car_FakeShadow.fbx",
+          "6": "/assets/unity/models/Van_FakeShadow.fbx",
+          "10": "/assets/unity/models/Bus_FakeShadow.fbx"
+        }
+      },
+      "textures": {
+        "shadow": "/assets/unity/textures/Shadow_01.png",
+        "parkingSpot": "/assets/unity/textures/Car_P2.png",
+        "seatCountBoard": "/assets/unity/textures/count_al.png",
+        "effects": {
+          "aboardSmoke": "/assets/unity/effects/Round_01.png",
+          "ribbon": "/assets/unity/effects/Ribbon_01.png",
+          "ribbonSmoke": "/assets/applovin/effects/Smoke_08_q80.webp",
+          "hitCircle": "/assets/unity/effects/Circle_01.png",
+          "hitRound2": "/assets/applovin/effects/Round_02_q80.webp",
+          "hitRound1": "/assets/unity/effects/Round_01.png",
+          "smokeTrail": "/assets/unity/effects/Round_01.png"
+        },
+        "vehicleShadowBySeats": {
+          "4": "/assets/unity/textures/Car_FakeShadow.png",
+          "6": "/assets/unity/textures/Van_FakeShadow.png",
+          "10": "/assets/unity/textures/Bus_FakeShadow.png"
+        }
+      },
+      "passengerAnimations": {
+        "textureWidth": 512,
+        "textureHeight": 128,
+        "move": {
+          "uvMin": 0.00390625,
+          "uvMax": 0.15234375,
+          "duration": 0.60000014
+        },
+        "idle": {
+          "uvMin": 0.15234375,
+          "uvMax": 0.62109375,
+          "duration": 2
+        }
+      }
+    },
+    "splinePoints": [
+      [
+        -0.8212245,
+        15.494487
+      ],
+      [
+        -0.6354121,
+        15.661096
+      ],
+      [
+        -0.42046472,
+        15.735908
+      ],
+      [
+        -0.17919716,
+        15.77747
+      ],
+      [
+        0.053118944,
+        15.787669
+      ],
+      [
+        0.28579113,
+        15.765001
+      ],
+      [
+        0.52796626,
+        15.715597
+      ],
+      [
+        0.7419717,
+        15.592928
+      ],
+      [
+        0.8692199,
+        15.390943
+      ],
+      [
+        0.8745683,
+        15.120195
+      ],
+      [
+        0.7092973,
+        14.91469
+      ],
+      [
+        0.49285337,
+        14.816255
+      ],
+      [
+        0.25666875,
+        14.771048
+      ],
+      [
+        0.026976904,
+        14.763357
+      ],
+      [
+        -0.18797053,
+        14.771669
+      ],
+      [
+        -0.44673413,
+        14.801695
+      ],
+      [
+        -0.6660774,
+        14.884888
+      ],
+      [
+        -0.8289872,
+        15.029538
+      ],
+      [
+        -0.8942264,
+        15.262102
+      ]
+    ],
+    "queuePaths": [
+      [
+        [
+          -1.1523999,
+          15.670884
+        ],
+        [
+          -1.3029,
+          15.742984
+        ],
+        [
+          -1.4361999,
+          15.832043
+        ],
+        [
+          -1.5436999,
+          15.950794
+        ],
+        [
+          -1.6211,
+          16.090746
+        ],
+        [
+          -1.6812999,
+          16.27311
+        ],
+        [
+          -1.7156999,
+          16.455479
+        ],
+        [
+          -1.7544,
+          16.680248
+        ],
+        [
+          -1.7844999,
+          16.858372
+        ],
+        [
+          -1.806,
+          17.006807
+        ],
+        [
+          -1.8232,
+          17.248547
+        ],
+        [
+          -1.8489999,
+          17.375778
+        ],
+        [
+          -1.8705,
+          17.63024
+        ],
+        [
+          -1.9049,
+          17.825327
+        ],
+        [
+          -1.9478999,
+          18.00345
+        ],
+        [
+          -1.9951999,
+          18.177332
+        ],
+        [
+          -2.0683,
+          18.346973
+        ],
+        [
+          -2.1844,
+          18.465721
+        ],
+        [
+          -2.3091,
+          18.563267
+        ],
+        [
+          -2.4596,
+          18.635365
+        ]
+      ],
+      [
+        [
+          1.1394999,
+          15.666645
+        ],
+        [
+          1.29,
+          15.747223
+        ],
+        [
+          1.4232999,
+          15.836285
+        ],
+        [
+          1.5264999,
+          15.950794
+        ],
+        [
+          1.6082,
+          16.099228
+        ],
+        [
+          1.6683999,
+          16.27311
+        ],
+        [
+          1.7113999,
+          16.476679
+        ],
+        [
+          1.7458,
+          16.676008
+        ],
+        [
+          1.7716,
+          16.858372
+        ],
+        [
+          1.7974,
+          17.083147
+        ],
+        [
+          1.8232,
+          17.2231
+        ],
+        [
+          1.8403999,
+          17.3885
+        ],
+        [
+          1.8661999,
+          17.592072
+        ],
+        [
+          1.8963,
+          17.816845
+        ],
+        [
+          1.9350001,
+          17.994968
+        ],
+        [
+          1.9866,
+          18.181572
+        ],
+        [
+          2.064,
+          18.346973
+        ],
+        [
+          2.1715,
+          18.465721
+        ],
+        [
+          2.3091,
+          18.563267
+        ],
+        [
+          2.4596,
+          18.631124
+        ]
+      ]
+    ],
+    "key": "level29",
+    "displayName": "level29 (level29.asset)",
+    "sourceFile": "level29.asset",
+    "unityId": 29,
+    "collision": {
+      "vehicleSizes": {
+        "4": {
+          "width": 0.27,
+          "length": 0.47157902
+        },
+        "6": {
+          "width": 0.27,
+          "length": 0.486
+        },
+        "10": {
+          "width": 0.27,
+          "length": 0.6785897
+        }
+      },
+      "maxVehicleSize": {
+        "width": 0.27,
+        "length": 0.6785897
+      },
+      "garageSize": {
+        "width": 0.50425464,
+        "length": 0.668775
+      }
+    },
+    "mechanics": {
+      "isMechanicLevel": true,
+      "types": [
+        "ordinaryConveyor",
+        "luxuryVehicle",
+        "turnVehicle"
+      ],
+      "counts": {
+        "luxuryVehicle": 1,
+        "ambulance": 0,
+        "turnVehicle": 6,
+        "hiddenVehicle": 0,
+        "garage": 0,
+        "vehicleTransportBelt": 0
+      }
+    },
+    "garage": {
+      "size": {
+        "width": 0.50425464,
+        "length": 0.668775
+      },
+      "parkOffset": 0.7,
+      "outDelay": 0.3,
+      "outDuration": 0.6
+    },
+    "conveyorBeltName": "ConveyorBelt14",
+    "turnVehicleCount": 6,
+    "luxuryCount": 1,
+    "vehicleAmbulances": [],
+    "containers": [
+      {
+        "id": 0,
+        "type": 1,
+        "x": 0,
+        "z": 0,
+        "yaw": 0
+      }
+    ]
+  },
+  "level33": {
+    "id": 33,
+    "mapScale": 1.33,
+    "sceneName": "GameSceneDualQueue2",
+    "groupSize": 4,
+    "spotCount": 6,
+    "conveyorCapacity": 32,
+    "conveyorSpeed": 0.5,
+    "conveyorPathLength": 4.591284809513923,
+    "queueCount": 2,
+    "queueCapacity": 24,
+    "entryPercents": [
+      0,
+      0.421
+    ],
+    "longPressThreshold": 0.2,
+    "longPressMultiplier": 3,
+    "exitStart": 0.605,
+    "exitEnd": 0.78,
+    "boardingDepartureDelay": 1.6,
+    "passengerQueue": {
+      "spacing": 0.4,
+      "screenEdgeOffsetSpacing": 4
+    },
+    "passengerEntryMotion": {
+      "passengerSpeed": 2,
+      "conveyorSpeed": 0.5,
+      "initialFillCatchUpDuration": 0.2,
+      "catchUpExtraSpeed": 1,
+      "snapDistance": 0.02
+    },
+    "vehicleSize": {
+      "width": 0.35910000000000003,
+      "length": 0.902524301
+    },
+    "vehicleMotion": {
+      "spotStartX": -1.2419354838709677,
+      "spotSpacing": 0.3548387096774194,
+      "spotZ": 1.4774193548387096,
+      "spotYaw": 0,
+      "spotApproachOffsetZ": 0.5,
+      "spotApproachDirection": "screen-down"
+    },
+    "vehicles": [
+      {
+        "id": 44,
+        "seats": 4,
+        "colorIndex": 0,
+        "x": -1.4486992,
+        "z": -0.55679214,
+        "yaw": 65.00001278016504,
+        "isHidden": false,
+        "isTurnVehicle": true,
+        "isLuxury": false,
+        "containerType": 1,
+        "containerId": 0
+      },
+      {
+        "id": 45,
+        "seats": 4,
+        "colorIndex": 6,
+        "x": -1.4552717,
+        "z": -0.98928654,
+        "yaw": -114.99999228211587,
+        "isHidden": false,
+        "isTurnVehicle": true,
+        "isLuxury": false,
+        "containerType": 1,
+        "containerId": 0
+      },
+      {
+        "id": 46,
+        "seats": 4,
+        "colorIndex": 5,
+        "x": -1.7125623,
+        "z": -0.20764926,
+        "yaw": -114.99999228211587,
+        "isHidden": false,
+        "isTurnVehicle": true,
+        "isLuxury": false,
+        "containerType": 1,
+        "containerId": 0
+      },
+      {
+        "id": 47,
+        "seats": 4,
+        "colorIndex": 1,
+        "x": -1.5778441,
+        "z": 0.25320727,
+        "yaw": -114.99999228211587,
+        "isHidden": false,
+        "isTurnVehicle": false,
+        "isLuxury": false,
+        "containerType": 1,
+        "containerId": 0
+      },
+      {
+        "id": 48,
+        "seats": 4,
+        "colorIndex": 7,
+        "x": -0.23545356,
+        "z": -1.7938315,
+        "yaw": 164.99999203396538,
+        "isHidden": false,
+        "isTurnVehicle": true,
+        "isLuxury": false,
+        "containerType": 1,
+        "containerId": 0
+      },
+      {
+        "id": 49,
+        "seats": 4,
+        "colorIndex": 0,
+        "x": -1.4136999,
+        "z": 1.1483685,
+        "yaw": -114.99999228211587,
+        "isHidden": false,
+        "isTurnVehicle": false,
+        "isLuxury": false,
+        "containerType": 1,
+        "containerId": 0
+      },
+      {
+        "id": 50,
+        "seats": 4,
+        "colorIndex": 6,
+        "x": 0.15836492,
+        "z": -1.8187903,
+        "yaw": 164.99999203396538,
+        "isHidden": false,
+        "isTurnVehicle": false,
+        "isLuxury": false,
+        "containerType": 1,
+        "containerId": 0
+      },
+      {
+        "id": 51,
+        "seats": 4,
+        "colorIndex": 7,
+        "x": 0.4813276,
+        "z": -1.5993809,
+        "yaw": 164.99999203396538,
+        "isHidden": false,
+        "isTurnVehicle": false,
+        "isLuxury": false,
+        "containerType": 1,
+        "containerId": 0
+      },
+      {
+        "id": 52,
+        "seats": 4,
+        "colorIndex": 8,
+        "x": 0.958062,
+        "z": -1.7405385,
+        "yaw": 164.99999203396538,
+        "isHidden": false,
+        "isTurnVehicle": false,
+        "isLuxury": false,
+        "containerType": 1,
+        "containerId": 0
+      },
+      {
+        "id": 53,
+        "seats": 4,
+        "colorIndex": 7,
+        "x": 1.2892802,
+        "z": -1.51979,
+        "yaw": 164.99999203396538,
+        "isHidden": false,
+        "isTurnVehicle": false,
+        "isLuxury": false,
+        "containerType": 1,
+        "containerId": 0
+      },
+      {
+        "id": 54,
+        "seats": 4,
+        "colorIndex": 6,
+        "x": 1.6508627,
+        "z": -1.6237277,
+        "yaw": 164.99999203396538,
+        "isHidden": false,
+        "isTurnVehicle": false,
+        "isLuxury": false,
+        "containerType": 1,
+        "containerId": 0
+      },
+      {
+        "id": 55,
+        "seats": 4,
+        "colorIndex": 5,
+        "x": 1.7042859,
+        "z": -0.6234497,
+        "yaw": 70.00000247738461,
+        "isHidden": false,
+        "isTurnVehicle": false,
+        "isLuxury": false,
+        "containerType": 1,
+        "containerId": 0
+      },
+      {
+        "id": 56,
+        "seats": 4,
+        "colorIndex": 7,
+        "x": 1.7146275,
+        "z": -0.18235743,
+        "yaw": 70.00000247738461,
+        "isHidden": false,
+        "isTurnVehicle": true,
+        "isLuxury": false,
+        "containerType": 1,
+        "containerId": 0
+      },
+      {
+        "id": 57,
+        "seats": 4,
+        "colorIndex": 6,
+        "x": 1.7155714,
+        "z": 0.21331045,
+        "yaw": 70.00000247738461,
+        "isHidden": false,
+        "isTurnVehicle": true,
+        "isLuxury": false,
+        "containerType": 1,
+        "containerId": 0
+      },
+      {
+        "id": 58,
+        "seats": 4,
+        "colorIndex": 7,
+        "x": 1.6079845,
+        "z": 0.5618992,
+        "yaw": 70.00000247738461,
+        "isHidden": false,
+        "isTurnVehicle": false,
+        "isLuxury": false,
+        "containerType": 1,
+        "containerId": 0
+      },
+      {
+        "id": 59,
+        "seats": 4,
+        "colorIndex": 5,
+        "x": 1.5815763,
+        "z": 0.9520729,
+        "yaw": -109.99999274422223,
+        "isHidden": false,
+        "isTurnVehicle": true,
+        "isLuxury": false,
+        "containerType": 1,
+        "containerId": 0
+      },
+      {
+        "id": 60,
+        "seats": 4,
+        "colorIndex": 2,
+        "x": 1.5428326,
+        "z": 1.3209794,
+        "yaw": 70.00000247738461,
+        "isHidden": false,
+        "isTurnVehicle": false,
+        "isLuxury": false,
+        "containerType": 1,
+        "containerId": 0
+      },
+      {
+        "id": 61,
+        "seats": 4,
+        "colorIndex": 5,
+        "x": 0.80096364,
+        "z": 1.7219399,
+        "yaw": -25.00001281738455,
+        "isHidden": false,
+        "isTurnVehicle": false,
+        "isLuxury": false,
+        "containerType": 1,
+        "containerId": 0
+      },
+      {
+        "id": 62,
+        "seats": 4,
+        "colorIndex": 6,
+        "x": 0.36991224,
+        "z": 1.8097864,
+        "yaw": -30.00000998077334,
+        "isHidden": false,
+        "isTurnVehicle": false,
+        "isLuxury": false,
+        "containerType": 1,
+        "containerId": 0
+      },
+      {
+        "id": 63,
+        "seats": 4,
+        "colorIndex": 1,
+        "x": -0.042477973,
+        "z": 1.7845937,
+        "yaw": -30.00000998077334,
+        "isHidden": false,
+        "isTurnVehicle": false,
+        "isLuxury": false,
+        "containerType": 1,
+        "containerId": 0
+      },
+      {
+        "id": 64,
+        "seats": 4,
+        "colorIndex": 6,
+        "x": -0.47620833,
+        "z": 1.8011967,
+        "yaw": -30.00000998077334,
+        "isHidden": false,
+        "isTurnVehicle": false,
+        "isLuxury": false,
+        "containerType": 1,
+        "containerId": 0
+      },
+      {
+        "id": 65,
+        "seats": 4,
+        "colorIndex": 8,
+        "x": -0.79127866,
+        "z": 1.5508379,
+        "yaw": -30.00000998077334,
+        "isHidden": false,
+        "isTurnVehicle": false,
+        "isLuxury": false,
+        "containerType": 1,
+        "containerId": 0
+      },
+      {
+        "id": 66,
+        "seats": 4,
+        "colorIndex": 6,
+        "x": -0.91151595,
+        "z": 0.40445518,
+        "yaw": -80.00000481999773,
+        "isHidden": false,
+        "isTurnVehicle": false,
+        "isLuxury": false,
+        "containerType": 1,
+        "containerId": 0
+      },
+      {
+        "id": 67,
+        "seats": 4,
+        "colorIndex": 3,
+        "x": -0.26486897,
+        "z": 1.1673002,
+        "yaw": 4.999999999933508,
+        "isHidden": true,
+        "isTurnVehicle": false,
+        "isLuxury": false,
+        "containerType": 1,
+        "containerId": 0
+      },
+      {
+        "id": 68,
+        "seats": 4,
+        "colorIndex": 6,
+        "x": 0.2315411,
+        "z": 1.1687368,
+        "yaw": 4.999999999933508,
+        "isHidden": true,
+        "isTurnVehicle": false,
+        "isLuxury": false,
+        "containerType": 1,
+        "containerId": 0
+      },
+      {
+        "id": 69,
+        "seats": 4,
+        "colorIndex": 1,
+        "x": 0.6176878,
+        "z": 1.1518713,
+        "yaw": 4.999999999933508,
+        "isHidden": true,
+        "isTurnVehicle": false,
+        "isLuxury": false,
+        "containerType": 1,
+        "containerId": 0
+      },
+      {
+        "id": 70,
+        "seats": 4,
+        "colorIndex": 2,
+        "x": 0.9971363,
+        "z": 0.58000684,
+        "yaw": 169.99999317082234,
+        "isHidden": false,
+        "isTurnVehicle": false,
+        "isLuxury": false,
+        "containerType": 1,
+        "containerId": 0
+      },
+      {
+        "id": 71,
+        "seats": 4,
+        "colorIndex": 1,
+        "x": 1.1023288,
+        "z": -0.046307012,
+        "yaw": 169.99999317082234,
+        "isHidden": true,
+        "isTurnVehicle": false,
+        "isLuxury": false,
+        "containerType": 1,
+        "containerId": 0
+      },
+      {
+        "id": 72,
+        "seats": 4,
+        "colorIndex": 0,
+        "x": 0.2858751,
+        "z": -1.041447,
+        "yaw": -179.99999499104368,
+        "isHidden": true,
+        "isTurnVehicle": false,
+        "isLuxury": false,
+        "containerType": 1,
+        "containerId": 0
+      },
+      {
+        "id": 73,
+        "seats": 4,
+        "colorIndex": 6,
+        "x": 0.8152271,
+        "z": -1.0790299,
+        "yaw": -179.99999499104368,
+        "isHidden": true,
+        "isTurnVehicle": false,
+        "isLuxury": false,
+        "containerType": 1,
+        "containerId": 0
+      },
+      {
+        "id": 74,
+        "seats": 4,
+        "colorIndex": 6,
+        "x": -0.10275928,
+        "z": -1.1524283,
+        "yaw": -179.99999499104368,
+        "isHidden": true,
+        "isTurnVehicle": false,
+        "isLuxury": false,
+        "containerType": 1,
+        "containerId": 0
+      },
+      {
+        "id": 75,
+        "seats": 6,
+        "colorIndex": 3,
+        "x": 1.2438614,
+        "z": -0.7448443,
+        "yaw": -179.99999499104368,
+        "isHidden": true,
+        "isTurnVehicle": false,
+        "isLuxury": false,
+        "containerType": 1,
+        "containerId": 0
+      },
+      {
+        "id": 76,
+        "seats": 6,
+        "colorIndex": 6,
+        "x": -0.83890605,
+        "z": -0.59790885,
+        "yaw": -80.00000481999773,
+        "isHidden": true,
+        "isTurnVehicle": false,
+        "isLuxury": false,
+        "containerType": 1,
+        "containerId": 0
+      },
+      {
+        "id": 77,
+        "seats": 6,
+        "colorIndex": 1,
+        "x": -0.95704067,
+        "z": -0.062575504,
+        "yaw": -80.00000481999773,
+        "isHidden": true,
+        "isTurnVehicle": false,
+        "isLuxury": false,
+        "containerType": 1,
+        "containerId": 0
+      },
+      {
+        "id": 78,
+        "seats": 6,
+        "colorIndex": 6,
+        "x": -0.84563065,
+        "z": 0.8801478,
+        "yaw": -80.00000481999773,
+        "isHidden": false,
+        "isTurnVehicle": false,
+        "isLuxury": false,
+        "containerType": 1,
+        "containerId": 0
+      },
+      {
+        "id": 79,
+        "seats": 6,
+        "colorIndex": 1,
+        "x": -0.57818794,
+        "z": -1.2502035,
+        "yaw": 0.00000762939484614981,
+        "isHidden": false,
+        "isTurnVehicle": true,
+        "isLuxury": false,
+        "containerType": 1,
+        "containerId": 0
+      },
+      {
+        "id": 80,
+        "seats": 10,
+        "colorIndex": 5,
+        "x": -1.184046,
+        "z": -1.5408255,
+        "yaw": 0.00000762939484614981,
+        "isHidden": false,
+        "isTurnVehicle": false,
+        "isLuxury": false,
+        "containerType": 1,
+        "containerId": 0
+      },
+      {
+        "id": 81,
+        "seats": 10,
+        "colorIndex": 3,
+        "x": -1.4882855,
+        "z": 0.70202667,
+        "yaw": -114.99999228211587,
+        "isHidden": false,
+        "isTurnVehicle": false,
+        "isLuxury": false,
+        "containerType": 1,
+        "containerId": 0
+      },
+      {
+        "id": 82,
+        "seats": 10,
+        "colorIndex": 0,
+        "x": 0.042215943,
+        "z": -0.32353044,
+        "yaw": 89.99999818714232,
+        "isHidden": false,
+        "isTurnVehicle": false,
+        "isLuxury": false,
+        "containerType": 1,
+        "containerId": 0
+      },
+      {
+        "id": 83,
+        "seats": 10,
+        "colorIndex": 4,
+        "x": 0.34869605,
+        "z": 0.529027,
+        "yaw": -89.99999818714232,
+        "isHidden": false,
+        "isTurnVehicle": false,
+        "isLuxury": false,
+        "containerType": 1,
+        "containerId": 0
+      },
+      {
+        "id": 84,
+        "seats": 10,
+        "colorIndex": 8,
+        "x": 0.72173464,
+        "z": -0.29317132,
+        "yaw": 174.99999252659853,
+        "isHidden": true,
+        "isTurnVehicle": false,
+        "isLuxury": false,
+        "containerType": 1,
+        "containerId": 0
+      },
+      {
+        "id": 85,
+        "seats": 10,
+        "colorIndex": 0,
+        "x": -0.31680292,
+        "z": 0.48170686,
+        "yaw": 0,
+        "isHidden": true,
+        "isTurnVehicle": false,
+        "isLuxury": false,
+        "containerType": 1,
+        "containerId": 0
+      }
+    ],
+    "vehicleDepthes": {},
+    "passengerSequence": [
+      4,
+      4,
+      4,
+      4,
+      8,
+      8,
+      8,
+      2,
+      2,
+      2,
+      2,
+      2,
+      2,
+      2,
+      2,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      7,
+      0,
+      0,
+      0,
+      5,
+      5,
+      5,
+      5,
+      5,
+      5,
+      5,
+      6,
+      6,
+      6,
+      6,
+      6,
+      6,
+      3,
+      3,
+      3,
+      3,
+      3,
+      3,
+      3,
+      7,
+      7,
+      7,
+      7,
+      7,
+      7,
+      7,
+      7,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      5,
+      5,
+      5,
+      5,
+      5,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      6,
+      6,
+      6,
+      6,
+      6,
+      6,
+      6,
+      6,
+      6,
+      6,
+      6,
+      7,
+      7,
+      7,
+      7,
+      7,
+      1,
+      1,
+      1,
+      1,
+      1,
+      8,
+      8,
+      8,
+      8,
+      8,
+      8,
+      8,
+      8,
+      8,
+      8,
+      8,
+      8,
+      8,
+      8,
+      8,
+      7,
+      7,
+      7,
+      1,
+      1,
+      1,
+      1,
+      4,
+      4,
+      4,
+      4,
+      4,
+      4,
+      6,
+      6,
+      6,
+      6,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      6,
+      6,
+      6,
+      6,
+      6,
+      6,
+      6,
+      3,
+      3,
+      3,
+      3,
+      3,
+      3,
+      3,
+      3,
+      3,
+      3,
+      3,
+      3,
+      3,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      5,
+      5,
+      5,
+      5,
+      5,
+      5,
+      6,
+      6,
+      6,
+      6,
+      6,
+      6,
+      5,
+      5,
+      5,
+      6,
+      6,
+      6,
+      6,
+      6,
+      6,
+      6,
+      6,
+      6,
+      7,
+      7,
+      7,
+      5,
+      5,
+      5,
+      5,
+      5,
+      6,
+      6,
+      6,
+      6,
+      6,
+      6,
+      6,
+      6,
+      6
+    ],
+    "passengerQueues": [
+      [
+        4,
+        4,
+        4,
+        4,
+        8,
+        8,
+        8,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        7,
+        0,
+        0,
+        0,
+        5,
+        5,
+        5,
+        5,
+        5,
+        5,
+        5,
+        6,
+        6,
+        6,
+        6,
+        6,
+        6,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        7,
+        7,
+        7,
+        7,
+        7,
+        7,
+        7,
+        7,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        5,
+        5,
+        5,
+        5,
+        5,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        6,
+        6,
+        6,
+        6,
+        6,
+        6,
+        6,
+        6,
+        6,
+        6,
+        6,
+        7,
+        7,
+        7,
+        7,
+        7,
+        1,
+        1,
+        1,
+        1,
+        1,
+        8,
+        8,
+        8,
+        8,
+        8,
+        8,
+        8,
+        8,
+        8,
+        8,
+        8,
+        8,
+        8,
+        8,
+        8
+      ],
+      [
+        7,
+        7,
+        7,
+        1,
+        1,
+        1,
+        1,
+        4,
+        4,
+        4,
+        4,
+        4,
+        4,
+        6,
+        6,
+        6,
+        6,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        6,
+        6,
+        6,
+        6,
+        6,
+        6,
+        6,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        5,
+        5,
+        5,
+        5,
+        5,
+        5,
+        6,
+        6,
+        6,
+        6,
+        6,
+        6,
+        5,
+        5,
+        5,
+        6,
+        6,
+        6,
+        6,
+        6,
+        6,
+        6,
+        6,
+        6,
+        7,
+        7,
+        7,
+        5,
+        5,
+        5,
+        5,
+        5,
+        6,
+        6,
+        6,
+        6,
+        6,
+        6,
+        6,
+        6,
+        6
+      ]
+    ],
+    "assets": {
+      "loopScene": "/assets/applovin/Loop_02_q80.webp",
+      "loopSpriteRect": {
+        "x": 0,
+        "y": 57,
+        "width": 2100,
+        "height": 1243,
+        "imageWidth": 2100,
+        "imageHeight": 1300
+      },
+      "background": "/assets/applovin/textures/BG02_split01_summer_q60.jpg",
+      "audio": {
+        "bus_hit": {
+          "clips": [
+            "/assets/unity/audio/bus_hit_V5.mp3"
+          ],
+          "volume": 0.503268
+        },
+        "passenger_up": {
+          "clips": [
+            "/assets/unity/audio/passenger_up_01.mp3",
+            "/assets/unity/audio/passenger_up_02.mp3",
+            "/assets/unity/audio/passenger_up_03.mp3"
+          ],
+          "volume": 0.825528
+        },
+        "bus_full": {
+          "clips": [
+            "/assets/unity/audio/bus_full.mp3"
+          ],
+          "volume": 0.50023913
+        }
+      },
+      "colorTextures": [
+        "/assets/applovin/textures/color_0_blue_q85.webp",
+        "/assets/applovin/textures/color_1_green_q85.webp",
+        "/assets/applovin/textures/color_2_pink_q85.webp",
+        "/assets/applovin/textures/color_3_purple_q85.webp",
+        "/assets/applovin/textures/color_4_red_q85.webp",
+        "/assets/applovin/textures/color_5_yellow_q85.webp",
+        "/assets/applovin/textures/color_6_orange_q85.webp",
+        "/assets/applovin/textures/color_7_lightblue_q85.webp",
+        "/assets/applovin/textures/color_8_brown_q85.webp",
+        "/assets/applovin/textures/color_9_darkgreen_q85.webp",
+        "/assets/applovin/textures/color_10_darkblue_q85.webp"
+      ],
+      "models": {
+        "passengerVatMesh": "/assets/unity/models/Idle_boy01_vatmesh.bin",
+        "passengerVatTexture": "/assets/unity/models/Idle_boy01_anim_map.rgba16f",
+        "shadow": "/assets/unity/models/Shadow_01.fbx",
+        "arrow": "/assets/unity/models/Arrow_01.fbx",
+        "parkingSpot": "/assets/unity/models/Car_P.fbx",
+        "vehicleBySeats": {
+          "4": "/assets/unity/models/Car_001.fbx",
+          "6": "/assets/unity/models/Van_001.fbx",
+          "10": "/assets/unity/models/Bus_001.fbx"
+        },
+        "vehicleShadowBySeats": {
+          "4": "/assets/unity/models/Car_FakeShadow.fbx",
+          "6": "/assets/unity/models/Van_FakeShadow.fbx",
+          "10": "/assets/unity/models/Bus_FakeShadow.fbx"
+        }
+      },
+      "textures": {
+        "shadow": "/assets/unity/textures/Shadow_01.png",
+        "parkingSpot": "/assets/unity/textures/Car_P2.png",
+        "seatCountBoard": "/assets/unity/textures/count_al.png",
+        "effects": {
+          "aboardSmoke": "/assets/unity/effects/Round_01.png",
+          "ribbon": "/assets/unity/effects/Ribbon_01.png",
+          "ribbonSmoke": "/assets/applovin/effects/Smoke_08_q80.webp",
+          "hitCircle": "/assets/unity/effects/Circle_01.png",
+          "hitRound2": "/assets/applovin/effects/Round_02_q80.webp",
+          "hitRound1": "/assets/unity/effects/Round_01.png",
+          "smokeTrail": "/assets/unity/effects/Round_01.png"
+        },
+        "vehicleShadowBySeats": {
+          "4": "/assets/unity/textures/Car_FakeShadow.png",
+          "6": "/assets/unity/textures/Van_FakeShadow.png",
+          "10": "/assets/unity/textures/Bus_FakeShadow.png"
+        }
+      },
+      "passengerAnimations": {
+        "textureWidth": 512,
+        "textureHeight": 128,
+        "move": {
+          "uvMin": 0.00390625,
+          "uvMax": 0.15234375,
+          "duration": 0.60000014
+        },
+        "idle": {
+          "uvMin": 0.15234375,
+          "uvMax": 0.62109375,
+          "duration": 2
+        }
+      }
+    },
+    "splinePoints": [
+      [
+        -0.8212245,
+        15.494487
+      ],
+      [
+        -0.6354121,
+        15.661096
+      ],
+      [
+        -0.42046472,
+        15.735908
+      ],
+      [
+        -0.17919716,
+        15.77747
+      ],
+      [
+        0.053118944,
+        15.787669
+      ],
+      [
+        0.28579113,
+        15.765001
+      ],
+      [
+        0.52796626,
+        15.715597
+      ],
+      [
+        0.7419717,
+        15.592928
+      ],
+      [
+        0.8692199,
+        15.390943
+      ],
+      [
+        0.8745683,
+        15.120195
+      ],
+      [
+        0.7092973,
+        14.91469
+      ],
+      [
+        0.49285337,
+        14.816255
+      ],
+      [
+        0.25666875,
+        14.771048
+      ],
+      [
+        0.026976904,
+        14.763357
+      ],
+      [
+        -0.18797053,
+        14.771669
+      ],
+      [
+        -0.44673413,
+        14.801695
+      ],
+      [
+        -0.6660774,
+        14.884888
+      ],
+      [
+        -0.8289872,
+        15.029538
+      ],
+      [
+        -0.8942264,
+        15.262102
+      ]
+    ],
+    "queuePaths": [
+      [
+        [
+          -1.1523999,
+          15.670884
+        ],
+        [
+          -1.3029,
+          15.742984
+        ],
+        [
+          -1.4361999,
+          15.832043
+        ],
+        [
+          -1.5436999,
+          15.950794
+        ],
+        [
+          -1.6211,
+          16.090746
+        ],
+        [
+          -1.6812999,
+          16.27311
+        ],
+        [
+          -1.7156999,
+          16.455479
+        ],
+        [
+          -1.7544,
+          16.680248
+        ],
+        [
+          -1.7844999,
+          16.858372
+        ],
+        [
+          -1.806,
+          17.006807
+        ],
+        [
+          -1.8232,
+          17.248547
+        ],
+        [
+          -1.8489999,
+          17.375778
+        ],
+        [
+          -1.8705,
+          17.63024
+        ],
+        [
+          -1.9049,
+          17.825327
+        ],
+        [
+          -1.9478999,
+          18.00345
+        ],
+        [
+          -1.9951999,
+          18.177332
+        ],
+        [
+          -2.0683,
+          18.346973
+        ],
+        [
+          -2.1844,
+          18.465721
+        ],
+        [
+          -2.3091,
+          18.563267
+        ],
+        [
+          -2.4596,
+          18.635365
+        ]
+      ],
+      [
+        [
+          1.1394999,
+          15.666645
+        ],
+        [
+          1.29,
+          15.747223
+        ],
+        [
+          1.4232999,
+          15.836285
+        ],
+        [
+          1.5264999,
+          15.950794
+        ],
+        [
+          1.6082,
+          16.099228
+        ],
+        [
+          1.6683999,
+          16.27311
+        ],
+        [
+          1.7113999,
+          16.476679
+        ],
+        [
+          1.7458,
+          16.676008
+        ],
+        [
+          1.7716,
+          16.858372
+        ],
+        [
+          1.7974,
+          17.083147
+        ],
+        [
+          1.8232,
+          17.2231
+        ],
+        [
+          1.8403999,
+          17.3885
+        ],
+        [
+          1.8661999,
+          17.592072
+        ],
+        [
+          1.8963,
+          17.816845
+        ],
+        [
+          1.9350001,
+          17.994968
+        ],
+        [
+          1.9866,
+          18.181572
+        ],
+        [
+          2.064,
+          18.346973
+        ],
+        [
+          2.1715,
+          18.465721
+        ],
+        [
+          2.3091,
+          18.563267
+        ],
+        [
+          2.4596,
+          18.631124
+        ]
+      ]
+    ],
+    "key": "level33",
+    "displayName": "level33 (level33.asset)",
+    "sourceFile": "level33.asset",
+    "unityId": 33,
+    "collision": {
+      "vehicleSizes": {
+        "4": {
+          "width": 0.27,
+          "length": 0.47157902
+        },
+        "6": {
+          "width": 0.27,
+          "length": 0.486
+        },
+        "10": {
+          "width": 0.27,
+          "length": 0.6785897
+        }
+      },
+      "maxVehicleSize": {
+        "width": 0.27,
+        "length": 0.6785897
+      },
+      "garageSize": {
+        "width": 0.50425464,
+        "length": 0.668775
+      }
+    },
+    "mechanics": {
+      "isMechanicLevel": true,
+      "types": [
+        "ordinaryConveyor",
+        "turnVehicle",
+        "hiddenVehicle"
+      ],
+      "counts": {
+        "luxuryVehicle": 0,
+        "ambulance": 0,
+        "turnVehicle": 8,
+        "hiddenVehicle": 12,
+        "garage": 0,
+        "vehicleTransportBelt": 0
+      }
+    },
+    "garage": {
+      "size": {
+        "width": 0.50425464,
+        "length": 0.668775
+      },
+      "parkOffset": 0.7,
+      "outDelay": 0.3,
+      "outDuration": 0.6
+    },
+    "conveyorBeltName": "ConveyorBelt16",
+    "turnVehicleCount": 8,
+    "luxuryCount": 0,
+    "vehicleAmbulances": [],
+    "containers": [
+      {
+        "id": 0,
+        "type": 1,
+        "x": 0,
+        "z": 0,
+        "yaw": 0
+      }
+    ]
+  },
+  "level39": {
+    "id": 39,
+    "mapScale": 1.33,
+    "sceneName": "GameSceneDualQueue2",
+    "groupSize": 4,
+    "spotCount": 6,
+    "conveyorCapacity": 32,
+    "conveyorSpeed": 0.5,
+    "conveyorPathLength": 4.591284809513923,
+    "queueCount": 2,
+    "queueCapacity": 24,
+    "entryPercents": [
+      0,
+      0.421
+    ],
+    "longPressThreshold": 0.2,
+    "longPressMultiplier": 3,
+    "exitStart": 0.605,
+    "exitEnd": 0.78,
+    "boardingDepartureDelay": 1.6,
+    "passengerQueue": {
+      "spacing": 0.4,
+      "screenEdgeOffsetSpacing": 4
+    },
+    "passengerEntryMotion": {
+      "passengerSpeed": 2,
+      "conveyorSpeed": 0.5,
+      "initialFillCatchUpDuration": 0.2,
+      "catchUpExtraSpeed": 1,
+      "snapDistance": 0.02
+    },
+    "vehicleSize": {
+      "width": 0.35910000000000003,
+      "length": 0.902524301
+    },
+    "vehicleMotion": {
+      "spotStartX": -1.2419354838709677,
+      "spotSpacing": 0.3548387096774194,
+      "spotZ": 1.4774193548387096,
+      "spotYaw": 0,
+      "spotApproachOffsetZ": 0.5,
+      "spotApproachDirection": "screen-down"
+    },
+    "vehicles": [
+      {
+        "id": 1,
+        "seats": 10,
+        "colorIndex": 4,
+        "x": 0.9600029,
+        "z": -1.6717932,
+        "yaw": -89.99999818714232,
+        "isHidden": false,
+        "isTurnVehicle": false,
+        "isLuxury": false,
+        "containerType": 1,
+        "containerId": 0
+      },
+      {
+        "id": 2,
+        "seats": 10,
+        "colorIndex": 3,
+        "x": 0.018793449,
+        "z": -1.7157187,
+        "yaw": -179.99999499104368,
+        "isHidden": false,
+        "isTurnVehicle": false,
+        "isLuxury": false,
+        "containerType": 1,
+        "containerId": 0
+      },
+      {
+        "id": 3,
+        "seats": 10,
+        "colorIndex": 5,
+        "x": -1.4238713,
+        "z": 1.9200137,
+        "yaw": -89.99999818714232,
+        "isHidden": false,
+        "isTurnVehicle": true,
+        "isLuxury": false,
+        "containerType": 1,
+        "containerId": 0
+      },
+      {
+        "id": 4,
+        "seats": 10,
+        "colorIndex": 7,
+        "x": 0.6488087,
+        "z": -1.1709535,
+        "yaw": -135.00001466939858,
+        "isHidden": false,
+        "isTurnVehicle": false,
+        "isLuxury": false,
+        "containerType": 1,
+        "containerId": 0
+      },
+      {
+        "id": 5,
+        "seats": 10,
+        "colorIndex": 2,
+        "x": -0.5587717,
+        "z": -1.2129586,
+        "yaw": 134.99999631754457,
+        "isHidden": false,
+        "isTurnVehicle": false,
+        "isLuxury": false,
+        "containerType": 1,
+        "containerId": 0
+      },
+      {
+        "id": 6,
+        "seats": 10,
+        "colorIndex": 4,
+        "x": -1.2795666,
+        "z": -1.0221679,
+        "yaw": -45.00000824954891,
+        "isHidden": false,
+        "isTurnVehicle": false,
+        "isLuxury": false,
+        "containerType": 1,
+        "containerId": 0
+      },
+      {
+        "id": 7,
+        "seats": 10,
+        "colorIndex": 4,
+        "x": 1.1846682,
+        "z": -1.0226674,
+        "yaw": 44.99998273463503,
+        "isHidden": false,
+        "isTurnVehicle": false,
+        "isLuxury": false,
+        "containerType": 1,
+        "containerId": 0
+      },
+      {
+        "id": 8,
+        "seats": 10,
+        "colorIndex": 1,
+        "x": 1.3773687,
+        "z": -0.5178728,
+        "yaw": 89.99999818714232,
+        "isHidden": false,
+        "isTurnVehicle": false,
+        "isLuxury": false,
+        "containerType": 1,
+        "containerId": 0
+      },
+      {
+        "id": 9,
+        "seats": 10,
+        "colorIndex": 3,
+        "x": -1.4505726,
+        "z": -0.5187979,
+        "yaw": -89.99999818714232,
+        "isHidden": false,
+        "isTurnVehicle": false,
+        "isLuxury": false,
+        "containerType": 1,
+        "containerId": 0
+      },
+      {
+        "id": 13,
+        "seats": 10,
+        "colorIndex": 6,
+        "x": 0.88157785,
+        "z": 1.9136319,
+        "yaw": 89.99999818714232,
+        "isHidden": false,
+        "isTurnVehicle": false,
+        "isLuxury": false,
+        "containerType": 1,
+        "containerId": 0
+      },
+      {
+        "id": 14,
+        "seats": 10,
+        "colorIndex": 4,
+        "x": 0.07358277,
+        "z": 1.9163427,
+        "yaw": 89.99999818714232,
+        "isHidden": false,
+        "isTurnVehicle": true,
+        "isLuxury": false,
+        "containerType": 1,
+        "containerId": 0
+      },
+      {
+        "id": 15,
+        "seats": 10,
+        "colorIndex": 5,
+        "x": -0.6541323,
+        "z": 1.917557,
+        "yaw": 89.99999818714232,
+        "isHidden": false,
+        "isTurnVehicle": false,
+        "isLuxury": false,
+        "containerType": 1,
+        "containerId": 0
+      },
+      {
+        "id": 19,
+        "seats": 4,
+        "colorIndex": 7,
+        "x": 0.7970233,
+        "z": 0.40069747,
+        "yaw": 0,
+        "isHidden": false,
+        "isTurnVehicle": false,
+        "isLuxury": false,
+        "containerType": 1,
+        "containerId": 0
+      },
+      {
+        "id": 20,
+        "seats": 4,
+        "colorIndex": 7,
+        "x": 0.4009385,
+        "z": 0.25355732,
+        "yaw": 89.99999818714232,
+        "isHidden": false,
+        "isTurnVehicle": false,
+        "isLuxury": false,
+        "containerType": 1,
+        "containerId": 0
+      },
+      {
+        "id": 21,
+        "seats": 4,
+        "colorIndex": 7,
+        "x": 0.39951336,
+        "z": 0.55634266,
+        "yaw": 89.99999818714232,
+        "isHidden": false,
+        "isTurnVehicle": false,
+        "isLuxury": false,
+        "containerType": 1,
+        "containerId": 0
+      },
+      {
+        "id": 22,
+        "seats": 4,
+        "colorIndex": 7,
+        "x": -0.009271942,
+        "z": 0.40133741,
+        "yaw": -179.99999499104368,
+        "isHidden": false,
+        "isTurnVehicle": false,
+        "isLuxury": false,
+        "containerType": 1,
+        "containerId": 0
+      },
+      {
+        "id": 23,
+        "seats": 4,
+        "colorIndex": 2,
+        "x": -0.47063166,
+        "z": 0.9426273,
+        "yaw": 0,
+        "isHidden": false,
+        "isTurnVehicle": false,
+        "isLuxury": false,
+        "containerType": 1,
+        "containerId": 0
+      },
+      {
+        "id": 24,
+        "seats": 4,
+        "colorIndex": 2,
+        "x": -0.4729166,
+        "z": 1.4331274,
+        "yaw": 0,
+        "isHidden": false,
+        "isTurnVehicle": false,
+        "isLuxury": false,
+        "containerType": 1,
+        "containerId": 0
+      },
+      {
+        "id": 25,
+        "seats": 4,
+        "colorIndex": 2,
+        "x": -0.78613216,
+        "z": 0.9441973,
+        "yaw": 0,
+        "isHidden": false,
+        "isTurnVehicle": false,
+        "isLuxury": false,
+        "containerType": 1,
+        "containerId": 0
+      },
+      {
+        "id": 26,
+        "seats": 4,
+        "colorIndex": 2,
+        "x": -0.7736322,
+        "z": 1.4461274,
+        "yaw": 0,
+        "isHidden": false,
+        "isTurnVehicle": false,
+        "isLuxury": false,
+        "containerType": 1,
+        "containerId": 0
+      },
+      {
+        "id": 27,
+        "seats": 4,
+        "colorIndex": 2,
+        "x": -0.4644169,
+        "z": 0.5448424,
+        "yaw": 89.99999818714232,
+        "isHidden": false,
+        "isTurnVehicle": false,
+        "isLuxury": false,
+        "containerType": 1,
+        "containerId": 0
+      },
+      {
+        "id": 28,
+        "seats": 4,
+        "colorIndex": 4,
+        "x": 0.6604532,
+        "z": 1.3192728,
+        "yaw": 44.99998273463503,
+        "isHidden": false,
+        "isTurnVehicle": false,
+        "isLuxury": false,
+        "containerType": 1,
+        "containerId": 0
+      },
+      {
+        "id": 29,
+        "seats": 4,
+        "colorIndex": 6,
+        "x": 0.3233682,
+        "z": 1.442128,
+        "yaw": 44.99998273463503,
+        "isHidden": false,
+        "isTurnVehicle": false,
+        "isLuxury": false,
+        "containerType": 1,
+        "containerId": 0
+      },
+      {
+        "id": 30,
+        "seats": 4,
+        "colorIndex": 6,
+        "x": 0.2324431,
+        "z": 0.9907677,
+        "yaw": 89.99999818714232,
+        "isHidden": false,
+        "isTurnVehicle": false,
+        "isLuxury": false,
+        "containerType": 1,
+        "containerId": 0
+      },
+      {
+        "id": 31,
+        "seats": 4,
+        "colorIndex": 8,
+        "x": -0.57563204,
+        "z": 0.11112738,
+        "yaw": -179.99999499104368,
+        "isHidden": false,
+        "isTurnVehicle": false,
+        "isLuxury": false,
+        "containerType": 1,
+        "containerId": 0
+      },
+      {
+        "id": 32,
+        "seats": 4,
+        "colorIndex": 8,
+        "x": -0.28213155,
+        "z": -0.26537293,
+        "yaw": -179.99999499104368,
+        "isHidden": false,
+        "isTurnVehicle": false,
+        "isLuxury": false,
+        "containerType": 1,
+        "containerId": 0
+      },
+      {
+        "id": 33,
+        "seats": 10,
+        "colorIndex": 7,
+        "x": -0.6122216,
+        "z": -0.5593028,
+        "yaw": -45.00000824954891,
+        "isHidden": false,
+        "isTurnVehicle": false,
+        "isLuxury": false,
+        "containerType": 1,
+        "containerId": 0
+      },
+      {
+        "id": 34,
+        "seats": 10,
+        "colorIndex": 3,
+        "x": 0.21393839,
+        "z": -0.87289286,
+        "yaw": 89.99999818714232,
+        "isHidden": false,
+        "isTurnVehicle": true,
+        "isLuxury": false,
+        "containerType": 1,
+        "containerId": 0
+      },
+      {
+        "id": 35,
+        "seats": 6,
+        "colorIndex": 6,
+        "x": -0.14004672,
+        "z": 1.4471152,
+        "yaw": 0,
+        "isHidden": false,
+        "isTurnVehicle": false,
+        "isLuxury": false,
+        "containerType": 1,
+        "containerId": 0
+      },
+      {
+        "id": 36,
+        "seats": 6,
+        "colorIndex": 2,
+        "x": 0.488513,
+        "z": -0.40109807,
+        "yaw": 134.99999631754457,
+        "isHidden": false,
+        "isTurnVehicle": false,
+        "isLuxury": false,
+        "containerType": 1,
+        "containerId": 0
+      },
+      {
+        "id": 37,
+        "seats": 6,
+        "colorIndex": 6,
+        "x": 0.010373354,
+        "z": -1.1704683,
+        "yaw": 89.99999818714232,
+        "isHidden": false,
+        "isTurnVehicle": true,
+        "isLuxury": false,
+        "containerType": 1,
+        "containerId": 0
+      },
+      {
+        "id": 38,
+        "seats": 6,
+        "colorIndex": 6,
+        "x": -0.87177706,
+        "z": 0.16082734,
+        "yaw": 0,
+        "isHidden": false,
+        "isTurnVehicle": false,
+        "isLuxury": false,
+        "containerType": 1,
+        "containerId": 0
+      },
+      {
+        "id": 39,
+        "seats": 10,
+        "colorIndex": 1,
+        "x": -1.0181313,
+        "z": -1.6788735,
+        "yaw": -89.99999818714232,
+        "isHidden": false,
+        "isTurnVehicle": false,
+        "isLuxury": false,
+        "containerType": 1,
+        "containerId": 0
+      },
+      {
+        "id": 40,
+        "seats": 10,
+        "colorIndex": 0,
+        "x": 1.6548675,
+        "z": 1.4811246,
+        "yaw": 0,
+        "isHidden": false,
+        "isTurnVehicle": false,
+        "isLuxury": false,
+        "containerType": 1,
+        "containerId": 0
+      },
+      {
+        "id": 45,
+        "seats": 10,
+        "colorIndex": 0,
+        "x": 1.5599997,
+        "z": 1.152838,
+        "yaw": 0,
+        "isHidden": false,
+        "isTurnVehicle": false,
+        "isLuxury": false,
+        "containerType": 2,
+        "containerId": 1
+      },
+      {
+        "id": 44,
+        "seats": 10,
+        "colorIndex": 1,
+        "x": 2.0999997,
+        "z": 1.152838,
+        "yaw": 0,
+        "isHidden": false,
+        "isTurnVehicle": false,
+        "isLuxury": false,
+        "containerType": 2,
+        "containerId": 1
+      },
+      {
+        "id": 43,
+        "seats": 10,
+        "colorIndex": 8,
+        "x": 2.6399996,
+        "z": 1.152838,
+        "yaw": 0,
+        "isHidden": false,
+        "isTurnVehicle": false,
+        "isLuxury": false,
+        "containerType": 2,
+        "containerId": 1
+      },
+      {
+        "id": 46,
+        "seats": 10,
+        "colorIndex": 8,
+        "x": -2.3899996,
+        "z": 2.2028382,
+        "yaw": 0,
+        "isHidden": false,
+        "isTurnVehicle": false,
+        "isLuxury": false,
+        "containerType": 2,
+        "containerId": 2
+      },
+      {
+        "id": 47,
+        "seats": 10,
+        "colorIndex": 6,
+        "x": -1.8499997,
+        "z": 2.2028382,
+        "yaw": 0,
+        "isHidden": false,
+        "isTurnVehicle": false,
+        "isLuxury": false,
+        "containerType": 2,
+        "containerId": 2
+      },
+      {
+        "id": 48,
+        "seats": 10,
+        "colorIndex": 1,
+        "x": -1.3099997,
+        "z": 2.2028382,
+        "yaw": 0,
+        "isHidden": false,
+        "isTurnVehicle": false,
+        "isLuxury": false,
+        "containerType": 2,
+        "containerId": 2
+      }
+    ],
+    "vehicleDepthes": {},
+    "passengerSequence": [
+      4,
+      4,
+      4,
+      4,
+      4,
+      4,
+      4,
+      4,
+      4,
+      4,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      3,
+      3,
+      3,
+      3,
+      3,
+      3,
+      3,
+      3,
+      3,
+      2,
+      2,
+      2,
+      2,
+      2,
+      2,
+      2,
+      2,
+      2,
+      2,
+      4,
+      4,
+      4,
+      4,
+      4,
+      4,
+      4,
+      4,
+      4,
+      4,
+      4,
+      4,
+      4,
+      4,
+      4,
+      4,
+      4,
+      4,
+      4,
+      4,
+      4,
+      7,
+      7,
+      7,
+      7,
+      7,
+      7,
+      7,
+      7,
+      7,
+      7,
+      8,
+      8,
+      8,
+      8,
+      8,
+      5,
+      5,
+      5,
+      5,
+      5,
+      5,
+      5,
+      5,
+      5,
+      5,
+      5,
+      5,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      6,
+      6,
+      6,
+      6,
+      6,
+      6,
+      6,
+      6,
+      6,
+      6,
+      6,
+      6,
+      3,
+      3,
+      3,
+      3,
+      3,
+      3,
+      3,
+      3,
+      3,
+      3,
+      4,
+      4,
+      4,
+      4,
+      4,
+      4,
+      4,
+      4,
+      4,
+      4,
+      4,
+      4,
+      4,
+      6,
+      6,
+      6,
+      6,
+      6,
+      6,
+      6,
+      6,
+      7,
+      7,
+      7,
+      7,
+      7,
+      7,
+      7,
+      7,
+      7,
+      7,
+      7,
+      2,
+      2,
+      2,
+      2,
+      2,
+      2,
+      2,
+      2,
+      2,
+      2,
+      2,
+      5,
+      5,
+      5,
+      5,
+      5,
+      5,
+      5,
+      5,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      8,
+      8,
+      8,
+      8,
+      8,
+      8,
+      8,
+      8,
+      8,
+      8,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      6,
+      6,
+      6,
+      6,
+      6,
+      6,
+      6,
+      6,
+      6,
+      6,
+      3,
+      3,
+      3,
+      3,
+      3,
+      3,
+      3,
+      3,
+      3,
+      3,
+      3,
+      7,
+      7,
+      7,
+      7,
+      7,
+      7,
+      7,
+      7,
+      7,
+      7,
+      7,
+      7,
+      7,
+      7,
+      7,
+      2,
+      2,
+      2,
+      2,
+      2,
+      2,
+      2,
+      2,
+      2,
+      2,
+      2,
+      2,
+      2,
+      2,
+      2,
+      6,
+      6,
+      6,
+      6,
+      6,
+      6,
+      6,
+      6,
+      6,
+      6,
+      6,
+      6,
+      6,
+      6,
+      6,
+      6,
+      8,
+      8,
+      8,
+      8,
+      8,
+      8,
+      8,
+      8,
+      8,
+      8,
+      8,
+      8,
+      8
+    ],
+    "passengerQueues": [
+      [
+        4,
+        4,
+        4,
+        4,
+        4,
+        4,
+        4,
+        4,
+        4,
+        4,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        4,
+        4,
+        4,
+        4,
+        4,
+        4,
+        4,
+        4,
+        4,
+        4,
+        4,
+        4,
+        4,
+        4,
+        4,
+        4,
+        4,
+        4,
+        4,
+        4,
+        4,
+        7,
+        7,
+        7,
+        7,
+        7,
+        7,
+        7,
+        7,
+        7,
+        7,
+        8,
+        8,
+        8,
+        8,
+        8,
+        5,
+        5,
+        5,
+        5,
+        5,
+        5,
+        5,
+        5,
+        5,
+        5,
+        5,
+        5,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1
+      ],
+      [
+        6,
+        6,
+        6,
+        6,
+        6,
+        6,
+        6,
+        6,
+        6,
+        6,
+        6,
+        6,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        4,
+        4,
+        4,
+        4,
+        4,
+        4,
+        4,
+        4,
+        4,
+        4,
+        4,
+        4,
+        4,
+        6,
+        6,
+        6,
+        6,
+        6,
+        6,
+        6,
+        6,
+        7,
+        7,
+        7,
+        7,
+        7,
+        7,
+        7,
+        7,
+        7,
+        7,
+        7,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        5,
+        5,
+        5,
+        5,
+        5,
+        5,
+        5,
+        5,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        8,
+        8,
+        8,
+        8,
+        8,
+        8,
+        8,
+        8,
+        8,
+        8,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        6,
+        6,
+        6,
+        6,
+        6,
+        6,
+        6,
+        6,
+        6,
+        6,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        7,
+        7,
+        7,
+        7,
+        7,
+        7,
+        7,
+        7,
+        7,
+        7,
+        7,
+        7,
+        7,
+        7,
+        7,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        6,
+        6,
+        6,
+        6,
+        6,
+        6,
+        6,
+        6,
+        6,
+        6,
+        6,
+        6,
+        6,
+        6,
+        6,
+        6,
+        8,
+        8,
+        8,
+        8,
+        8,
+        8,
+        8,
+        8,
+        8,
+        8,
+        8,
+        8,
+        8
+      ]
+    ],
+    "assets": {
+      "loopScene": "/assets/applovin/Loop_02_q80.webp",
+      "loopSpriteRect": {
+        "x": 0,
+        "y": 57,
+        "width": 2100,
+        "height": 1243,
+        "imageWidth": 2100,
+        "imageHeight": 1300
+      },
+      "background": "/assets/applovin/textures/BG02_split01_summer_q60.jpg",
+      "audio": {
+        "bus_hit": {
+          "clips": [
+            "/assets/unity/audio/bus_hit_V5.mp3"
+          ],
+          "volume": 0.503268
+        },
+        "passenger_up": {
+          "clips": [
+            "/assets/unity/audio/passenger_up_01.mp3",
+            "/assets/unity/audio/passenger_up_02.mp3",
+            "/assets/unity/audio/passenger_up_03.mp3"
+          ],
+          "volume": 0.825528
+        },
+        "bus_full": {
+          "clips": [
+            "/assets/unity/audio/bus_full.mp3"
+          ],
+          "volume": 0.50023913
+        }
+      },
+      "colorTextures": [
+        "/assets/applovin/textures/color_0_blue_q85.webp",
+        "/assets/applovin/textures/color_1_green_q85.webp",
+        "/assets/applovin/textures/color_2_pink_q85.webp",
+        "/assets/applovin/textures/color_3_purple_q85.webp",
+        "/assets/applovin/textures/color_4_red_q85.webp",
+        "/assets/applovin/textures/color_5_yellow_q85.webp",
+        "/assets/applovin/textures/color_6_orange_q85.webp",
+        "/assets/applovin/textures/color_7_lightblue_q85.webp",
+        "/assets/applovin/textures/color_8_brown_q85.webp",
+        "/assets/applovin/textures/color_9_darkgreen_q85.webp",
+        "/assets/applovin/textures/color_10_darkblue_q85.webp"
+      ],
+      "models": {
+        "passengerVatMesh": "/assets/unity/models/Idle_boy01_vatmesh.bin",
+        "passengerVatTexture": "/assets/unity/models/Idle_boy01_anim_map.rgba16f",
+        "shadow": "/assets/unity/models/Shadow_01.fbx",
+        "arrow": "/assets/unity/models/Arrow_01.fbx",
+        "parkingSpot": "/assets/unity/models/Car_P.fbx",
+        "vehicleBySeats": {
+          "4": "/assets/unity/models/Car_001.fbx",
+          "6": "/assets/unity/models/Van_001.fbx",
+          "10": "/assets/unity/models/Bus_001.fbx"
+        },
+        "vehicleShadowBySeats": {
+          "4": "/assets/unity/models/Car_FakeShadow.fbx",
+          "6": "/assets/unity/models/Van_FakeShadow.fbx",
+          "10": "/assets/unity/models/Bus_FakeShadow.fbx"
+        }
+      },
+      "textures": {
+        "shadow": "/assets/unity/textures/Shadow_01.png",
+        "parkingSpot": "/assets/unity/textures/Car_P2.png",
+        "seatCountBoard": "/assets/unity/textures/count_al.png",
+        "effects": {
+          "aboardSmoke": "/assets/unity/effects/Round_01.png",
+          "ribbon": "/assets/unity/effects/Ribbon_01.png",
+          "ribbonSmoke": "/assets/applovin/effects/Smoke_08_q80.webp",
+          "hitCircle": "/assets/unity/effects/Circle_01.png",
+          "hitRound2": "/assets/applovin/effects/Round_02_q80.webp",
+          "hitRound1": "/assets/unity/effects/Round_01.png",
+          "smokeTrail": "/assets/unity/effects/Round_01.png"
+        },
+        "vehicleShadowBySeats": {
+          "4": "/assets/unity/textures/Car_FakeShadow.png",
+          "6": "/assets/unity/textures/Van_FakeShadow.png",
+          "10": "/assets/unity/textures/Bus_FakeShadow.png"
+        }
+      },
+      "passengerAnimations": {
+        "textureWidth": 512,
+        "textureHeight": 128,
+        "move": {
+          "uvMin": 0.00390625,
+          "uvMax": 0.15234375,
+          "duration": 0.60000014
+        },
+        "idle": {
+          "uvMin": 0.15234375,
+          "uvMax": 0.62109375,
+          "duration": 2
+        }
+      }
+    },
+    "splinePoints": [
+      [
+        -0.8212245,
+        15.494487
+      ],
+      [
+        -0.6354121,
+        15.661096
+      ],
+      [
+        -0.42046472,
+        15.735908
+      ],
+      [
+        -0.17919716,
+        15.77747
+      ],
+      [
+        0.053118944,
+        15.787669
+      ],
+      [
+        0.28579113,
+        15.765001
+      ],
+      [
+        0.52796626,
+        15.715597
+      ],
+      [
+        0.7419717,
+        15.592928
+      ],
+      [
+        0.8692199,
+        15.390943
+      ],
+      [
+        0.8745683,
+        15.120195
+      ],
+      [
+        0.7092973,
+        14.91469
+      ],
+      [
+        0.49285337,
+        14.816255
+      ],
+      [
+        0.25666875,
+        14.771048
+      ],
+      [
+        0.026976904,
+        14.763357
+      ],
+      [
+        -0.18797053,
+        14.771669
+      ],
+      [
+        -0.44673413,
+        14.801695
+      ],
+      [
+        -0.6660774,
+        14.884888
+      ],
+      [
+        -0.8289872,
+        15.029538
+      ],
+      [
+        -0.8942264,
+        15.262102
+      ]
+    ],
+    "queuePaths": [
+      [
+        [
+          -1.1523999,
+          15.670884
+        ],
+        [
+          -1.3029,
+          15.742984
+        ],
+        [
+          -1.4361999,
+          15.832043
+        ],
+        [
+          -1.5436999,
+          15.950794
+        ],
+        [
+          -1.6211,
+          16.090746
+        ],
+        [
+          -1.6812999,
+          16.27311
+        ],
+        [
+          -1.7156999,
+          16.455479
+        ],
+        [
+          -1.7544,
+          16.680248
+        ],
+        [
+          -1.7844999,
+          16.858372
+        ],
+        [
+          -1.806,
+          17.006807
+        ],
+        [
+          -1.8232,
+          17.248547
+        ],
+        [
+          -1.8489999,
+          17.375778
+        ],
+        [
+          -1.8705,
+          17.63024
+        ],
+        [
+          -1.9049,
+          17.825327
+        ],
+        [
+          -1.9478999,
+          18.00345
+        ],
+        [
+          -1.9951999,
+          18.177332
+        ],
+        [
+          -2.0683,
+          18.346973
+        ],
+        [
+          -2.1844,
+          18.465721
+        ],
+        [
+          -2.3091,
+          18.563267
+        ],
+        [
+          -2.4596,
+          18.635365
+        ]
+      ],
+      [
+        [
+          1.1394999,
+          15.666645
+        ],
+        [
+          1.29,
+          15.747223
+        ],
+        [
+          1.4232999,
+          15.836285
+        ],
+        [
+          1.5264999,
+          15.950794
+        ],
+        [
+          1.6082,
+          16.099228
+        ],
+        [
+          1.6683999,
+          16.27311
+        ],
+        [
+          1.7113999,
+          16.476679
+        ],
+        [
+          1.7458,
+          16.676008
+        ],
+        [
+          1.7716,
+          16.858372
+        ],
+        [
+          1.7974,
+          17.083147
+        ],
+        [
+          1.8232,
+          17.2231
+        ],
+        [
+          1.8403999,
+          17.3885
+        ],
+        [
+          1.8661999,
+          17.592072
+        ],
+        [
+          1.8963,
+          17.816845
+        ],
+        [
+          1.9350001,
+          17.994968
+        ],
+        [
+          1.9866,
+          18.181572
+        ],
+        [
+          2.064,
+          18.346973
+        ],
+        [
+          2.1715,
+          18.465721
+        ],
+        [
+          2.3091,
+          18.563267
+        ],
+        [
+          2.4596,
+          18.631124
+        ]
+      ]
+    ],
+    "key": "level39",
+    "displayName": "level39 (level39.asset)",
+    "sourceFile": "level39.asset",
+    "unityId": 39,
+    "collision": {
+      "vehicleSizes": {
+        "4": {
+          "width": 0.27,
+          "length": 0.47157902
+        },
+        "6": {
+          "width": 0.27,
+          "length": 0.486
+        },
+        "10": {
+          "width": 0.27,
+          "length": 0.6785897
+        }
+      },
+      "maxVehicleSize": {
+        "width": 0.27,
+        "length": 0.6785897
+      },
+      "garageSize": {
+        "width": 0.50425464,
+        "length": 0.668775
+      }
+    },
+    "mechanics": {
+      "isMechanicLevel": true,
+      "types": [
+        "ordinaryConveyor",
+        "turnVehicle",
+        "garage"
+      ],
+      "counts": {
+        "luxuryVehicle": 0,
+        "ambulance": 0,
+        "turnVehicle": 4,
+        "hiddenVehicle": 0,
+        "garage": 2,
+        "vehicleTransportBelt": 0
+      }
+    },
+    "garage": {
+      "size": {
+        "width": 0.50425464,
+        "length": 0.668775
+      },
+      "parkOffset": 0.7,
+      "outDelay": 0.3,
+      "outDuration": 0.6
+    },
+    "conveyorBeltName": "ConveyorBelt2",
+    "turnVehicleCount": 4,
+    "luxuryCount": 0,
+    "vehicleAmbulances": [],
+    "containers": [
+      {
+        "id": 0,
+        "type": 1,
+        "x": 0,
+        "z": 0,
+        "yaw": 0
+      },
+      {
+        "id": 1,
+        "type": 2,
+        "x": 1.2833985,
+        "z": 0.55499977,
+        "yaw": 0
+      },
+      {
+        "id": 2,
+        "type": 2,
+        "x": -1.2766019,
+        "z": 1.2750001,
+        "yaw": -179.99999499104368
       }
     ]
   }

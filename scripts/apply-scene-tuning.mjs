@@ -67,7 +67,11 @@ async function main() {
   const { input } = parseArgs();
   const current = structuredClone(await importCurrentTuning());
   const patch = JSON.parse(await readFile(input, 'utf8'));
+  // Conveyor mechanism presentation is shipped from its isolated fixed config.
+  // Ignore stale temporary component overrides from older tuning exports.
+  delete patch.conveyorVisual;
   const next = deepMerge(current, patch);
+  delete next.conveyorVisual;
   migrateLegacyConveyorTuning(next, patch);
   await writeFile(TUNING_FILE, toModuleSource(next), 'utf8');
   if (typeof next.level?.selected === 'string') {

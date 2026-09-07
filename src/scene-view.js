@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { FBXLoader } from 'three/addons/loaders/FBXLoader.js';
 import { gunzipSync, unzlibSync } from 'three/addons/libs/fflate.module.js';
+import { clone as cloneSkeleton } from 'three/addons/utils/SkeletonUtils.js';
 import { COLORS, LEVEL_1, PASSENGER_COUNT_BOARD_COLORS } from './level-data.js';
 import {
   MAX_CONVEYOR_CAPACITY,
@@ -17,6 +18,9 @@ import {
   getSpatialConveyorWorldPoints,
   sampleSpatialCurveLookup
 } from './spatial-conveyor-runtime.js';
+import { CONVEYOR_MECHANISM_TUNING } from './conveyor-mechanism-config.js';
+import { MECHANISM_ASSETS } from './mechanism-resources.js';
+import { GARAGE_SIZE_MULTIPLIER } from './vehicle-collision.js';
 import { VehicleEffects } from './vehicle-effects.js';
 import {
   calculateDesignCoverHalfHeight,
@@ -44,31 +48,68 @@ const ease = (t) => 1 - Math.pow(1 - t, 3);
 const deg = (value) => THREE.MathUtils.degToRad(value);
 const ARROW_OUTLINE_SCALE = 1.28;
 const GUIDE_HAND_TEXTURE_URL = '/assets/applovin/main-guide-hand_q80.webp';
-const TURN_ARROW_ASSET_URL = '/assets/unity/models/Arrow_02.fbx.bin';
+const TURN_ARROW_ASSET_URL = MECHANISM_ASSETS.turnVehicle.arrow;
 const TURN_ARROW_SCALE = 0.8;
 const TURN_ARROW_FORWARD_OFFSET = 0.18;
+const HIDDEN_QUESTION_MARK_FORWARD_FACTOR = 0.45;
+const HIDDEN_VEHICLE_BODY_COLOR = 0x2a2a2a;
+const HIDDEN_VEHICLE_ASSETS = MECHANISM_ASSETS.hiddenVehicle;
+const HIDDEN_REVEAL_DURATION = 0.5;
+const GARAGE_ASSETS = MECHANISM_ASSETS.garage;
+const GARAGE_MODEL_TARGET = Object.freeze({ width: 1.00850928, depth: 1.33755 });
+const GARAGE_MODEL_YAW_OFFSET = Math.PI;
+const GARAGE_SHADOW_FORWARD_OFFSET = 0.1;
+const GARAGE_DOOR_SWING = deg(144.25);
+const CONVEYOR_VEHICLE_ASSETS = MECHANISM_ASSETS.vehicleTransportBelt;
+const CONVEYOR_MODEL_DEPTH = 1.15;
+const CONVEYOR_BUILD_CAP_WIDTH = 1.02;
+const CONVEYOR_BUILD_CAP_DEPTH = 1.24;
+// Keep these named constants for the existing conveyor contract; their
+// values are also part of the isolated, non-resettable mechanism config.
+// CONVEYOR_LEFT_DOOR_OUTWARD_SCALE = 1.17
+// CONVEYOR_RIGHT_DOOR_OUTWARD_SCALE = 1.2
+const CONVEYOR_LEFT_DOOR_OUTWARD_SCALE = CONVEYOR_MECHANISM_TUNING.leftDoorOutwardScale;
+const CONVEYOR_RIGHT_DOOR_OUTWARD_SCALE = CONVEYOR_MECHANISM_TUNING.rightDoorOutwardScale;
+const CONVEYOR_BUILD_SIDE_SIZE = Object.freeze({ width: 0.34, depth: 0.38 });
 const DEFAULT_CONVEYOR_LAYOUT_ID = 'dualQueue2';
 const SPATIAL_PASSENGER_CHUNK_COUNT = 4;
 const AMBULANCE_COLOR_INDEX = 13;
+const LUXURY_COLOR_INDEX = 15;
 // The VAT mesh already uses the runtime forward axis; no extra yaw is needed.
 const AMBULANCE_PASSENGER_YAW_OFFSET_DEGREES = 0;
 const AMBULANCE_STEP_BOARD_BASE_SCALE = 0.56 * 1.2 * 1.2;
 const AMBULANCE_STEP_BOARD_OFFSET_Y = 0.42 * 0.9;
 const AMBULANCE_STEP_BOARD_FONT_SIZE = 76 * 1.1;
-const AMBULANCE_ASSETS = Object.freeze({
-  vehicleModel: '/assets/unity/models/Ambulance_001.fbx',
-  vehicleTexture: '/assets/unity/textures/Ambulance.png',
-  passengerVatMesh: '/assets/unity/models/Idle_girl_rescuer_vatmesh.bin',
-  passengerVatTexture: '/assets/unity/models/Idle_girl_rescuer_anim_map.vatq',
-  passengerTexture: '/assets/unity/textures/Idle_girl_rescuer.png',
-  stepBubble: '/assets/unity/textures/Main_Gamepanel_BubbleLove.png'
-});
+const AMBULANCE_ASSETS = MECHANISM_ASSETS.ambulance;
 const AMBULANCE_PASSENGER_ANIMATIONS = Object.freeze({
   textureWidth: 859,
   textureHeight: 79,
   idle: { uvMin: 0, uvMax: 59 / 79, duration: 2 },
   move: { uvMin: 60 / 79, uvMax: 78 / 79, duration: 0.60000014 }
 });
+// Unity's passenger_luxury prefab applies a 90 degree root yaw. FBXLoader's
+// imported root is corrected separately below; no extra roll is required.
+const LUXURY_PASSENGER_YAW_OFFSET_DEGREES = 90;
+const LUXURY_PASSENGER_MODEL_ROTATION_DEGREES = Object.freeze({
+  x: 90,
+  y: 0,
+  z: -90
+});
+const LUXURY_PASSENGER_VISUAL_OFFSET = Object.freeze({
+  x: -0.12,
+  y: 0,
+  z: 0
+});
+// Unity's bus_limousine material is the dark base group; its separate metal
+// material is the gold group shown on the limousine body.
+const LUXURY_VEHICLE_MATCAP_BRIGHTNESS = 4.1;
+const LUXURY_VEHICLE_DIFFUSE_STRENGTH = 0.65;
+const LUXURY_VEHICLE_BASE_EMISSION = Object.freeze({ r: 0.71488965, g: 0.73663896, b: 0.8018868 });
+const LUXURY_VEHICLE_METAL_EMISSION = Object.freeze({ r: 0.8207547, g: 0.65016747, b: 0.2981043 });
+const LUXURY_PASSENGER_BODY_EMISSION = Object.freeze({ r: 0.6431373, g: 0.6431373, b: 0.6431373 });
+const LUXURY_PASSENGER_CLOTH_EMISSION = Object.freeze({ r: 0.78431374, g: 0.73587906, b: 0.3882353 });
+const LUXURY_PASSENGER_ANIMATION_ASSET = MECHANISM_ASSETS.luxuryVehicle.animation;
+const LUXURY_ASSETS = MECHANISM_ASSETS.luxuryVehicle;
 const PASSENGER_DEFAULT_MATERIAL_COLORS = Object.freeze([
   { baseColor: 0xffffff, emissionColor: 0x36a6ff },
   { baseColor: 0xffffff, emissionColor: 0xadd98a },
@@ -84,6 +125,15 @@ const PASSENGER_DEFAULT_MATERIAL_COLORS = Object.freeze([
 ]);
 const scratchPassengerBaseColor = new THREE.Color();
 const scratchPassengerEmissionColor = new THREE.Color();
+
+function isGarageType(value) {
+  return value === 2 || String(value ?? '').trim().toLowerCase() === 'garage';
+}
+
+function isConveyorType(value) {
+  const normalized = String(value ?? '').trim().toLowerCase();
+  return value === 3 || normalized === 'conveyorbelt' || normalized === 'conveyor-belt';
+}
 
 function getSelectedBackgroundUrl() {
   return SCENE_TUNING.background?.asset || LEVEL_1.assets.background;
@@ -399,6 +449,24 @@ async function loadVatTexture(url, width, height, loadingManager) {
   return texture;
 }
 
+function createWhiteAlphaTexture(source) {
+  const image = source?.image;
+  if (!image?.width || !image?.height) return source;
+  const canvas = document.createElement('canvas');
+  canvas.width = image.width;
+  canvas.height = image.height;
+  const context = canvas.getContext('2d');
+  context.drawImage(image, 0, 0);
+  const pixels = context.getImageData(0, 0, canvas.width, canvas.height);
+  for (let index = 0; index < pixels.data.length; index += 4) {
+    pixels.data[index] = 255;
+    pixels.data[index + 1] = 255;
+    pixels.data[index + 2] = 255;
+  }
+  context.putImageData(pixels, 0, 0);
+  return configureColorTexture(new THREE.CanvasTexture(canvas));
+}
+
 async function loadPackedVatTexture(url, loadingManager) {
   loadingManager?.itemStart(url);
   let buffer;
@@ -463,7 +531,7 @@ async function loadPackedVatTexture(url, loadingManager) {
   };
 }
 
-async function loadPackedFbx(url, loader, loadingManager) {
+async function loadPackedFbx(url, loader, loadingManager, resourcePath = null) {
   loadingManager?.itemStart(url);
   try {
     const buffer = await fetch(url).then((response) => {
@@ -472,7 +540,22 @@ async function loadPackedFbx(url, loader, loadingManager) {
     });
     const bytes = gunzipSync(new Uint8Array(buffer));
     loadingManager?.itemEnd(url);
-    return loader.parse(bytes.buffer, url.slice(0, url.lastIndexOf('/') + 1));
+    return loader.parse(bytes.buffer, resourcePath ?? url.slice(0, url.lastIndexOf('/') + 1));
+  } catch (error) {
+    loadingManager?.itemError(url);
+    loadingManager?.itemEnd(url);
+    throw error;
+  }
+}
+
+async function loadJsonAsset(url, loadingManager) {
+  loadingManager?.itemStart(url);
+  try {
+    const response = await fetch(url);
+    if (!response.ok) throw new Error(`JSON asset request failed: ${response.status}`);
+    const data = await response.json();
+    loadingManager?.itemEnd(url);
+    return data;
   } catch (error) {
     loadingManager?.itemError(url);
     loadingManager?.itemEnd(url);
@@ -490,6 +573,101 @@ function setMaterial(root, material, meshFilter = null) {
     meshes.push(child);
   });
   return meshes;
+}
+
+function findFirstMaterialMap(root) {
+  let map = null;
+  root?.traverse((child) => {
+    if (map || !child.isMesh) return;
+    forEachMaterial(child.material, (material) => {
+      if (!map && material.map) map = material.map;
+    });
+  });
+  return map;
+}
+
+function copyGeometryGroups(source, target) {
+  target.clearGroups();
+  for (const group of source?.groups ?? []) {
+    target.addGroup(group.start, group.count, group.materialIndex);
+  }
+  return target;
+}
+
+function applyUnityMatcapLook(
+  material,
+  { brightness = 1, contrast = 1, diffuseStrength = 1, emissionColor = null, emissionStrength = 0 } = {}
+) {
+  const previousOnBeforeCompile = material.onBeforeCompile;
+  const emissionMultiplier = emissionColor
+    ? ` * (vec3(1.0) + vec3(${emissionColor.r}, ${emissionColor.g}, ${emissionColor.b}) * ${emissionStrength})`
+    : '';
+  material.userData.unityMatcapLook = {
+    baseBrightness: brightness,
+    multiplier: 1,
+    brightness
+  };
+  material.onBeforeCompile = function onUnityMatcapCompile(shader, renderer) {
+    previousOnBeforeCompile?.call(this, shader, renderer);
+    const look = this.userData.unityMatcapLook;
+    shader.uniforms.busloopUnityMatcapBrightness = {
+      value: look?.brightness ?? brightness
+    };
+    if (look) look.uniform = shader.uniforms.busloopUnityMatcapBrightness;
+    shader.fragmentShader = shader.fragmentShader
+      .replace(
+        'void main() {',
+        'uniform float busloopUnityMatcapBrightness;\nvoid main() {'
+      )
+      .replace(
+        'vec3 outgoingLight = diffuseColor.rgb * matcapColor.rgb;',
+        `matcapColor.rgb = pow(max(matcapColor.rgb, vec3(0.0)), vec3(${contrast})) * busloopUnityMatcapBrightness;
+\tvec3 outgoingLight = diffuseColor.rgb * matcapColor.rgb * ${diffuseStrength}${emissionMultiplier};`
+      );
+  };
+  material.customProgramCacheKey = () => (
+    `busloop-unity-matcap-${contrast}-${diffuseStrength}-${emissionColor ? `${emissionColor.r},${emissionColor.g},${emissionColor.b}` : 'none'}-${emissionStrength}`
+  );
+  return material;
+}
+
+function updateUnityMatcapBrightness(material, multiplier) {
+  if (!material?.userData?.unityMatcapLook) return;
+  const look = material.userData.unityMatcapLook;
+  look.multiplier = multiplier;
+  look.brightness = look.baseBrightness * multiplier;
+  if (look.uniform) look.uniform.value = look.brightness;
+}
+
+function forEachMaterial(material, callback) {
+  for (const entry of (Array.isArray(material) ? material : [material])) {
+    if (entry) callback(entry);
+  }
+}
+
+function applyLuxuryPassengerBrightness(material, brightness) {
+  forEachMaterial(material, (entry) => {
+    if (entry.userData.luxuryPassengerBody) {
+      entry.color.setScalar(brightness);
+      entry.emissiveIntensity = brightness;
+    } else if (entry.userData.unityMatcapLook) {
+      updateUnityMatcapBrightness(entry, 1);
+      entry.color?.setScalar(brightness);
+    }
+  });
+}
+
+function removeImportedLights(root) {
+  const importedLights = [];
+  root.traverse((child) => {
+    if (child.isLight) importedLights.push(child);
+  });
+  for (const light of importedLights) light.parent?.remove(light);
+  return root;
+}
+
+function disposeMaterial(material) {
+  for (const entry of (Array.isArray(material) ? material : [material])) entry?.dispose?.();
 }
 
 function makeSharedAttributeGeometry(source) {
@@ -636,6 +814,33 @@ function makeCenteredArrow(template) {
   return root;
 }
 
+function sampleQuaternionCurve(keys, time, duration, target) {
+  if (!keys?.length) return target.identity();
+  const wrappedTime = ((time % duration) + duration) % duration;
+  if (keys.length === 1 || wrappedTime <= keys[0][0]) {
+    return target.set(keys[0][1], keys[0][2], keys[0][3], keys[0][4]).normalize();
+  }
+  for (let index = 1; index < keys.length; index += 1) {
+    const next = keys[index];
+    if (wrappedTime > next[0]) continue;
+    const previous = keys[index - 1];
+    const span = Math.max(0.000001, next[0] - previous[0]);
+    const amount = THREE.MathUtils.clamp((wrappedTime - previous[0]) / span, 0, 1);
+    const from = new THREE.Quaternion(previous[1], previous[2], previous[3], previous[4]);
+    const to = new THREE.Quaternion(next[1], next[2], next[3], next[4]);
+    return target.copy(from).slerp(to, amount).normalize();
+  }
+  const last = keys.at(-1);
+  return target.set(last[1], last[2], last[3], last[4]).normalize();
+}
+
+function sampleUnityQuaternionCurve(keys, time, duration, target) {
+  sampleQuaternionCurve(keys, time, duration, target);
+  // FBXLoader converts the model from Unity's basis. Mirror the Unity Y/Z
+  // quaternion components before applying the authored bone rotation.
+  return target.set(target.x, -target.y, -target.z, target.w).normalize();
+}
+
 function makeVehiclePlaceholder(vehicle) {
   const root = new THREE.Group();
   root.userData.vehicleId = vehicle.id;
@@ -661,6 +866,130 @@ function makeVehiclePlaceholder(vehicle) {
   storeHitBase(body);
   storeHitBase(arrow);
   return root;
+}
+
+function createGarageCounterBoard() {
+  const canvas = document.createElement('canvas');
+  canvas.width = 192;
+  canvas.height = 192;
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  const board = new THREE.Sprite(new THREE.SpriteMaterial({
+    map: texture,
+    transparent: true,
+    depthTest: false,
+    depthWrite: false
+  }));
+  board.position.set(0, 1.02, 0.06);
+  board.scale.set(0.48, 0.48, 1);
+  board.renderOrder = 110;
+  board.raycast = () => {};
+  board.userData.canvas = canvas;
+  board.userData.texture = texture;
+  board.userData.count = null;
+  return board;
+}
+
+function makeGaragePlaceholder(container) {
+  const root = new THREE.Group();
+  root.userData.garageId = container.id;
+  const bodyMaterial = new THREE.MeshStandardMaterial({ color: 0xa84138, roughness: 0.54 });
+  const doorMaterial = new THREE.MeshStandardMaterial({ color: 0xd9aa55, roughness: 0.42 });
+  const addBox = (width, height, depth, x, y, z, material = bodyMaterial) => {
+    const mesh = new THREE.Mesh(new THREE.BoxGeometry(width, height, depth), material);
+    mesh.position.set(x, y, z);
+    root.add(mesh);
+    return mesh;
+  };
+  addBox(0.16, 0.66, 1.2, -0.46, 0.33, 0);
+  addBox(0.16, 0.66, 1.2, 0.46, 0.33, 0);
+  addBox(0.76, 0.66, 0.16, 0, 0.33, -0.52);
+  addBox(1.08, 0.14, 1.2, 0, 0.73, 0);
+  const leftPivot = new THREE.Group();
+  const rightPivot = new THREE.Group();
+  leftPivot.position.set(-0.42, 0, 0.57);
+  rightPivot.position.set(0.42, 0, 0.57);
+  const leftDoor = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.54, 0.06), doorMaterial);
+  const rightDoor = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.54, 0.06), doorMaterial);
+  leftDoor.position.set(0.21, 0.32, 0);
+  rightDoor.position.set(-0.21, 0.32, 0);
+  leftPivot.add(leftDoor);
+  rightPivot.add(rightDoor);
+  root.add(leftPivot, rightPivot);
+  const counter = createGarageCounterBoard();
+  root.add(counter);
+  root.userData.doorRoots = [leftPivot, rightPivot];
+  root.userData.doorBaseQuaternions = [leftPivot.quaternion.clone(), rightPivot.quaternion.clone()];
+  root.userData.counter = counter;
+  return root;
+}
+
+function makeConveyorPlaceholder(container) {
+  const root = new THREE.Group();
+  root.userData.conveyorId = container.id;
+  const belt = new THREE.Mesh(
+    new THREE.PlaneGeometry(1, 1),
+    new THREE.MeshBasicMaterial({ color: 0x59606f, transparent: true, opacity: 0.96, side: THREE.DoubleSide })
+  );
+  belt.rotation.x = -Math.PI / 2;
+  belt.scale.set(3.8, CONVEYOR_MODEL_DEPTH, 1);
+  belt.position.y = 0.012;
+  const arrow = new THREE.Mesh(
+    new THREE.PlaneGeometry(1, 1),
+    new THREE.MeshBasicMaterial({ color: 0xbec7d6, transparent: true, opacity: 0.8, side: THREE.DoubleSide })
+  );
+  arrow.rotation.x = -Math.PI / 2;
+  arrow.scale.set(3.8, CONVEYOR_MODEL_DEPTH * 0.7, 1);
+  arrow.position.y = 0.018;
+  const components = {
+    belt: setConveyorComponentBase(makeConveyorComponent('Belt', belt)),
+    arrow: setConveyorComponentBase(makeConveyorComponent('Arrow', arrow))
+  };
+  root.add(...Object.values(components));
+  root.userData.components = components;
+  root.userData.belt = belt;
+  root.userData.arrow = arrow;
+  root.userData.width = 3.8;
+  root.userData.buildParts = Object.values(components);
+  return root;
+}
+
+function makeConveyorComponent(name, object) {
+  const component = new THREE.Group();
+  component.name = `Conveyor ${name}`;
+  if (object) component.add(object);
+  return component;
+}
+
+function setConveyorComponentBase(component, position = { x: 0, y: 0, z: 0 }) {
+  component.position.set(position.x, position.y, position.z);
+  component.userData.basePosition = component.position.clone();
+  component.userData.baseScale = component.scale.clone();
+  component.userData.baseRotation = component.rotation.clone();
+  return component;
+}
+
+function makeConveyorBuildOverlay(texture, width, depth, name) {
+  const overlay = new THREE.Mesh(
+    new THREE.PlaneGeometry(1, 1),
+    new THREE.MeshBasicMaterial({
+      map: texture,
+      color: 0xffffff,
+      transparent: true,
+      alphaTest: 0.02,
+      depthWrite: false,
+      // The Unity build planes are an authored top-down occlusion layer:
+      // opaque cap pixels should cover belt vehicles at the two ends.
+      depthTest: false,
+      side: THREE.DoubleSide
+    })
+  );
+  overlay.name = name;
+  overlay.rotation.x = -Math.PI / 2;
+  overlay.scale.set(width, depth, 1);
+  overlay.position.y = 0.022;
+  overlay.renderOrder = 12;
+  return overlay;
 }
 
 export function isGuideLevelActive(tuning, activeLevelKey = LEVEL_1.key) {
@@ -725,6 +1054,8 @@ export class SceneView {
     this.artworkTextureCache = new Map();
     this.fbxLoader = new FBXLoader(this.loadingManager);
     this.vehicleViews = new Map();
+    this.garageViews = new Map();
+    this.conveyorViews = new Map();
     this.passengerViews = [];
     this.queuePassengerViews = [[], []];
     this.spotRoots = [];
@@ -736,12 +1067,29 @@ export class SceneView {
     this.vehicleMaterials = [];
     this.vehicleColorTextures = [];
     this.turnArrowTemplate = null;
+    this.questionMarkTemplate = null;
+    this.questionMarkTexture = null;
+    this.hiddenVehicleTemplates = {};
+    this.garageTemplate = null;
+    this.garageShadowTemplate = null;
+    this.garageMaterial = null;
+    this.garageShadowMaterial = null;
+    this.conveyorBeltTemplate = null;
+    this.conveyorArrowTemplate = null;
+    this.conveyorBeltTexture = null;
+    this.conveyorArrowTexture = null;
     this.ambulanceVehicleTemplate = null;
     this.ambulanceVehicleMaterial = null;
     this.ambulancePassengerTemplate = null;
     this.ambulancePassengerTexture = null;
     this.ambulancePassengerVat = null;
     this.ambulanceStepBubbleTexture = null;
+    this.luxuryVehicleTemplate = null;
+    this.luxuryVehicleMaterial = null;
+    this.luxuryPassengerTemplate = null;
+    this.luxuryPassengerMaterial = null;
+    this.luxuryPassengerAnimations = null;
+    this.luxurySeatCountBoardTexture = null;
     this.vatTimeUniform = { value: 0 };
     this.boardingViews = [];
     this.vehicleBoardingPulses = new Map();
@@ -811,6 +1159,265 @@ export class SceneView {
     return { root, pieces, hole, hand };
   }
 
+  buildGarageViews() {
+    for (const container of (LEVEL_1.containers ?? []).filter((item) => isGarageType(item.type))) {
+      const view = makeGaragePlaceholder(container);
+      const position = mapVehicleAreaPoint(container);
+      view.position.set(position.x, SCENE_TUNING.vehicleArea.y, position.y);
+      view.rotation.y = mapVehicleAreaYaw(container.yaw);
+      view.scale.setScalar(SCENE_TUNING.vehicleArea.modelScale * GARAGE_SIZE_MULTIPLIER);
+      this.garageViews.set(container.id, view);
+      this.vehicleRoot.add(view);
+    }
+  }
+
+  buildConveyorViews() {
+    for (const container of (LEVEL_1.containers ?? []).filter((item) => isConveyorType(item.type))) {
+      const view = makeConveyorPlaceholder(container);
+      const position = mapVehicleAreaPoint(container);
+      view.position.set(position.x, SCENE_TUNING.vehicleArea.y, position.y);
+      view.rotation.y = mapVehicleAreaYaw(container.yaw);
+      view.renderOrder = -2;
+      this.conveyorViews.set(container.id, view);
+      this.vehicleRoot.add(view);
+    }
+  }
+
+  clearConveyorViews() {
+    for (const view of this.conveyorViews.values()) this.vehicleRoot.remove(view);
+    this.conveyorViews.clear();
+  }
+
+  upgradeConveyorViews() {
+    if (!this.conveyorBeltTemplate || !this.conveyorArrowTemplate) return;
+    for (const [id, view] of this.conveyorViews) {
+      const width = Number(view.userData.width) || 3.8;
+      const belt = normalizeObject(toStaticMeshGroup(this.conveyorBeltTemplate.clone(true)), {
+        width,
+        depth: CONVEYOR_MODEL_DEPTH
+      });
+      const arrow = normalizeObject(toStaticMeshGroup(this.conveyorArrowTemplate.clone(true)), {
+        width,
+        depth: CONVEYOR_MODEL_DEPTH * 0.7
+      });
+      setMaterial(belt, new THREE.MeshBasicMaterial({
+        map: this.conveyorBeltTexture,
+        color: 0xffffff,
+        transparent: true,
+        side: THREE.DoubleSide
+      }));
+      setMaterial(arrow, new THREE.MeshBasicMaterial({
+        map: this.conveyorArrowTexture,
+        color: 0xffffff,
+        transparent: true,
+        alphaTest: 0.01,
+        depthWrite: false,
+        side: THREE.DoubleSide
+      }));
+      belt.position.y = 0.012;
+      arrow.position.y = 0.018;
+      const capWidth = Math.min(CONVEYOR_BUILD_CAP_WIDTH, width * 0.32);
+      const capDepth = CONVEYOR_BUILD_CAP_DEPTH;
+      // Keep the visible door inner edges on the same opening width used by
+      // the conveyor collision context. This prevents a car from appearing
+      // to clear a door while the matching collision box still blocks it.
+      const configuredExitWidth = Number(LEVEL_1.collision?.conveyor?.exitWidth);
+      const openingHalfWidth = configuredExitWidth > 0
+        ? configuredExitWidth * 0.5
+        : Math.max(0, width * 0.5 - 0.06);
+      const doorCenterOffset = openingHalfWidth + capWidth * 0.5;
+      const leftDoor = this.conveyorDoorLeftTexture
+        ? makeConveyorBuildOverlay(this.conveyorDoorLeftTexture, capWidth, capDepth, 'Conveyor Door Left')
+        : null;
+      const rightDoor = this.conveyorDoorRightTexture
+        ? makeConveyorBuildOverlay(this.conveyorDoorRightTexture, capWidth, capDepth, 'Conveyor Door Right')
+        : null;
+      const leftSide = this.conveyorLeftSideTexture
+        ? makeConveyorBuildOverlay(
+          this.conveyorLeftSideTexture,
+          CONVEYOR_BUILD_SIDE_SIZE.width,
+          CONVEYOR_BUILD_SIDE_SIZE.depth,
+          'Conveyor Left Side'
+        )
+        : null;
+      const rightSide = this.conveyorRightSideTexture
+        ? makeConveyorBuildOverlay(
+          this.conveyorRightSideTexture,
+          CONVEYOR_BUILD_SIDE_SIZE.width,
+          CONVEYOR_BUILD_SIDE_SIZE.depth,
+          'Conveyor Right Side'
+        )
+        : null;
+      const components = {
+        belt: setConveyorComponentBase(makeConveyorComponent('Belt', belt)),
+        arrow: setConveyorComponentBase(makeConveyorComponent('Arrow', arrow)),
+        doorLeft: setConveyorComponentBase(
+          makeConveyorComponent('Door Left', leftDoor),
+          { x: -doorCenterOffset * CONVEYOR_LEFT_DOOR_OUTWARD_SCALE, y: 0, z: 0 }
+        ),
+        doorRight: setConveyorComponentBase(
+          makeConveyorComponent('Door Right', rightDoor),
+          { x: doorCenterOffset * CONVEYOR_RIGHT_DOOR_OUTWARD_SCALE, y: 0, z: 0 }
+        ),
+        sideLeft: setConveyorComponentBase(
+          makeConveyorComponent('Side Left', leftSide),
+          { x: -width * 0.5 + 0.12, y: 0, z: -CONVEYOR_MODEL_DEPTH * 0.45 }
+        ),
+        sideRight: setConveyorComponentBase(
+          makeConveyorComponent('Side Right', rightSide),
+          { x: width * 0.5 - 0.12, y: 0, z: CONVEYOR_MODEL_DEPTH * 0.45 }
+        )
+      };
+      view.clear();
+      view.add(...Object.values(components));
+      view.userData.components = components;
+      view.userData.belt = belt;
+      view.userData.arrow = arrow;
+      view.userData.buildParts = Object.values(components);
+      view.userData.conveyorId = id;
+    }
+  }
+
+  updateConveyorViews(snapshot) {
+    const states = new Map((snapshot.mechanicState?.conveyors ?? []).map((item) => [Number(item.id), item]));
+    for (const [id, view] of this.conveyorViews) {
+      const state = states.get(Number(id));
+      // A conveyor container owns all six imported visual components. Only
+      // an explicitly hidden state (the empty conveyor state) removes them.
+      view.visible = state ? !state.hidden : true;
+      for (const part of view.userData.buildParts ?? []) part.visible = view.visible;
+      if (!state) continue;
+      const map = findFirstMaterialMap(view.userData.arrow);
+      if (map) {
+        map.wrapS = THREE.RepeatWrapping;
+        map.offset.x = (snapshot.time * (state.speed ?? 0.4)) % 1;
+        map.needsUpdate = true;
+      }
+    }
+  }
+
+  applyConveyorVisualTuning() {
+    const tuning = CONVEYOR_MECHANISM_TUNING;
+    const rootScale = Math.max(0.01, Number(tuning.visualRootScale) || 1);
+    for (const view of this.conveyorViews.values()) {
+      view.scale.setScalar(rootScale);
+      for (const [key, component] of Object.entries(view.userData.components ?? {})) {
+        const config = tuning.components?.[key] ?? {};
+        const basePosition = component.userData.basePosition ?? new THREE.Vector3();
+        const baseScale = component.userData.baseScale ?? new THREE.Vector3(1, 1, 1);
+        const baseRotation = component.userData.baseRotation ?? new THREE.Euler();
+        const numberOr = (value, fallback) => Number.isFinite(Number(value)) ? Number(value) : fallback;
+        component.position.set(
+          basePosition.x + numberOr(config.positionX, 0),
+          basePosition.y + numberOr(config.positionY, 0),
+          basePosition.z + numberOr(config.positionZ, 0)
+        );
+        component.scale.set(
+          baseScale.x * Math.max(0.01, numberOr(config.scaleX, 1)),
+          baseScale.y * Math.max(0.01, numberOr(config.scaleY, 1)),
+          baseScale.z * Math.max(0.01, numberOr(config.scaleZ, 1))
+        );
+        component.rotation.set(
+          baseRotation.x + deg(numberOr(config.rotationXDegrees, 0)),
+          baseRotation.y + deg(numberOr(config.rotationYDegrees, 0)),
+          baseRotation.z + deg(numberOr(config.rotationZDegrees, 0))
+        );
+      }
+    }
+  }
+
+  clearGarageViews() {
+    for (const view of this.garageViews.values()) this.vehicleRoot.remove(view);
+    this.garageViews.clear();
+  }
+
+  updateGarageCounter(board, count) {
+    if (!board || board.userData.count === count) return;
+    const canvas = board.userData.canvas;
+    const context = canvas.getContext('2d');
+    context.clearRect(0, 0, canvas.width, canvas.height);
+    context.beginPath();
+    context.arc(96, 96, 72, 0, Math.PI * 2);
+    context.fillStyle = '#e45143';
+    context.fill();
+    context.lineWidth = 14;
+    context.strokeStyle = '#6f211d';
+    context.stroke();
+    context.font = '900 92px Arial, sans-serif';
+    context.textAlign = 'center';
+    context.textBaseline = 'middle';
+    context.lineJoin = 'round';
+    context.lineWidth = 12;
+    context.strokeStyle = '#6f211d';
+    context.fillStyle = '#ffffff';
+    context.strokeText(String(count), 96, 100);
+    context.fillText(String(count), 96, 100);
+    board.userData.texture.needsUpdate = true;
+    board.userData.count = count;
+  }
+
+  upgradeGarageViews() {
+    if (!this.garageTemplate) return;
+    for (const view of this.garageViews.values()) {
+      const model = cloneSkeleton(this.garageTemplate);
+      setMaterial(model, this.garageMaterial);
+      // Garage.prefab rotates the Truck child 180 degrees around Y. The FBX
+      // is imported without that prefab instance transform.
+      model.rotation.y = GARAGE_MODEL_YAW_OFFSET;
+      const shadow = this.garageShadowTemplate?.clone(true) ?? null;
+      if (shadow) {
+        setMaterial(shadow, this.garageShadowMaterial);
+        shadow.rotation.y = GARAGE_MODEL_YAW_OFFSET;
+        // The garage doors face local +Z after the prefab's 180-degree yaw.
+        // Move only the fake shadow toward that front edge; keep its tuned
+        // ground offset and the shared parent scale unchanged.
+        shadow.position.set(0, SCENE_TUNING.vehicleShadows.y, GARAGE_SHADOW_FORWARD_OFFSET);
+      }
+      const counter = createGarageCounterBoard();
+      view.clear();
+      if (shadow) view.add(shadow);
+      view.add(model, counter);
+      const doorRoots = [
+        model.getObjectByName('Bone_Door01'),
+        model.getObjectByName('Bone_Door02')
+      ].filter(Boolean);
+      view.userData.modelRoot = model;
+      view.userData.doorRoots = doorRoots;
+      view.userData.doorBaseQuaternions = doorRoots.map((door) => door.quaternion.clone());
+      view.userData.counter = counter;
+    }
+  }
+
+  updateGarageViews(snapshot) {
+    for (const garage of snapshot.mechanicState?.garages ?? []) {
+      const view = this.garageViews.get(garage.id);
+      if (!view) continue;
+      view.visible = !garage.hidden;
+      if (!view.visible) continue;
+      this.updateGarageCounter(view.userData.counter, garage.vehicleIds.length);
+      const exitingVehicle = garage.exitingVehicleId == null
+        ? null
+        : snapshot.vehicles.find((vehicle) => vehicle.id === garage.exitingVehicleId);
+      const motion = exitingVehicle?.motionData;
+      const progress = motion
+        ? THREE.MathUtils.clamp(
+          (motion.elapsed - motion.delay) / Math.max(0.001, motion.duration),
+          0,
+          1
+        )
+        : 0;
+      const swing = Math.sin(progress * Math.PI) * GARAGE_DOOR_SWING;
+      for (let index = 0; index < (view.userData.doorRoots?.length ?? 0); index += 1) {
+        const door = view.userData.doorRoots[index];
+        const base = view.userData.doorBaseQuaternions[index];
+        door.quaternion.copy(base);
+        // Unity's Ani_Truck clips animate each door around its local Z hinge
+        // axis, with opposite signs for the two leaves.
+        door.rotateZ((index === 0 ? -1 : 1) * swing);
+      }
+    }
+  }
+
   buildWorld() {
     this.hemisphereLight = new THREE.HemisphereLight();
     this.directionalLight = new THREE.DirectionalLight();
@@ -844,6 +1451,8 @@ export class SceneView {
     this.buildSpots();
     this.buildGuideHand();
 
+    this.buildGarageViews();
+    this.buildConveyorViews();
     for (const vehicle of LEVEL_1.vehicles) {
       const view = makeVehiclePlaceholder(vehicle);
       this.vehicleViews.set(vehicle.id, view);
@@ -1027,11 +1636,20 @@ export class SceneView {
   shouldUseSpatialPassengerInstancing() {
     return this.isSpatialOptimizationEnabled('instancedPassengers')
       && this.isSpatialOptimizationEnabled('instancedShadows')
-      && !this.hasAmbulanceVehicles();
+      && !this.hasAmbulanceVehicles()
+      && !this.hasLuxuryVehicles();
   }
 
   hasAmbulanceVehicles() {
     return LEVEL_1.vehicles.some((vehicle) => Number.isInteger(vehicle.ambulanceStepLimit));
+  }
+
+  hasLuxuryVehicles() {
+    return LEVEL_1.vehicles.some((vehicle) => vehicle.colorIndex === LUXURY_COLOR_INDEX || vehicle.isLuxury);
+  }
+
+  hasConveyorVehicles() {
+    return LEVEL_1.vehicles.some((vehicle) => isConveyorType(vehicle.containerType));
   }
 
   sampleActiveCurve(progress, targetPoint = new THREE.Vector3(), targetTangent = new THREE.Vector3()) {
@@ -1610,12 +2228,50 @@ export class SceneView {
     try {
       const modelPaths = LEVEL_1.assets.models;
       const vehiclePaths = modelPaths.vehicleBySeats;
+      const hasTurnVehicles = LEVEL_1.vehicles.some((vehicle) => vehicle.isTurnVehicle);
+      const hasHiddenVehicles = LEVEL_1.vehicles.some((vehicle) => vehicle.isHidden);
+      const hasGarage = (LEVEL_1.containers ?? []).some((container) => isGarageType(container.type));
+      const turnArrowPromise = hasTurnVehicles
+        ? loadPackedFbx(TURN_ARROW_ASSET_URL, this.fbxLoader, this.loadingManager)
+        : Promise.resolve(null);
+      const questionMarkPromise = hasHiddenVehicles
+        ? loadPackedFbx(HIDDEN_VEHICLE_ASSETS.questionMark, this.fbxLoader, this.loadingManager)
+        : Promise.resolve(null);
+      const hiddenVehiclePromises = [4, 6, 10].map((seats) => (
+        hasHiddenVehicles
+          ? loadPackedFbx(HIDDEN_VEHICLE_ASSETS.vehicleBySeats[seats], this.fbxLoader, this.loadingManager)
+          : Promise.resolve(null)
+      ));
+      const questionMarkTexturePromise = hasHiddenVehicles
+        ? this.textureLoader.loadAsync(HIDDEN_VEHICLE_ASSETS.questionTexture)
+        : Promise.resolve(null);
+      const garageModelPromise = hasGarage
+        ? this.fbxLoader.loadAsync(GARAGE_ASSETS.model)
+        : Promise.resolve(null);
+      const garageShadowModelPromise = hasGarage
+        ? this.fbxLoader.loadAsync(GARAGE_ASSETS.shadowModel)
+        : Promise.resolve(null);
+      const garageTexturePromise = hasGarage
+        ? this.textureLoader.loadAsync(GARAGE_ASSETS.texture)
+        : Promise.resolve(null);
+      const garageShadowTexturePromise = hasGarage
+        ? this.textureLoader.loadAsync(GARAGE_ASSETS.shadowTexture)
+        : Promise.resolve(null);
       const [
         passengerVatGeometry,
         passengerVatTexture,
         shadowFbx,
         arrowFbx,
         turnArrowFbx,
+        questionMarkFbx,
+        hiddenCarFbx,
+        hiddenVanFbx,
+        hiddenBusFbx,
+        questionMarkTexture,
+        garageFbx,
+        garageShadowFbx,
+        garageTexture,
+        garageShadowTexture,
         carFbx,
         vanFbx,
         busFbx,
@@ -1647,7 +2303,16 @@ export class SceneView {
         ),
         this.fbxLoader.loadAsync(modelPaths.shadow),
         this.fbxLoader.loadAsync(modelPaths.arrow),
-        loadPackedFbx(TURN_ARROW_ASSET_URL, this.fbxLoader, this.loadingManager),
+        turnArrowPromise,
+        questionMarkPromise,
+        hiddenVehiclePromises[0],
+        hiddenVehiclePromises[1],
+        hiddenVehiclePromises[2],
+        questionMarkTexturePromise,
+        garageModelPromise,
+        garageShadowModelPromise,
+        garageTexturePromise,
+        garageShadowTexturePromise,
         this.fbxLoader.loadAsync(vehiclePaths[4]),
         this.fbxLoader.loadAsync(vehiclePaths[6]),
         this.fbxLoader.loadAsync(vehiclePaths[10]),
@@ -1674,6 +2339,11 @@ export class SceneView {
       this.vehicleColorTextures = colorTextures.map(configureColorTexture);
       this.passengerColorTextures = this.vehicleColorTextures;
       this.passengerVatTexture = passengerVatTexture;
+      // Unity's question texture stores a black glyph with the glyph shape in alpha.
+      // Convert it to a white-alpha texture so the browser material matches the Unity shader.
+      this.questionMarkTexture = questionMarkTexture ? createWhiteAlphaTexture(questionMarkTexture) : null;
+      if (garageTexture) configureColorTexture(garageTexture);
+      if (garageShadowTexture) configureColorTexture(garageShadowTexture);
       configureColorTexture(parkingTexture);
       configureColorTexture(seatCountBoardTexture);
       configureColorTexture(shadowTexture);
@@ -1715,6 +2385,18 @@ export class SceneView {
         roughness: 0.58,
         metalness: 0
       }));
+      this.garageMaterial = garageTexture ? new THREE.MeshStandardMaterial({
+        map: garageTexture,
+        roughness: 0.5,
+        metalness: 0
+      }) : null;
+      this.garageShadowMaterial = garageShadowTexture ? new THREE.MeshBasicMaterial({
+        map: garageShadowTexture,
+        transparent: true,
+        opacity: 0.78,
+        depthWrite: false,
+        side: THREE.DoubleSide
+      }) : null;
       this.shadowMaterial = new THREE.MeshBasicMaterial({
         map: shadowTexture,
         transparent: true,
@@ -1751,13 +2433,34 @@ export class SceneView {
         scale: SCENE_TUNING.vehicleArrow.outlineScale,
         depthTest: SCENE_TUNING.vehicleArrow.outlineDepthTest
       });
-      this.turnArrowTemplate = normalizeObject(toStaticMeshGroup(turnArrowFbx), { depth: 0.56 });
-      setMaterial(this.turnArrowTemplate, new THREE.MeshBasicMaterial({ color: 0xffffff, side: THREE.DoubleSide }));
-      addArrowOutline(this.turnArrowTemplate, {
-        color: SCENE_TUNING.vehicleArrow.outlineColor,
-        scale: SCENE_TUNING.vehicleArrow.outlineScale,
-        depthTest: SCENE_TUNING.vehicleArrow.outlineDepthTest
-      });
+      this.turnArrowTemplate = turnArrowFbx
+        ? normalizeObject(toStaticMeshGroup(turnArrowFbx), { depth: 0.56 })
+        : null;
+      if (this.turnArrowTemplate) {
+        setMaterial(this.turnArrowTemplate, new THREE.MeshBasicMaterial({ color: 0xffffff, side: THREE.DoubleSide }));
+        addArrowOutline(this.turnArrowTemplate, {
+          color: SCENE_TUNING.vehicleArrow.outlineColor,
+          scale: SCENE_TUNING.vehicleArrow.outlineScale,
+          depthTest: SCENE_TUNING.vehicleArrow.outlineDepthTest
+        });
+      }
+      if (questionMarkFbx) {
+        this.questionMarkTemplate = normalizeObject(toStaticMeshGroup(questionMarkFbx), { depth: 0.56 });
+        setMaterial(this.questionMarkTemplate, new THREE.MeshBasicMaterial({
+          map: this.questionMarkTexture,
+          color: 0xffffff,
+          side: THREE.DoubleSide,
+          transparent: true,
+          alphaTest: 0.02,
+          depthTest: false,
+          depthWrite: false
+        }));
+        addArrowOutline(this.questionMarkTemplate, {
+          color: SCENE_TUNING.vehicleArrow.outlineColor,
+          scale: SCENE_TUNING.vehicleArrow.outlineScale,
+          depthTest: SCENE_TUNING.vehicleArrow.outlineDepthTest
+        });
+      }
       this.parkingTemplate = normalizeObject(toStaticMeshGroup(parkingFbx), {
         width: SCENE_TUNING.parkingSpots.modelWidth,
         depth: SCENE_TUNING.parkingSpots.modelDepth
@@ -1769,14 +2472,32 @@ export class SceneView {
         6: this.prepareVehicleTemplate(vanFbx, 6),
         10: this.prepareVehicleTemplate(busFbx, 10)
       };
+      this.hiddenVehicleTemplates = {
+        4: hiddenCarFbx ? this.prepareVehicleTemplate(hiddenCarFbx, 4) : null,
+        6: hiddenVanFbx ? this.prepareVehicleTemplate(hiddenVanFbx, 6) : null,
+        10: hiddenBusFbx ? this.prepareVehicleTemplate(hiddenBusFbx, 10) : null
+      };
       this.vehicleShadowTemplates = {
         4: this.prepareVehicleShadowTemplate(carShadowFbx, 4),
         6: this.prepareVehicleShadowTemplate(vanShadowFbx, 6),
         10: this.prepareVehicleShadowTemplate(busShadowFbx, 10)
       };
+      // FBXLoader converts the garage file's AmbientColor metadata into an
+      // AmbientLight. Keep lighting owned by the playable scene so a garage
+      // cannot brighten every other material while it is visible.
+      this.garageTemplate = garageFbx
+        ? normalizeObject(removeImportedLights(garageFbx), GARAGE_MODEL_TARGET)
+        : null;
+      this.garageShadowTemplate = garageShadowFbx
+        ? normalizeObject(toStaticMeshGroup(garageShadowFbx), GARAGE_MODEL_TARGET)
+        : null;
+      if (this.hasConveyorVehicles()) await this.loadConveyorVehicleAssets();
       if (this.hasAmbulanceVehicles()) await this.loadAmbulanceAssets();
+      if (this.hasLuxuryVehicles()) await this.loadLuxuryAssets();
       this.upgradePassengerViews();
       this.upgradeVehicleViews();
+      this.upgradeGarageViews();
+      this.upgradeConveyorViews();
       this.upgradeSpotViews();
       this.applyTuning();
     } catch (error) {
@@ -1795,6 +2516,44 @@ export class SceneView {
       ?? SCENE_TUNING.vehicleArea.modelDepthBySeats[seats]
       ?? 1.2;
     return normalizeObject(toStaticMeshGroup(source), { depth: targetDepth });
+  }
+
+  async loadConveyorVehicleAssets() {
+    const [
+      beltModel,
+      arrowModel,
+      beltTexture,
+      arrowTexture,
+      doorLeftTexture,
+      doorRightTexture,
+      leftSideTexture,
+      rightSideTexture
+    ] = await Promise.all([
+      this.fbxLoader.loadAsync(CONVEYOR_VEHICLE_ASSETS.beltModel),
+      this.fbxLoader.loadAsync(CONVEYOR_VEHICLE_ASSETS.arrowModel),
+      this.textureLoader.loadAsync(CONVEYOR_VEHICLE_ASSETS.beltTexture),
+      this.textureLoader.loadAsync(CONVEYOR_VEHICLE_ASSETS.arrowTexture),
+      this.textureLoader.loadAsync(CONVEYOR_VEHICLE_ASSETS.doorLeftTexture),
+      this.textureLoader.loadAsync(CONVEYOR_VEHICLE_ASSETS.doorRightTexture),
+      this.textureLoader.loadAsync(CONVEYOR_VEHICLE_ASSETS.leftSideTexture),
+      this.textureLoader.loadAsync(CONVEYOR_VEHICLE_ASSETS.rightSideTexture)
+    ]);
+    [
+      beltTexture,
+      arrowTexture,
+      doorLeftTexture,
+      doorRightTexture,
+      leftSideTexture,
+      rightSideTexture
+    ].forEach(configureColorTexture);
+    this.conveyorBeltTemplate = beltModel;
+    this.conveyorArrowTemplate = arrowModel;
+    this.conveyorBeltTexture = beltTexture;
+    this.conveyorArrowTexture = arrowTexture;
+    this.conveyorDoorLeftTexture = doorLeftTexture;
+    this.conveyorDoorRightTexture = doorRightTexture;
+    this.conveyorLeftSideTexture = leftSideTexture;
+    this.conveyorRightSideTexture = rightSideTexture;
   }
 
   async loadAmbulanceAssets() {
@@ -1840,22 +2599,125 @@ export class SceneView {
     this.ambulanceStepBubbleTexture = stepBubbleTexture;
   }
 
-  createVatMaterial(colorIndex = 0, { instanced = false, vat = null, colorMap = null } = {}) {
+  async loadLuxuryAssets() {
+    const [
+      vehicleFbx,
+      passengerFbx,
+      vehicleTexture,
+      vehicleMetalTexture,
+      passengerTexture,
+      passengerClothTexture,
+      seatCountBoardTexture,
+      passengerAnimations
+    ] = await Promise.all([
+      loadPackedFbx(LUXURY_ASSETS.vehicleModel, this.fbxLoader, this.loadingManager),
+      loadPackedFbx(LUXURY_ASSETS.passengerModel, this.fbxLoader, this.loadingManager),
+      this.textureLoader.loadAsync(LUXURY_ASSETS.vehicleTexture),
+      this.textureLoader.loadAsync(LUXURY_ASSETS.vehicleMetalTexture),
+      this.textureLoader.loadAsync(LUXURY_ASSETS.passengerTexture),
+      this.textureLoader.loadAsync(LUXURY_ASSETS.passengerClothTexture),
+      this.textureLoader.loadAsync(LUXURY_ASSETS.seatCountBoard),
+      loadJsonAsset(LUXURY_PASSENGER_ANIMATION_ASSET, this.loadingManager)
+    ]);
+    [vehicleTexture, vehicleMetalTexture, passengerTexture, passengerClothTexture, seatCountBoardTexture]
+      .forEach(configureColorTexture);
+    this.luxuryVehicleTemplate = this.prepareVehicleTemplate(vehicleFbx, 10);
+    this.luxuryVehicleMaterial = [
+      applyUnityMatcapLook(new THREE.MeshMatcapMaterial({
+        // Unity bus_limousine uses Idle_wealthy as its main albedo and the
+        // limousine texture only as the authored Matcap lighting sphere.
+        map: passengerTexture,
+        matcap: vehicleTexture,
+        color: 0xffffff,
+        side: THREE.DoubleSide
+      }), {
+        brightness: LUXURY_VEHICLE_MATCAP_BRIGHTNESS,
+        contrast: 1,
+        diffuseStrength: LUXURY_VEHICLE_DIFFUSE_STRENGTH,
+        emissionColor: LUXURY_VEHICLE_BASE_EMISSION,
+        emissionStrength: 1
+      }),
+      applyUnityMatcapLook(new THREE.MeshMatcapMaterial({
+        map: passengerTexture,
+        matcap: vehicleMetalTexture,
+        color: 0xffffff,
+        side: THREE.DoubleSide
+      }), {
+        brightness: LUXURY_VEHICLE_MATCAP_BRIGHTNESS,
+        contrast: 1,
+        diffuseStrength: LUXURY_VEHICLE_DIFFUSE_STRENGTH,
+        emissionColor: LUXURY_VEHICLE_METAL_EMISSION,
+        emissionStrength: 1
+      })
+    ];
+    // FBXLoader keeps the source file's +90 degree X conversion on the mesh.
+    // Unity's passenger_luxury prefab does not have that tilt, so cancel it
+    // at the imported root before fitting and applying the authored Y yaw.
+    passengerFbx.rotation.x = -Math.PI / 2;
+    this.luxuryPassengerTemplate = normalizeObject(removeImportedLights(passengerFbx), {
+      height: SCENE_TUNING.passengers.modelHeight
+    });
+    const luxuryPassengerBodyMaterial = new THREE.MeshStandardMaterial({
+        map: passengerTexture,
+        emissiveMap: passengerTexture,
+        emissive: new THREE.Color().setRGB(
+          LUXURY_PASSENGER_BODY_EMISSION.r,
+          LUXURY_PASSENGER_BODY_EMISSION.g,
+          LUXURY_PASSENGER_BODY_EMISSION.b
+        ),
+        emissiveIntensity: 1,
+        roughness: 1,
+        metalness: 0,
+        side: THREE.DoubleSide
+    });
+    luxuryPassengerBodyMaterial.userData.luxuryPassengerBody = true;
+    this.luxuryPassengerMaterial = [
+      luxuryPassengerBodyMaterial,
+      applyUnityMatcapLook(new THREE.MeshMatcapMaterial({
+          map: passengerTexture,
+          matcap: passengerClothTexture,
+          color: 0xffffff,
+          side: THREE.DoubleSide
+        }), {
+          brightness: 1,
+          contrast: 1,
+          diffuseStrength: 0.78,
+          emissionColor: LUXURY_PASSENGER_CLOTH_EMISSION,
+          emissionStrength: 1
+        })
+    ];
+    this.luxuryPassengerAnimations = passengerAnimations;
+    this.luxurySeatCountBoardTexture = seatCountBoardTexture;
+  }
+
+  createVatMaterial(
+    colorIndex = 0,
+    { instanced = false, vat = null, colorMap = null, emissiveMap = null, matcapMap = null } = {}
+  ) {
     const animation = vat?.animation ?? LEVEL_1.assets.passengerAnimations;
     const vatTexture = vat?.texture ?? this.passengerVatTexture;
     const idle = animation.idle;
     const clip = new THREE.Vector4(idle.uvMin, idle.uvMax, 1 / idle.duration, 0);
     const map = this.passengerColorTextures[colorIndex] ?? this.passengerColorTextures[0];
-    const material = new THREE.MeshStandardMaterial({
-      roughness: 0.58,
-      metalness: 0,
-      side: THREE.DoubleSide
-    });
+    const material = matcapMap
+      ? new THREE.MeshMatcapMaterial({
+          map: colorMap,
+          matcap: matcapMap,
+          color: 0xffffff,
+          side: THREE.DoubleSide
+        })
+      : new THREE.MeshStandardMaterial({
+          roughness: 0.58,
+          metalness: 0,
+          side: THREE.DoubleSide
+        });
     if (colorMap) {
-      setPassengerMaterialMaps(material, colorMap, null);
+      setPassengerMaterialMaps(material, colorMap, emissiveMap);
       material.color.setHex(0xffffff);
-      material.emissive.setHex(0x000000);
-      material.emissiveIntensity = 0;
+      if (material.emissive) {
+        material.emissive.setHex(emissiveMap ? 0xffffff : 0x000000);
+        material.emissiveIntensity = emissiveMap ? 0.12 : 0;
+      }
       material.userData.passengerColorIndex = colorIndex;
     } else {
       applyPassengerMaterial(material, colorIndex, map);
@@ -1900,10 +2762,24 @@ export class SceneView {
   }
 
   setVatAnimation(material, clipName, normalizedPhase = 0) {
+    if (Array.isArray(material)) {
+      for (const entry of material) this.setVatAnimation(entry, clipName, normalizedPhase);
+      return;
+    }
     const state = material?.userData?.vat;
     const clip = state?.animation?.[clipName];
     if (!state || !clip || state.clipName === clipName) return;
     state.clipName = clipName;
+    // Material.clone serializes userData, so a cloned Vector4 can come back
+    // as a plain object. Rehydrate it before updating the shared shader clip.
+    if (!state.clip?.set) {
+      state.clip = new THREE.Vector4(
+        state.clip?.x ?? clip.uvMin,
+        state.clip?.y ?? clip.uvMax,
+        state.clip?.z ?? 1 / clip.duration,
+        state.clip?.w ?? 0
+      );
+    }
     state.clip.set(
       clip.uvMin,
       clip.uvMax,
@@ -1914,7 +2790,13 @@ export class SceneView {
 
   setPassengerAnimation(view, clipName, normalizedPhase = 0) {
     for (const slot of view.userData.personSlots) {
-      this.setVatAnimation(slot.userData.vatMaterial, clipName, normalizedPhase);
+      const visual = slot.userData.visualRoot;
+      if (visual?.userData.isLuxuryPassenger) {
+        visual.userData.animationClipName = clipName;
+        visual.userData.animationPhase = normalizedPhase;
+      } else {
+        this.setVatAnimation(slot.userData.vatMaterial, clipName, normalizedPhase);
+      }
     }
   }
 
@@ -1928,28 +2810,97 @@ export class SceneView {
     const useAmbulancePassenger = colorIndex === AMBULANCE_COLOR_INDEX
       && this.ambulancePassengerTemplate
       && this.ambulancePassengerVat;
-    const person = (useAmbulancePassenger ? this.ambulancePassengerTemplate : this.personTemplate).clone(true);
+    const useLuxuryPassenger = colorIndex === LUXURY_COLOR_INDEX
+      && this.luxuryPassengerTemplate
+      && this.luxuryPassengerMaterial;
+    const person = (useAmbulancePassenger
+      ? this.ambulancePassengerTemplate
+      : (useLuxuryPassenger ? this.luxuryPassengerTemplate : this.personTemplate));
+    const personClone = useLuxuryPassenger ? cloneSkeleton(person) : person.clone(true);
     const personPivot = new THREE.Group();
-    personPivot.rotation.y = deg(
-      SCENE_TUNING.facing.passengerModelYawDegrees
-      + (useAmbulancePassenger ? AMBULANCE_PASSENGER_YAW_OFFSET_DEGREES : 0)
-    );
+    const modelYaw = useLuxuryPassenger
+      ? LUXURY_PASSENGER_YAW_OFFSET_DEGREES
+      : SCENE_TUNING.facing.passengerModelYawDegrees
+        + (useAmbulancePassenger ? AMBULANCE_PASSENGER_YAW_OFFSET_DEGREES : 0);
+    personPivot.rotation.y = deg(modelYaw);
+    if (useLuxuryPassenger) {
+      personPivot.rotation.set(
+        deg(LUXURY_PASSENGER_MODEL_ROTATION_DEGREES.x),
+        deg(LUXURY_PASSENGER_MODEL_ROTATION_DEGREES.y),
+        deg(LUXURY_PASSENGER_MODEL_ROTATION_DEGREES.z)
+      );
+    }
     personPivot.position.y = SCENE_TUNING.shadows.y + 0.002;
-    personPivot.add(person);
+    personPivot.add(personClone);
     const material = useAmbulancePassenger
       ? this.createVatMaterial(colorIndex, {
           vat: this.ambulancePassengerVat,
           colorMap: this.ambulancePassengerTexture
         })
-      : this.createVatMaterial(colorIndex);
-    setMaterial(person, material);
-    root.add(shadow, personPivot);
-    root.userData.modelRoot = person;
+      : (useLuxuryPassenger
+        ? this.luxuryPassengerMaterial.map((entry) => entry.clone())
+        : this.createVatMaterial(colorIndex));
+    setMaterial(personClone, material);
+    if (useLuxuryPassenger) {
+      const visualOffsetRoot = new THREE.Group();
+      visualOffsetRoot.position.set(
+        LUXURY_PASSENGER_VISUAL_OFFSET.x,
+        LUXURY_PASSENGER_VISUAL_OFFSET.y,
+        LUXURY_PASSENGER_VISUAL_OFFSET.z
+      );
+      visualOffsetRoot.add(shadow, personPivot);
+      root.add(visualOffsetRoot);
+      root.userData.visualOffsetRoot = visualOffsetRoot;
+    } else {
+      root.add(shadow, personPivot);
+    }
+    root.userData.modelRoot = personClone;
     root.userData.modelPivot = personPivot;
     root.userData.vatMaterial = material;
     root.userData.material = material;
     root.userData.isAmbulancePassenger = Boolean(useAmbulancePassenger);
+    root.userData.isLuxuryPassenger = Boolean(useLuxuryPassenger);
+    if (useLuxuryPassenger) {
+      root.userData.animationClipName = 'idle';
+      root.userData.animationPhase = 0;
+      root.userData.luxuryBones = new Map();
+      personClone.traverse((object) => {
+        if (object.isBone) root.userData.luxuryBones.set(object.name, object);
+      });
+      const brightness = THREE.MathUtils.clamp(
+        SCENE_TUNING.luxuryMaterial?.passengerBrightness ?? 1,
+        0,
+        3
+      );
+      applyLuxuryPassengerBrightness(material, brightness);
+    }
     return root;
+  }
+
+  updateLuxuryPassengerAnimations(time) {
+    const animations = this.luxuryPassengerAnimations?.clips;
+    if (!animations) return;
+    const roots = [
+      ...this.passengerViews.flatMap((view) => view.userData.personSlots ?? [])
+        .map((slot) => slot.userData.visualRoot),
+      ...this.queuePassengerViews.flatMap((views) => views)
+        .flatMap((view) => view.userData.personSlots ?? [])
+        .map((slot) => slot.userData.visualRoot),
+      ...this.boardingViews.map((entry) => entry.root)
+    ];
+    const quaternion = new THREE.Quaternion();
+    for (const visual of roots) {
+      if (!visual?.userData.isLuxuryPassenger) continue;
+      const clip = animations[visual.userData.animationClipName] ?? animations.idle;
+      const phase = Number(visual.userData.animationPhase) || 0;
+      const clipTime = time + phase * clip.duration;
+      for (const [boneName, keys] of Object.entries(clip.curves ?? {})) {
+        const bone = visual.userData.luxuryBones?.get(boneName);
+        if (!bone) continue;
+        sampleUnityQuaternionCurve(keys, clipTime, clip.duration, quaternion);
+        bone.quaternion.copy(quaternion);
+      }
+    }
   }
 
   makeShadow(width, depth, kind = 'conveyor') {
@@ -1990,6 +2941,21 @@ export class SceneView {
     for (const entry of this.boardingViews) {
       entry.root.scale.setScalar(scale);
     }
+    const luxuryRoots = [
+      ...this.passengerViews,
+      ...this.queuePassengerViews.flat(),
+      ...this.boardingViews.map((entry) => entry.root)
+    ];
+    for (const root of luxuryRoots) {
+      root.traverse((object) => {
+        if (!object.userData.isLuxuryPassenger || !object.userData.modelPivot) return;
+        object.userData.modelPivot.rotation.set(
+          deg(LUXURY_PASSENGER_MODEL_ROTATION_DEGREES.x),
+          deg(LUXURY_PASSENGER_MODEL_ROTATION_DEGREES.y),
+          deg(LUXURY_PASSENGER_MODEL_ROTATION_DEGREES.z)
+        );
+      });
+    }
     const roots = [
       ...this.passengerViews,
       ...this.queuePassengerViews.flat(),
@@ -2022,14 +2988,14 @@ export class SceneView {
       ...this.boardingViews.map((entry) => entry.root)
     ];
     for (const root of roots) {
-      if (root.userData.vatMaterial && !root.userData.isAmbulancePassenger) {
+      if (root.userData.vatMaterial && !root.userData.isAmbulancePassenger && !root.userData.isLuxuryPassenger) {
         const colorIndex = root.userData.vatMaterial.userData.passengerColorIndex ?? root.userData.colorIndex ?? 0;
         if (!shouldUpdateColor(colorIndex)) continue;
         const map = this.passengerColorTextures[colorIndex] ?? this.passengerColorTextures[0];
         applyPassengerMaterial(root.userData.vatMaterial, colorIndex, map);
       }
       for (const slot of root.userData.personSlots ?? []) {
-        if (slot.userData.visualRoot?.userData.isAmbulancePassenger) continue;
+        if (slot.userData.visualRoot?.userData.isAmbulancePassenger || slot.userData.visualRoot?.userData.isLuxuryPassenger) continue;
         const material = slot.userData.vatMaterial;
         if (!material) continue;
         const colorIndex = material.userData.passengerColorIndex ?? root.userData.colorIndex ?? 0;
@@ -2045,7 +3011,7 @@ export class SceneView {
     for (const view of allViews) {
       if (!view.userData.modelReady) continue;
       for (const slot of view.userData.personSlots) {
-        slot.userData.visualRoot?.userData.material?.dispose();
+        disposeMaterial(slot.userData.visualRoot?.userData.material);
         slot.clear();
         slot.userData.visualRoot = null;
         slot.userData.modelRoot = null;
@@ -2084,17 +3050,46 @@ export class SceneView {
     for (const vehicle of LEVEL_1.vehicles) {
       const view = this.vehicleViews.get(vehicle.id);
       const isAmbulance = Number.isInteger(vehicle.ambulanceStepLimit);
+      const isLuxury = vehicle.colorIndex === LUXURY_COLOR_INDEX || vehicle.isLuxury;
       const template = isAmbulance && this.ambulanceVehicleTemplate
         ? this.ambulanceVehicleTemplate
-        : (this.vehicleTemplates[vehicle.seats] ?? this.vehicleTemplates[10]);
+        : (isLuxury && this.luxuryVehicleTemplate
+          ? this.luxuryVehicleTemplate
+          : (this.vehicleTemplates[vehicle.seats] ?? this.vehicleTemplates[10]));
       const size = template.userData.fittedSize;
       const material = isAmbulance && this.ambulanceVehicleMaterial
         ? this.ambulanceVehicleMaterial.clone()
-        : (this.vehicleMaterials[vehicle.colorIndex] ?? this.vehicleMaterials[0]).clone();
+        : (isLuxury && this.luxuryVehicleMaterial
+          ? (Array.isArray(this.luxuryVehicleMaterial)
+            ? this.luxuryVehicleMaterial.map((entry) => entry.clone())
+            : this.luxuryVehicleMaterial.clone())
+          : (this.vehicleMaterials[vehicle.colorIndex] ?? this.vehicleMaterials[0]).clone());
       view.clear();
-      const shadow = this.makeVehicleShadow(vehicle.seats);
+      const shadow = this.makeVehicleShadow(isLuxury ? 10 : vehicle.seats);
       const model = template.clone(true);
       const bodyMeshes = setMaterial(model, material);
+      const hiddenTemplate = vehicle.isHidden
+        ? (this.hiddenVehicleTemplates[vehicle.seats] ?? this.hiddenVehicleTemplates[10])
+        : null;
+      // Unity's bus_hidden material is intentionally untextured black. Use a
+      // slightly lifted charcoal so the hidden shape keeps readable lighting.
+      const hiddenCollisionModel = hiddenTemplate?.clone(true) ?? null;
+      const hiddenBodyMeshes = hiddenCollisionModel
+        ? setMaterial(hiddenCollisionModel, new THREE.MeshStandardMaterial({
+          color: HIDDEN_VEHICLE_BODY_COLOR,
+          roughness: 0.58,
+          metalness: 0
+        }))
+        : [];
+      if (hiddenCollisionModel) {
+        const hiddenSize = new THREE.Box3().setFromObject(hiddenCollisionModel)
+          .getSize(new THREE.Vector3());
+        hiddenCollisionModel.scale.multiply(new THREE.Vector3(
+          size.x / Math.max(hiddenSize.x, 0.0001),
+          size.y / Math.max(hiddenSize.y, 0.0001),
+          size.z / Math.max(hiddenSize.z, 0.0001)
+        ));
+      }
       const arrowTemplate = vehicle.isTurnVehicle && this.turnArrowTemplate
         ? this.turnArrowTemplate
         : this.arrowTemplate;
@@ -2103,7 +3098,32 @@ export class SceneView {
       this.applyVehicleArrowTuning(arrow, size, { isTurnVehicle: vehicle.isTurnVehicle });
       arrow.rotation.y = deg(vehicle.isTurnVehicle ? 0 : SCENE_TUNING.facing.arrowYawDegrees);
       if (vehicle.isTurnVehicle) arrow.scale.multiplyScalar(TURN_ARROW_SCALE);
-      hitRoot.add(model, arrow);
+      const hiddenRoot = new THREE.Group();
+      const hiddenArrow = vehicle.isHidden && this.questionMarkTemplate
+        ? makeCenteredArrow(this.questionMarkTemplate)
+        : null;
+      if (hiddenArrow) {
+        this.applyVehicleArrowTuning(hiddenArrow, size, { isHiddenQuestionMark: true });
+        hiddenArrow.rotation.y = deg(SCENE_TUNING.facing.arrowYawDegrees);
+        hiddenArrow.renderOrder = 30;
+        hiddenArrow.traverse((child) => {
+          if (!child.isMesh) return;
+          child.renderOrder = 30;
+          const materials = Array.isArray(child.material) ? child.material : [child.material];
+          for (const material of materials) {
+            if (!material) continue;
+            material.depthTest = false;
+            material.depthWrite = false;
+          }
+        });
+        hiddenRoot.add(hiddenArrow);
+      }
+      model.visible = !vehicle.isHidden;
+      arrow.visible = !vehicle.isHidden;
+      hiddenRoot.visible = Boolean(vehicle.isHidden);
+      if (hiddenCollisionModel) hiddenCollisionModel.visible = Boolean(vehicle.isHidden);
+      hitRoot.add(model, arrow, hiddenRoot);
+      if (hiddenCollisionModel) hitRoot.add(hiddenCollisionModel);
       for (const child of [hitRoot, shadow]) {
         child.traverse((object) => { object.userData.vehicleId = vehicle.id; });
       }
@@ -2117,14 +3137,58 @@ export class SceneView {
         view.userData.ambulanceStepBoard = null;
       }
       view.userData.bodyMeshes = bodyMeshes;
+      view.userData.hiddenBodyMeshes = hiddenBodyMeshes;
       view.userData.hitMeshes = [hitRoot];
-      view.userData.pickMeshes = bodyMeshes;
+      view.userData.pickMeshes = vehicle.isHidden ? hiddenBodyMeshes : bodyMeshes;
       view.userData.modelRoot = model;
       view.userData.arrowRoot = arrow;
+      view.userData.hiddenRoot = hiddenRoot;
+      view.userData.hiddenModelRoot = hiddenCollisionModel;
+      view.userData.hiddenArrowRoot = hiddenArrow;
       view.userData.templateSize = size;
       view.userData.unityHitScale = size.z / .6785897;
+      view.userData.isLuxury = isLuxury;
       storeHitBase(hitRoot);
       view.userData.modelReady = true;
+    }
+  }
+
+  updateLuxuryMaterialTuning() {
+    const tuning = SCENE_TUNING.luxuryMaterial ?? {};
+    const vehicleBrightness = THREE.MathUtils.clamp(tuning.vehicleBrightness ?? 1, 0, 3);
+    const passengerBrightness = THREE.MathUtils.clamp(tuning.passengerBrightness ?? 1, 0, 3);
+    const boardBrightness = THREE.MathUtils.clamp(tuning.boardBrightness ?? 1, 0, 3);
+
+    forEachMaterial(this.luxuryVehicleMaterial, (material) => {
+      updateUnityMatcapBrightness(material, 1);
+      material.color?.setScalar(vehicleBrightness);
+    });
+    for (const view of this.vehicleViews.values()) {
+      if (!view.userData.isLuxury) continue;
+      for (const mesh of view.userData.bodyMeshes ?? []) {
+        forEachMaterial(mesh.material, (material) => {
+          updateUnityMatcapBrightness(material, 1);
+          material.color?.setScalar(vehicleBrightness);
+        });
+      }
+    }
+
+    const luxuryPassengerVisuals = [
+      ...this.passengerViews.flatMap((view) => view.userData.personSlots ?? [])
+        .map((slot) => slot.userData.visualRoot),
+      ...this.queuePassengerViews.flatMap((views) => views)
+        .flatMap((view) => view.userData.personSlots ?? [])
+        .map((slot) => slot.userData.visualRoot),
+      ...this.boardingViews.map((entry) => entry.root)
+    ].filter((visual) => visual?.userData.isLuxuryPassenger);
+    for (const visual of luxuryPassengerVisuals) {
+      applyLuxuryPassengerBrightness(visual.userData.material, passengerBrightness);
+    }
+
+    for (const board of this.seatCountBoards) {
+      if (!board.userData.isLuxuryBoard) continue;
+      board.userData.boardMesh.material.color.setScalar(boardBrightness);
+      board.userData.textSprite.material.color.setScalar(boardBrightness);
     }
   }
 
@@ -2183,14 +3247,21 @@ export class SceneView {
     );
   }
 
-  applyVehicleArrowTuning(arrow, size, { isTurnVehicle = false } = {}) {
+  applyVehicleArrowTuning(arrow, size, { isTurnVehicle = false, isHiddenQuestionMark = false } = {}) {
     const tuning = SCENE_TUNING.vehicleArrow;
     const markerDepth = (arrow.userData.fittedSize?.z ?? 0.56) * (isTurnVehicle ? TURN_ARROW_SCALE : 1);
     const maxForwardOffset = Math.max(0, (size.z - markerDepth) * 0.5);
     const forwardOffset = isTurnVehicle
       ? Math.min(TURN_ARROW_FORWARD_OFFSET, maxForwardOffset)
       : 0;
-    arrow.position.set(tuning.offsetX, size.y + tuning.offsetY, tuning.offsetZ + forwardOffset);
+    const hiddenQuestionOffset = isHiddenQuestionMark
+      ? -maxForwardOffset * HIDDEN_QUESTION_MARK_FORWARD_FACTOR
+      : 0;
+    arrow.position.set(
+      tuning.offsetX,
+      size.y + tuning.offsetY,
+      tuning.offsetZ + forwardOffset + hiddenQuestionOffset
+    );
     applyArrowOutlineTuning(arrow, {
       color: tuning.outlineColor,
       scale: tuning.outlineScale,
@@ -2215,9 +3286,29 @@ export class SceneView {
         this.applyVehicleArrowTuning(arrow, size, { isTurnVehicle: vehicle.isTurnVehicle });
         arrow.rotation.y = deg(vehicle.isTurnVehicle ? 0 : SCENE_TUNING.facing.arrowYawDegrees);
       }
+      const hiddenArrow = view?.userData.hiddenArrowRoot;
+      if (hiddenArrow && size) {
+        this.applyVehicleArrowTuning(hiddenArrow, size, { isHiddenQuestionMark: true });
+        hiddenArrow.rotation.y = deg(SCENE_TUNING.facing.arrowYawDegrees);
+      }
       const hitRoot = view?.userData.hitMeshes?.[0];
       if (hitRoot) storeHitBase(hitRoot);
     }
+  }
+
+  updateHiddenVehicleVisual(view, vehicle) {
+    if (!view?.userData.hiddenRoot || !vehicle.isHidden) return;
+    const reveal = vehicle.hiddenReveal;
+    const progress = reveal
+      ? THREE.MathUtils.clamp(reveal.elapsed / Math.max(0.001, reveal.duration || HIDDEN_REVEAL_DURATION), 0, 1)
+      : (vehicle.hiddenRevealed ? 1 : 0);
+    const showingNormal = progress >= 0.55;
+    view.userData.modelRoot.visible = showingNormal;
+    view.userData.arrowRoot.visible = showingNormal;
+    view.userData.hiddenRoot.visible = !showingNormal;
+    if (view.userData.hiddenModelRoot) view.userData.hiddenModelRoot.visible = !showingNormal;
+    view.userData.pickMeshes = vehicle.hiddenRevealed ? view.userData.bodyMeshes : view.userData.hiddenBodyMeshes;
+    view.userData.hiddenRoot.scale.setScalar(1);
   }
 
   makeVehicleShadow(seats) {
@@ -2263,11 +3354,13 @@ export class SceneView {
       remaining > 0 &&
       (vehicle.state === 'at-spot' || vehicle.state === 'boarding-final')
     );
+    board.userData.isLuxuryBoard = vehicle.colorIndex === LUXURY_COLOR_INDEX;
     const vehicleChanged = board.userData.vehicleId !== vehicle.id;
     board.visible = visible;
     if (!visible) {
       board.userData.vehicleId = null;
       board.userData.remaining = null;
+      board.userData.isLuxuryBoard = false;
       return;
     }
     if (
@@ -2280,7 +3373,23 @@ export class SceneView {
     board.userData.colorIndex = vehicle.colorIndex;
 
     const config = PASSENGER_COUNT_BOARD_COLORS[vehicle.colorIndex] ?? PASSENGER_COUNT_BOARD_COLORS[0];
-    board.userData.boardMesh.material.color.setHex(config.background);
+    const boardTexture = vehicle.colorIndex === LUXURY_COLOR_INDEX && this.luxurySeatCountBoardTexture
+      ? this.luxurySeatCountBoardTexture
+      : this.seatCountBoardTexture;
+    if (board.userData.boardMesh.material.map !== boardTexture) {
+      board.userData.boardMesh.material.map = boardTexture;
+      board.userData.boardMesh.material.needsUpdate = true;
+    }
+    // The luxury board texture already contains Unity's gold background;
+    // multiplying it by the generic color swatch makes it needlessly dark.
+    board.userData.boardMesh.material.color.setHex(
+      boardTexture === this.luxurySeatCountBoardTexture ? 0xffffff : config.background
+    );
+    if (board.userData.isLuxuryBoard) {
+      this.updateLuxuryMaterialTuning();
+    } else {
+      board.userData.textSprite.material.color.setHex(0xffffff);
+    }
 
     const canvas = board.userData.textCanvas;
     const context = canvas.getContext('2d');
@@ -2312,8 +3421,14 @@ export class SceneView {
       const wantsAmbulancePassenger = colorIndex === AMBULANCE_COLOR_INDEX
         && this.ambulancePassengerTemplate
         && this.ambulancePassengerVat;
-      if (visual && visual.userData.isAmbulancePassenger !== Boolean(wantsAmbulancePassenger)) {
-        visual.userData.material?.dispose();
+      const wantsLuxuryPassenger = colorIndex === LUXURY_COLOR_INDEX
+        && this.luxuryPassengerTemplate
+        && this.luxuryPassengerMaterial;
+      if (visual && (
+        visual.userData.isAmbulancePassenger !== Boolean(wantsAmbulancePassenger)
+        || visual.userData.isLuxuryPassenger !== Boolean(wantsLuxuryPassenger)
+      )) {
+        disposeMaterial(visual.userData.material);
         slot.clear();
         const replacement = this.createPassengerVisual(colorIndex, slot.userData.shadowKind ?? 'conveyor');
         slot.add(replacement);
@@ -2322,7 +3437,7 @@ export class SceneView {
         slot.userData.vatMaterial = replacement.userData.vatMaterial;
       }
       const material = slot.userData.vatMaterial;
-      if (material && colorIndex !== AMBULANCE_COLOR_INDEX) {
+      if (material && colorIndex !== AMBULANCE_COLOR_INDEX && colorIndex !== LUXURY_COLOR_INDEX) {
         const map = this.passengerColorTextures[colorIndex] ?? this.passengerColorTextures[0];
         applyPassengerMaterial(material, colorIndex, map);
       }
@@ -2351,8 +3466,10 @@ export class SceneView {
     }
     this.updatePassengerVisualTuning();
     this.updatePassengerMaterialTuning();
+    this.updateLuxuryMaterialTuning();
     this.updateVehicleArrowTuning();
     this.updateGuideHandTuning();
+    this.applyConveyorVisualTuning();
 
     this.buildPathCurves();
     if (this.personTemplate) {
@@ -2442,14 +3559,19 @@ export class SceneView {
     this.clearVehiclePathLines();
     this.clearBoardingViews();
     this.vehicleEffects?.clear();
+    this.clearGarageViews();
+    this.clearConveyorViews();
     for (const view of this.vehicleViews.values()) this.vehicleRoot.remove(view);
     this.vehicleViews.clear();
+    this.buildGarageViews();
+    this.buildConveyorViews();
     for (const vehicle of LEVEL_1.vehicles) {
       const view = makeVehiclePlaceholder(vehicle);
       this.vehicleViews.set(vehicle.id, view);
       this.vehicleRoot.add(view);
     }
     if (this.vehicleTemplates) this.upgradeVehicleViews();
+    if (this.garageTemplate) this.upgradeGarageViews();
     this.setArtworkPlaneTexture(this.backgroundPlane, getSelectedBackgroundUrl());
     this.lastSnapshot = null;
     this.lastGame = null;
@@ -2558,6 +3680,8 @@ export class SceneView {
     const vehicleArea = SCENE_TUNING.vehicleArea;
     const vehicleYawOffset = deg(SCENE_TUNING.facing.vehicleYawOffsetDegrees);
     this.prepareSpatialBlockerCache(snapshot);
+    this.updateGarageViews(snapshot);
+    this.updateConveyorViews(snapshot);
     for (const board of this.seatCountBoards) {
       board.visible = false;
     }
@@ -2575,7 +3699,10 @@ export class SceneView {
         layoutStart.y
       );
       const spot = this.spotPositions[vehicle.spotIndex ?? 0];
-      view.visible = vehicle.state !== 'done';
+      const garageMotionVisible = vehicle.state !== 'leaving-garage'
+        || (vehicle.motionData?.elapsed ?? 0) >= (vehicle.motionData?.delay ?? 0);
+      const conveyorVisible = !isConveyorType(vehicle.containerType) || vehicle.conveyorVisible !== false;
+      view.visible = !['done', 'in-garage'].includes(vehicle.state) && garageMotionVisible && conveyorVisible;
       const activeHit = Boolean(
         vehicle.hit
         && snapshot.time - vehicle.hit.startedAt < UNITY_VEHICLE_MOTION.hitDuration
@@ -2586,7 +3713,7 @@ export class SceneView {
         && !activeHit
         && !view.userData.spatialHadActiveHit
       );
-      let vehicleScale = vehicle.state === 'parked' || vehicle.state === 'colliding'
+      let vehicleScale = ['parked', 'colliding', 'leaving-garage'].includes(vehicle.state)
         ? 1 : (UNITY_VEHICLE_MOTION.stationScaleBySeats[vehicle.seats] ?? 1);
       if (vehicle.state === 'parked') {
         if (!reuseStaticTransform) {
@@ -2594,6 +3721,18 @@ export class SceneView {
           view.rotation.y = startYaw;
         }
         view.userData.spatialStaticParked = useStaticCache;
+      } else if (vehicle.state === 'leaving-garage') {
+        view.userData.spatialStaticParked = false;
+        const progress = ease(vehicle.motion);
+        const from = vehicle.motionData.from;
+        const to = vehicle.motionData.to;
+        view.position.copy(mapMotionPoint({
+          x: THREE.MathUtils.lerp(from.x, to.x, progress),
+          z: THREE.MathUtils.lerp(from.z, to.z, progress)
+        }));
+        view.rotation.y = mapVehicleAreaYaw(
+          THREE.MathUtils.lerp(from.yaw, to.yaw, progress)
+        ) + vehicleYawOffset;
       } else if (vehicle.state === 'colliding') {
         view.userData.spatialStaticParked = false;
         const direction = forwardFromYaw(vehicle.yaw);
@@ -2648,15 +3787,24 @@ export class SceneView {
         this.applyVehicleHit(view, vehicle, snapshot.time);
       }
       view.userData.spatialHadActiveHit = activeHit;
+      this.updateHiddenVehicleVisual(view, vehicle);
       const isMovable = vehicle.state === 'parked'
         && !vehicle.turnRotation?.active
+        && !vehicle.hiddenReveal
         && this.getVehicleBlockers(game, vehicle.id).length === 0;
       if (view.userData.spatialMovable !== isMovable) {
         view.userData.spatialMovable = isMovable;
-        for (const mesh of view.userData.bodyMeshes ?? []) {
+        const activeMeshes = vehicle.isHidden && !vehicle.hiddenRevealed
+          ? view.userData.hiddenBodyMeshes
+          : view.userData.bodyMeshes;
+        for (const mesh of [
+          ...(view.userData.bodyMeshes ?? []),
+          ...(view.userData.hiddenBodyMeshes ?? [])
+        ]) {
           if (!mesh.material.emissive) continue;
-          mesh.material.emissive.setHex(isMovable ? 0x123a20 : 0x000000);
-          mesh.material.emissiveIntensity = isMovable ? 0.22 : 0;
+          const highlighted = isMovable && activeMeshes?.includes(mesh);
+          mesh.material.emissive.setHex(highlighted ? 0x123a20 : 0x000000);
+          mesh.material.emissiveIntensity = highlighted ? 0.22 : 0;
         }
       }
       view.userData.boardedGroups = vehicle.boardedGroups;
@@ -2751,6 +3899,7 @@ export class SceneView {
     this.pruneQueueEntryPathStates(queueSnapshots);
     this.processBoardingEvents(snapshot);
     this.updateBoardingViews(snapshot.time);
+    this.updateLuxuryPassengerAnimations(snapshot.time);
     this.vehicleEffects?.update(snapshot);
     this.updateVehiclePathPreview(snapshot, game);
     this.updateGuideHand(snapshot.time, snapshot);
@@ -3120,28 +4269,39 @@ export class SceneView {
 
   disposeBoardingVisualPool() {
     for (const visual of this.boardingVisualPool) {
-      visual.userData.material?.dispose();
+      disposeMaterial(visual.userData.material);
     }
     this.boardingVisualPool.length = 0;
   }
 
   acquireBoardingVisual(colorIndex) {
     const wantsAmbulancePassenger = colorIndex === AMBULANCE_COLOR_INDEX;
-    const usePool = this.isSpatialOptimizationEnabled('poolBoardingPassengers') && !wantsAmbulancePassenger;
+    const wantsLuxuryPassenger = colorIndex === LUXURY_COLOR_INDEX
+      && this.luxuryPassengerTemplate
+      && this.luxuryPassengerMaterial;
+    const usePool = this.isSpatialOptimizationEnabled('poolBoardingPassengers')
+      && !wantsAmbulancePassenger
+      && !wantsLuxuryPassenger;
     let visual = usePool && this.boardingVisualPool.length
       ? this.boardingVisualPool.pop()
       : this.createPassengerVisual(colorIndex);
-    if (visual.userData.isAmbulancePassenger !== wantsAmbulancePassenger) {
-      visual.userData.material?.dispose();
+    if (
+      visual.userData.isAmbulancePassenger !== wantsAmbulancePassenger
+      || visual.userData.isLuxuryPassenger !== wantsLuxuryPassenger
+    ) {
+      disposeMaterial(visual.userData.material);
       visual = this.createPassengerVisual(colorIndex);
     }
     const material = visual.userData.vatMaterial;
     if (material) {
-      if (!wantsAmbulancePassenger) {
+      if (!wantsAmbulancePassenger && !wantsLuxuryPassenger) {
         const map = this.passengerColorTextures[colorIndex] ?? this.passengerColorTextures[0];
         applyPassengerMaterial(material, colorIndex, map);
       }
       this.setVatAnimation(material, 'move');
+    } else if (wantsLuxuryPassenger) {
+      visual.userData.animationClipName = 'move';
+      visual.userData.animationPhase = 0;
     }
     visual.visible = true;
     return visual;
@@ -3151,13 +4311,14 @@ export class SceneView {
     if (
       this.isSpatialOptimizationEnabled('poolBoardingPassengers')
       && !visual.userData.isAmbulancePassenger
+      && !visual.userData.isLuxuryPassenger
       && this.boardingVisualPool.length < 64
     ) {
       visual.visible = false;
       this.boardingVisualPool.push(visual);
       return;
     }
-    visual.userData.material?.dispose();
+    disposeMaterial(visual.userData.material);
   }
 
   triggerVehicleBoardingPulse(vehicleId, time) {
@@ -3227,7 +4388,12 @@ export class SceneView {
       visual.position.copy(start);
       visual.rotation.y = Math.atan2(direction.x, direction.z)
         + deg(SCENE_TUNING.facing.passengerYawDegrees);
-      this.setVatAnimation(visual.userData.vatMaterial, 'move');
+      if (visual.userData.isLuxuryPassenger) {
+        visual.userData.animationClipName = 'move';
+        visual.userData.animationPhase = 0;
+      } else {
+        this.setVatAnimation(visual.userData.vatMaterial, 'move');
+      }
       this.layoutRoot.add(visual);
       this.boardingViews.push({
         root: visual,

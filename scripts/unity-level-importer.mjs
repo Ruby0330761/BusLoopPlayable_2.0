@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { mkdir, readFile, rename, unlink, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { deriveLevelMechanics } from '../src/mechanism-resources.js';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const EXTRACT_SCRIPT = path.join(ROOT, 'scripts', 'extract-unity-levels.mjs');
@@ -24,6 +25,15 @@ const UNSUPPORTED_MECHANISM_SECTIONS = [
 ];
 const STANDARD_COLOR_INDEX_MAX = 10;
 const AMBULANCE_COLOR_INDEX = 13;
+const LUXURY_COLOR_INDEX = 15;
+const PARKING_AREA_CONTAINER_TYPE = 1;
+const GARAGE_CONTAINER_TYPE = 2;
+const CONVEYOR_BELT_CONTAINER_TYPE = 3;
+const SUPPORTED_CONTAINER_TYPES = new Set([
+  PARKING_AREA_CONTAINER_TYPE,
+  GARAGE_CONTAINER_TYPE,
+  CONVEYOR_BELT_CONTAINER_TYPE
+]);
 const NUMBER_PATTERN = '[-+]?(?:\\d+(?:\\.\\d*)?|\\.\\d+)(?:e[-+]?\\d+)?';
 
 function invalid(message) {
@@ -145,9 +155,12 @@ function validateVehicles(source) {
     if (!SUPPORTED_SEAT_COUNTS.has(seats)) {
       throw invalid(`Vehicle ${id} uses unsupported seat count ${seats}; supported values are 4, 6, and 10.`);
     }
-    const colorIndex = requireInteger(record.colorIndex, `${label}.colorIndex`, { min: 0, max: AMBULANCE_COLOR_INDEX });
-    if (colorIndex > STANDARD_COLOR_INDEX_MAX && colorIndex !== AMBULANCE_COLOR_INDEX) {
+    const colorIndex = requireInteger(record.colorIndex, `${label}.colorIndex`, { min: 0, max: LUXURY_COLOR_INDEX });
+    if (colorIndex > STANDARD_COLOR_INDEX_MAX && colorIndex !== AMBULANCE_COLOR_INDEX && colorIndex !== LUXURY_COLOR_INDEX) {
       throw invalid(`Vehicle ${id} uses unsupported color index ${colorIndex}.`);
+    }
+    if (colorIndex === LUXURY_COLOR_INDEX && seats !== 6) {
+      throw invalid(`Luxury vehicle ${id} must use 6 seats.`);
     }
     const isHidden = requireInteger(record.isHidden, `${label}.isHidden`, { min: 0, max: 1 });
     const isTurnVehicle = record.isTurnVehicle == null
@@ -155,7 +168,7 @@ function validateVehicles(source) {
       : requireInteger(record.isTurnVehicle, `${label}.isTurnVehicle`, { min: 0, max: 1 });
     const containerType = requireInteger(record.containerType, `${label}.containerType`, { min: 0, max: 1000 });
     const containerId = requireInteger(record.containerId, `${label}.containerId`, { min: 0 });
-    if (containerType !== 1) {
+    if (!SUPPORTED_CONTAINER_TYPES.has(containerType)) {
       throw invalid(`Vehicle ${id} uses unsupported container type ${containerType}.`);
     }
     const position = requireVector(record.position, ['x', 'y', 'z'], `${label}.position`);
@@ -215,17 +228,89 @@ function validateContainers(source, vehicles) {
     if (ids.has(id)) throw invalid(`Container id ${id} is duplicated.`);
     ids.add(id);
     const type = requireInteger(record.type, `${label}.type`, { min: 0, max: 1000 });
-    if (type !== 1) throw invalid(`Container ${id} uses unsupported type ${type}.`);
+    if (!SUPPORTED_CONTAINER_TYPES.has(type)) {
+      throw invalid(`Container ${id} uses unsupported type ${type}.`);
+    }
     const position = requireVector(record.position, ['x', 'y', 'z'], `${label}.position`);
     const rotation = requireVector(record.rotation, ['x', 'y', 'z', 'w'], `${label}.rotation`);
     return { id, type, position, rotation };
   });
+  const containersById = new Map(containers.map((container) => [container.id, container]));
   for (const vehicle of vehicles) {
-    if (!ids.has(vehicle.containerId)) {
+    const container = containersById.get(vehicle.containerId);
+    if (!container) {
       throw invalid(`Vehicle ${vehicle.id} references missing container ${vehicle.containerId}.`);
+    }
+    if (container.type !== vehicle.containerType) {
+      throw invalid(
+        `Vehicle ${vehicle.id} container type ${vehicle.containerType} does not match container ${container.id} type ${container.type}.`
+      );
     }
   }
   return containers;
+}
+
+function parseConveyorBelts(source) {
+  const sourceSection = section(source, 'conveyorBelts');
+  if (!sourceSection || sourceSection.inlineValue === '[]') return [];
+  const belts = [];
+  let current = null;
+  for (const line of sourceSection.body.split(/\r?\n/)) {
+    const start = line.match(/^  - vcId:\s*(-?\d+)\s*$/);
+    if (start) {
+      current = { vcId: Number(start[1]), colorIndices: [] };
+      belts.push(current);
+      continue;
+    }
+    if (!current) continue;
+    const width = line.match(/^    width:\s*(.*)$/);
+    if (width) current.width = Number(width[1]);
+    const color = line.match(/^    colorIndex:\s*(-?\d+)\s*$/);
+    if (color) current.colorIndices.push(Number(color[1]));
+  }
+  return belts;
+}
+
+function validateConveyorBelts(source, containers, vehicles) {
+  const belts = parseConveyorBelts(source);
+  const conveyorContainers = containers.filter((container) => container.type === CONVEYOR_BELT_CONTAINER_TYPE);
+  const vehicleIdsByContainer = new Map();
+  for (const vehicle of vehicles) {
+    if (vehicle.containerType !== CONVEYOR_BELT_CONTAINER_TYPE) continue;
+    const list = vehicleIdsByContainer.get(vehicle.containerId) ?? [];
+    list.push(vehicle.id);
+    vehicleIdsByContainer.set(vehicle.containerId, list);
+  }
+  const seen = new Set();
+  for (const [index, belt] of belts.entries()) {
+    if (!Number.isSafeInteger(belt.vcId) || belt.vcId < 0) {
+      throw invalid(`conveyorBelts[${index}].vcId must be a non-negative integer.`);
+    }
+    if (seen.has(belt.vcId)) throw invalid(`conveyorBelts entry ${belt.vcId} is duplicated.`);
+    seen.add(belt.vcId);
+    belt.width = requireFinite(belt.width, `conveyorBelts[${index}].width`, { min: 0.1, max: 100 });
+    for (const colorIndex of belt.colorIndices) {
+      if (colorIndex < 0 || colorIndex > LUXURY_COLOR_INDEX) {
+        throw invalid(`conveyorBelts[${index}] uses unsupported color index ${colorIndex}.`);
+      }
+    }
+    const container = containers.find((candidate) => Number(candidate.id) === belt.vcId);
+    if (!container) {
+      throw invalid(`conveyorBelts entry ${belt.vcId} references a missing container.`);
+    }
+    if (container.type !== CONVEYOR_BELT_CONTAINER_TYPE) {
+      throw invalid(`conveyorBelts entry ${belt.vcId} must reference a type 3 conveyor container.`);
+    }
+  }
+  for (const container of conveyorContainers) {
+    if (!vehicleIdsByContainer.has(container.id)) {
+      throw invalid(`Conveyor container ${container.id} must contain at least one vehicle.`);
+    }
+    if (!seen.has(container.id)) {
+      throw invalid(`Conveyor container ${container.id} is missing conveyorBelts configuration.`);
+    }
+  }
+  return belts;
 }
 
 function validatePassengerQueues(source, vehicles) {
@@ -244,8 +329,8 @@ function validatePassengerQueues(source, vehicles) {
     }
     const colorMatch = line.match(/^    colorIndex:\s*(-?\d+)\s*$/);
     if (colorMatch && queueId != null) {
-      const colorIndex = requireInteger(colorMatch[1], 'fixedPassengerSequence.colorIndex', { min: 0, max: AMBULANCE_COLOR_INDEX });
-      if (colorIndex > STANDARD_COLOR_INDEX_MAX && colorIndex !== AMBULANCE_COLOR_INDEX) {
+      const colorIndex = requireInteger(colorMatch[1], 'fixedPassengerSequence.colorIndex', { min: 0, max: LUXURY_COLOR_INDEX });
+      if (colorIndex > STANDARD_COLOR_INDEX_MAX && colorIndex !== AMBULANCE_COLOR_INDEX && colorIndex !== LUXURY_COLOR_INDEX) {
         throw invalid(`Passenger uses unsupported color index ${colorIndex}.`);
       }
       if (!queues.has(queueId)) queues.set(queueId, []);
@@ -327,8 +412,15 @@ export function validateUnityLevelSource({ filename, source }) {
   const { vehicles, vehicleIds } = validateVehicles(source);
   const ambulances = validateAmbulances(source, vehicles);
   const containers = validateContainers(source, vehicles);
+  const conveyorBelts = validateConveyorBelts(source, containers, vehicles);
   const passengerQueues = validatePassengerQueues(source, vehicles);
   validateDepthReferences(source, vehicleIds);
+  const mechanics = deriveLevelMechanics({
+    vehicles,
+    vehicleAmbulances: ambulances,
+    containers,
+    conveyorBelts
+  });
   return {
     ...identity,
     sourceName: assetName,
@@ -337,7 +429,17 @@ export function validateUnityLevelSource({ filename, source }) {
     vehicleCount: vehicles.length,
     turnVehicleCount: vehicles.filter((vehicle) => vehicle.isTurnVehicle).length,
     ambulanceCount: ambulances.length,
+    luxuryCount: vehicles.filter((vehicle) => vehicle.colorIndex === LUXURY_COLOR_INDEX).length,
     containerCount: containers.length,
+    garageCount: containers.filter((container) => container.type === GARAGE_CONTAINER_TYPE).length,
+    garageVehicleCount: vehicles.filter((vehicle) => vehicle.containerType === GARAGE_CONTAINER_TYPE).length,
+    mechanics,
+    ...(conveyorBelts.length > 0 || containers.some((container) => container.type === CONVEYOR_BELT_CONTAINER_TYPE)
+      ? {
+        conveyorBeltCount: conveyorBelts.length,
+        conveyorVehicleCount: vehicles.filter((vehicle) => vehicle.containerType === CONVEYOR_BELT_CONTAINER_TYPE).length
+      }
+      : {}),
     queueCounts: passengerQueues.map((queue) => queue.length),
     passengerCount: passengerQueues.reduce((sum, queue) => sum + queue.length, 0)
   };

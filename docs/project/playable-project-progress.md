@@ -1,5 +1,134 @@
 # Playable Project Progress
 
+## Completed On 2026-09-07 - Conveyor narrow-gap collision guard
+
+- Added a conveyor-only forward corridor rule: gaps between two obstacles narrower than `1.2` times the narrowest configured vehicle collision width are treated as blocked when a conveyor vehicle exits through them.
+- The rule is applied consistently to drive-out checks and collision feedback, selects the nearest forward obstacle, and uses a transient expanded box without changing authored geometry or ordinary vehicle behavior.
+- Verification: `test/vehicle-collision.test.js` passes all 14 cases and touched-file syntax checks pass.
+
+## Completed On 2026-09-07 - Conveyor parameters fixed from user-provided values
+
+- Applied the values transcribed from the user's three tuning screenshots: belt `Y=-0.01/Z scale=1.50`, arrow `X scale=1.50/Z scale=1.05`, both doors `Z scale=1.20/X rotation=150°`, and side panels at `X=-4.00/+4.00`.
+- Removed the temporary per-component menu again and made the fixed config the only runtime source for these transforms.
+- Migrated stale saved `conveyorVisual` values out of editor startup and tuning export paths so reset/default cannot overwrite the baked mechanism values.
+- Verification: conveyor configuration and behavior tests, touched-file syntax checks, browser reload with no error logs, production build, AppLovin packaging, and all static package checks pass. Final single HTML is `4,597,384` bytes.
+
+## Completed On 2026-09-07 - Mechanism-aware resource pruning and AppLovin packaging
+
+- Added the shared mechanism registry and moved mechanism resources into owned folders for ordinary/spatial conveyors, luxury vehicles, ambulances, turn vehicles, hidden vehicles, garages, and vehicle transport belts. Spatial conveyor textures remain embedded in their imported JSON packages.
+- Unity level import/extraction now persists `mechanics.isMechanicLevel`, ordered `mechanics.types`, and per-type counts. Ordinary levels are explicitly tagged as non-mechanism levels while retaining `ordinaryConveyor`.
+- AppLovin packaging now computes a production-session whitelist from those tags plus the selected spatial conveyor, inlines selected resources only, and replaces omitted asset references with tiny placeholders. The package checker verifies both inclusion and omission.
+- Final verification used `level28`: `npm run build`, `npm run package:applovin`, and `npm run check:applovin` passed; output is `4,598,228` bytes (`4.385 MiB`), below the `5,000,000` byte limit. No resource re-encoding or content modification was performed in this task.
+
+## In Progress On 2026-09-07 - Conveyor component tuning reopened
+
+- Reopened the temporary six-component conveyor submenu after the previous component values were found to be incorrect.
+- Reset the temporary menu and fixed component baseline to neutral transforms: position/rotation `0`, XYZ scale `1`; the confirmed root/door/visibility mechanism values remain unchanged.
+- Waiting for the user's final per-component values before the next permanent bake.
+
+## Completed On 2026-09-07 - Conveyor visual parameters fixed after arrow retune
+
+- Re-read the live editor after the final arrow adjustment: all six conveyor components use zero XYZ position/rotation offsets and `2.01` XYZ component scale.
+- Baked those values into `src/conveyor-mechanism-config.js` alongside the confirmed root scale, door spacing, and right-edge visibility values.
+- Removed the temporary per-component submenu and migrated old saved/exported `conveyorVisual` overrides out of reset/apply paths, so restoring editor defaults cannot change the conveyor mechanism.
+- Verification: fixed-configuration regression, syntax checks, browser reload with no error logs, and temporary-menu absence check pass.
+
+## Completed On 2026-09-07 - Forward gap collision guard
+
+- Matched Unity's forward sweep filtering more closely and added a conservative front-of-vehicle radius guard for narrow gaps formed by multiple vehicles.
+- Added projected contact fallback so a valid forward blocker cannot be skipped when edge-ray intersection is numerically empty; direct candidates are merged without overriding exact geometry targets.
+- Verification: vehicle-collision suite passes (11/11), conveyor/audio/collision focused cases pass, and touched-file syntax checks pass. Full-suite baseline still contains unrelated pre-existing resource, level, and editor-contract failures.
+
+## Completed On 2026-09-04 - Conveyor blocking, spacing, and audio correction
+
+- Fixed full-vehicle audio races by keeping only the newest pending `bus_full` playback and stopping an older active instance of the same effect.
+- Conveyor vehicles now retain their authored slot count and spacing after departures, leaving visible empty slots instead of compressing the queue.
+- Conveyor collision selection follows the next occupied authored slot, and wall contacts now emit the same hit effect as vehicle contacts; door overlay inner edges use the collision exit width.
+- Verification: 20 focused conveyor/audio/effect/collision tests and touched-file syntax checks pass; production build and AppLovin packaging pass (`6,978,158` bytes). The optional 5 MB check remains the only reported failure.
+
+## Completed On 2026-09-04 - Conveyor side-panel layer and transform tuning
+
+- Reworked conveyor side blockers into persistent left/right panel nodes with dedicated visible rail geometry; they remain shown while the conveyor container exists and no longer depend on a vehicle being directly blocked.
+- Added temporary editor controls for each side panel's XYZ position and XYZ rotation, plus `bodyLengthScale`, which changes only the belt/arrow body length while leaving blocker length unchanged.
+- Verification: local level22 preview shows continuous side rails and the new editor fields; conveyor contract/behavior tests, syntax checks, production build, and AppLovin packaging pass. The static AppLovin check remains limited only by the deferred 5,000,000-byte size threshold.
+
+## Completed On 2026-09-04 - Temporary conveyor visual tuning submenu
+
+- Added the temporary editor submenu `传送带视觉（临时）` with independent controls for conveyor length, conveyor width, and the spacing of the two side occlusion panels.
+- Applied length/width tuning to the conveyor visual root only, keeping conveyor vehicles, passenger paths, and collision geometry unchanged; side panels remain visible whenever the conveyor exists and hide only with the conveyor's own empty/hidden state.
+- Verification: touched-file syntax checks, exact conveyor resource/visibility contract test, nearest-forward collision test, empty-conveyor visibility test, production Vite build, and AppLovin single-file packaging completed. AppLovin static checks pass except the already-deferred 5,000,000-byte package limit; full suite remains at the existing baseline failures.
+
+## Completed On 2026-09-04 - Conveyor collision and build visuals
+
+- Increased the conveyor belt, arrow, and end-cap/side visual root to `1.375x` overall (an additional 10% over the previous `1.25x` pass) while leaving conveyor vehicle meshes and collision logic unchanged.
+- Added dynamic same-belt vehicle obstacles and nearest-forward overlap selection, preventing a conveyor vehicle from skipping a directly blocking vehicle.
+- Imported the current Unity `plane_conveyor_build` DoorLeft/DoorRight/Leftside/Rightside textures and render them as transparent occlusion overlays synchronized with belt rotation and empty-belt hiding.
+- Verification: importer/collision tests (26/26 focused cases) plus conveyor behavior/resource regressions, touched-file syntax checks, production Vite build, and AppLovin packaging pass. The existing 5,000,000-byte static package limit remains deferred by request.
+
+## Completed On 2026-09-04 - Luxury material brightness finalized
+
+- Fixed the luxury vehicle, passenger, and count-board brightness at `2.55`, `1.90`, and `1.15` respectively, matching the accepted visual tuning.
+- Restricted passenger brightness updates to visual instances explicitly marked `isLuxuryPassenger`, so ordinary passengers are not affected by wealthy-passenger tuning.
+- Removed the temporary luxury material editor submenu and migrated old saved tuning so it cannot override the fixed values.
+- Verification: focused luxury/editor tests, touched-file syntax checks, and production Vite build pass; the existing large-chunk warning remains.
+
+## Completed On 2026-09-04 - Luxury material brightness correction
+
+- Restored the Unity limousine material mapping: `Idle_wealthy.png` is the main color map and the two limousine textures are Matcap maps, with Unity brightness, diffuse strength, and emission values applied.
+- Added the Unity body/clothing emission response for wealthy passengers and restored the authored metallic-looking highlights without changing ordinary vehicle or passenger materials.
+- Kept the luxury count board's material color white so its built-in gold artwork is not darkened by the generic color palette.
+- Verification: luxury-focused tests, syntax checks, production Vite build, and level29 browser preview pass; only the existing FBX/WebGL loader warnings remain.
+
+## Completed On 2026-09-04 - Luxury passenger visual offset finalized
+
+- Fixed the luxury passenger's complete visual group at `X=-0.12`, with `Y=0` and `Z=0` unchanged.
+- The offset is applied to a dedicated internal visual parent, so the model, shadow, and attached visual content move together without changing vehicle interaction or collision positions.
+- Removed the temporary XYZ offset editor controls and added migration cleanup for old saved offset values.
+
+## Completed On 2026-09-04 - Luxury passenger rotation finalized
+
+- Fixed the luxury passenger model rotation at `X=90°`, `Y=0°`, `Z=-90°` after editor-side manual tuning.
+- Removed the temporary three-axis scene-editor controls and the corresponding tuning fields; ordinary passengers and shadows remain unaffected.
+- Verification: focused luxury scene contract test and production Vite build pass. The broader suite retains the existing unrelated tuning expectation failures.
+
+## Completed On 2026-09-04 - Luxury vehicle and passenger parity follow-up
+
+- Matched the Unity limousine material mapping: `bus_limousine`/`Luxury.png` remains the dark group 0 and `bus_limousine_metal`/`Luxury_metal.png` is the gold group 1, both retaining Unity's `4.1` Matcap brightness.
+- Corrected the wealthy passenger's coordinate basis: FBXLoader keeps the imported `+90°` X conversion, so the asset root is corrected by `-90°`; Unity bone animation quaternions now mirror Y/Z before application. The runtime uses only the prefab's authored `90°` Y rotation, with no extra X/Z visual-root rotation.
+- Removed unused luxury passenger VAT requests from the runtime load path. Luxury passengers use the compressed skinned FBX, Unity body/clothing textures, and the extracted 30 FPS Idle/Move bone curves.
+- Verification: luxury source-contract and animation payload tests pass, touched-file syntax checks pass, production Vite build succeeds with only the existing chunk-size warning, and the level29 browser preview shows upright passengers and corrected vehicle materials.
+
+## Completed On 2026-09-04 - Vehicle conveyor-belt mechanism import
+
+- Added Unity type 3 conveyor containers to the level importer/extractor, including belt width, vehicle count, and strict container/configuration validation.
+- Imported `Level_Escape_D/level22.asset` as an editor-owned sample: 40 vehicles, 1 conveyor, 8 conveyor vehicles, and 238 passengers; the production selection remains unchanged.
+- Implemented Unity-style visible-width spacing, continuous vehicle movement, exit-range collision checks, belt removal on dispatch, and automatic hiding when empty.
+- Added the current Unity conveyor FBX/arrow models and textures to the scene renderer with animated arrow UVs and state-driven vehicle visibility.
+- Verification: focused conveyor/importer/collision tests pass, touched-file syntax checks pass, `npm run build` succeeds with only the existing Vite chunk-size warning, and browser QA on `level22` confirms the belt assets load and conveyor vehicles keep moving. AppLovin packaging succeeds; the current single HTML is `6,917,534` bytes and the 5,000,000-byte limit remains intentionally deferred.
+
+## Completed On 2026-09-04 - Hidden vehicle interaction and turn audio follow-up
+
+- Lifted hidden vehicle rendering from pure black to charcoal `0x2a2a2a` so scene lighting remains readable while preserving the hidden-state look.
+- Unrevealed hidden vehicles now remain pickable: a blocked click uses the normal collision feedback, while a clear click starts the 0.5-second reveal; after reveal the vehicle dispatches normally.
+- Turn completion audio now deduplicates by a per-completion event id, allowing the same turn vehicle to play its cue again in a later turn while keeping one cue for simultaneous vehicles.
+- Focused hidden/turn tests and touched-file syntax checks pass. The full suite retains the previously known unrelated failures; production packaging is still pending this pass.
+
+## Completed On 2026-09-03 - Luxury visual orientation and material correction
+
+- Corrected the imported `Idle_wealthy` FBX's +90 degree X conversion by baking a -90 degree X rotation before normalization; the passenger now stands upright and follows the Unity prefab's 90 degree root yaw.
+- Replaced the clothing-only gray matcap render with the authored `Idle_wealthy.png` atlas on both luxury passenger material groups, retaining warm emissive tint for the clothing layer.
+- Applied gold tints derived from the Unity limousine material's `_EmissionCol` to both vehicle material groups; the vehicle now renders gold while preserving the two authored matcap textures.
+- Verification: luxury-focused tests, touched-file syntax checks, production Vite build, and local level29 preview pass. The AppLovin single HTML was regenerated at 6,813,986 bytes; all static checks pass except the pre-existing 5,000,000-byte size limit.
+
+## Completed On 2026-09-03 - Hidden vehicle import and runtime parity
+
+- Preserved Unity `vehicles[].isHidden` through level import and editor catalog generation, so imported levels can use hidden vehicles without the source Unity project.
+- Reproduced the Unity `MechanismHiddenVehicle` rule: hidden vehicles remain physical blockers, automatically start revealing only after their drive-out path is clear, remain unavailable during the 0.5-second reveal, and become ordinary vehicles after the reveal completes. The playable also permits an explicit click: blocked clicks collide and clear clicks start the same reveal.
+- Added the editor-owned compressed four-, six-, and ten-seat hidden-shape support, the question-mark model/texture, and the compressed `hidden_reveal.wav` delivery asset. Hidden vehicle bodies use a readable charcoal equivalent of Unity's `bus_hidden` black material while hidden, and the marker cannot expand the vehicle click target.
+- Focused hidden-vehicle state, importer, resource-format, and picking-contract tests pass; production build and AppLovin packaging pass. The current AppLovin single HTML is `6,813,719` bytes. Hidden resources add `191,113` raw bytes and approximately `254,824` bytes after base64 inlining; the remaining size-limit failure comes from existing workspace resources and is tracked separately.
+- Matched the Unity `bus_c_4/6/10.prefab` hidden `Arrow_01` placement by moving the question marker to the vehicle's forward edge with a small in-bounds inset. The marker remains visual-only and does not expand the vehicle pick target.
+- Corrected hidden vehicle visuals: restore the authored black hidden material, apply hidden-model size matching on top of its existing normalized scale, and preserve the normal model's normalized scale through reveal so hidden vehicles do not become oversized.
+
 ## Completed On 2026-09-03 - Turn vehicle completion audio correction
 
 - Replaced the incorrectly selected gear-repair completion cue with the user-confirmed Unity `guidemove.wav`; the delivery asset is stored as `public/assets/unity/audio/guidemove.bin`.
@@ -874,6 +1003,82 @@ The project moved from the original 6-vehicle level1 prototype to the imported l
 - Manually compare current level12 gameplay, passenger entry, effects, audio timing, fake shadows, and material colors against Unity reference.
 - Keep platform packaging paused until the AppLovin baseline visual/playability pass is accepted.
 
+## Completed On 2026-09-03 - Luxury vehicle and passenger import
+
+- Added Unity importer support for zero-based `colorIndex: 15` Luxury vehicles/passengers, including the original six-seat constraint and import count reporting; color index 14 remains rejected.
+- Added editor-owned limousine and wealthy-passenger assets, including compressed vehicle FBX and packed 77-frame Idle/Move VAT resources.
+- Runtime now loads dedicated Luxury vehicle/material/passenger paths, applies the authored passenger orientation, uses the Luxury seat-count board, and disables spatial passenger instancing for these levels.
+- Focused importer/VAT/runtime contract tests and production Vite build pass. AppLovin packaging runs, but the current workspace package remains over the 5 MB platform limit because of pre-existing garage/hidden-level assets plus the new Luxury resources; platform-size optimization is still required before delivery.
+
+## Completed On 2026-09-03 - Luxury visual correction
+
+- Replaced the unstable luxury passenger VAT render path with the original compressed `Idle_wealthy.fbx.bin` bind-pose topology, preserving the two authored material groups (body diffuse and clothing matcap) and eliminating duplicate-vertex animation tearing. Passenger movement currently comes from the normal path translation; the unused luxury VAT resources remain available for a later exact Unity vertex-order export.
+- Luxury vehicles now bind both authored matcap materials by FBX group; the previous single diffuse-map binding that produced an untextured gray model is gone.
+- Verification: packed passenger FBX parses as one skinned mesh with 24 groups and two materials; focused luxury/resource tests, syntax checks, production build, and browser level29 preview pass. Temporary Unity export inputs were removed.
+
+## Completed On 2026-09-03 - Garage mechanism import
+
+- Added garage container validation/extraction, automatic authored-order release, exact door collision checks, single-vehicle exit state, final garage hiding, and snapshot/render state.
+- Added the Unity garage model, fake shadow, textures, counter board, door animation, and `garage_out` / `garage_clear` audio events without retaining a runtime dependency on the Unity project.
+- Verification passed: 23/23 focused importer/collision tests, 1/1 garage resource wiring test, touched-file syntax checks, production build, development browser sequence QA, final single-HTML rendering, and user-interaction audio decoding with zero error-level logs.
+- The full workspace suite currently passes 118/140. Its 22 failures are in existing queue/tuning/background/guide/level-session/spatial/effect expectations; all garage-specific tests pass.
+- AppLovin packaging includes all six garage resources. The current level29 package is `6,738,170` bytes; all static checks except the intentionally deferred 5 MB limit pass.
+- No real Unity garage level was added to the catalog because the inspected garage sources do not include the authored fixed passenger sequence required by the playable. Passenger order was not synthesized.
+
+## Completed On 2026-09-03 - Garage visual parity correction
+
+- Confirmed the imported garage model, fake shadow, textures, and audio are byte-identical to the current Unity source resources; no legacy Garage/Truck asset was selected.
+- Applied the Unity Prefab `Truck` child `Y=180°` transform to the runtime model and fake shadow.
+- Corrected door animation to use the two Unity bone local-Z hinge axes with opposite signs and an approximately `144.25°` authored swing.
+- Enlarged both garage visual targets and collision footprints by the requested `60%` through one shared `1.6x` factor.
+- Verification: focused collision tests `10/10`, garage resource contract test `1/1`, and touched-file syntax checks pass. Production build and AppLovin packaging pass; the existing deferred single-HTML size check remains over 5 MB (`6,813,719` bytes) while compression is intentionally postponed.
+
+## Completed On 2026-09-03 - Garage size and lighting correction
+
+- Reduced the shared garage visual/collision enlargement from `1.6x` to `1.3x`, keeping visible bounds and blocking geometry synchronized.
+- Removed the `AmbientLight` created by Three.js from the imported garage FBX before normalization; the garage no longer changes global scene brightness while visible.
+- Garage model and fake-shadow transforms remain coupled under the same parent scale and shared `Y` anchor, so the shadow stays aligned after resizing.
+- Moved the garage fake shadow `0.1` local units toward the runtime front (`+Z`) while preserving its ground offset and parent scale.
+- Focused garage collision/resource tests and scene syntax checks pass. Production build and AppLovin packaging pass; static checks pass except the intentionally deferred 5 MB size limit (`6,814,346` bytes).
+
+## Completed On 2026-09-04 - Garage shadow alignment
+
+- Moved the garage fake shadow `0.1` local units toward the runtime front (`+Z`), preserving its tuned ground offset and shared parent scale.
+- Garage-focused tests `5/5`, scene syntax checks, production build, AppLovin packaging, and level39 browser smoke check pass; no error-level browser logs were reported.
+
+## Completed On 2026-09-04 - Conveyor component tuning reset
+
+- Restored imported conveyor visuals to their component base transforms by removing the previous overall/body/width/spacing adjustments and the artificial continuous side-rail layer.
+- Preserved the current base values as the fixed scene configuration, removed the temporary component adjustment submenu, and corrected conveyor arrow texture scrolling to the authored forward direction.
+- Verification: touched-file syntax checks, five conveyor-focused runtime/resource tests, production build, and AppLovin packaging pass. The optional size check still reports the existing 5 MB limit (`6,976,351` bytes); compression remains deferred.
+
+## Completed On 2026-09-04 - Conveyor collision and contact correction
+
+- Conveyor vehicle slot indices now follow each belt's local movement axis instead of world-X ordering, preventing rotated or differently authored belts from selecting a farther vehicle as the direct blocker.
+- Container/rail collision effects now use the collision graph's world-space contact position, keeping the visible `Effect_Hit` aligned with the actual blocking wall or door.
+- Verification: touched-file syntax checks and focused conveyor/collision/effect tests pass; unrelated legacy expectations remain unchanged.
+
+## Completed On 2026-09-04 - Conveyor door spacing adjustment
+
+- Moved the left and right conveyor door visuals outward by `10%` symmetrically from their saved base positions.
+- Kept the belt body, vehicle placement, side blockers, and collision graph unchanged.
+- Verification: conveyor resource/visibility contract and focused conveyor tests pass; production packaging regenerated afterward.
+
+## Completed On 2026-09-04 - Conveyor door spacing refinement
+
+- Refined the symmetric outward door offset from `10%` to `15%` of the existing door-center offset.
+- Belt body, vehicle placement, side blockers, and collision logic remain unchanged.
+
+## Completed On 2026-09-04 - Conveyor door asymmetric spacing
+
+- Set the left door's outward offset to `17%` and the right door's outward offset to `20%`, each relative to the existing door-center offset.
+- Kept door geometry, belt visuals, vehicle placement, side blockers, and collision logic unchanged.
+
+## Completed On 2026-09-04 - Conveyor right-edge visibility adjustment
+
+- Moved the conveyor's right-side vehicle disappearance boundary `7%` toward the center, so vehicles leave the visible belt slightly earlier on that side.
+- Left-side visibility, vehicle spacing, collision behavior, and door positioning remain unchanged.
+
 ## Archive
 
 Full 2026-07-07 progress log was archived to:
@@ -881,3 +1086,8 @@ Full 2026-07-07 progress log was archived to:
 - `docs/project/archive/playable-project-progress.full-2026-07-08.md`
 
 
+## Completed On 2026-09-07 - Conveyor mechanism tuning made reset-safe
+
+- Isolated the confirmed conveyor visual root scale (`1.375`), asymmetric door spacing (`1.17`/`1.20`), and right-edge visibility (`0.93`) in `src/conveyor-mechanism-config.js`; conveyor vehicles remain outside the visual root scale.
+- Reopened a temporary editor submenu for independent XYZ position, scale, and rotation adjustments on the belt, arrow, doors, and side panels; overrides layer over the fixed mechanism base and reset cleanly.
+- Added focused configuration/temporary-override regression coverage and passed syntax checks plus conveyor-focused behavior/resource checks.

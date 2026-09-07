@@ -1,5 +1,6 @@
 const FORWARD_SCAN_LENGTH = 500;
 const EPSILON = 0.00001;
+export const CONVEYOR_GAP_GUARD_FACTOR = 1.2;
 
 const point = (x = 0, z = 0) => ({ x, z });
 const add = (a, b) => point(a.x + b.x, a.z + b.z);
@@ -106,6 +107,35 @@ function extendBoxForward(box, length = FORWARD_SCAN_LENGTH) {
   };
 }
 
+function getMinimumVehicleWidth(level, vehicles) {
+  let minimum = Infinity;
+  for (const vehicle of vehicles ?? []) {
+    const width = getVehicleCollisionSize(level, vehicle)?.width;
+    if (width > 0) minimum = Math.min(minimum, width);
+  }
+  if (Number.isFinite(minimum)) return minimum;
+  return getVehicleCollisionSize(level, null)?.width ?? 0;
+}
+
+function mayBlockForwardSweep(attackerBox, candidateBox) {
+  const delta = subtract(candidateBox.position, attackerBox.position);
+  const forwardDistance = dot(delta, attackerBox.forward);
+  const candidateRadius = Math.hypot(candidateBox.size.width, candidateBox.size.length) * 0.5;
+  const minForward = -attackerBox.size.length * 0.5;
+  const maxForward = FORWARD_SCAN_LENGTH - attackerBox.size.length * 0.5;
+  // The conservative radius is only a gap guard for bodies genuinely ahead
+  // of the attacker's front. Overlapping/rear bodies remain governed by SAT.
+  if (forwardDistance < attackerBox.size.length * 0.5 - EPSILON) return false;
+  if (forwardDistance + candidateRadius < minForward
+    || forwardDistance - candidateRadius > maxForward) return false;
+  const lateralDistance = Math.max(
+    0,
+    dot(delta, delta) - forwardDistance * forwardDistance
+  );
+  const maximumLateralDistance = candidateRadius + attackerBox.size.width * 0.5;
+  return lateralDistance <= maximumLateralDistance * maximumLateralDistance;
+}
+
 function projectedRadius(box, axis) {
   return Math.abs(dot(box.forward, axis)) * box.size.length * 0.5
     + Math.abs(dot(box.right, axis)) * box.size.width * 0.5;
@@ -122,13 +152,23 @@ function isGarageType(value) {
   return value === 2 || String(value ?? '').trim().toLowerCase() === 'garage';
 }
 
+// Unity's garage visual/collision footprint is intentionally enlarged in the
+// playable by one shared factor so the visible shell and blocking volume grow
+// together.
+export const GARAGE_SIZE_MULTIPLIER = 1.3;
+
 function isConveyorType(value) {
   const normalized = String(value ?? '').trim().toLowerCase();
   return value === 3 || normalized === 'conveyorbelt' || normalized === 'conveyor-belt';
 }
 
-function getGarageSize(level) {
-  return normalizeSize(level.collision?.garageSize ?? level.garageCollisionSize);
+export function getGarageCollisionSize(level) {
+  const size = normalizeSize(level.collision?.garageSize ?? level.garageCollisionSize);
+  if (!size) return null;
+  return {
+    width: size.width * GARAGE_SIZE_MULTIPLIER,
+    length: size.length * GARAGE_SIZE_MULTIPLIER
+  };
 }
 
 function getConveyorConfig(level) {
@@ -189,7 +229,7 @@ class DirectedGraph {
 }
 
 function createGarageGeometry(level, garage, maximumVehicleSize) {
-  const garageSize = getGarageSize(level);
+  const garageSize = getGarageCollisionSize(level);
   if (!garageSize) return null;
   const body = makeBox(garage.position, garage.yaw, garageSize);
   const forward = body.forward;
@@ -245,6 +285,55 @@ function contactAgainstEdge(attackerBox, rayStartA, rayStartB, edgeStart, edgeEn
   return { distance, position };
 }
 
+function isForwardObstacle(attackerBox, candidateBox) {
+  const delta = subtract(candidateBox.position, attackerBox.position);
+  const nearestForward = dot(delta, attackerBox.forward)
+    - projectedRadius(candidateBox, attackerBox.forward);
+  return nearestForward >= attackerBox.size.length * 0.5 - EPSILON;
+}
+
+// Close a narrow lateral gap only for a conveyor vehicle's forward exit
+// sweep. The returned box is transient; the real vehicle geometry is left
+// unchanged for rendering and all ordinary collision paths.
+function inflateConveyorGapBox(box, axis, gap) {
+  const currentRadius = projectedRadius(box, axis);
+  if (!(currentRadius > EPSILON) || !(gap > 0)) return box;
+  const factor = (currentRadius + gap + EPSILON) / currentRadius;
+  return {
+    ...box,
+    size: {
+      width: box.size.width * factor,
+      length: box.size.length * factor
+    }
+  };
+}
+
+function projectedFallbackContact(attackerBox, candidateBox) {
+  const delta = subtract(candidateBox.position, attackerBox.position);
+  const forwardDistance = dot(delta, attackerBox.forward);
+  const lateralDistance = dot(delta, attackerBox.right);
+  const candidateForwardRadius = projectedRadius(candidateBox, attackerBox.forward);
+  const candidateLateralRadius = projectedRadius(candidateBox, attackerBox.right);
+  const lateralLimit = attackerBox.size.width * 0.5 + candidateLateralRadius;
+  if (Math.abs(lateralDistance) > lateralLimit + EPSILON) return null;
+  const distance = Math.max(
+    0,
+    forwardDistance - attackerBox.size.length * 0.5 - candidateForwardRadius
+  );
+  const contactForward = attackerBox.size.length * 0.5 + distance;
+  const contactLateral = Math.max(
+    -attackerBox.size.width * 0.5,
+    Math.min(attackerBox.size.width * 0.5, lateralDistance)
+  );
+  return {
+    distance,
+    position: add(
+      add(attackerBox.position, scale(attackerBox.forward, contactForward)),
+      scale(attackerBox.right, contactLateral)
+    )
+  };
+}
+
 function corners(box) {
   const halfRight = scale(box.right, box.size.width * 0.5);
   const halfForward = scale(box.forward, box.size.length * 0.5);
@@ -267,10 +356,7 @@ export function findCollisionContact(level, attacker, candidates) {
     - dot(subtract(b.box.position, attackerBox.position), attackerBox.forward)
   ));
   let best = null;
-  let checked = 0;
-
   for (const candidate of sorted) {
-    if (checked > 1 && best) break;
     const candidateCorners = corners(candidate.box);
     for (let index = 0; index < candidateCorners.length; index += 1) {
       const contact = contactAgainstEdge(
@@ -280,11 +366,14 @@ export function findCollisionContact(level, attacker, candidates) {
         candidateCorners[index],
         candidateCorners[(index + 1) % candidateCorners.length]
       );
-      if (contact && (!best || contact.distance < best.distance)) {
-        best = { ...contact, candidate };
+      if (contact && (!best || contact.distance < best.distance)) best = { ...contact, candidate };
+    }
+    if (!best || best.candidate !== candidate) {
+      const fallback = projectedFallbackContact(attackerBox, candidate.box);
+      if (fallback && (!best || fallback.distance < best.distance)) {
+        best = { ...fallback, candidate };
       }
     }
-    checked += 1;
   }
   return best;
 }
@@ -333,10 +422,7 @@ export class VehicleCollisionContext {
     this.conveyors = new Map();
     const vehicles = game.vehicles ?? [];
     const conveyorConfig = getConveyorConfig(this.level);
-    const physicalVehicles = vehicles.filter((vehicle) => (
-      ['parked', 'colliding'].includes(vehicle.state)
-      && !(conveyorConfig && isConveyorType(vehicle.containerType))
-    ));
+    const physicalVehicles = vehicles.filter((vehicle) => ['parked', 'colliding'].includes(vehicle.state));
 
     for (const vehicle of vehicles) {
       const node = this.graph.add({
@@ -348,10 +434,16 @@ export class VehicleCollisionContext {
     }
 
     for (const attacker of physicalVehicles) {
+      // Conveyor vehicles use the belt range resolver below for their own
+      // exits. They still need ordinary graph links to non-conveyor vehicles.
+      if (conveyorConfig && isConveyorType(attacker.containerType)) continue;
       const attackerNode = this.vehicleNodes.get(attacker.id);
       const scanBox = extendBoxForward(boxForVehicle(this.level, attacker));
       for (const candidate of physicalVehicles) {
         if (candidate.id === attacker.id) continue;
+        if (conveyorConfig
+          && isConveyorType(attacker.containerType)
+          && isConveyorType(candidate.containerType)) continue;
         if (boxesOverlap(scanBox, boxForVehicle(this.level, candidate))) {
           this.graph.link(attackerNode, this.vehicleNodes.get(candidate.id));
         }
@@ -459,6 +551,8 @@ export class VehicleCollisionContext {
 
   buildConveyorContexts(game, physicalVehicles, config) {
     const maximumVehicleSize = getMaximumVehicleSize(this.level, game.vehicles ?? []);
+    const minimumVehicleWidth = getMinimumVehicleWidth(this.level, game.vehicles ?? []);
+    const gapGuard = minimumVehicleWidth * CONVEYOR_GAP_GUARD_FACTOR;
     const containers = (this.level.containers ?? []).filter((container) => isConveyorType(container.type));
     for (const container of containers) {
       const position = containerPosition(container);
@@ -472,6 +566,7 @@ export class VehicleCollisionContext {
       const obstacles = [];
 
       for (const vehicle of physicalVehicles) {
+        if (isConveyorType(vehicle.containerType)) continue;
         if (!game.isVehicleBlocking(vehicle, null)) continue;
         const box = boxForVehicle(this.level, vehicle);
         const range = projectedBoxRange(box, right);
@@ -479,6 +574,24 @@ export class VehicleCollisionContext {
           obstacles.push({
             ...range,
             candidate: { type: 'vehicle', id: vehicle.id, vehicle, box }
+          });
+        }
+      }
+      // Conveyor vehicles move on the same authored lane and therefore do
+      // not participate in the ordinary vehicle graph. They still occupy a
+      // live collision slot for every other vehicle on this conveyor.
+      for (const vehicle of game.vehicles ?? []) {
+        if (vehicle.containerType == null
+          || !isConveyorType(vehicle.containerType)
+          || Number(vehicle.containerId) !== Number(container.id)
+          || !game.isVehicleBlocking(vehicle, null)) continue;
+        const box = boxForVehicle(this.level, vehicle);
+        const range = projectedBoxRange(box, right);
+        if (range.min < viewRange.max && range.max > viewRange.min) {
+          obstacles.push({
+            ...range,
+            candidate: { type: 'vehicle', id: vehicle.id, vehicle, box },
+            conveyorVehicle: true
           });
         }
       }
@@ -540,9 +653,18 @@ export class VehicleCollisionContext {
         container,
         right,
         viewRange,
+        gapGuard,
         obstacles,
         wallBox,
-        hasGlobalExit
+        hasGlobalExit,
+        slotCount: Math.max(
+          1,
+          ...((game.vehicles ?? [])
+            .filter((vehicle) => isConveyorType(vehicle.containerType)
+              && Number(vehicle.containerId) === Number(container.id))
+            .map((vehicle) => Number(vehicle.conveyorIndex) + 1)
+            .filter((value) => Number.isFinite(value)))
+        )
       });
     }
   }
@@ -561,12 +683,62 @@ export class VehicleCollisionContext {
     if (!entry.hasGlobalExit) return false;
     const range = this.getConveyorRange(vehicle, entry);
     if (!range || range.min < entry.viewRange.min || range.max > entry.viewRange.max) return false;
-    for (const obstacle of entry.obstacles) {
-      if (obstacle.min >= range.max) return true;
-      if (obstacle.max <= range.min) continue;
-      return false;
+    const hasDirectObstacle = entry.obstacles.some((obstacle) => (
+      obstacle.candidate?.id !== vehicle.id
+      && obstacle.min < range.max
+      && obstacle.max > range.min
+    ));
+    if (hasDirectObstacle) return false;
+    return this.getConveyorGapCandidates(vehicle, entry, range).length === 0;
+  }
+
+  getConveyorGapCandidates(vehicle, entry, range) {
+    if (!(entry.gapGuard > EPSILON)) return [];
+    const attackerBox = boxForVehicle(this.level, vehicle);
+    const obstacles = entry.obstacles
+      .filter((obstacle) => obstacle.candidate?.id !== vehicle.id)
+      .sort((a, b) => a.min - b.min);
+    const candidates = [];
+    for (let index = 0; index + 1 < obstacles.length; index += 1) {
+      const first = obstacles[index];
+      const second = obstacles[index + 1];
+      const gap = second.min - first.max;
+      if (!(gap > EPSILON && gap < entry.gapGuard - EPSILON)) continue;
+      // The attacker's lateral footprint must actually pass through this
+      // corridor; unrelated narrow spaces elsewhere on the belt do not block.
+      if (range.max <= first.max + EPSILON || range.min >= second.min - EPSILON) continue;
+      const forwardObstacles = [first, second]
+        .filter((obstacle) => obstacle.candidate?.box && isForwardObstacle(attackerBox, obstacle.candidate.box))
+        .sort((a, b) => {
+          const aDistance = dot(
+            subtract(a.candidate.box.position, attackerBox.position),
+            attackerBox.forward
+          ) - projectedRadius(a.candidate.box, attackerBox.forward);
+          const bDistance = dot(
+            subtract(b.candidate.box.position, attackerBox.position),
+            attackerBox.forward
+          ) - projectedRadius(b.candidate.box, attackerBox.forward);
+          return aDistance - bDistance;
+        });
+      const nearest = forwardObstacles[0];
+      if (!nearest) continue;
+      const forwardDistance = dot(
+        subtract(nearest.candidate.box.position, attackerBox.position),
+        attackerBox.forward
+      ) - projectedRadius(nearest.candidate.box, attackerBox.forward);
+      candidates.push({
+        candidate: nearest.candidate,
+        box: inflateConveyorGapBox(nearest.candidate.box, entry.right, gap),
+        forwardDistance
+      });
     }
-    return true;
+    candidates.sort((a, b) => a.forwardDistance - b.forwardDistance);
+    if (candidates.length === 0) return [];
+    return [{
+      ...candidates[0].candidate,
+      box: candidates[0].box,
+      conveyorGapGuard: true
+    }];
   }
 
   getConveyorCollisionCandidates(vehicle, entry) {
@@ -579,12 +751,69 @@ export class VehicleCollisionContext {
         box: entry.wallBox
       }];
     }
-    for (const obstacle of entry.obstacles) {
-      if (obstacle.min >= range.max) return [];
-      if (obstacle.max <= range.min) continue;
-      return [obstacle.candidate];
+    const currentCenter = (range.min + range.max) * 0.5;
+    const overlapping = entry.obstacles
+      .filter((obstacle) => (
+        obstacle.candidate?.id !== vehicle.id
+        && obstacle.min < range.max
+        && obstacle.max > range.min
+      ))
+      .sort((a, b) => {
+        const overlapStart = Math.max(a.min, range.min);
+        const otherOverlapStart = Math.max(b.min, range.min);
+        const aCenter = (a.min + a.max) * 0.5;
+        const bCenter = (b.min + b.max) * 0.5;
+        const currentIndex = Number.isInteger(vehicle.conveyorIndex) ? vehicle.conveyorIndex : null;
+        const slotCount = Math.max(1, Number(entry.slotCount) || 1);
+        const aIndex = Number.isInteger(a.candidate?.vehicle?.conveyorIndex)
+          ? a.candidate.vehicle.conveyorIndex
+          : null;
+        const bIndex = Number.isInteger(b.candidate?.vehicle?.conveyorIndex)
+          ? b.candidate.vehicle.conveyorIndex
+          : null;
+        const aSlotDistance = currentIndex !== null && aIndex !== null
+          ? (aIndex - currentIndex + slotCount) % slotCount || slotCount
+          : null;
+        const bSlotDistance = currentIndex !== null && bIndex !== null
+          ? (bIndex - currentIndex + slotCount) % slotCount || slotCount
+          : null;
+        if (aSlotDistance !== null && bSlotDistance !== null && aSlotDistance !== bSlotDistance) {
+          return aSlotDistance - bSlotDistance;
+        }
+        const aAhead = aCenter >= currentCenter - EPSILON ? 0 : 1;
+        const bAhead = bCenter >= currentCenter - EPSILON ? 0 : 1;
+        return aAhead - bAhead
+          || (aAhead === 0 ? aCenter - bCenter : bCenter - aCenter)
+          || overlapStart - otherOverlapStart
+          || a.min - b.min;
+    });
+    if (overlapping.length > 0) return [overlapping[0].candidate];
+    return this.getConveyorGapCandidates(vehicle, entry, range);
+  }
+
+  getDirectVehicleCandidates(game, vehicle) {
+    if (!vehicle || isConveyorType(vehicle.containerType)) return [];
+    const attackerBox = boxForVehicle(this.level, vehicle);
+    const scanBox = extendBoxForward(attackerBox);
+    const result = [];
+    for (const candidate of game.vehicles ?? []) {
+      if (candidate.id === vehicle.id
+        || !['parked', 'colliding'].includes(candidate.state)
+        || !game.isVehicleBlocking(candidate, vehicle)) continue;
+      const candidateBox = boxForVehicle(this.level, candidate);
+      const exactSweep = boxesOverlap(scanBox, candidateBox);
+      if (!exactSweep && !mayBlockForwardSweep(attackerBox, candidateBox)) continue;
+      result.push({
+        type: 'vehicle',
+        id: candidate.id,
+        vehicle: candidate,
+        box: candidateBox,
+        conservativeSweep: !exactSweep
+      });
     }
-    return [];
+    const conservative = result.filter((candidate) => candidate.conservativeSweep);
+    if (conservative.length < 2) return result.filter((candidate) => !candidate.conservativeSweep);
+    return result;
   }
 
   isDriveOutLeaf(node, game, visited = new Set()) {
@@ -665,7 +894,20 @@ export class VehicleCollisionContext {
     if (!vehicle || vehicle.state !== 'parked' || !node) return [];
     const conveyor = this.getConveyorEntry(vehicle);
     if (conveyor) return this.getConveyorCollisionCandidates(vehicle, conveyor);
-    return this.collectCandidates(node, game);
+    const candidates = this.collectCandidates(node, game);
+    const knownVehicleIds = new Set(
+      candidates.filter((candidate) => candidate.type === 'vehicle').map((candidate) => candidate.id)
+    );
+    const directCandidates = this.getDirectVehicleCandidates(game, vehicle);
+    const hasExactCandidate = candidates.length > 0
+      || directCandidates.some((candidate) => !candidate.conservativeSweep);
+    for (const candidate of directCandidates) {
+      if (candidate.conservativeSweep && hasExactCandidate) continue;
+      if (knownVehicleIds.has(candidate.id)) continue;
+      candidates.push(candidate);
+      knownVehicleIds.add(candidate.id);
+    }
+    return candidates;
   }
 
   canVehicleDriveOut(game, vehicleId) {
@@ -676,18 +918,32 @@ export class VehicleCollisionContext {
     if (vehicle?.state === 'parked' && conveyor) {
       return this.canConveyorVehicleDriveOut(vehicle, conveyor);
     }
-    return Boolean(vehicle && vehicle.state === 'parked' && node && this.isDriveOutLeaf(node, game));
+    if (!vehicle || vehicle.state !== 'parked' || !node) return false;
+    return this.getCollisionCandidates(game, vehicleId).length === 0;
   }
 
-  isGarageDoorClear(game, garageId) {
+  isGarageDoorClear(game, garageId, vehicleId = null) {
     this.ensure(game);
     const entry = this.garageNodes.get(Number(garageId)) ?? this.garageNodes.get(garageId);
     if (!entry) return true;
-    return this.graph.getExits(entry.nodes.door.key).every((node) => {
-      if (node.kind !== 'vehicle') return false;
-      const vehicle = game.getVehicle(node.vehicleId);
-      return !vehicle || !game.isVehicleBlocking(vehicle, null);
-    });
+    const nextVehicle = game.getVehicle(vehicleId ?? entry.garage.vehicleIds[0]);
+    const geometry = createGarageGeometry(
+      this.level,
+      entry.garage,
+      getVehicleCollisionSize(this.level, nextVehicle)
+    );
+    if (!geometry) return true;
+    for (const vehicle of game.vehicles ?? []) {
+      if (!game.isVehicleBlocking(vehicle, nextVehicle)) continue;
+      if (boxesOverlap(geometry.door, boxForVehicle(this.level, vehicle))) return false;
+    }
+    for (const other of game.mechanicState?.garages ?? []) {
+      if (Number(other.id) === Number(garageId) || other.hidden) continue;
+      if (other.vehicleIds.length === 0 && other.exitingVehicleId == null) continue;
+      const body = makeBox(other.position, other.yaw, getGarageCollisionSize(this.level));
+      if (boxesOverlap(geometry.door, body)) return false;
+    }
+    return true;
   }
 }
 

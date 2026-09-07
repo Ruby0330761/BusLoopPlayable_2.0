@@ -1,5 +1,6 @@
 import { LEVEL_1 } from './level-data.js';
 import { SCENE_TUNING } from './scene-tuning.js';
+import { CONVEYOR_MECHANISM_TUNING } from './conveyor-mechanism-config.js';
 import {
   UNITY_CURVES,
   UNITY_VEHICLE_MOTION,
@@ -7,6 +8,7 @@ import {
   buildRoundedPath,
   buildToStationPoints,
   evaluateUnityCurve,
+  forwardFromYaw,
   getCollisionMotion,
   getHitDirection,
   getStationMotion,
@@ -22,6 +24,45 @@ const wrap01 = (value) => ((value % 1) + 1) % 1;
 const clampNumber = (value, min, max) => Math.max(min, Math.min(max, value));
 const INITIAL_ENTRY_OFFSET_PERCENT = 0.0001;
 const PASSENGER_READY_DISTANCE_THRESHOLD = 0.02;
+const HIDDEN_VEHICLE_REVEAL_DURATION = 0.5;
+const GARAGE_CONTAINER_TYPE = 2;
+const CONVEYOR_BELT_CONTAINER_TYPE = 3;
+// CONVEYOR_RIGHT_VISIBILITY_SCALE = 0.93
+const CONVEYOR_RIGHT_VISIBILITY_SCALE = CONVEYOR_MECHANISM_TUNING.rightVehicleVisibilityScale;
+
+function isGarageType(value) {
+  return value === GARAGE_CONTAINER_TYPE
+    || String(value ?? '').trim().toLowerCase() === 'garage';
+}
+
+function isConveyorType(value) {
+  const normalized = String(value ?? '').trim().toLowerCase();
+  return value === CONVEYOR_BELT_CONTAINER_TYPE
+    || normalized === 'conveyorbelt'
+    || normalized === 'conveyor-belt';
+}
+
+function getConveyorMechanicConfig(level, container) {
+  const belt = (level.conveyorBelts ?? []).find((entry) => (
+    Number(entry.vcId) === Number(container.id)
+  ));
+  return {
+    width: Math.max(0.1, Number(belt?.width) || 3.8),
+    speed: Math.max(0, Number(level.conveyorMechanic?.speed) || 0.4),
+    extraWidth: Math.max(0, Number(level.conveyorMechanic?.extraWidth) || 1.2),
+    vehicleWidth: Math.max(0.01, Number(level.conveyorMechanic?.vehicleWidth) || 0.27),
+    minGap: Math.max(0, Number(level.conveyorMechanic?.minGap) || 0.27)
+  };
+}
+
+function getGarageConfig(level) {
+  const source = level.garage ?? {};
+  return {
+    parkOffset: Math.max(0, Number(source.parkOffset) || 0.7),
+    outDelay: Math.max(0, Number(source.outDelay) || 0.3),
+    outDuration: Math.max(0.001, Number(source.outDuration) || 0.6)
+  };
+}
 
 function isTurnVehicleRotating(vehicle) {
   return Boolean(vehicle?.turnRotation?.active);
@@ -161,6 +202,7 @@ export class BusLoopGame {
     this.status = 'playing';
     this.speedMultiplier = 1;
     this.boardingEventId = 0;
+    this.turnVehicleEventId = 0;
     this.boardingEvents = [];
     this.nextPassengerId = 1;
     this.initialFillActive = true;
@@ -185,14 +227,111 @@ export class BusLoopGame {
       this.createQueueItems(queue.slice(0, this.queueCapacities[queueIndex]), queueIndex)
     ));
     this.sourceQueues = authoredQueues.map((queue, index) => queue.slice(this.queueCapacities[index]));
-    this.vehicles = this.level.vehicles.map((vehicle) => ({
-      ...vehicle, state: 'parked', spotIndex: null, boardedGroups: 0, motion: 0,
-      motionData: null, collision: null, hit: null, turnRotation: null,
-      ambulanceRemainingSteps: Number.isInteger(vehicle.ambulanceStepLimit)
-        ? vehicle.ambulanceStepLimit
-        : null,
-      ambulanceActive: Number.isInteger(vehicle.ambulanceStepLimit) && vehicle.ambulanceStepLimit > 0
-    }));
+    const garageContainers = (this.level.containers ?? []).filter((container) => isGarageType(container.type));
+    const conveyorContainers = (this.level.containers ?? []).filter((container) => isConveyorType(container.type));
+    const garageContainersById = new Map(garageContainers.map((container) => [Number(container.id), container]));
+    const conveyorContainersById = new Map(conveyorContainers.map((container) => [Number(container.id), container]));
+    const conveyorIndices = new Map();
+    for (const container of conveyorContainers) {
+      const yaw = Number(container.yaw ?? container.yawDegrees ?? 0) * Math.PI / 180;
+      // Conveyor slots advance along the container's local right axis. World-X
+      // ordering only works for an unrotated belt and causes rotated belts to
+      // choose a farther vehicle as the direct blocker.
+      const axis = { x: Math.cos(yaw), z: -Math.sin(yaw) };
+      const ids = this.level.vehicles
+        .filter((vehicle) => isConveyorType(vehicle.containerType) && Number(vehicle.containerId) === Number(container.id))
+        .map((vehicle, authoredIndex) => ({
+          vehicle,
+          authoredIndex,
+          projection: (Number(vehicle.x) - Number(container.x ?? 0)) * axis.x
+            + (Number(vehicle.z) - Number(container.z ?? 0)) * axis.z
+        }))
+        .sort((a, b) => a.projection - b.projection || a.authoredIndex - b.authoredIndex)
+        .map(({ vehicle }) => vehicle.id);
+      ids.forEach((id, index) => conveyorIndices.set(id, index));
+    }
+    this.vehicles = this.level.vehicles.map((vehicle) => {
+      const garage = isGarageType(vehicle.containerType)
+        ? garageContainersById.get(Number(vehicle.containerId))
+        : null;
+      const conveyor = isConveyorType(vehicle.containerType)
+        ? conveyorContainersById.get(Number(vehicle.containerId))
+        : null;
+      const conveyorConfig = conveyor ? getConveyorMechanicConfig(this.level, conveyor) : null;
+      return {
+        ...vehicle,
+        ...(garage ? { x: garage.x, z: garage.z, yaw: garage.yaw } : {}),
+        ...(conveyor ? { x: conveyor.x, z: conveyor.z, yaw: conveyor.yaw } : {}),
+        state: garage ? 'in-garage' : 'parked',
+        garageId: garage?.id ?? null,
+        conveyorId: conveyor?.id ?? null,
+        conveyorIndex: conveyor ? (conveyorIndices.get(vehicle.id) ?? 0) : null,
+        conveyorWidth: conveyorConfig?.vehicleWidth ?? null,
+        conveyorVisible: !conveyor,
+        conveyorExitVisible: !conveyor,
+        spotIndex: null,
+        boardedGroups: 0,
+        motion: 0,
+        motionData: null,
+        collision: null,
+        hit: null,
+        turnRotation: null,
+        hiddenRevealed: !Boolean(vehicle.isHidden),
+        hiddenReveal: null,
+        ambulanceRemainingSteps: Number.isInteger(vehicle.ambulanceStepLimit)
+          ? vehicle.ambulanceStepLimit
+          : null,
+        ambulanceActive: Number.isInteger(vehicle.ambulanceStepLimit) && vehicle.ambulanceStepLimit > 0
+      };
+    });
+    this.mechanicState = {
+      garages: garageContainers.map((container) => ({
+        id: container.id,
+        position: { x: container.x, z: container.z },
+        yaw: container.yaw,
+        vehicleIds: this.level.vehicles
+          .filter((vehicle) => (
+            isGarageType(vehicle.containerType)
+            && Number(vehicle.containerId) === Number(container.id)
+          ))
+          .map((vehicle) => vehicle.id),
+        exitingVehicleId: null,
+        lastOutVehicleId: null,
+        hidden: false
+      })),
+      conveyors: conveyorContainers.map((container) => {
+        const config = getConveyorMechanicConfig(this.level, container);
+        const vehicleIds = this.level.vehicles
+          .filter((vehicle) => isConveyorType(vehicle.containerType) && Number(vehicle.containerId) === Number(container.id))
+          .sort((a, b) => (
+            (conveyorIndices.get(a.id) ?? Number.MAX_SAFE_INTEGER)
+            - (conveyorIndices.get(b.id) ?? Number.MAX_SAFE_INTEGER)
+          ))
+          .map((vehicle) => vehicle.id);
+        const slotCount = Math.max(1, vehicleIds.length);
+        const vehicleGap = Math.max(
+          (config.width + config.extraWidth) / slotCount - config.vehicleWidth,
+          config.minGap
+        );
+        return {
+          id: container.id,
+          position: { x: container.x, z: container.z },
+          yaw: container.yaw,
+          width: config.width,
+          speed: config.speed,
+          extraWidth: config.extraWidth,
+          vehicleWidth: config.vehicleWidth,
+          minGap: config.minGap,
+          slotCount,
+          vehicleGap,
+          unitLength: config.vehicleWidth + vehicleGap,
+          phase: 0,
+          vehicleIds,
+          hidden: vehicleIds.length === 0
+        };
+      })
+    };
+    this.garageRefreshPending = this.mechanicState.garages.length > 0;
     const spotCount = SCENE_TUNING.parkingSpots.count ?? this.level.spotCount;
     this.spots = Array.from({ length: spotCount }, (_, index) => ({
       index, vehicleId: null
@@ -205,6 +344,8 @@ export class BusLoopGame {
       entryIndex: null,
       entryMotion: null
     }));
+    // Match Unity's initial conveyor placement before the first animation tick.
+    this.updateConveyors(0);
     this.collisionContext = createVehicleCollisionContext(this.level);
     this.lastEvent = { type: 'reset' };
     this.emit();
@@ -316,6 +457,18 @@ export class BusLoopGame {
         collision: vehicle.collision ? { ...vehicle.collision } : null,
         hit: vehicle.hit ? { ...vehicle.hit } : null
       })),
+      mechanicState: {
+        garages: this.mechanicState.garages.map((garage) => ({
+          ...garage,
+          position: { ...garage.position },
+          vehicleIds: [...garage.vehicleIds]
+        })),
+        conveyors: this.mechanicState.conveyors.map((conveyor) => ({
+          ...conveyor,
+          position: { ...conveyor.position },
+          vehicleIds: [...conveyor.vehicleIds]
+        }))
+      },
       spots: this.spots.map((spot) => ({ ...spot })),
       slots: this.slots.map((slot) => ({
         ...slot,
@@ -338,6 +491,7 @@ export class BusLoopGame {
     state.queueItems = this.queues;
     state.queues = this.queues;
     state.vehicles = this.vehicles;
+    state.mechanicState = this.mechanicState;
     state.spots = this.spots;
     state.slots = this.slots;
     state.boardingEvents = this.boardingEvents;
@@ -358,8 +512,132 @@ export class BusLoopGame {
     return this.vehicles.find((vehicle) => vehicle.id === id);
   }
 
+  getGarage(id) {
+    return this.mechanicState.garages.find((garage) => Number(garage.id) === Number(id)) ?? null;
+  }
+
+  refreshGarages() {
+    const releasedVehicleIds = [];
+    const clearedGarageIds = [];
+    const config = getGarageConfig(this.level);
+    for (const garage of this.mechanicState.garages) {
+      if (garage.hidden || garage.exitingVehicleId != null) continue;
+      if (garage.vehicleIds.length === 0) {
+        garage.hidden = true;
+        clearedGarageIds.push(garage.id);
+        continue;
+      }
+      const vehicle = this.getVehicle(garage.vehicleIds[0]);
+      if (!vehicle || !this.collisionContext.isGarageDoorClear(this, garage.id, vehicle.id)) continue;
+      const forward = forwardFromYaw(garage.yaw);
+      const from = { x: garage.position.x, z: garage.position.z, yaw: garage.yaw };
+      const to = {
+        x: from.x + forward.x * config.parkOffset,
+        z: from.z + forward.z * config.parkOffset,
+        yaw: garage.yaw
+      };
+      garage.exitingVehicleId = vehicle.id;
+      garage.lastOutVehicleId = vehicle.id;
+      Object.assign(vehicle, {
+        state: 'leaving-garage',
+        x: from.x,
+        z: from.z,
+        yaw: from.yaw,
+        motion: 0,
+        motionData: {
+          from,
+          to,
+          delay: config.outDelay,
+          duration: config.outDuration,
+          elapsed: 0
+        },
+        collision: null,
+        hit: null,
+        turnRotation: null
+      });
+      releasedVehicleIds.push(vehicle.id);
+    }
+    return {
+      changed: releasedVehicleIds.length > 0 || clearedGarageIds.length > 0,
+      releasedVehicleIds,
+      clearedGarageIds
+    };
+  }
+
+  updateConveyors(delta) {
+    let changed = false;
+    for (const conveyor of this.mechanicState.conveyors ?? []) {
+      const vehicleIds = conveyor.vehicleIds;
+      if (vehicleIds.length === 0) {
+        conveyor.hidden = true;
+        continue;
+      }
+      // Keep the authored slot count and spacing after a vehicle leaves. The
+      // empty slot remains part of the moving belt, so the visible queue does
+      // not collapse toward the centre.
+      const slotCount = Math.max(vehicleIds.length, Number(conveyor.slotCount) || 1);
+      const unitLength = Math.max(
+        0.01,
+        Number(conveyor.unitLength)
+          || conveyor.vehicleWidth + Math.max(Number(conveyor.vehicleGap) || 0, conveyor.minGap)
+      );
+      const contentLength = Math.max(unitLength, slotCount * unitLength);
+      conveyor.phase = wrap01((conveyor.phase ?? 0) + (delta * conveyor.speed) / contentLength);
+      const right = { x: Math.cos((conveyor.yaw ?? 0) * Math.PI / 180), z: -Math.sin((conveyor.yaw ?? 0) * Math.PI / 180) };
+      const viewHalfWidth = (conveyor.width + conveyor.extraWidth) * 0.5;
+      const rightViewHalfWidth = viewHalfWidth * CONVEYOR_RIGHT_VISIBILITY_SCALE;
+      const exitHalfWidth = Math.max(0, (conveyor.width - conveyor.vehicleWidth) * 0.5);
+      for (let index = 0; index < vehicleIds.length; index += 1) {
+        const vehicle = this.getVehicle(vehicleIds[index]);
+        if (!vehicle) continue;
+        const slotIndex = Number.isInteger(vehicle.conveyorIndex) ? vehicle.conveyorIndex : index;
+        const centeredDistance = ((slotIndex * unitLength + conveyor.phase * contentLength) % contentLength)
+          - contentLength * 0.5 + unitLength * 0.5;
+        vehicle.x = conveyor.position.x + right.x * centeredDistance;
+        vehicle.z = conveyor.position.z + right.z * centeredDistance;
+        vehicle.yaw = conveyor.yaw;
+        const vehicleHalfWidth = vehicle.conveyorWidth * 0.5;
+        vehicle.conveyorVisible = centeredDistance < 0
+          ? -centeredDistance <= viewHalfWidth + vehicleHalfWidth
+          : centeredDistance <= rightViewHalfWidth + vehicleHalfWidth;
+        vehicle.conveyorExitVisible = Math.abs(centeredDistance) <= exitHalfWidth;
+        changed = true;
+      }
+      conveyor.hidden = false;
+    }
+    return changed;
+  }
+
+  attachGarageEvents(event, result) {
+    if (!result?.changed) return event;
+    return {
+      ...event,
+      ...(result.releasedVehicleIds.length > 0
+        ? { garageReleasedVehicleIds: result.releasedVehicleIds }
+        : {}),
+      ...(result.clearedGarageIds.length > 0
+        ? { garageClearedIds: result.clearedGarageIds }
+        : {})
+    };
+  }
+
   canMoveToStation(vehicle) {
-    return Boolean(vehicle && vehicle.state === 'parked' && !isTurnVehicleRotating(vehicle));
+    return Boolean(
+      vehicle
+      && vehicle.state === 'parked'
+      && !isTurnVehicleRotating(vehicle)
+      && !vehicle.hiddenReveal
+    );
+  }
+
+  startHiddenVehicleReveal(vehicle) {
+    if (!vehicle?.isHidden || vehicle.hiddenRevealed || vehicle.hiddenReveal) return false;
+    vehicle.hiddenReveal = {
+      elapsed: 0,
+      duration: HIDDEN_VEHICLE_REVEAL_DURATION
+    };
+    this.lastEvent = { type: 'hidden-vehicle-reveal-started', vehicleId: vehicle.id };
+    return true;
   }
 
   isVehicleBlocking(candidate) {
@@ -396,7 +674,7 @@ export class BusLoopGame {
       : TURN_VEHICLE_MOTION.rotateDuration;
     const completedVehicleIds = [];
     for (const vehicle of this.vehicles) {
-      if (!vehicle.isTurnVehicle || vehicle.id === dispatchedVehicle.id || vehicle.state === 'done') continue;
+      if (!vehicle.isTurnVehicle || vehicle.id === dispatchedVehicle.id || vehicle.state !== 'parked') continue;
       const rotation = vehicle.turnRotation;
       const startYaw = vehicle.yaw;
       const targetYaw = (rotation?.active ? rotation.targetYaw : startYaw) + 180;
@@ -467,7 +745,22 @@ export class BusLoopGame {
       this.emit();
       return { ok: false, reason: 'blocked', blockers };
     }
+    if (vehicle.isHidden && !vehicle.hiddenRevealed) {
+      this.startHiddenVehicleReveal(vehicle);
+      this.emit();
+      return { ok: true, reason: 'hidden-reveal' };
+    }
     spot.vehicleId = id;
+    if (vehicle.conveyorId != null) {
+      const conveyor = (this.mechanicState.conveyors ?? []).find((item) => Number(item.id) === Number(vehicle.conveyorId));
+      if (conveyor) {
+        conveyor.vehicleIds = conveyor.vehicleIds.filter((vehicleId) => vehicleId !== vehicle.id);
+        conveyor.hidden = conveyor.vehicleIds.length === 0;
+      }
+      vehicle.conveyorId = null;
+      vehicle.conveyorVisible = true;
+      vehicle.conveyorExitVisible = false;
+    }
     const target = this.getSpotPosition(spot.index);
     const path = buildRoundedPath(buildToStationPoints(vehicle, target, SCENE_TUNING.vehiclePath), SCENE_TUNING.vehiclePath);
     const stationMotion = getStationMotion(path.length);
@@ -478,7 +771,10 @@ export class BusLoopGame {
     const ambulanceResult = this.consumeAmbulanceStep(vehicle);
     const completedTurnVehicleIds = this.startTurnVehicleRotation(vehicle);
     const turnEvent = completedTurnVehicleIds.length > 0
-      ? { turnVehicleIds: completedTurnVehicleIds }
+      ? {
+        turnVehicleIds: completedTurnVehicleIds,
+        turnVehicleEventId: ++this.turnVehicleEventId
+      }
       : {};
     if (ambulanceResult.failed) {
       this.status = 'lost';
@@ -491,13 +787,14 @@ export class BusLoopGame {
         ...turnEvent
       };
     } else {
-      this.lastEvent = {
+      const garageResult = this.refreshGarages();
+      this.lastEvent = this.attachGarageEvents({
         type: 'vehicle-dispatched',
         vehicleId: id,
         spotIndex: spot.index,
         ambulanceUpdates: ambulanceResult.updates,
         ...turnEvent
-      };
+      }, garageResult);
     }
     this.emit();
     return { ok: true, spotIndex: spot.index };
@@ -509,6 +806,23 @@ export class BusLoopGame {
     this.time += delta;
     let changed = false;
     const completedTurnVehicleIds = [];
+    const garageEvents = {
+      changed: false,
+      releasedVehicleIds: [],
+      clearedGarageIds: []
+    };
+    const collectGarageEvents = (result) => {
+      if (!result?.changed) return;
+      garageEvents.changed = true;
+      garageEvents.releasedVehicleIds.push(...result.releasedVehicleIds);
+      garageEvents.clearedGarageIds.push(...result.clearedGarageIds);
+      changed = true;
+    };
+    if (this.garageRefreshPending) {
+      this.garageRefreshPending = false;
+      collectGarageEvents(this.refreshGarages());
+    }
+    changed = this.updateConveyors(delta) || changed;
 
     for (const vehicle of this.vehicles) {
       if (vehicle.hit && this.time - vehicle.hit.startedAt >= UNITY_VEHICLE_MOTION.hitDuration) {
@@ -533,7 +847,57 @@ export class BusLoopGame {
     }
 
     for (const vehicle of this.vehicles) {
-      if (vehicle.state === 'moving-to-spot') {
+      if (!vehicle.isHidden || vehicle.hiddenRevealed || vehicle.hiddenReveal || vehicle.state !== 'parked') {
+        continue;
+      }
+      if (this.collisionContext.canVehicleDriveOut(this, vehicle.id)) {
+        this.startHiddenVehicleReveal(vehicle);
+        changed = true;
+      }
+    }
+
+    for (const vehicle of this.vehicles) {
+      if (!vehicle.hiddenReveal) continue;
+      vehicle.hiddenReveal.elapsed += delta;
+      if (vehicle.hiddenReveal.elapsed >= vehicle.hiddenReveal.duration) {
+        vehicle.hiddenReveal = null;
+        vehicle.hiddenRevealed = true;
+        this.lastEvent = { type: 'hidden-vehicle-revealed', vehicleId: vehicle.id };
+      }
+      changed = true;
+    }
+
+    let garageVehicleCompleted = false;
+    for (const vehicle of this.vehicles) {
+      if (vehicle.state === 'leaving-garage') {
+        const data = vehicle.motionData;
+        data.elapsed += delta;
+        const movingElapsed = Math.max(0, data.elapsed - data.delay);
+        vehicle.motion = clamp01(movingElapsed / data.duration);
+        if (vehicle.motion >= 1) {
+          const garage = this.getGarage(vehicle.garageId);
+          Object.assign(vehicle, {
+            state: 'parked',
+            x: data.to.x,
+            z: data.to.z,
+            yaw: data.to.yaw,
+            motion: 0,
+            motionData: null
+          });
+          if (garage?.exitingVehicleId === vehicle.id) {
+            garage.vehicleIds = garage.vehicleIds.filter((vehicleId) => vehicleId !== vehicle.id);
+            garage.exitingVehicleId = null;
+            garage.lastOutVehicleId = vehicle.id;
+          }
+          this.lastEvent = {
+            type: 'garage-vehicle-ready',
+            vehicleId: vehicle.id,
+            garageId: garage?.id ?? vehicle.garageId
+          };
+          garageVehicleCompleted = true;
+        }
+        changed = true;
+      } else if (vehicle.state === 'moving-to-spot') {
         vehicle.motion = clamp01(vehicle.motion + delta / vehicle.motionData.duration);
         if (vehicle.motion >= 1) {
           Object.assign(vehicle, { state: 'at-spot', motion: 0, motionData: null });
@@ -564,7 +928,10 @@ export class BusLoopGame {
             type: 'vehicle-collision-contact',
             vehicleId: vehicle.id,
             targetId: collision.targetId,
-            targetContainerId: collision.targetContainerId
+            targetContainerId: collision.targetContainerId,
+            targetContainerRole: collision.targetContainerRole ?? null,
+            contactPosition: collision.contactPosition ? { ...collision.contactPosition } : null,
+            contactDistance: collision.distance
           };
           changed = true;
         }
@@ -612,6 +979,8 @@ export class BusLoopGame {
         }
       }
     }
+
+    if (garageVehicleCompleted) collectGarageEvents(this.refreshGarages());
 
     this.updateQueues(delta);
 
@@ -702,8 +1071,18 @@ export class BusLoopGame {
     if (completedTurnVehicleIds.length > 0) {
       this.lastEvent = {
         ...this.lastEvent,
-        turnVehicleIds: completedTurnVehicleIds
+        turnVehicleIds: completedTurnVehicleIds,
+        turnVehicleEventId: ++this.turnVehicleEventId
       };
+    }
+    if (garageEvents.changed) {
+      const fallbackEvent = garageEvents.releasedVehicleIds.length > 0
+        ? { type: 'garage-release-started' }
+        : { type: 'garage-cleared' };
+      this.lastEvent = this.attachGarageEvents(
+        this.lastEvent?.type === 'reset' ? fallbackEvent : this.lastEvent,
+        garageEvents
+      );
     }
     if (changed || this.status !== previousStatus) this.emit();
   }
@@ -856,6 +1235,7 @@ export class BusLoopGame {
       const vehicle = this.getVehicle(spot.vehicleId);
       if (
         vehicle?.state === 'at-spot' &&
+        (!vehicle.isHidden || vehicle.hiddenRevealed) &&
         vehicle.colorIndex === colorIndex &&
         vehicle.boardedGroups < vehicle.seats
       ) return vehicle;

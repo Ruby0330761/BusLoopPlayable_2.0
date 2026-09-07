@@ -197,6 +197,55 @@ test('Effect_Hit spawns the three Unity-authored child particle systems once per
   assert.ok(effects.particles.some((particle) => particle.material.blending === THREE.AdditiveBlending));
 });
 
+test('Effect_Hit also spawns when a conveyor vehicle contacts its blocking wall', () => {
+  const scene = new THREE.Group();
+  const attacker = new THREE.Group();
+  const effects = new VehicleEffects({
+    scene,
+    vehicleViews: new Map([[89, attacker]]),
+    spotRoots: [],
+    textures: {
+      hitCircle: new THREE.Texture(),
+      hitRound2: new THREE.Texture(),
+      hitRound1: new THREE.Texture()
+    }
+  });
+  effects.update({
+    time: 1,
+    spots: [],
+    vehicles: [],
+    lastEvent: {
+      type: 'vehicle-collision-contact',
+      vehicleId: 89,
+      targetId: null,
+      targetContainerId: 4,
+      contactDistance: 0.55
+    }
+  });
+  assert.ok(effects.particles.length >= 13);
+});
+
+test('Effect_Hit uses the authored container contact position', () => {
+  const vehicle = new THREE.Group();
+  vehicle.position.set(0, 0, 0);
+  const scene = new THREE.Group();
+  const effects = new VehicleEffects({
+    scene,
+    vehicleViews: new Map([[89, vehicle]]),
+    spotRoots: [],
+    textures: { hitCircle: new THREE.Texture(), hitRound2: new THREE.Texture(), hitRound1: new THREE.Texture() }
+  });
+  effects.update({ time: 0, spots: [], vehicles: [], lastEvent: {
+    type: 'vehicle-collision-contact', vehicleId: 89, targetId: null,
+    targetContainerId: 4, targetContainerRole: 'wall',
+    contactDistance: 0.2, contactPosition: { x: 1.25, z: -0.4 }
+  }});
+  const first = effects.particles[0]?.sprite;
+  assert.ok(first);
+  assert.equal(first.position.x, 1.25);
+  assert.equal(first.position.z, -0.4);
+});
+
 test('Effect_Hit particle size reads scene editor tuning', () => {
   const scene = new THREE.Group();
   const effects = new VehicleEffects({

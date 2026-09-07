@@ -1,4 +1,72 @@
-﻿# Progress
+# Progress
+
+## 2026-09-07 Mechanism-aware production resource pruning
+
+- Classified mechanism assets under `public/assets/unity/mechanisms/` and added shared manifest/type derivation in `src/mechanism-resources.js`.
+- Added `mechanics` metadata to imported/extracted levels and connected it to the AppLovin whitelist packager/checker.
+- Final `level28` build/package/check passed at `4,598,228` bytes (`4.385 MiB`); selected mechanism resources were present and 39 unselected mechanism resources were omitted.
+- Focused importer, mechanism-manifest, and conveyor configuration tests pass. Full suite still contains unrelated historical level/tuning/effect expectation failures.
+
+## 2026-09-07 Conveyor mechanism tuning fixed
+
+- Moved the confirmed conveyor visual contract into `src/conveyor-mechanism-config.js`: root scale `1.375`, left/right door outward factors `1.17/1.20`, and right-edge visibility scale `0.93`.
+- Reopened a temporary editor submenu with independent XYZ position, scale, and rotation controls for the belt, arrow, both doors, and both side panels. These values layer over the fixed mechanism base and are resettable without changing it.
+- Added focused configuration/temporary-override regression coverage; syntax and conveyor-focused checks pass.
+
+## 2026-09-04 Conveyor collision and build visuals
+
+- Increased the conveyor belt, arrow, and end-cap/side visual root to `1.375x` overall (an additional 10% over the previous `1.25x` pass) while leaving conveyor vehicle meshes and collision logic unchanged.
+- Added dynamic same-belt vehicle obstacles and nearest-forward overlap selection, preventing a conveyor vehicle from skipping a directly blocking vehicle.
+- Imported the current Unity conveyor end-cap/side textures and render them as synchronized visual overlays that hide with an empty belt.
+- Added conveyor collision/resource regressions; conveyor-focused tests and syntax checks pass. Production build and AppLovin packaging pass; the existing 5 MB static size limit remains deferred.
+
+## 2026-09-04 Vehicle conveyor-belt mechanism import
+
+- Added strict type 3 conveyor container and `conveyorBelts` parsing/validation to the Unity importer and extractor.
+- Imported `level22.asset` from the current Unity project as a real conveyor sample; production selection was preserved.
+- Added Unity-style conveyor vehicle spacing/movement, exit-range dispatch/removal, empty-belt hiding, and scene FBX/texture/arrow animation wiring.
+- Conveyor/importer/collision tests and syntax checks pass; `npm run build` passes with the existing Vite chunk warning. Browser QA on `level22` confirms belt assets load and vehicles keep moving. AppLovin packaging succeeds at `6,917,534` bytes; the 5 MB check remains intentionally deferred.
+
+## 2026-09-04 Hidden vehicle interaction and turn audio follow-up
+
+- Changed hidden vehicle body rendering from pure black to charcoal `0x2a2a2a` for readable lighting.
+- Unrevealed hidden vehicles now support normal interaction: blocked clicks enter collision feedback, and clear clicks start reveal before dispatch; the question marker remains outside picking.
+- Replaced turn audio's vehicle-id lifetime deduplication with per-completion event ids, so a later turn can play again while one simultaneous completion plays once.
+- Focused tests and syntax checks pass. Full-suite failures remain the existing unrelated workspace expectations; production packaging is pending.
+
+## 2026-09-03 Garage size and lighting correction
+
+- Reduced the shared garage visual/collision scale from `1.6x` to `1.3x`.
+- Removed the `AmbientLight` that `FBXLoader` creates from the garage FBX's `AmbientColor` metadata, preventing global material brightening while garages are visible.
+- Kept garage model and fake-shadow transforms under the same parent scale and shared `Y` anchor so resizing does not separate the shadow.
+- Shifted the fake shadow `0.1` local units toward the garage front (`+Z`) to correct the remaining rearward visual offset.
+- Focused garage tests and scene syntax checks pass. Production build and AppLovin packaging pass; static checks pass except the intentionally deferred 5 MB size limit (`6,814,346` bytes).
+
+## 2026-09-04 Garage shadow alignment completed
+
+- Shifted the garage fake shadow `0.1` local units toward the runtime front (`+Z`) while preserving its ground offset and shared parent scale.
+- Garage-focused tests `5/5`, syntax checks, production build, AppLovin packaging, and level39 browser smoke check pass with no error-level logs. Production selection remains `level16`.
+
+## 2026-09-03 Hidden vehicle visual follow-up completed
+
+- Matched the Unity hidden bus_c_4/6/10 question-marker anchor by placing the marker at the normalized vehicle forward edge with a small in-bounds inset; it remains outside vehicle picking.
+- Hidden-vehicle regression checks pass, and manual level33 browser QA shows white markers with no error-level logs.
+- Production build and AppLovin packaging pass. The current single HTML is 6,813,719 bytes (6.498 MiB); the static check still reports the pre-existing 5 MB overall package limit.
+
+## 2026-09-03 Hidden vehicle display and audio regression corrected
+
+- Hidden vehicles now render the imported 4/6/10-seat hidden-body models with the authored Unity black hidden material; their dimensions are aligned to the corresponding normal vehicle without overwriting normalized scales, and the white question marker is a visual-only overlay moved inward from the forward edge.
+- Reworked game-event audio de-duplication from “last event only” to persistent per-event keys, so a hidden reveal cannot replay after another sound event; history resets on new game, reset, and level advance.
+- Focused hidden-vehicle tests, syntax checks, and production build pass. The regenerated AppLovin single HTML is 6,815,836 bytes; its only failed static check is the pre-existing 5 MB size limit. Full-suite status remains unchanged apart from the workspace's pre-existing unrelated failures.
+## 2026-09-03 Garage mechanism import completed
+
+- Added importer/extractor support for garage containers and vehicles, including type matching and garage counts.
+- Implemented automatic ordered release, exact door collision, one-at-a-time exit timing, counter/hide state, Unity garage model/fake shadow/door animation, and exit/clear audio.
+- Focused tests pass 24/24, touched-file syntax checks pass, and the production level29 build succeeds with the existing large-chunk warning.
+- The full workspace suite is 118/140; the 22 failures remain outside the garage path and cover existing queue, tuning, selected-level, session, spatial, and effect expectations.
+- Temporary browser QA confirmed three sequential releases, front-door blocking, count updates, final hiding, and zero error-level logs; the QA hook was removed afterward.
+- Rebuilt `artifacts/applovin/index.html` at 6,738,170 bytes. All six garage resources are inlined and audio decoding succeeds; the only static failure is the deferred 5 MB package limit.
+- Inspected real Unity garage levels do not provide the playable's required authored fixed passenger sequence, so no production/editor level was synthesized or imported. The next garage-level import needs an authored queue source or an approved generation rule.
 
 ## 2026-08-28 Google strict package correction completed
 
@@ -410,5 +478,11 @@ Documentation was compacted after the 2026-07-07 workday. The active project sta
 ## Verification State
 
 No build was run during this documentation cleanup. Verification was limited to file inspection and size/content checks.
+
+## 2026-09-03 Garage Visual Correction
+
+- Confirmed current Unity garage resources by SHA-256; no legacy duplicate selected.
+- Applied Prefab `Truck` `Y=180°`, local-Z opposing door hinges, and shared `1.6x` visual/collision sizing.
+- Focused garage collision/resource tests and syntax checks pass. Production build and AppLovin packaging pass; the deferred size check remains over 5 MB (`6,813,719` bytes) by current user scope.
 
 

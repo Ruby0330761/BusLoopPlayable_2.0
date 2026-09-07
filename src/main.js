@@ -8,6 +8,7 @@ import { SceneView } from './scene-view.js';
 import { clampCenteredRectX } from './scene-layout.js';
 import { SCENE_TUNING } from './scene-tuning.js';
 import { createGameAudioController } from './audio-controller.js';
+import { MECHANISM_ASSETS } from './mechanism-resources.js';
 import {
   getSpatialConveyorId,
   isSpatialConveyorSelection,
@@ -58,12 +59,24 @@ const sceneEditorRoot = EDITOR_ENABLED ? $('#scene-editor') : null;
 const PASSENGER_MATERIAL_TUNING_PREFIX = 'passengerMaterial.';
 const PASSENGER_MATERIAL_COLOR_INDEX_PATTERN = /^passengerMaterial\.(?:solidColors|colors)\.(\d+)(?:\.|$)/;
 const AMBULANCE_AUDIO_CONFIG = Object.freeze({
-  clips: ['/assets/unity/audio/ambulance_countdown_V2.wav'],
+  clips: [MECHANISM_ASSETS.ambulance.audio],
   volume: 0.72
 });
 const TURN_VEHICLE_AUDIO_CONFIG = Object.freeze({
-  clips: ['/assets/unity/audio/guidemove.bin'],
+  clips: [MECHANISM_ASSETS.turnVehicle.audio],
   volume: 0.7
+});
+const HIDDEN_VEHICLE_AUDIO_CONFIG = Object.freeze({
+  clips: [MECHANISM_ASSETS.hiddenVehicle.audio],
+  volume: 0.7933884
+});
+const GARAGE_OUT_AUDIO_CONFIG = Object.freeze({
+  clips: [MECHANISM_ASSETS.garage.outAudio],
+  volume: 0.7979798
+});
+const GARAGE_CLEAR_AUDIO_CONFIG = Object.freeze({
+  clips: [MECHANISM_ASSETS.garage.clearAudio],
+  volume: 1
 });
 const isPassengerMaterialTuningPath = (path) => path?.startsWith(PASSENGER_MATERIAL_TUNING_PREFIX);
 const getPassengerMaterialColorIndex = (path) => {
@@ -262,9 +275,28 @@ function loadSavedTuning() {
       const savedTuning = JSON.parse(saved);
       const guideHandMotionMigrated = migrateGuideHandMotionTuning(savedTuning);
       const spatialSpeedMigrated = migrateSpatialSpeedTuning(savedTuning);
+      const luxuryPassengerRotationRemoved = delete savedTuning.luxuryPassengerRotation;
+      const luxuryPassengerOffsetRemoved = delete savedTuning.luxuryPassengerOffset;
+      const luxuryMaterialDebugRemoved = delete savedTuning.luxuryMaterialDebug;
+      const conveyorVisualRemoved = delete savedTuning.conveyorVisual;
+      const savedLuxuryMaterial = savedTuning.luxuryMaterial;
+      const luxuryMaterialNeedsReset = !savedLuxuryMaterial
+        || savedLuxuryMaterial.vehicleBrightness !== SCENE_TUNING.luxuryMaterial.vehicleBrightness
+        || savedLuxuryMaterial.passengerBrightness !== SCENE_TUNING.luxuryMaterial.passengerBrightness
+        || savedLuxuryMaterial.boardBrightness !== SCENE_TUNING.luxuryMaterial.boardBrightness;
+      delete savedTuning.luxuryMaterial;
       deepMerge(SCENE_TUNING, savedTuning);
       migrateLegacyConveyorTuning(savedTuning);
-      if (guideHandMotionMigrated || spatialSpeedMigrated) {
+      if (
+        guideHandMotionMigrated
+        || spatialSpeedMigrated
+        || luxuryPassengerRotationRemoved
+        || luxuryPassengerOffsetRemoved
+        || luxuryMaterialDebugRemoved
+        || conveyorVisualRemoved
+        || luxuryMaterialNeedsReset
+      ) {
+        savedTuning.luxuryMaterial = structuredClone(SCENE_TUNING.luxuryMaterial);
         localStorage.setItem(TUNING_STORAGE_KEY, JSON.stringify(savedTuning));
       }
       return;
@@ -275,6 +307,9 @@ function loadSavedTuning() {
     migrateGuideHandMotionTuning(legacy);
     migrateSpatialSpeedTuning(legacy);
     migrateLegacyPackageTuning(legacy);
+    delete legacy.luxuryMaterialDebug;
+    delete legacy.luxuryMaterial;
+    delete legacy.conveyorVisual;
     const legacyModelScale = legacy.vehicleArea?.modelScale;
     delete legacy.vehicleArea;
     deepMerge(SCENE_TUNING, legacy);
@@ -627,8 +662,12 @@ async function startRuntime() {
   audio = createGameAudioController({
     ...LEVEL_1.assets.audio,
     ambulance_countdown: AMBULANCE_AUDIO_CONFIG,
-    turn_vehicle_complete: TURN_VEHICLE_AUDIO_CONFIG
+    turn_vehicle_complete: TURN_VEHICLE_AUDIO_CONFIG,
+    hidden_vehicle_reveal: HIDDEN_VEHICLE_AUDIO_CONFIG,
+    garage_out: GARAGE_OUT_AUDIO_CONFIG,
+    garage_clear: GARAGE_CLEAR_AUDIO_CONFIG
   });
+  audio.resetEventHistory();
   const endPanel = $('#end-panel');
   let pressTimer = 0;
   let pressed = false;
@@ -850,6 +889,7 @@ async function startRuntime() {
         unsubscribeGame();
         setActiveLevel(nextLevel);
         game = new BusLoopGame(nextLevel);
+        audio.resetEventHistory();
         view.replaceActiveLevel({ animate: true });
         initializeGameQueues({ resetSlots: true });
         applyIdleSpeedMultiplier();
@@ -925,6 +965,7 @@ async function startRuntime() {
     const initialLevel = levelSession.reset();
     setActiveLevel(initialLevel);
     game = new BusLoopGame(initialLevel);
+    audio.resetEventHistory();
     view.replaceActiveLevel();
     initializeGameQueues({ resetSlots: true });
     applyIdleSpeedMultiplier();

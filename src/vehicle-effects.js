@@ -253,10 +253,15 @@ export class VehicleEffects {
       this.lastCollisionContactKey = null;
       return;
     }
-    const key = `${snapshot.lastEvent.vehicleId}:${snapshot.lastEvent.targetId}`;
+    const key = `${snapshot.lastEvent.vehicleId}:${snapshot.lastEvent.targetId ?? 'container'}:${snapshot.lastEvent.targetContainerId ?? ''}`;
     if (key === this.lastCollisionContactKey) return;
     this.lastCollisionContactKey = key;
-    this.spawnHit(snapshot.lastEvent.vehicleId, snapshot.lastEvent.targetId);
+    this.spawnHit(
+      snapshot.lastEvent.vehicleId,
+      snapshot.lastEvent.targetId,
+      snapshot.lastEvent.contactDistance,
+      snapshot.lastEvent.contactPosition
+    );
   }
 
   spawnSmokeTrails(snapshot, delta) {
@@ -350,17 +355,41 @@ export class VehicleEffects {
     this.spawnSpotBurst(root, UNITY_EFFECTS.ribbonSmoke, this.textures.ribbonSmoke, false, smokeCount, this.effectsTuning.ribbonSmoke);
   }
 
-  spawnHit(vehicleId, targetId) {
+  spawnHit(vehicleId, targetId, contactDistance = 0, contactPosition = null) {
     const source = this.vehicleViews.get(vehicleId);
     const target = this.vehicleViews.get(targetId);
-    if (!source || !target) return;
+    if (!source) return;
     source.updateWorldMatrix(true, false);
-    target.updateWorldMatrix(true, false);
     const sourcePosition = source.getWorldPosition(new THREE.Vector3());
-    const targetPosition = target.getWorldPosition(new THREE.Vector3());
-    const origin = sourcePosition.add(targetPosition).multiplyScalar(0.5);
+    let origin;
+    let direction;
+    if (target) {
+      target.updateWorldMatrix(true, false);
+      const targetPosition = target.getWorldPosition(new THREE.Vector3());
+      origin = sourcePosition.add(targetPosition).multiplyScalar(0.5);
+      direction = targetPosition.sub(sourcePosition).normalize();
+    } else if (contactPosition
+      && Number.isFinite(Number(contactPosition.x))
+      && Number.isFinite(Number(contactPosition.z))) {
+      // Container contacts are already calculated in world space. Reusing the
+      // exact point keeps rail/door effects aligned with the blocking volume.
+      origin = new THREE.Vector3(
+        Number(contactPosition.x),
+        Number(contactPosition.y) || 0,
+        Number(contactPosition.z)
+      );
+      direction = origin.clone().sub(sourcePosition);
+      if (direction.lengthSq() <= 1e-8) direction = new THREE.Vector3(0, 0, 1);
+      else direction.normalize();
+    } else {
+      const sourceQuaternion = source.getWorldQuaternion(new THREE.Quaternion());
+      direction = new THREE.Vector3(0, 0, 1).applyQuaternion(sourceQuaternion).normalize();
+      origin = sourcePosition.clone().addScaledVector(
+        direction,
+        Math.max(0.12, Number(contactDistance) || 0) + 0.18
+      );
+    }
     origin.y += 0.42;
-    const direction = targetPosition.sub(sourcePosition).normalize();
     for (const emitter of UNITY_EFFECTS.hit.emitters) this.spawnHitEmitter(origin, direction, emitter);
   }
 

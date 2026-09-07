@@ -14,6 +14,7 @@ import {
   MAX_QUEUE_CAPACITY
 } from '../src/conveyor-layouts.js';
 import { SCENE_TUNING } from '../src/scene-tuning.js';
+import { GameAudioController } from '../src/audio-controller.js';
 import {
   DreamteckClosedBSplineCurve3,
   makeClosedConveyorCurve
@@ -28,6 +29,9 @@ import {
   sampleHitClip,
   UNITY_VEHICLE_MOTION
 } from '../src/vehicle-motion.js';
+
+const sceneViewSource = readFileSync(join('src', 'scene-view.js'), 'utf8');
+const gameModelSource = readFileSync(join('src', 'game-model.js'), 'utf8');
 
 const advance = (game, seconds, step = .05) => {
   for (let time = 0; time < seconds; time += step) game.update(step);
@@ -49,7 +53,245 @@ const makeAmbulanceLevel = (vehicles) => {
   return level;
 };
 
+const makeHiddenVehicleLevel = (overrides = {}) => ({
+  id: 502,
+  key: 'hiddenVehicleTest',
+  mapScale: 1,
+  groupSize: 4,
+  spotCount: 6,
+  conveyorCapacity: 1,
+  conveyorSpeed: 0.5,
+  conveyorPathLength: 1,
+  queueCount: 1,
+  queueCapacity: 0,
+  entryPercents: [0],
+  longPressThreshold: 0.2,
+  longPressMultiplier: 3,
+  exitStart: 0.6,
+  exitEnd: 0.8,
+  boardingDepartureDelay: 0.1,
+  passengerQueue: { spacing: 0.4 },
+  passengerEntryMotion: { passengerSpeed: 1 },
+  vehicleSize: { width: 0.4, length: 0.8 },
+  collision: {
+    vehicleSizes: {
+      4: { width: 0.4, length: 0.4 },
+      6: { width: 0.4, length: 0.6 },
+      10: { width: 0.4, length: 0.8 }
+    },
+    maxVehicleSize: { width: 0.4, length: 0.8 }
+  },
+  vehicleMotion: {
+    spotStartX: -2,
+    spotSpacing: 1,
+    spotZ: 4,
+    spotYaw: 0,
+    spotApproachOffsetZ: 0,
+    spotApproachDirection: 'screen-down'
+  },
+  containers: [{ id: 0, type: 1, x: 0, z: 0, yaw: 0 }],
+  vehicles: [
+    { id: 1, seats: 4, colorIndex: 0, x: 0, z: 0, yaw: 0, isHidden: true },
+    { id: 2, seats: 4, colorIndex: 1, x: 0, z: 2, yaw: 0, isHidden: false }
+  ],
+  vehicleDepthes: { 1: [] },
+  passengerSequence: [],
+  passengerQueues: [[]],
+  assets: { audio: {} },
+  ...overrides
+});
+
+const makeConveyorVehicleLevel = (overrides = {}) => ({
+  ...structuredClone(LEVEL_CATALOG.level5),
+  id: 503,
+  key: 'conveyorVehicleTest',
+  spotCount: 3,
+  conveyorCapacity: 1,
+  queueCapacity: 0,
+  conveyorSpeed: 0.4,
+  conveyorPathLength: 1,
+  entryPercents: [0],
+  passengerQueues: [[]],
+  passengerSequence: [],
+  containers: [{ id: 4, type: 3, x: 0, z: 0, yaw: 0 }],
+  vehicles: [
+    { id: 1, seats: 4, colorIndex: 2, x: -1, z: 0, yaw: 0, containerType: 3, containerId: 4 },
+    { id: 2, seats: 4, colorIndex: 2, x: 0, z: 0, yaw: 0, containerType: 3, containerId: 4 },
+    { id: 3, seats: 4, colorIndex: 2, x: 1, z: 0, yaw: 0, containerType: 3, containerId: 4 }
+  ],
+  collision: {
+    vehicleSizes: { 4: { width: 0.27, length: 0.47157902 } },
+    maxVehicleSize: { width: 0.27, length: 0.47157902 },
+    conveyor: { size: { width: 1.4, length: 1 }, exitWidth: 3.8, wallThickness: 0.02 }
+  },
+  ...overrides
+});
+
 const publicAssetExists = (url) => existsSync(join('public', url.replace(/^\//, '')));
+
+test('hidden vehicle resources are packed in compressed, editor-owned formats', () => {
+  for (const asset of [
+    'public/assets/unity/mechanisms/hidden-vehicle/models/car_01_c.fbx.bin',
+    'public/assets/unity/mechanisms/hidden-vehicle/models/van_01_c.fbx.bin',
+    'public/assets/unity/mechanisms/hidden-vehicle/models/bus_01_c.fbx.bin',
+    'public/assets/unity/mechanisms/hidden-vehicle/models/questionmark.fbx.bin',
+    'public/assets/unity/mechanisms/hidden-vehicle/textures/question_mark.png',
+    'public/assets/unity/mechanisms/hidden-vehicle/audio/hidden_reveal.bin'
+  ]) {
+    assert.ok(existsSync(asset), asset);
+  }
+  for (const asset of [
+    'public/assets/unity/mechanisms/hidden-vehicle/models/car_01_c.fbx.bin',
+    'public/assets/unity/mechanisms/hidden-vehicle/models/van_01_c.fbx.bin',
+    'public/assets/unity/mechanisms/hidden-vehicle/models/bus_01_c.fbx.bin',
+    'public/assets/unity/mechanisms/hidden-vehicle/models/questionmark.fbx.bin'
+  ]) {
+    assert.deepEqual([...readFileSync(asset).subarray(0, 2)], [0x1f, 0x8b], asset);
+  }
+  const revealWav = readFileSync('public/assets/unity/mechanisms/hidden-vehicle/audio/hidden_reveal.bin');
+  assert.equal(revealWav.toString('ascii', 0, 4), 'RIFF');
+  assert.equal(revealWav.readUInt16LE(22), 1);
+  assert.equal(revealWav.readUInt32LE(24), 16000);
+  assert.equal(revealWav.readUInt16LE(34), 16);
+});
+
+test('hidden vehicle source wiring keeps the question marker out of picking', () => {
+  const sceneSource = readFileSync(join('src', 'scene-view.js'), 'utf8');
+  assert.match(sceneSource, /MECHANISM_ASSETS\.hiddenVehicle/);
+  assert.match(sceneSource, /Unity's bus_hidden material is intentionally untextured black/);
+  assert.match(sceneSource, /HIDDEN_VEHICLE_BODY_COLOR = 0x2a2a2a/);
+  assert.match(sceneSource, /setMaterial\(hiddenCollisionModel, new THREE\.MeshStandardMaterial/);
+  assert.match(sceneSource, /hiddenCollisionModel\.scale\.multiply\(new THREE\.Vector3\(/);
+  assert.match(sceneSource, /createWhiteAlphaTexture/);
+  assert.match(sceneSource, /map: this\.questionMarkTexture/);
+  assert.match(sceneSource, /passengerVatGeometry,\s*passengerVatTexture,\s*vehicleTexture/);
+  assert.match(sceneSource, /view\.userData\.pickMeshes = vehicle\.isHidden \? hiddenBodyMeshes : bodyMeshes/);
+  assert.match(sceneSource, /view\.userData\.pickMeshes = vehicle\.hiddenRevealed \? view\.userData\.bodyMeshes : view\.userData\.hiddenBodyMeshes/);
+  assert.match(sceneSource, /HIDDEN_QUESTION_MARK_FORWARD_FACTOR = 0\.45/);
+  assert.match(sceneSource, /isHiddenQuestionMark: true/);
+  assert.match(sceneSource, /hiddenQuestionOffset/);
+  assert.doesNotMatch(sceneSource, /hiddenRoot\.scale\.setScalar\(1 - progress/);
+  assert.doesNotMatch(sceneSource, /modelRoot\.scale\.setScalar/);
+});
+
+test('hidden vehicle reveal audio is deduplicated per vehicle', () => {
+  const played = [];
+  const audio = new GameAudioController({
+    hidden_vehicle_reveal: { clips: ['hidden-reveal'] }
+  });
+  audio.play = (name) => played.push(name);
+  audio.handleGameEvent({ type: 'hidden-vehicle-revealed', vehicleId: 67 }, 1.25);
+  audio.handleGameEvent({ type: 'hidden-vehicle-revealed', vehicleId: 67 }, 1.25);
+  audio.handleGameEvent({ type: 'vehicle-full', vehicleId: 2 }, 1.26);
+  audio.handleGameEvent({ type: 'hidden-vehicle-revealed', vehicleId: 67 }, 1.27);
+  audio.handleGameEvent({ type: 'hidden-vehicle-revealed', vehicleId: 68 }, 1.25);
+  assert.deepEqual(played, ['hidden_vehicle_reveal', 'bus_full', 'hidden_vehicle_reveal']);
+});
+
+test('bus full audio plays each distinct event once without dropping pending events', async () => {
+  const sources = [];
+  const pending = [];
+  const audio = new GameAudioController({ bus_full: { clips: ['full'] } });
+  audio.context = {
+    state: 'running',
+    destination: {},
+    createGain: () => ({ gain: { value: 0 }, connect: () => ({}) }),
+    createBufferSource: () => {
+      const source = {
+        stopped: false,
+        connect: () => source,
+        start: () => sources.push(source),
+        stop: () => { source.stopped = true; }
+      };
+      return source;
+    }
+  };
+  audio.loadClip = () => new Promise((resolve) => pending.push(resolve));
+  audio.handleGameEvent({ type: 'vehicle-full', vehicleId: 1 }, 1);
+  audio.handleGameEvent({ type: 'vehicle-full', vehicleId: 1 }, 1.5);
+  audio.handleGameEvent({ type: 'vehicle-full', vehicleId: 2 }, 1.6);
+  pending[0]({});
+  await Promise.resolve();
+  assert.equal(sources.length, 1);
+  pending[1]({});
+  await Promise.resolve();
+  assert.equal(sources.length, 2);
+  assert.equal(sources.every((source) => source.stopped === false), true);
+});
+
+test('turn vehicle audio is deduplicated per completion event, not per vehicle', () => {
+  const played = [];
+  const audio = new GameAudioController({
+    turn_vehicle_complete: { clips: ['turn'] }
+  });
+  audio.play = (name) => played.push(name);
+  audio.handleGameEvent({ turnVehicleIds: [1, 2], turnVehicleEventId: 1 }, 1.25);
+  audio.handleGameEvent({ turnVehicleIds: [1, 2], turnVehicleEventId: 1 }, 1.30);
+  audio.handleGameEvent({ turnVehicleIds: [2], turnVehicleEventId: 2 }, 2.25);
+  assert.deepEqual(played, ['turn_vehicle_complete', 'turn_vehicle_complete']);
+});
+
+test('hidden vehicle remains an obstacle until unblocked, then reveals before dispatch', () => {
+  const game = new BusLoopGame(makeHiddenVehicleLevel());
+  const hidden = game.getVehicle(1);
+  assert.equal(hidden.hiddenRevealed, false);
+  assert.equal(game.collisionContext.canVehicleDriveOut(game, hidden.id), false);
+  assert.deepEqual(game.collisionContext.getCollisionCandidates(game, hidden.id).map((candidate) => candidate.id), [2]);
+  assert.deepEqual(game.clickVehicle(hidden.id), { ok: false, reason: 'blocked', blockers: [2] });
+  assert.equal(hidden.state, 'colliding');
+
+  advance(game, 0.7);
+  assert.equal(game.clickVehicle(2).ok, true);
+  game.update(0.01);
+  assert.ok(hidden.hiddenReveal);
+  assert.equal(hidden.hiddenReveal.duration, 0.5);
+  assert.deepEqual(game.clickVehicle(hidden.id), { ok: false, reason: 'unavailable' });
+
+  advance(game, 0.7);
+  assert.equal(hidden.hiddenReveal, null);
+  assert.equal(hidden.hiddenRevealed, true);
+  assert.equal(game.lastEvent.type, 'hidden-vehicle-revealed');
+  assert.equal(game.clickVehicle(hidden.id).ok, true);
+});
+
+test('unrevealed hidden vehicle can be clicked to reveal, then dispatched normally', () => {
+  const game = new BusLoopGame(makeHiddenVehicleLevel({
+    vehicles: [
+      { id: 1, seats: 4, colorIndex: 0, x: 0, z: 0, yaw: 0, isHidden: true }
+    ],
+    vehicleDepthes: { 1: [] }
+  }));
+  const hidden = game.getVehicle(1);
+
+  assert.deepEqual(game.clickVehicle(hidden.id), { ok: true, reason: 'hidden-reveal' });
+  assert.equal(hidden.state, 'parked');
+  assert.equal(hidden.hiddenReveal.duration, 0.5);
+  assert.equal(game.spots[0].vehicleId, null);
+  assert.deepEqual(game.clickVehicle(hidden.id), { ok: false, reason: 'unavailable' });
+
+  advance(game, 0.6);
+  assert.equal(hidden.hiddenRevealed, true);
+  assert.equal(hidden.hiddenReveal, null);
+  assert.equal(game.clickVehicle(hidden.id).ok, true);
+});
+
+test('revealed hidden vehicle can board passengers normally', () => {
+  const game = new BusLoopGame(makeHiddenVehicleLevel({
+    conveyorCapacity: 1,
+    queueCapacity: 0,
+    passengerQueues: [[]]
+  }));
+  const hidden = game.getVehicle(1);
+  hidden.hiddenRevealed = true;
+  hidden.state = 'at-spot';
+  hidden.spotIndex = 0;
+  game.spots[0].vehicleId = hidden.id;
+  game.slots[0].colorIndex = hidden.colorIndex;
+  game.slots[0].progress = 0.7;
+  game.update(0);
+  assert.equal(hidden.boardedGroups, 1);
+  assert.equal(game.lastEvent.type, 'group-boarded');
+});
 
 const readImageDimensions = (buffer) => {
   const pngSignature = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
@@ -376,6 +618,8 @@ test('Unity visual assets and tunable camera configuration are complete', () => 
   assert.equal('realtimeShadows' in SCENE_TUNING.lighting, false);
   assert.equal(SCENE_TUNING.facing.passengerYawDegrees, 180);
   assert.equal(SCENE_TUNING.facing.passengerModelYawDegrees, -90);
+  assert.equal('luxuryPassengerOffset' in SCENE_TUNING, false);
+  assert.equal('luxuryPassengerRotation' in SCENE_TUNING, false);
   assert.equal(SCENE_TUNING.vehicleArea.rotationDegrees, 0);
   assert.equal(SCENE_TUNING.vehicleArea.mirrorZ, true);
   assert.equal(SCENE_TUNING.vehicleArea.positionUnitScale, 0.8);
@@ -406,14 +650,28 @@ test('Unity visual assets and tunable camera configuration are complete', () => 
   ];
   assert.ok(urls.every(publicAssetExists));
   for (const url of [
-    '/assets/unity/models/Ambulance_001.fbx',
-    '/assets/unity/models/Idle_girl_rescuer.fbx',
-    '/assets/unity/models/Idle_girl_rescuer_vatmesh.bin',
-    '/assets/unity/models/Idle_girl_rescuer_anim_map.vatq',
-    '/assets/unity/textures/Ambulance.png',
-    '/assets/unity/textures/Idle_girl_rescuer.png',
-    '/assets/unity/textures/Main_Gamepanel_BubbleLove.png',
-    '/assets/unity/audio/ambulance_countdown_V2.wav'
+    '/assets/unity/mechanisms/ambulance/models/Ambulance_001.fbx',
+    '/assets/unity/mechanisms/ambulance/models/Idle_girl_rescuer.fbx',
+    '/assets/unity/mechanisms/ambulance/models/Idle_girl_rescuer_vatmesh.bin',
+    '/assets/unity/mechanisms/ambulance/models/Idle_girl_rescuer_anim_map.vatq',
+    '/assets/unity/mechanisms/ambulance/textures/Ambulance.png',
+    '/assets/unity/mechanisms/ambulance/textures/Idle_girl_rescuer.png',
+    '/assets/unity/mechanisms/ambulance/textures/Main_Gamepanel_BubbleLove.png',
+    '/assets/unity/mechanisms/ambulance/audio/ambulance_countdown_V2.wav'
+  ]) {
+    assert.ok(publicAssetExists(url), url);
+  }
+  for (const url of [
+    '/assets/unity/mechanisms/luxury-vehicle/models/Luxury_001.fbx.bin',
+    '/assets/unity/mechanisms/luxury-vehicle/models/Idle_wealthy.fbx.bin',
+    '/assets/unity/mechanisms/luxury-vehicle/models/Idle_wealthy_vatmesh.bin',
+    '/assets/unity/mechanisms/luxury-vehicle/models/Idle_wealthy_anim_map.vatq',
+    '/assets/unity/mechanisms/luxury-vehicle/textures/Luxury.png',
+    '/assets/unity/mechanisms/luxury-vehicle/textures/Luxury_metal.png',
+    '/assets/unity/mechanisms/luxury-vehicle/textures/Idle_wealthy.png',
+    '/assets/unity/mechanisms/luxury-vehicle/textures/Idle_wealthy_cloth.png',
+    '/assets/unity/mechanisms/luxury-vehicle/textures/count_limousine.png',
+    '/assets/unity/mechanisms/luxury-vehicle/animations/wealthy-passenger.json'
   ]) {
     assert.ok(publicAssetExists(url), url);
   }
@@ -436,6 +694,99 @@ test('Unity visual assets and tunable camera configuration are complete', () => 
   assert.equal(LEVEL_1.assets.passengerAnimations.move.duration, 0.60000014);
 });
 
+test('conveyor vehicles initialize across the authored visible width and keep spacing while moving', () => {
+  const game = new BusLoopGame(makeConveyorVehicleLevel());
+  const conveyor = game.snapshot().mechanicState.conveyors[0];
+  assert.deepEqual(conveyor.vehicleIds, [1, 2, 3]);
+  const before = game.vehicles.map((vehicle) => vehicle.x);
+  assert.ok(before[0] < before[1] && before[1] < before[2]);
+  assert.ok(Math.abs((before[1] - before[0]) - (before[2] - before[1])) < 1e-6);
+  assert.ok(before[2] - before[0] > 3);
+
+  game.update(0.5);
+  const after = game.vehicles.map((vehicle) => vehicle.x);
+  assert.notDeepEqual(after, before);
+  assert.ok(Math.abs((after[1] - after[0]) - (after[2] - after[1])) < 1e-6);
+  assert.equal(game.vehicles.every((vehicle) => vehicle.conveyorVisible), true);
+});
+
+test('a conveyor vehicle can leave only from the exit range and is removed from the belt', () => {
+  const game = new BusLoopGame(makeConveyorVehicleLevel());
+  const conveyor = game.mechanicState.conveyors[0];
+  assert.equal(game.collisionContext.canVehicleDriveOut(game, 2), true);
+  const result = game.clickVehicle(2);
+  assert.equal(result.ok, true);
+  assert.equal(game.getVehicle(2).conveyorId, null);
+  assert.deepEqual(conveyor.vehicleIds, [1, 3]);
+  assert.equal(game.getVehicle(2).state, 'moving-to-spot');
+});
+
+test('a conveyor departure leaves its authored slot empty instead of compacting the belt', () => {
+  const game = new BusLoopGame(makeConveyorVehicleLevel());
+  const before = game.vehicles.map((vehicle) => ({ id: vehicle.id, x: vehicle.x }));
+  assert.equal(game.clickVehicle(2).ok, true);
+  const remaining = game.vehicles.filter((vehicle) => vehicle.conveyorId !== null);
+  assert.equal(remaining.length, 2);
+  assert.ok(Math.abs(remaining[0].x - before[0].x) < 1e-6);
+  assert.ok(Math.abs(remaining[1].x - before[2].x) < 1e-6);
+  assert.ok(Math.abs(remaining[1].x - remaining[0].x) > Math.abs(before[2].x - before[1].x));
+  assert.equal(game.snapshot().mechanicState.conveyors[0].slotCount, 3);
+});
+
+test('conveyor collision picks the nearest forward vehicle instead of skipping to a farther overlap', () => {
+  const game = new BusLoopGame(makeConveyorVehicleLevel({
+    vehicles: [
+      { id: 1, seats: 4, colorIndex: 2, x: -1, z: 0, yaw: 0, containerType: 3, containerId: 4 },
+      { id: 3, seats: 4, colorIndex: 2, x: 1, z: 0, yaw: 0, containerType: 3, containerId: 4 },
+      { id: 2, seats: 4, colorIndex: 2, x: 0, z: 0, yaw: 0, containerType: 3, containerId: 4 }
+    ]
+  }));
+  const [first, farther, direct] = game.vehicles;
+  first.x = -0.08;
+  direct.x = 0.04;
+  farther.x = 0.18;
+  assert.equal(game.collisionContext.canVehicleDriveOut(game, first.id), false);
+  assert.deepEqual(game.collisionContext.getCollisionCandidates(game, first.id).map((candidate) => candidate.id), [direct.id]);
+  assert.deepEqual(game.getBlockers(first.id), [direct.id]);
+});
+
+test('ordinary vehicle collision sees the nearest conveyor vehicle in its forward sweep', () => {
+  const game = new BusLoopGame(makeConveyorVehicleLevel({
+    spotCount: 2,
+    vehicles: [
+      { id: 9, seats: 4, colorIndex: 1, x: -1.55, z: 0, yaw: 90, containerType: 1, containerId: 0 },
+      { id: 1, seats: 4, colorIndex: 2, x: -1.25, z: 0, yaw: 0, containerType: 3, containerId: 4 },
+      { id: 2, seats: 4, colorIndex: 2, x: 1.25, z: 0, yaw: 0, containerType: 3, containerId: 4 }
+    ]
+  }));
+  const candidates = game.collisionContext.getCollisionCandidates(game, 9);
+  assert.deepEqual(candidates.map((candidate) => candidate.id), [1, 2]);
+  assert.equal(game.clickVehicle(9).reason, 'blocked');
+  assert.equal(game.getVehicle(9).collision.targetId, 1);
+});
+
+test('rotated conveyor slots follow the belt axis instead of world X ordering', () => {
+  const game = new BusLoopGame(makeConveyorVehicleLevel({
+    containers: [{ id: 4, type: 3, x: 0, z: 0, yaw: 90 }],
+    vehicles: [
+      { id: 1, seats: 4, colorIndex: 2, x: 0, z: 1, yaw: 90, containerType: 3, containerId: 4 },
+      { id: 2, seats: 4, colorIndex: 2, x: 0, z: 0, yaw: 90, containerType: 3, containerId: 4 },
+      { id: 3, seats: 4, colorIndex: 2, x: 0, z: -1, yaw: 90, containerType: 3, containerId: 4 }
+    ]
+  }));
+  assert.deepEqual(game.vehicles.map((vehicle) => vehicle.conveyorIndex), [0, 1, 2]);
+});
+
+test('an emptied conveyor becomes hidden after its last vehicle leaves', () => {
+  const game = new BusLoopGame(makeConveyorVehicleLevel());
+  for (const id of [1, 2, 3]) {
+    assert.equal(game.clickVehicle(id).ok, true);
+  }
+  game.update(0.01);
+  assert.equal(game.mechanicState.conveyors[0].hidden, true);
+  assert.equal(game.snapshot().mechanicState.conveyors[0].vehicleIds.length, 0);
+});
+
 test('ambulance departure removes itself before decrementing other ambulances', () => {
   const game = new BusLoopGame(makeAmbulanceLevel([
     { id: 1, seats: 6, colorIndex: 13, ambulanceStepLimit: 2, x: 0, z: 0, yaw: 0, containerType: 1, containerId: 0 },
@@ -453,7 +804,7 @@ test('ambulance departure removes itself before decrementing other ambulances', 
 });
 
 test('ambulance countdown audio stays below the delivery size budget', () => {
-  const audio = readFileSync(join('public', 'assets', 'unity', 'audio', 'ambulance_countdown_V2.wav'));
+  const audio = readFileSync(join('public', 'assets', 'unity', 'mechanisms', 'ambulance', 'audio', 'ambulance_countdown_V2.wav'));
   assert.ok(audio.length < 50_000);
   assert.equal(audio.toString('ascii', 0, 4), 'RIFF');
   assert.equal(audio.readUInt16LE(22), 1);
@@ -489,8 +840,8 @@ test('an active ambulance reaching zero moves fails immediately', () => {
 
 test('ambulance passenger uses its own VAT clips and forward-facing correction', () => {
   const viewSource = readFileSync(join('src', 'scene-view.js'), 'utf8');
-  const mesh = readFileSync(join('public', 'assets', 'unity', 'models', 'Idle_girl_rescuer_vatmesh.bin'));
-  const texture = readFileSync(join('public', 'assets', 'unity', 'models', 'Idle_girl_rescuer_anim_map.vatq'));
+  const mesh = readFileSync(join('public', 'assets', 'unity', 'mechanisms', 'ambulance', 'models', 'Idle_girl_rescuer_vatmesh.bin'));
+  const texture = readFileSync(join('public', 'assets', 'unity', 'mechanisms', 'ambulance', 'models', 'Idle_girl_rescuer_anim_map.vatq'));
   assert.equal(mesh.subarray(0, 4).toString('ascii'), 'VATM');
   assert.equal(mesh.readUInt32LE(8), 859);
   assert.equal(mesh.readUInt32LE(12), 3513);
@@ -540,11 +891,12 @@ test('turn vehicles rotate together after a successful dispatch and stay unavail
   assert.equal(game.getVehicle(1).yaw, 180);
   assert.equal(game.getVehicle(1).turnRotation.active, false);
   assert.deepEqual(events.at(-1).turnVehicleIds, [1, 2]);
+  assert.equal(typeof events.at(-1).turnVehicleEventId, 'number');
   assert.equal(game.clickVehicle(2).ok, true);
 });
 
 test('turn vehicle completion audio is bundled in a compact playable-safe format', () => {
-  const audioPath = join('public', 'assets', 'unity', 'audio', 'guidemove.bin');
+  const audioPath = join('public', 'assets', 'unity', 'mechanisms', 'turn-vehicle', 'audio', 'guidemove.bin');
   const audio = readFileSync(audioPath);
   const audioSource = readFileSync(join('src', 'audio-controller.js'), 'utf8');
   const mainSource = readFileSync(join('src', 'main.js'), 'utf8');
@@ -558,18 +910,109 @@ test('turn vehicle completion audio is bundled in a compact playable-safe format
   assert.ok(audio.length < 100_000);
   assert.match(audioSource, /turn_vehicle_complete/);
   assert.match(audioSource, /event\?\.turnVehicleIds\?\.length/);
-  assert.match(audioSource, /for \(const name of names\) this\.play\(name\)/);
-  assert.match(mainSource, /clips: \['\/assets\/unity\/audio\/guidemove\.bin'\]/);
+  assert.match(audioSource, /turnVehicleEventId/);
+  assert.match(audioSource, /this\.playedGameEventKeys/);
+  assert.match(audioSource, /this\.play\(name\)/);
+  assert.match(mainSource, /MECHANISM_ASSETS\.turnVehicle\.audio/);
   assert.match(mainSource, /turn_vehicle_complete: TURN_VEHICLE_AUDIO_CONFIG/);
+});
+
+test('garage Unity model and audio resources are wired into the playable runtime', () => {
+  const modelPaths = [
+    join('public', 'assets', 'unity', 'mechanisms', 'garage', 'models', 'Garage_Truck_01.fbx'),
+    join('public', 'assets', 'unity', 'mechanisms', 'garage', 'models', 'Garage_Truck_01_FakeShadow.fbx')
+  ];
+  const texturePaths = [
+    join('public', 'assets', 'unity', 'mechanisms', 'garage', 'textures', 'Garage_Truck_01.png'),
+    join('public', 'assets', 'unity', 'mechanisms', 'garage', 'textures', 'Garage_Truck_01_FakeShadow.png')
+  ];
+  const audioPaths = [
+    join('public', 'assets', 'unity', 'mechanisms', 'garage', 'audio', 'garage_out.wav'),
+    join('public', 'assets', 'unity', 'mechanisms', 'garage', 'audio', 'garage_clear.wav')
+  ];
+  for (const assetPath of [...modelPaths, ...texturePaths]) {
+    assert.equal(existsSync(assetPath), true, assetPath);
+    assert.ok(statSync(assetPath).size > 1_000, assetPath);
+  }
+  for (const assetPath of audioPaths) {
+    const audio = readFileSync(assetPath);
+    assert.equal(audio.toString('ascii', 0, 4), 'RIFF');
+    assert.equal(audio.toString('ascii', 8, 12), 'WAVE');
+  }
+
+  const audioSource = readFileSync(join('src', 'audio-controller.js'), 'utf8');
+  const mainSource = readFileSync(join('src', 'main.js'), 'utf8');
+  assert.match(sceneViewSource, /MECHANISM_ASSETS\.garage/);
+  assert.match(sceneViewSource, /cloneSkeleton\(this\.garageTemplate\)/);
+  assert.match(sceneViewSource, /updateGarageViews\(snapshot\)/);
+  assert.match(sceneViewSource, /model\.rotation\.y = GARAGE_MODEL_YAW_OFFSET/);
+  assert.match(sceneViewSource, /shadow\.rotation\.y = GARAGE_MODEL_YAW_OFFSET/);
+  assert.match(sceneViewSource, /GARAGE_SHADOW_FORWARD_OFFSET = 0\.1/);
+  assert.match(sceneViewSource, /shadow\.position\.set\(0, SCENE_TUNING\.vehicleShadows\.y, GARAGE_SHADOW_FORWARD_OFFSET\)/);
+  assert.match(sceneViewSource, /vehicleArea\.modelScale \* GARAGE_SIZE_MULTIPLIER/);
+  assert.match(sceneViewSource, /removeImportedLights\(garageFbx\)/);
+  assert.match(sceneViewSource, /if \(child\.isLight\) importedLights\.push\(child\)/);
+  assert.match(sceneViewSource, /door\.rotateZ\(/);
+  assert.match(sceneViewSource, /GARAGE_SIZE_MULTIPLIER/);
+  assert.match(audioSource, /garageReleasedVehicleIds/);
+  assert.match(audioSource, /garageClearedIds/);
+  assert.match(mainSource, /garage_out: GARAGE_OUT_AUDIO_CONFIG/);
+  assert.match(mainSource, /garage_clear: GARAGE_CLEAR_AUDIO_CONFIG/);
+});
+
+test('conveyor vehicle resources and visibility state are wired into the scene renderer', () => {
+  const editorSource = readFileSync(join('src', 'scene-editor.js'), 'utf8');
+  for (const asset of [
+    'public/assets/unity/mechanisms/vehicle-transport-belt/models/plane_conveyor.fbx',
+    'public/assets/unity/mechanisms/vehicle-transport-belt/models/plane_conveyor_arrow.fbx',
+    'public/assets/unity/mechanisms/vehicle-transport-belt/textures/plane_conveyor_belt.png',
+    'public/assets/unity/mechanisms/vehicle-transport-belt/textures/plane_conveyor_arrow.png',
+    'public/assets/unity/mechanisms/vehicle-transport-belt/textures/plane_conveyor_build_DoorLeft.png',
+    'public/assets/unity/mechanisms/vehicle-transport-belt/textures/plane_conveyor_build_DoorRight.png',
+    'public/assets/unity/mechanisms/vehicle-transport-belt/textures/plane_conveyor_build_Leftside.png',
+    'public/assets/unity/mechanisms/vehicle-transport-belt/textures/plane_conveyor_build_Rightside.png'
+  ]) {
+    assert.ok(existsSync(asset), asset);
+  }
+  assert.match(sceneViewSource, /CONVEYOR_VEHICLE_ASSETS/);
+  assert.match(sceneViewSource, /applyConveyorVisualTuning/);
+  assert.match(sceneViewSource, /makeConveyorComponent\('Belt'/);
+  assert.match(sceneViewSource, /makeConveyorComponent\('Arrow'/);
+  assert.match(sceneViewSource, /makeConveyorComponent\('Door Left'/);
+  assert.match(sceneViewSource, /makeConveyorComponent\('Door Right'/);
+  assert.match(sceneViewSource, /makeConveyorComponent\('Side Left'/);
+  assert.match(sceneViewSource, /makeConveyorComponent\('Side Right'/);
+  assert.match(sceneViewSource, /view\.userData\.components/);
+  assert.doesNotMatch(sceneViewSource, /CONVEYOR_VISUAL_SCALE|CONVEYOR_SIDE_RAIL|sideRails|sidePanels/);
+  assert.doesNotMatch(sceneViewSource, /tuning\.(lengthScale|bodyLengthScale|widthScale|sideSpacing)/);
+  assert.match(sceneViewSource, /config\.positionX/);
+  assert.match(sceneViewSource, /config\.scaleX/);
+  assert.match(sceneViewSource, /config\.rotationXDegrees/);
+  assert.match(sceneViewSource, /view\.visible = state \? !state\.hidden : true/);
+  assert.match(sceneViewSource, /loadConveyorVehicleAssets/);
+  assert.match(sceneViewSource, /buildConveyorViews/);
+  assert.match(sceneViewSource, /updateConveyorViews/);
+  assert.match(sceneViewSource, /MECHANISM_ASSETS\.vehicleTransportBelt/);
+  assert.match(sceneViewSource, /configuredExitWidth = Number\(LEVEL_1\.collision\?\.conveyor\?\.exitWidth\)/);
+  assert.match(sceneViewSource, /CONVEYOR_LEFT_DOOR_OUTWARD_SCALE = 1\.17/);
+  assert.match(sceneViewSource, /CONVEYOR_RIGHT_DOOR_OUTWARD_SCALE = 1\.2/);
+  assert.match(sceneViewSource, /doorCenterOffset = openingHalfWidth \+ capWidth \* 0\.5/);
+  assert.match(sceneViewSource, /view\.userData\.buildParts/);
+  assert.equal(editorSource.includes("title: '\\u4f20\\u9001\\u5e26\\u89c6\\u89c9"), false);
+  assert.doesNotMatch(editorSource, /CONVEYOR_COMPONENT_OPTIONS|makeConveyorComponentFields/);
+  assert.match(sceneViewSource, /vehicle\.conveyorVisible !== false/);
+  assert.match(gameModelSource, /CONVEYOR_RIGHT_VISIBILITY_SCALE = 0\.93/);
+  assert.match(gameModelSource, /rightViewHalfWidth = viewHalfWidth \* CONVEYOR_RIGHT_VISIBILITY_SCALE/);
+  assert.match(sceneViewSource, /map\.offset\.x = \(snapshot\.time \* \(state\.speed/);
 });
 
 test('turn vehicles use the dedicated Unity arrow and normal parking orientation', () => {
   const viewSource = readFileSync(join('src', 'scene-view.js'), 'utf8');
-  const turnArrow = readFileSync(join('public', 'assets', 'unity', 'models', 'Arrow_02.fbx.bin'));
+  const turnArrow = readFileSync(join('public', 'assets', 'unity', 'mechanisms', 'turn-vehicle', 'models', 'Arrow_02.fbx.bin'));
   assert.equal(turnArrow[0], 0x1f);
   assert.equal(turnArrow[1], 0x8b);
   assert.ok(turnArrow.length < 30_000);
-  assert.match(viewSource, /TURN_ARROW_ASSET_URL = '\/assets\/unity\/models\/Arrow_02\.fbx\.bin'/);
+  assert.match(viewSource, /MECHANISM_ASSETS\.turnVehicle\.arrow/);
   assert.match(viewSource, /const TURN_ARROW_SCALE = 0\.8/);
   assert.match(viewSource, /const TURN_ARROW_FORWARD_OFFSET = 0\.18/);
   assert.match(viewSource, /loadPackedFbx\(TURN_ARROW_ASSET_URL/);
@@ -579,7 +1022,7 @@ test('turn vehicles use the dedicated Unity arrow and normal parking orientation
   assert.match(viewSource, /arrow\.scale\.multiplyScalar\(TURN_ARROW_SCALE\)/);
   assert.match(viewSource, /markerDepth = \(arrow\.userData\.fittedSize\?\.z \?\? 0\.56\) \* \(isTurnVehicle \? TURN_ARROW_SCALE : 1\)/);
   assert.match(viewSource, /maxForwardOffset = Math\.max\(0, \(size\.z - markerDepth\) \* 0\.5\)/);
-  assert.match(viewSource, /arrow\.position\.set\(tuning\.offsetX, size\.y \+ tuning\.offsetY, tuning\.offsetZ \+ forwardOffset\)/);
+  assert.match(viewSource, /arrow\.position\.set\(\s*tuning\.offsetX,\s*size\.y \+ tuning\.offsetY,\s*tuning\.offsetZ \+ forwardOffset/);
   assert.match(viewSource, /arrow\.rotation\.y = deg\(vehicle\.isTurnVehicle \? 0 : SCENE_TUNING\.facing\.arrowYawDegrees\)/);
   assert.match(viewSource, /view\.rotation\.y = deg\(SCENE_TUNING\.facing\.parkingSpotYawDegrees \+ 180\) \+ vehicleYawOffset/);
   assert.doesNotMatch(viewSource, /view\.rotation\.y = vehicle\.isTurnVehicle\s*\?/);
@@ -681,6 +1124,11 @@ test('editor sizing, source background ratio, and passenger shadow anchor stay w
   assert.equal(SCENE_TUNING.passengerMaterial.solidColors[0], 0x36a6ff);
   assert.equal(SCENE_TUNING.passengerMaterial.colors.length, 11);
   assert.deepEqual(SCENE_TUNING.passengerMaterial.colors[0], { emissionColor: 0x36a6ff, baseColor: 0xffffff });
+  assert.deepEqual(SCENE_TUNING.luxuryMaterial, {
+    vehicleBrightness: 2.55,
+    passengerBrightness: 1.9,
+    boardBrightness: 1.15
+  });
   assert.deepEqual(SCENE_TUNING.cta, {
     enabled: 1,
     x: 540,
@@ -806,6 +1254,7 @@ test('editor sizing, source background ratio, and passenger shadow anchor stay w
   assert.match(editorSource, /passengerMaterial\.solidColors\.10/);
   assert.match(editorSource, /passengerMaterial\.colors\.0\.baseColor/);
   assert.match(editorSource, /passengerMaterial\.colors\.10\.emissionColor/);
+  assert.doesNotMatch(editorSource, /luxuryMaterialDebug|富豪材质调试/);
   assert.match(editorSource, /editor-select/);
   assert.match(editorSource, /updatePassengerMaterialVisibility/);
   assert.match(editorSource, /path\.startsWith\('passengerMaterial\.solidColors\.'/);
@@ -976,6 +1425,56 @@ test('fallback colors remain available before Unity color textures finish loadin
   assert.equal(COLORS[8].hex, 0x542c16);
   assert.equal(COLORS[9].hex, 0x206d53);
   assert.equal(COLORS[10].hex, 0x15209e);
+  assert.equal(COLORS[15].hex, 0xd7b477);
+});
+
+test('scene view keeps luxury vehicles and passengers on their dedicated visual path', () => {
+  assert.match(sceneViewSource, /LUXURY_COLOR_INDEX = 15/);
+  assert.match(sceneViewSource, /loadLuxuryAssets\(\)/);
+  assert.match(sceneViewSource, /MECHANISM_ASSETS\.luxuryVehicle/);
+  assert.match(sceneViewSource, /MeshMatcapMaterial/);
+  assert.match(sceneViewSource, /MECHANISM_ASSETS\.luxuryVehicle/);
+  assert.match(sceneViewSource, /cloneSkeleton\(person\)/);
+  assert.match(sceneViewSource, /passengerFbx\.rotation\.x = -Math\.PI \/ 2/);
+  assert.doesNotMatch(sceneViewSource, /LUXURY_ASSETS\.passengerVat/);
+  assert.match(sceneViewSource, /luxuryPassengerMaterial/);
+  assert.match(sceneViewSource, /isLuxuryPassenger/);
+  assert.match(sceneViewSource, /LUXURY_PASSENGER_YAW_OFFSET_DEGREES = 90/);
+  assert.match(sceneViewSource, /LUXURY_PASSENGER_MODEL_ROTATION_DEGREES = Object\.freeze\(\{[\s\S]*x: 90,[\s\S]*y: 0,[\s\S]*z: -90/);
+  assert.match(sceneViewSource, /LUXURY_PASSENGER_VISUAL_OFFSET = Object\.freeze\(\{[\s\S]*x: -0\.12,[\s\S]*y: 0,[\s\S]*z: 0/);
+  assert.match(sceneViewSource, /visualOffsetRoot\.position\.set\(\s*LUXURY_PASSENGER_VISUAL_OFFSET\.x/);
+  assert.match(sceneViewSource, /const modelYaw = useLuxuryPassenger\s*\?\s*LUXURY_PASSENGER_YAW_OFFSET_DEGREES/);
+  assert.doesNotMatch(sceneViewSource, /luxuryPassengerRotation/);
+  assert.match(sceneViewSource, /object\.userData\.modelPivot\.rotation\.set/);
+  assert.match(sceneViewSource, /sampleUnityQuaternionCurve/);
+  assert.doesNotMatch(sceneViewSource, /LUXURY_PASSENGER_MODEL_ROTATION_X/);
+  assert.match(sceneViewSource, /map: passengerTexture,[\s\S]*matcap: vehicleTexture/);
+  assert.match(sceneViewSource, /map: passengerTexture,[\s\S]*matcap: vehicleMetalTexture/);
+  assert.match(sceneViewSource, /LUXURY_VEHICLE_DIFFUSE_STRENGTH = 0\.65/);
+  assert.match(sceneViewSource, /LUXURY_VEHICLE_BASE_EMISSION = Object\.freeze/);
+  assert.match(sceneViewSource, /LUXURY_VEHICLE_METAL_EMISSION = Object\.freeze/);
+  assert.match(sceneViewSource, /LUXURY_VEHICLE_MATCAP_BRIGHTNESS = 4\.1/);
+  assert.match(sceneViewSource, /emissiveMap: passengerTexture/);
+  assert.match(sceneViewSource, /LUXURY_PASSENGER_CLOTH_EMISSION/);
+  assert.match(sceneViewSource, /boardTexture === this\.luxurySeatCountBoardTexture \? 0xffffff : config\.background/);
+  assert.match(sceneViewSource, /luxuryMaterial/);
+  assert.match(sceneViewSource, /updateLuxuryMaterialTuning/);
+  assert.match(sceneViewSource, /busloopUnityMatcapBrightness/);
+  assert.match(sceneViewSource, /luxuryPassengerBody/);
+  assert.match(sceneViewSource, /filter\(\(visual\) => visual\?\.userData\.isLuxuryPassenger\)/);
+  assert.match(sceneViewSource, /applyLuxuryPassengerBrightness\(visual\.userData\.material/);
+});
+
+test('luxury passenger animation payload preserves both Unity clips', () => {
+  const animations = JSON.parse(readFileSync(join(
+    'public', 'assets', 'unity', 'mechanisms', 'luxury-vehicle', 'animations', 'wealthy-passenger.json'
+  ), 'utf8'));
+  assert.equal(animations.sampleRate, 30);
+  assert.equal(animations.clips.idle.duration, 2);
+  assert.equal(animations.clips.move.duration, 0.60000014);
+  assert.equal(Object.keys(animations.clips.idle.curves).length, 22);
+  assert.equal(Object.keys(animations.clips.move.curves).length, 22);
+  assert.ok(Object.values(animations.clips.move.curves).some((keys) => keys.length > 2));
 });
 
 test('Unity VAT mesh matches the authored animation texture layout', () => {
@@ -985,6 +1484,20 @@ test('Unity VAT mesh matches the authored animation texture layout', () => {
   assert.equal(mesh.readUInt32LE(12), 2007);
   const texture = readFileSync(join('public', LEVEL_1.assets.models.passengerVatTexture.replace(/^\//, '')));
   assert.equal(texture.length, 512 * 128 * 4 * 2);
+});
+
+test('luxury passenger model is a packed FBX with the authored VAT resources retained', () => {
+  const passengerModel = readFileSync(join('public', 'assets', 'unity', 'mechanisms', 'luxury-vehicle', 'models', 'Idle_wealthy.fbx.bin'));
+  assert.equal(passengerModel[0], 0x1f);
+  assert.equal(passengerModel[1], 0x8b);
+  const mesh = readFileSync(join('public', 'assets', 'unity', 'mechanisms', 'luxury-vehicle', 'models', 'Idle_wealthy_vatmesh.bin'));
+  assert.equal(mesh.subarray(0, 4).toString('ascii'), 'VATM');
+  assert.equal(mesh.readUInt32LE(8), 824);
+  assert.equal(mesh.readUInt32LE(12), 3606);
+  const texture = readFileSync(join('public', 'assets', 'unity', 'mechanisms', 'luxury-vehicle', 'models', 'Idle_wealthy_anim_map.vatq'));
+  assert.equal(texture.subarray(0, 4).toString('ascii'), 'VATQ');
+  assert.equal(texture.readUInt32LE(8), 824);
+  assert.equal(texture.readUInt32LE(12), 77);
 });
 
 test('initial blocker graph uses current geometry while retaining Unity vehicleDepthes as provenance', () => {
@@ -1405,7 +1918,10 @@ test('main thread saves and restores scene tuning from localStorage', () => {
   assert.match(mainSource, /PASSENGER_MATERIAL_COLOR_INDEX_PATTERN/);
   assert.match(mainSource, /getPassengerMaterialColorIndex/);
   assert.match(mainSource, /startsWith\(PASSENGER_MATERIAL_TUNING_PREFIX\)/);
+  assert.doesNotMatch(mainSource, /LUXURY_MATERIAL_DEBUG_TUNING_PREFIX|isLuxuryMaterialDebugTuningPath|luxuryMaterialDebugOnly/);
   assert.match(mainSource, /mode: materialOnly \? 'passengerMaterial' : 'full', colorIndex/);
+  assert.match(mainSource, /delete savedTuning\.luxuryMaterialDebug/);
+  assert.match(mainSource, /savedLuxuryMaterial\.vehicleBrightness !== SCENE_TUNING\.luxuryMaterial\.vehicleBrightness/);
   assert.match(mainSource, /setTimeout\(flushTuningSave, 150\)/);
   assert.match(mainSource, /beforeunload', flushTuningSave/);
   assert.match(mainSource, /if \(!materialOnly\) \{/);

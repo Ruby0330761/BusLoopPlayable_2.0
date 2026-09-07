@@ -1,6 +1,7 @@
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { basename, dirname, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import { deriveLevelMechanics } from '../src/mechanism-resources.js';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const artifactPath = join(root, 'artifacts', 'unity-levels.json');
@@ -29,6 +30,13 @@ const unityVehicleCollisionSizes = {
   4: { width: 0.27, length: 0.47157902 },
   6: { width: 0.27, length: 0.486 },
   10: { width: 0.27, length: 0.6785897 }
+};
+const LUXURY_COLOR_INDEX = 15;
+const unityGarageConfig = {
+  size: { width: 0.50425464, length: 0.668775 },
+  parkOffset: 0.7,
+  outDelay: 0.3,
+  outDuration: 0.6
 };
 const passengerQueueOverrides = {
   level7: [
@@ -190,6 +198,27 @@ function parseAmbulances(source) {
   }));
 }
 
+function parseConveyorBelts(source) {
+  const block = section(source, 'conveyorBelts');
+  if (!block || block.trim().endsWith('[]')) return [];
+  const belts = [];
+  let current = null;
+  for (const line of block.split(/\r?\n/)) {
+    const start = line.match(/^  - vcId:\s*(-?\d+)\s*$/);
+    if (start) {
+      current = { vcId: Number(start[1]), colorIndices: [] };
+      belts.push(current);
+      continue;
+    }
+    if (!current) continue;
+    const width = line.match(/^    width:\s*(.*)$/);
+    if (width) current.width = Number(width[1]);
+    const color = line.match(/^    colorIndex:\s*(-?\d+)\s*$/);
+    if (color) current.colorIndices.push(Number(color[1]));
+  }
+  return belts.filter((belt) => Number.isFinite(belt.vcId));
+}
+
 function colorCounts(values) {
   const counts = {};
   for (const value of values) counts[value] = (counts[value] ?? 0) + 1;
@@ -241,6 +270,7 @@ function parseUnityLevel(path, baseLevel) {
   const fileName = basename(path);
   const key = fileName.replace(/\.asset$/i, '');
   const ambulanceEntries = parseAmbulances(source);
+  const conveyorBelts = parseConveyorBelts(source);
   const ambulanceStepLimits = new Map(ambulanceEntries.map((entry) => [entry.vid, entry.stepLimit]));
   const vehicles = records(section(source, 'vehicles', 'containers')).map((vehicle) => ({
     id: vehicle.id,
@@ -251,6 +281,7 @@ function parseUnityLevel(path, baseLevel) {
     yaw: yawFromQuaternion(vehicle.rotation ?? {}),
     isHidden: Boolean(vehicle.isHidden),
     isTurnVehicle: Boolean(vehicle.isTurnVehicle),
+    isLuxury: vehicle.colorIndex === LUXURY_COLOR_INDEX,
     containerType: vehicle.containerType,
     containerId: vehicle.containerId,
     ...(ambulanceStepLimits.has(vehicle.id)
@@ -277,18 +308,35 @@ function parseUnityLevel(path, baseLevel) {
     id: Number(scalar(source, 'id', 0)),
     mapScale,
     sceneName: String(scalar(source, 'sceneName', baseLevel.sceneName)),
+    conveyorBeltName: String(scalar(source, 'conveyorBeltName', baseLevel.conveyorBeltName ?? '')),
     vehicles,
     turnVehicleCount: vehicles.filter((vehicle) => vehicle.isTurnVehicle).length,
+    luxuryCount: vehicles.filter((vehicle) => vehicle.isLuxury).length,
     vehicleAmbulances: ambulanceEntries,
     containers,
+    mechanics: deriveLevelMechanics({
+      vehicles,
+      vehicleAmbulances: ambulanceEntries,
+      containers,
+      conveyorBelts
+    }),
+    ...(conveyorBelts.length > 0 ? { conveyorBelts } : {}),
     vehicleDepthes: parseDepths(source),
     passengerQueues,
     passengerSequence: passengerQueues.flat(),
     vehicleSize: { width: 0.27 * mapScale, length: 0.6785897 * mapScale },
+    garage: structuredClone(unityGarageConfig),
     collision: {
       vehicleSizes: structuredClone(unityVehicleCollisionSizes),
       maxVehicleSize: { width: 0.27, length: 0.6785897 },
-      garageSize: { width: 0.95 / 1.5, length: 1.2 / 1.5 }
+      garageSize: structuredClone(unityGarageConfig.size),
+      ...(conveyorBelts.length > 0 ? {
+        conveyor: {
+          size: { width: 1.4, length: 1 },
+          exitWidth: Math.max(...conveyorBelts.map((belt) => belt.width ?? 3.8)),
+          wallThickness: 0.02
+        }
+      } : {})
     }
   });
   applyVehicleOverrides(level);
@@ -318,12 +366,17 @@ function moduleSource(name, value, extra = '') {
 }
 
 const baseLevel = await loadBaseLevel();
+baseLevel.mechanics ??= deriveLevelMechanics(baseLevel);
 baseLevel.collision = {
   ...baseLevel.collision,
   vehicleSizes: structuredClone(unityVehicleCollisionSizes),
   maxVehicleSize: { width: 0.27, length: 0.6785897 },
   garageSize: baseLevel.collision?.garageSize
-    ?? { width: 0.95 / 1.5, length: 1.2 / 1.5 }
+    ?? structuredClone(unityGarageConfig.size)
+};
+baseLevel.garage = {
+  ...structuredClone(unityGarageConfig),
+  ...(baseLevel.garage ?? {})
 };
 if (removeKeys.size > 0 && !mergeExisting) {
   throw new Error('--remove requires --merge-existing');
@@ -358,6 +411,10 @@ if (mergeExisting) {
   });
   selected = selectedArg ?? existing.selected ?? baseLevel.key;
 }
+levels = levels.map((level) => ({
+  ...level,
+  mechanics: level.mechanics ?? deriveLevelMechanics(level)
+}));
 const activeLevel = levels.find((level) => level.key === selected);
 if (!activeLevel) throw new Error(`Unknown selected level: ${selected}`);
 

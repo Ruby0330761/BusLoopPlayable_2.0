@@ -1,28 +1,53 @@
-const AUDIO_EVENT_NAMES = Object.freeze({
-  'vehicle-collision-contact': 'bus_hit',
-  'vehicle-full': 'bus_full'
-});
-
 function chooseClip(clips) {
   if (!clips?.length) return null;
   return clips.length === 1 ? clips[0] : clips[Math.floor(Math.random() * clips.length)];
 }
 
-function getEventKey(event, time = '') {
-  if (!event?.type && !event?.turnVehicleIds?.length) return '';
+function getEventKeys(event, time = '') {
+  if (!event?.type && !event?.turnVehicleIds?.length) return [];
   const timeKey = Number.isFinite(time) ? time.toFixed(3) : time;
   const keys = [];
   if (event.type === 'vehicle-collision-contact') {
-    keys.push(`${event.type}:${event.vehicleId}:${event.targetId}:${timeKey}`);
+    keys.push({ name: 'bus_hit', key: `${event.type}:${event.vehicleId}:${event.targetId}:${timeKey}` });
   }
-  if (event.type === 'vehicle-full') keys.push(`${event.type}:${event.vehicleId}:${timeKey}`);
+  if (event.type === 'vehicle-full') {
+    // lastEvent remains visible while the vehicle is driving away. The event
+    // identity must therefore be independent of the frame time.
+    keys.push({ name: 'bus_full', key: `${event.type}:${event.vehicleId}` });
+  }
+  if (event.type === 'hidden-vehicle-revealed') {
+    keys.push({ name: 'hidden_vehicle_reveal', key: `${event.type}:${event.vehicleId}` });
+  }
   if (event.ambulanceUpdates?.some((entry) => entry.remainingSteps <= 5)) {
-    keys.push(`ambulance:${event.vehicleId}:${event.ambulanceUpdates.map((entry) => `${entry.vehicleId}:${entry.remainingSteps}`).join(',')}:${timeKey}`);
+    for (const entry of event.ambulanceUpdates) {
+      if (entry.remainingSteps <= 5) {
+        keys.push({
+          name: 'ambulance_countdown',
+          key: `ambulance:${entry.vehicleId}:${entry.remainingSteps}`
+        });
+      }
+    }
   }
   if (event.turnVehicleIds?.length) {
-    keys.push(`turn:${event.turnVehicleIds.join(',')}:${timeKey}`);
+    if (Number.isInteger(event.turnVehicleEventId)) {
+      keys.push({ name: 'turn_vehicle_complete', key: `turn:${event.turnVehicleEventId}` });
+    } else {
+      for (const vehicleId of event.turnVehicleIds) {
+        keys.push({ name: 'turn_vehicle_complete', key: `turn:${vehicleId}` });
+      }
+    }
   }
-  return keys.join('|');
+  if (event.garageReleasedVehicleIds?.length) {
+    for (const vehicleId of event.garageReleasedVehicleIds) {
+      keys.push({ name: 'garage_out', key: `garage-out:${vehicleId}` });
+    }
+  }
+  if (event.garageClearedIds?.length) {
+    for (const garageId of event.garageClearedIds) {
+      keys.push({ name: 'garage_clear', key: `garage-clear:${garageId}` });
+    }
+  }
+  return keys;
 }
 
 export class GameAudioController {
@@ -30,7 +55,9 @@ export class GameAudioController {
     this.audioConfig = audioConfig;
     this.context = null;
     this.buffers = new Map();
-    this.lastGameEventKey = '';
+    this.playedGameEventKeys = new Set();
+    this.queuedPlays = [];
+    this.activeSources = new Set();
   }
 
   getContext() {
@@ -44,7 +71,11 @@ export class GameAudioController {
   unlock() {
     const context = this.getContext();
     if (!context) return;
-    if (context.state === 'suspended') void context.resume();
+    if (context.state === 'suspended') {
+      void context.resume().then(() => this.flushQueuedPlays());
+    } else {
+      this.flushQueuedPlays();
+    }
     this.preload();
   }
 
@@ -68,12 +99,26 @@ export class GameAudioController {
     return bufferPromise;
   }
 
-  play(name) {
+  play(name, clipOverride = null) {
     const data = this.audioConfig[name];
-    const clip = chooseClip(data?.clips);
+    const clip = clipOverride ?? chooseClip(data?.clips);
     const context = this.getContext();
-    if (!clip || !context) return;
-    if (context.state === 'suspended') void context.resume();
+    if (!clip || !data) return;
+    if (!context || context.state !== 'running') {
+      this.queuedPlays.push({ name, clip });
+      if (context?.state === 'suspended') void context.resume().then(() => this.flushQueuedPlays());
+      return;
+    }
+    this.startPlayback(name, clip, data, context);
+  }
+
+  flushQueuedPlays() {
+    if (!this.queuedPlays.length) return;
+    const pending = this.queuedPlays.splice(0);
+    for (const { name, clip } of pending) this.play(name, clip);
+  }
+
+  startPlayback(name, clip, data, context) {
     void this.loadClip(clip)
       .then((buffer) => {
         if (!buffer || context.state !== 'running') return;
@@ -82,24 +127,30 @@ export class GameAudioController {
         source.buffer = buffer;
         gain.gain.value = data.volume ?? 1;
         source.connect(gain).connect(context.destination);
+        this.activeSources.add(source);
+        source.onended = () => this.activeSources.delete(source);
         source.start();
       })
       .catch((error) => console.warn(`Unable to play audio "${name}".`, error));
   }
 
   handleGameEvent(event, time = '') {
-    const names = [];
-    if (event?.ambulanceUpdates?.some((entry) => entry.remainingSteps <= 5)) {
-      names.push('ambulance_countdown');
+    const keys = getEventKeys(event, time);
+    for (const { name, key } of keys) {
+      const eventKey = `${name}:${key}`;
+      if (this.playedGameEventKeys.has(eventKey)) continue;
+      this.playedGameEventKeys.add(eventKey);
+      this.play(name);
     }
-    const eventName = AUDIO_EVENT_NAMES[event?.type];
-    if (eventName) names.push(eventName);
-    if (event?.turnVehicleIds?.length) names.push('turn_vehicle_complete');
-    if (names.length === 0) return;
-    const key = getEventKey(event, time);
-    if (key && key === this.lastGameEventKey) return;
-    this.lastGameEventKey = key;
-    for (const name of names) this.play(name);
+  }
+
+  resetEventHistory() {
+    this.playedGameEventKeys.clear();
+    this.queuedPlays.length = 0;
+    for (const source of this.activeSources) {
+      try { source.stop(); } catch {}
+      this.activeSources.delete(source);
+    }
   }
 
   playPassengerUp() {

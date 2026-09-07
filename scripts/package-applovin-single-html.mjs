@@ -53,6 +53,7 @@ const MIME_TYPES = new Map([
   ['.jpg', 'image/jpeg'],
   ['.js', 'text/javascript'],
   ['.mp3', 'audio/mpeg'],
+  ['.wav', 'audio/wav'],
   ['.png', 'image/png'],
   ['.rgba16f', 'application/octet-stream'],
   ['.ttf', 'font/ttf'],
@@ -76,15 +77,36 @@ function toDistUrl(filePath) {
   return `/${path.relative(DIST_DIR, filePath).replaceAll(path.sep, '/')}`;
 }
 
-async function createAssetMap(excludedUrls = new Set()) {
+const OMITTED_ASSET_DATA_URI = 'data:application/octet-stream;base64,AA==';
+
+function collectAssetUrls(value, output = new Set()) {
+  if (typeof value === 'string') {
+    for (const match of value.matchAll(/\/assets\/[^\s"'`<>)]*/gu)) {
+      output.add(match[0].replace(/[),.;]+$/u, ''));
+    }
+    return output;
+  }
+  if (Array.isArray(value)) {
+    value.forEach((entry) => collectAssetUrls(entry, output));
+    return output;
+  }
+  if (value && typeof value === 'object') {
+    Object.values(value).forEach((entry) => collectAssetUrls(entry, output));
+  }
+  return output;
+}
+
+async function createAssetMap(realAssetUrls, excludedUrls = new Set()) {
   const files = await listFiles(path.join(DIST_DIR, 'assets'));
   const entries = await Promise.all(files.map(async (filePath) => {
     const url = toDistUrl(filePath);
     if (excludedUrls.has(url)) return null;
-    const bytes = await readFile(filePath);
+    const bytes = realAssetUrls.has(url) ? await readFile(filePath) : null;
     return [
       url,
-      `data:${mimeFor(filePath)};base64,${bytes.toString('base64')}`
+      bytes
+        ? `data:${mimeFor(filePath)};base64,${bytes.toString('base64')}`
+        : OMITTED_ASSET_DATA_URI
     ];
   }));
   return new Map(entries.filter(Boolean).sort((a, b) => b[0].length - a[0].length));
@@ -96,6 +118,18 @@ function replaceAssetUrls(content, assetMap) {
     next = next.split(url).join(dataUri);
   }
   return next;
+}
+
+function replaceBundledDynamicAssetUrls(content, assetMap) {
+  let next = content;
+  const escapeRegex = (value) => value.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&');
+  for (const [url, dataUri] of assetMap) {
+    if (!url.startsWith('/assets/unity/mechanisms/')) continue;
+    const tail = url.slice('/assets/unity/mechanisms'.length);
+    const pattern = new RegExp(`\\$\\{[A-Za-z_$][\\w$]*\\}${escapeRegex(tail)}`, 'gu');
+    next = next.replace(pattern, () => dataUri);
+  }
+  return next.replaceAll('"/assets/unity/mechanisms"', '""');
 }
 
 function normalizeLineEndings(content) {
@@ -132,6 +166,15 @@ function stripEditorMount(html) {
 }
 
 async function main() {
+  const [{ PLAYABLE_LEVEL_SEQUENCE }, { SCENE_TUNING }, {
+    BASE_RUNTIME_ASSET_PATHS,
+    getMechanismResourcePaths,
+    getMechanismTypesForLevels
+  }] = await Promise.all([
+    import('../src/generated-active-level.js'),
+    import('../src/scene-tuning.js'),
+    import('../src/mechanism-resources.js')
+  ]);
   const htmlPath = path.join(DIST_DIR, 'index.html');
   const html = stripEditorMount(await readFile(htmlPath, 'utf8'));
   const jsPath = html.match(/src="(\/assets\/[^"]+\.js)"/u)?.[1];
@@ -140,9 +183,32 @@ async function main() {
   if (!jsPath) throw new Error('Unable to find built module script in dist/index.html.');
   if (!cssPath) throw new Error('Unable to find built stylesheet in dist/index.html.');
 
-  const assetMap = await createAssetMap(new Set([jsPath, cssPath]));
-  const js = replaceAssetUrls(await readFile(path.join(DIST_DIR, jsPath), 'utf8'), assetMap);
-  const css = stripEditorCss(replaceAssetUrls(await readFile(path.join(DIST_DIR, cssPath), 'utf8'), assetMap));
+  const [jsSource, cssSource] = await Promise.all([
+    readFile(path.join(DIST_DIR, jsPath), 'utf8'),
+    readFile(path.join(DIST_DIR, cssPath), 'utf8')
+  ]);
+  const spatialSelection = SCENE_TUNING.conveyorLayout?.selected;
+  const mechanismTypes = getMechanismTypesForLevels(PLAYABLE_LEVEL_SEQUENCE, { spatialSelection });
+  const realAssetUrls = new Set(BASE_RUNTIME_ASSET_PATHS);
+  for (const level of PLAYABLE_LEVEL_SEQUENCE) collectAssetUrls(level, realAssetUrls);
+  collectAssetUrls(html, realAssetUrls);
+  collectAssetUrls(cssSource, realAssetUrls);
+  collectAssetUrls({
+    background: SCENE_TUNING.background?.asset,
+    icon: SCENE_TUNING.branding?.icon?.asset,
+    logo: SCENE_TUNING.branding?.logo?.asset
+  }, realAssetUrls);
+  for (const assetUrl of getMechanismResourcePaths(mechanismTypes)) realAssetUrls.add(assetUrl);
+  realAssetUrls.delete(jsPath);
+  realAssetUrls.delete(cssPath);
+
+  const assetMap = await createAssetMap(realAssetUrls, new Set([jsPath, cssPath]));
+  const availableUrls = new Set(assetMap.keys());
+  for (const assetUrl of realAssetUrls) {
+    if (!availableUrls.has(assetUrl)) throw new Error(`Required production asset is missing: ${assetUrl}`);
+  }
+  const js = replaceAssetUrls(replaceBundledDynamicAssetUrls(jsSource, assetMap), assetMap);
+  const css = stripEditorCss(replaceAssetUrls(cssSource, assetMap));
 
   let output = inlineCss(html, css, cssPath);
   output = inlineModule(output, js, jsPath);
@@ -153,6 +219,8 @@ async function main() {
 
   const { size } = await stat(OUTPUT_FILE);
   const sizeMiB = size / (1024 * 1024);
+  console.log(`Mechanism whitelist: ${mechanismTypes.join(', ')}.`);
+  console.log(`Inlined assets: ${realAssetUrls.size}; omitted assets replaced: ${availableUrls.size - realAssetUrls.size}.`);
   console.log(`Wrote ${path.relative(ROOT, OUTPUT_FILE)} (${size} bytes, ${sizeMiB.toFixed(3)} MiB).`);
 }
 

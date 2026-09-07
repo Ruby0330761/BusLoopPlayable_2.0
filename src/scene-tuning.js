@@ -567,6 +567,11 @@ export const SCENE_TUNING = {
       }
     ]
   },
+  "luxuryMaterial": {
+    "vehicleBrightness": 2.55,
+    "passengerBrightness": 1.9,
+    "boardBrightness": 1.15
+  },
   "passengerShadows": {
     "conveyor": {
       "offsetX": -0.05,

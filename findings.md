@@ -1,10 +1,86 @@
 # Findings
 
+## 2026-09-07 Conveyor parameters fixed from screenshots
+
+- The authoritative component transforms are the user's explicit screenshot values: belt `Y=-0.01`, `Z scale=1.50`; arrow `X scale=1.50`, `Z scale=1.05`; both doors `Z scale=1.20`, `X rotation=150°`; side panels `X=-4.00/+4.00`; all omitted fields are zero/one as shown.
+- The temporary component menu is removed after this bake. Legacy saved/exported `conveyorVisual` patches are discarded before they can override the fixed mechanism config.
+
+## 2026-09-07 Mechanism-aware resource pruning
+
+- Mechanism resources are now owned by `public/assets/unity/mechanisms/<mechanism>/`; ordinary conveyor textures remain in `public/assets/unity/conveyors/`, and spatial conveyor textures remain embedded in imported JSON packages.
+- The stable production contract is `level.mechanics`: `isMechanicLevel` distinguishes ordinary levels, while `types` and `counts` select the resource manifest. This leaves new mechanism types additive: register the type, add its manifest, and derive its level flag without changing the packager.
+- The package stage must handle Vite's deduplicated mechanism-root template strings. It expands those dynamic references to data URIs before replacing the unused asset URLs; otherwise selected mechanism files appear present but fail at runtime.
+- A `level29` package containing luxury resources is `6,023,961` bytes without resource compression, above the current 5,000,000-byte limit. The final verified sample therefore uses `level28` (turn vehicle + spatial conveyor) at `4,598,228` bytes; selecting `level29` still automatically includes the luxury manifest.
+
+## 2026-09-07 Conveyor component tuning reopened
+
+- The prior `2.01` component bake was incorrect and must not be treated as authoritative.
+- Temporary component controls are active again with neutral `0/1/0` defaults; the next bake must use the user's explicitly supplied values for belt, arrow, both doors, and both side panels.
+
+## 2026-09-07 Conveyor visual tuning fixed after final arrow adjustment
+
+- The live editor's final component state was zero XYZ position/rotation and `2.01` on every component's XYZ scale, including the retuned arrow.
+- These component transforms now belong only to the non-resettable conveyor mechanism config. The editor, saved tuning migration, and tuning export path discard legacy `conveyorVisual` overrides.
+
+## 2026-09-07 Conveyor narrow-gap collision guard
+
+- Conveyor attackers now use a dedicated lateral gap guard of `1.2 * minimum vehicle collision width`.
+- When two forward obstacles leave a positive gap below that threshold and the conveyor vehicle's exit footprint passes through it, the nearest forward obstacle receives a transient expanded collision box; the authored vehicle geometry and ordinary vehicle collision path remain unchanged.
+- The guard is evaluated by both conveyor drive-out permission and collision-candidate selection, so a narrow gap cannot be passed before collision feedback is created.
+
+## 2026-09-07 Forward gap collision guard
+
+- Unity's `VehicleContext` expands the attacker's forward body to a 500-unit sweep and then resolves the nearest edge contact. The playable now keeps that path, adds a conservative front-only radius guard when multiple vehicles form a narrow forward corridor, and uses projected contact as a numerical fallback.
+- Conservative candidates are ignored when an exact SAT candidate already exists, so the guard cannot replace the directly overlapping visual blocker or alter ordinary nearest-target selection.
+
+## 2026-09-04 Conveyor collision and build visuals
+
+- Type 3 conveyor vehicles are excluded from the ordinary vehicle collision graph while they remain on the belt, so the conveyor context must add their current projected boxes as dynamic obstacles and exclude the selected vehicle itself.
+- Conveyor blockers are selected from actual range overlaps; when multiple vehicles overlap due to authored spacing or transient motion, the nearest vehicle in the belt forward direction is the direct collision target.
+- Unity's current `plane_conveyor_build_DoorLeft/DoorRight` and `Leftside/Rightside` textures are visual-only transparent overlays. They share the conveyor root transform and hidden state; gameplay collision remains driven by the belt exit/wall boxes so the decorative caps cannot alter blocking distances.
+- The conveyor art uses a dedicated `1.375x` root visual scale: the current pass applies an additional 10% to the previous `1.25x` tuning. Conveyor vehicle meshes remain sibling views, so their size and movement coordinates are unchanged.
+
+## 2026-09-04 Luxury material tuning isolation
+
+- Luxury brightness updates must target the wealthy passenger visual instance's own cloned material array, selected through `isLuxuryPassenger`; scanning passenger container roots can accidentally couple normal passenger materials to luxury tuning.
+- Luxury vehicle/passenger color multipliers are applied idempotently from the slider value, while the Unity Matcap brightness remains the authored base response. This prevents repeated slider changes from accumulating brightness.
+- Once the accepted values are fixed, the editor must not expose the temporary luxury brightness controls; old `luxuryMaterialDebug` and stale saved `luxuryMaterial` values are migrated away during editor startup.
+
+## 2026-09-04 Luxury material brightness correction
+
+- Unity's limousine materials use `Idle_wealthy.png` as `_MainTex` for both mesh groups and `bus_limousine_ matcap.png` / `bus_limousine_metal_ matcap.png` only as `_MatcapTex`; substituting color tints for the main atlas makes the vehicle's dark areas appear nearly black.
+- The runtime now restores that main-map/Matcap pairing, applies the authored `4.1` Matcap brightness with the Unity diffuse strength, and includes each material's `_EmissionCol` so the vehicle and wealthy passenger retain readable highlights.
+- `count_limousine.mat` has a white base color and an sRGB texture, so the luxury count board must keep a white material color; multiplying it by the generic luxury swatch darkens the already-authored gold artwork.
+
+## 2026-09-04 Vehicle conveyor-belt import
+
+- Unity `VehicleContainerConveyorBelt` is container type `3`. Its visible width is the authored exit width plus `1.2`; vehicle gap is derived from that visible width and clamped by the configured minimum gap (`0.27`), matching the Unity setup/update formula.
+- Vehicles remain ordinary parked collision candidates only after leaving the conveyor. While on the belt, the collision context checks the belt's central exit range and its wall/scene obstacles; a successful dispatch removes the vehicle from the belt list.
+- A type 3 container must have at least one vehicle and a matching `conveyorBelts` entry. Belt entries must reference a type 3 container, preventing incomplete data from silently falling back to default width.
+- `Level_Escape_D/level22.asset` is a valid current Unity sample with 8 conveyor vehicles and matching passenger totals. Other inspected samples include unsupported container types or authored passenger/seat mismatches and were not imported.
+- The current Unity project has no conveyor-specific audio asset; the import therefore bundles only the conveyor models/textures and does not substitute a generic vehicle cue as a belt sound.
+
+## 2026-09-04 Luxury visual orientation and material mapping
+
+- `passenger_luxury.prefab` applies a 90 degree Y root rotation, while Three.js FBX import exposes the mesh with a +90 degree X conversion and Z as its long axis. Static luxury passenger templates apply -90 degrees around X before height normalization, then use only the prefab's 90 degree Y yaw at the visual pivot. Unity bone quaternions must mirror their Y/Z components before being applied to FBXLoader bones.
+- Unity's `Idle_wealthy_cloth` material references the same `Idle_wealthy.png` atlas as the body plus a matcap lighting layer. Using the standalone cloth matcap as the only map removes the authored clothing colors and produces the black/gray appearance; the atlas is the required base map for both material groups.
+- Limousine material group 0 (`bus_limousine` with `Luxury.png`) is the dark base/roof group, while group 1 (`bus_limousine_metal` with `Luxury_metal.png`) is the gold body group. The web runtime preserves the Unity-bright `4.1` Matcap response and applies the source colors in that order so the body detail matches the reference.
+- The packed wealthy FBX is still required for the skinned bind pose, while its extracted Unity Idle/Move bone curves provide the low-overhead animation path. The packed wealthy VAT mesh/map are retained as artifacts but are not loaded by the runtime.
+
+## Hidden Vehicle Import - 2026-09-03
+
+- Unity `MechanismHiddenVehicle` registers each `Vehicle.IsHidden` vehicle and calls `ToNormalShapeAsync` as soon as `VehicleContext.CanVehicleDriveOut` becomes true. A hidden vehicle therefore remains a collision obstacle until its exit is clear. The playable additionally accepts explicit clicks: blocked clicks use the shared collision response, while a clear click starts the reveal before dispatch.
+- The playable preserves `isHidden`, uses the dedicated question-mark hidden shape, and maps the reveal transition to the 0.5-second `Bus_Out_C_4/6/10.anim` duration. The Unity animation/feedback controller is not directly executable in Three.js, so the state transition and visual handoff are reproduced in runtime code.
+- The dedicated four-/six-/ten-seat hidden model is scaled to the corresponding normal vehicle bounds before reveal and uses a readable charcoal `0x2a2a2a` equivalent of Unity's intentionally untextured black `bus_hidden` material while hidden. Its meshes are the vehicle-sized hidden-state picking target; question-mark meshes stay out of `pickMeshes`, preventing the marker from stealing clicks from nearby vehicles.
+- Unity hidden prefabs place `Arrow_01` at the forward vehicle edge (`x=-1.75/-1.9/-2.74` for 4/6/10 seats). Because the playable normalizes vehicle depth per seat, the runtime maps this to the front edge of the normalized vehicle bounds with a small inset instead of centering the marker.
+- Hidden delivery resources total 191,113 raw bytes. The compressed model files are gzip FBX payloads; `hidden_reveal.bin` is a browser-decodable 16 kHz mono 16-bit PCM WAV with no `.wav` filename. Base64 inlining contributes approximately 254,824 bytes to the single-file package.
+- The first hidden-body implementation incorrectly used transparent meshes, which produced purple question-mark blocks in the playable. A follow-up incorrectly replaced the authored hidden material with the normal vehicle texture and reset the revealed model scale to `1`, producing mismatched colors and oversized revealed vehicles. The corrected implementation uses a charcoal hidden material, multiplies the existing hidden normalized scale, and leaves the revealed normal model scale untouched; the explicit white-alpha question texture remains a separate visual-only layer, and reveal audio uses a persistent per-event history so unrelated events cannot cause a prior vehicle cue to replay.
+
 ## 2026-09-03 Turn vehicle completion audio correction
 
 - The user-confirmed turn-vehicle cue is Unity's `guidemove.wav`; `gear_complete.wav` belongs to the `Effect_Fix` gear-repair prefab and must not be used for turn vehicles.
 - The playable stores `guidemove.wav` as `.bin` containing a browser-decodable 16 kHz mono 16-bit PCM WAV so the AppLovin WAV filename check does not reject the package.
-- Completion IDs are attached after the model finishes processing the frame, preventing later passenger or vehicle events from hiding the turn cue. The audio controller deduplicates the ID set and plays one cue for simultaneous completions.
+- Completion IDs are attached after the model finishes processing the frame, preventing later passenger or vehicle events from hiding the turn cue. The audio controller deduplicates the per-completion event id and plays one cue for simultaneous completions, while later rotations can play again.
 - The source is reduced from 49,568 to 8,632 bytes before packaging; base64 inlining adds 11,516 bytes to the final single HTML, which remains under 5,000,000 bytes.
 
 ## 2026-09-03 Turn vehicle visual parity
@@ -581,8 +657,43 @@
 - Arrow outline parity is approximated with a dark outline layer behind the white Arrow_01 geometry.
 - Authored `vehicleDepthes` remains the blocker/unlock source, but blocked-click hit animations should prefer a nearby directly overlapping visual blocker when one exists; bus 49 should collide with bus 63 rather than indirect depth candidates such as bus 50.
 
+## Luxury Vehicle Import - 2026-09-03
+
+- BusLoop `MatchColor.Luxury` is color index `16`, serialized in level assets as zero-based `colorIndex: 15`.
+- Luxury vehicles use six passenger seats but the original model/collision depth follows the ten-seat vehicle footprint; imported validation therefore requires six seats while runtime fits the limousine model to the ten-seat depth.
+- Luxury has no mechanism section requirement. The editor accepts only color index 15 as the special vehicle/passenger type; index 14 remains rejected.
+- Runtime resources are editor-owned: compressed `Luxury_001.fbx.bin`, compressed `Idle_wealthy.fbx.bin`, and dedicated limousine/passenger textures. The wealthy passenger is rendered from the original FBX's 824-UV bind-pose topology to avoid VAT vertex-order tearing; movement is currently path translation while the 77-frame VAT resources remain retained for a future exact Unity vertex-order export. Wealthy passengers use the authored 90-degree Y model yaw without adding the ordinary passenger model correction; extracted Unity bone quaternions are converted to the FBXLoader basis before playback.
+- Spatial passenger instancing is disabled for levels containing Luxury so the dedicated model/material path is preserved.
+
+## Garage Mechanism Import - 2026-09-03
+
+- Unity garages are passive containers: they automatically release the first authored vehicle when the exact door box is clear, allow only one active exit, wait `0.3s`, move for about `0.6s` to a `0.7` forward offset, and hide after the final vehicle leaves.
+- Runtime garage collision uses Unity's `0.50425464 x 0.668775` garage footprint plus the next vehicle's actual collision size. Other active garages can block the door.
+- Editor-owned resources are `Garage_Truck_01.fbx`, its fake-shadow FBX, both Unity textures, and the original `garage_out.wav` / `garage_clear.wav` clips at volumes `0.7979798` / `1`.
+- Browser QA with a temporary, non-persisted three-vehicle garage confirmed authored release order, door blocking, count changes `2 -> 1 -> cleared`, final hide, and zero error-level logs. The QA-only level hook was removed after validation.
+- Current Unity garage levels such as `BusJam/level101.asset` contain garage data but no authored `fixedPassengerSequence`; the playable importer correctly refuses to invent passenger order. A real garage level should not be added to the editor catalog until an authored queue source is supplied or an explicit deterministic-generation rule is approved.
+- The final AppLovin HTML contains all six garage resources and decodes the WAV clips after user interaction. It is currently `6,738,170` bytes, so only the deferred 5 MB size check fails.
+
+## Garage Visual Correction - 2026-09-03
+
+- SHA-256 and byte-size comparisons against the current `BusLoop` checkout match for both garage FBX files, both textures, `garage_out V1.1.wav`, and `garage_clear.wav`; no legacy duplicate was used.
+- `Garage.prefab` rotates its `Truck` child by `Y=180°`; the playable now applies that offset to the garage model and fake shadow while keeping gameplay/container yaw unchanged.
+- `Ani_Truck_Stay`/`Ani_Truck_BusOut` animate `Bone_Box/Bone_Door01` and `Bone_Box/Bone_Door02` around local `Z` with opposite signs. The playable now uses that hinge axis and the authored approximately `144.25°` swing.
+- Garage visual targets and collision footprints use the shared `1.3x` enlargement. This keeps the enlarged blocking volume tied to the enlarged garage footprint rather than scaling the model alone.
+- Three.js `FBXLoader` converts the garage FBX `AmbientColor` metadata into an `AmbientLight`; leaving it attached brightens every `MeshStandardMaterial` while a garage is present. The importer now removes imported lights from the garage template before it enters the scene, leaving lighting exclusively under the playable's scene-light configuration.
+- The garage doors are on the imported model's negative `Z` side; after the Prefab `Y=180°` correction, the runtime front is local positive `Z`. The fake shadow now receives a small `+Z` offset (`0.1`) while retaining the shared `Y` ground offset.
+
+## Garage Shadow Alignment - 2026-09-04
+
+- The remaining rearward shadow offset was corrected with a `0.1` local-unit `+Z` translation on the fake shadow. Because the shadow remains under the garage view's shared scale and yaw, the adjustment follows every garage orientation without changing collision geometry.
+
 ## Archive
 
 Full detailed 2026-07-07 findings were archived to:
 
 - `docs/project/archive/findings.full-2026-07-08.md`
+## 2026-09-07 Conveyor mechanism tuning boundary
+
+- Conveyor presentation values that were confirmed through the manual adjustment pass must not live in browser-saved `SCENE_TUNING`: the shipped contract is isolated in `src/conveyor-mechanism-config.js`.
+- The confirmed values are visual root scale `1.375` (the prior `1.25` pass plus `10%`), left door outward factor `1.17`, right door outward factor `1.20`, and right-side vehicle visibility factor `0.93`.
+- The imported component baseline is explicit zero position/unit scale/zero rotation for belt, arrow, both doors, and both side overlays. The temporary editor menu now stores independent component overrides on top of that baseline; the fixed mechanism values remain outside this mutable object.
