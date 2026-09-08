@@ -1,5 +1,10 @@
 # Playable Project Progress
 
+## Completed On 2026-09-08 - Single bundled font policy
+
+- Confirmed `public/assets/unity/fonts/Poppins-Bold.ttf` is byte-identical to Unity's source, then changed all runtime and development-editor CSS/Canvas text to the local `Poppins Branding` family. Removed the Game Over system-font selector and its stale tuning field.
+- Font-focused regressions and touched-file syntax checks pass; the production build succeeds and copies the same font into `dist/assets/unity/fonts/`. One unrelated existing parking-count assertion still expects `5` while the current tuning uses `6`.
+
 ## Completed On 2026-09-08 - Arrow compression and garage audio/package-flow recovery
 
 - Replaced the current `public/assets/unity/models/Arrow_01.fbx` contents with gzip bytes, reducing `126,928 -> 18,056` bytes while preserving the decoded SHA-256 and the existing asset path/runtime orientation.

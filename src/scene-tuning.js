@@ -76,7 +76,6 @@ export const SCENE_TUNING = {
   "gameOver": {
     "failureDelaySeconds": 2,
     "maskOpacity": 0.6,
-    "titleFont": "rounded",
     "titleFontSize": 96,
     "titlePopSpeed": 1.12,
     "titleFadeSpeed": 1.45,

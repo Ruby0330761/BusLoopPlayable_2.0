@@ -485,15 +485,6 @@ function durationCss(value, fallbackSpeed) {
   return `${durationFromSpeed(value, fallbackSpeed)}s`;
 }
 
-function getGameOverTitleFontFamily(value) {
-  const fonts = {
-    rounded: '"Arial Rounded MT Bold", "Arial Black", "Trebuchet MS", system-ui, sans-serif',
-    impact: 'Impact, "Arial Narrow", sans-serif',
-    system: 'Inter, system-ui, sans-serif'
-  };
-  return fonts[value] ?? fonts.rounded;
-}
-
 let audio = null;
 let lastStoreOpenAt = 0;
 let storeOpenAttempts = 0;
@@ -560,7 +551,6 @@ function applyGameOverTuning() {
 
   gameOverOverlay.style.setProperty('--game-over-mask-opacity', String(clampConfigNumber(gameOver.maskOpacity, 0, 1, 0.6)));
   gameOverOverlay.style.setProperty('--game-over-title-font-size', scaledPx(Math.max(1, Number(gameOver.titleFontSize) || 96), uiScale));
-  gameOverOverlay.style.setProperty('--game-over-title-font-family', getGameOverTitleFontFamily(gameOver.titleFont));
   gameOverOverlay.style.setProperty('--game-over-title-pop-duration', durationCss(gameOver.titlePopSpeed, 1.35));
   gameOverOverlay.style.setProperty('--game-over-title-fade-duration', durationCss(gameOver.titleFadeSpeed, 1.45));
   gameOverOverlay.style.setProperty('--game-over-logo-left', `${logoLeft}px`);

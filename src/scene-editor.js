@@ -174,11 +174,6 @@ const FIELD_GROUPS = [
     fields: [
       ['Fail Delay', 'gameOver.failureDelaySeconds', 0, 8, 0.1],
       ['Mask Opacity', 'gameOver.maskOpacity', 0, 1, 0.01],
-      ['Title Font', 'gameOver.titleFont', 0, 0, 1, [
-        ['rounded', 'Rounded Heavy'],
-        ['impact', 'Impact'],
-        ['system', 'System Bold']
-      ]],
       ['Title Size', 'gameOver.titleFontSize', 24, 180, 1],
       ['Title Pop Speed', 'gameOver.titlePopSpeed', 0.1, 5, 0.01],
       ['Title Fade Speed', 'gameOver.titleFadeSpeed', 0.1, 5, 0.01],

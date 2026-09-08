@@ -24,8 +24,8 @@
   background: rgba(247,251,255,.97); box-shadow: 0 16px 42px rgba(18,48,74,.22);
 }
 .spatial-point-panel header { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
-.spatial-point-panel header span { color: #5d7d92; font: 800 9px/1 Inter, sans-serif; letter-spacing: .16em; }
-.spatial-point-panel h2 { margin: 4px 0 0; font: 800 18px/1.15 Inter, sans-serif; overflow-wrap: anywhere; }
+.spatial-point-panel header span { color: #5d7d92; font: 800 9px/1 'Poppins Branding'; letter-spacing: .16em; }
+.spatial-point-panel h2 { margin: 4px 0 0; font: 800 18px/1.15 'Poppins Branding'; overflow-wrap: anywhere; }
 .spatial-point-panel h3 { margin: 0 0 8px; font-size: 12px; }
 .spatial-point-panel section { margin-top: 12px; padding-top: 12px; border-top: 1px solid rgba(16,35,61,.1); }
 .spatial-point-summary { margin-top: 12px; color: #526f84; font-size: 11px; }
@@ -33,7 +33,7 @@
 .spatial-point-field { display: grid; gap: 4px; color: #5a7085; font-size: 10px; }
 .spatial-point-field input {
   width: 100%; min-width: 0; padding: 7px 6px; border: 1px solid rgba(16,35,61,.16);
-  border-radius: 6px; background: #fff; color: #173451; font: 700 11px/1 Inter, sans-serif;
+  border-radius: 6px; background: #fff; color: #173451; font: 700 11px/1 'Poppins Branding';
 }
 .spatial-point-entrance-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: end; gap: 7px; }
 .spatial-point-entrance-row button { min-height: 31px; padding: 7px 9px; border-radius: 6px; }

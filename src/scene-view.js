@@ -1359,7 +1359,7 @@ export class SceneView {
     context.lineWidth = 14;
     context.strokeStyle = '#6f211d';
     context.stroke();
-    context.font = '900 92px Arial, sans-serif';
+    context.font = '900 92px "Poppins Branding"';
     context.textAlign = 'center';
     context.textBaseline = 'middle';
     context.lineJoin = 'round';
@@ -3242,7 +3242,7 @@ export class SceneView {
       const context = canvas.getContext('2d');
       context.clearRect(0, 0, canvas.width, canvas.height);
       context.drawImage(this.ambulanceStepBubbleTexture.image, 8, 8, 176, 176);
-      context.font = `900 ${AMBULANCE_STEP_BOARD_FONT_SIZE}px Arial, sans-serif`;
+      context.font = `900 ${AMBULANCE_STEP_BOARD_FONT_SIZE}px "Poppins Branding"`;
       context.textAlign = 'center';
       context.textBaseline = 'middle';
       context.lineJoin = 'round';
@@ -3410,7 +3410,7 @@ export class SceneView {
     const canvas = board.userData.textCanvas;
     const context = canvas.getContext('2d');
     context.clearRect(0, 0, canvas.width, canvas.height);
-    context.font = '700 112px Arial, sans-serif';
+    context.font = '700 112px "Poppins Branding"';
     context.textAlign = 'center';
     context.textBaseline = 'middle';
     context.lineJoin = 'round';

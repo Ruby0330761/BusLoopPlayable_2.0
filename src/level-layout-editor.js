@@ -227,7 +227,7 @@ function drawContainerBadge(context, text, x, y, color) {
   context.fillStyle = color;
   context.fillRect(x - 9, y - 7, 18, 14);
   context.fillStyle = '#fff';
-  context.font = '700 9px Inter, sans-serif';
+  context.font = '700 9px "Poppins Branding"';
   context.textAlign = 'center';
   context.textBaseline = 'middle';
   context.fillText(String(text), x, y + 0.5);
@@ -321,7 +321,7 @@ function drawCanvas(canvas, model, camera, gesture, garageTexture, conveyorTextu
       context.drawImage(garageTexture, drawX, drawY, drawWidth, drawHeight);
       if (selected) { context.strokeStyle = '#24a148'; context.lineWidth = 3; context.strokeRect(drawX - 2, drawY - 2, drawWidth + 4, drawHeight + 4); }
       const count = model.document.vehicles.filter((vehicle) => vehicle.containerId === container.id).length;
-      context.font = '700 10px Inter, sans-serif'; context.textAlign = 'center'; context.textBaseline = 'middle';
+      context.font = '700 10px "Poppins Branding"'; context.textAlign = 'center'; context.textBaseline = 'middle';
       context.fillStyle = '#66747c'; context.fillText(String(container.id), 0, -drawHeight * 0.22);
       context.fillStyle = '#1683e8'; context.fillText(String(count), 0, drawHeight * 0.22);
     } else if (container.type === CONTAINER_TYPES.CONVEYOR) {
@@ -366,7 +366,7 @@ function drawCanvas(canvas, model, camera, gesture, garageTexture, conveyorTextu
       context.fillStyle = selected ? 'rgba(8, 145, 178, .24)' : 'rgba(70, 90, 105, .13)';
       context.strokeStyle = selected ? '#0891b2' : '#637786'; context.lineWidth = selected ? 2 : 1;
       context.fillRect(drawX, drawY, drawWidth, drawHeight); context.strokeRect(drawX, drawY, drawWidth, drawHeight);
-      context.fillStyle = '#263b48'; context.font = '600 11px Inter, sans-serif'; context.textAlign = 'center'; context.textBaseline = 'middle';
+      context.fillStyle = '#263b48'; context.font = '600 11px "Poppins Branding"'; context.textAlign = 'center'; context.textBaseline = 'middle';
       context.fillText(`${TYPE_NAMES[container.type]} #${container.id}`, 0, 0);
     }
     context.restore();
@@ -387,7 +387,7 @@ function drawCanvas(canvas, model, camera, gesture, garageTexture, conveyorTextu
     context.fillRect(-size.width * scale / 2, -size.length * scale / 2, size.width * scale, size.length * scale);
     context.strokeRect(-size.width * scale / 2, -size.length * scale / 2, size.width * scale, size.length * scale);
     context.globalAlpha = 1; context.fillStyle = inverseColor; drawArrow(context, size.length * scale);
-    context.fillStyle = inverseColor; context.font = '700 10px Inter, sans-serif'; context.textAlign = 'center'; context.textBaseline = 'middle';
+    context.fillStyle = inverseColor; context.font = '700 10px "Poppins Branding"'; context.textAlign = 'center'; context.textBaseline = 'middle';
     context.fillText(String(vehicle.id), 0, 2);
     if (vehicle.isTurnVehicle) { context.fillStyle = '#0f172a'; context.fillText('T', size.width * scale * 0.3, size.length * scale * 0.35); }
     context.restore();

@@ -6,7 +6,7 @@
   grid-template-rows: 48px minmax(0, 1fr);
   color: #17242d;
   background: #e8eef1;
-  font: 13px/1.35 Inter, "Microsoft YaHei", sans-serif;
+  font: 13px/1.35 'Poppins Branding';
 }
 
 .level-layout-toolbar {
@@ -41,7 +41,7 @@
   background: #fff;
   color: #243944;
   box-shadow: none;
-  font: 600 12px/1 Inter, "Microsoft YaHei", sans-serif;
+  font: 600 12px/1 'Poppins Branding';
   cursor: pointer;
 }
 .level-layout-toolbar button:hover,
@@ -93,7 +93,7 @@
 .level-layout-breadcrumb {
   top: 12px;
   min-height: 32px;
-  font: 600 12px/1 Inter, "Microsoft YaHei", sans-serif;
+  font: 600 12px/1 'Poppins Branding';
   cursor: pointer;
 }
 .level-layout-breadcrumb:hover { border-color: #1683a2; color: #17627a; }
@@ -122,7 +122,7 @@
   border-radius: 4px;
   background: #fff;
   color: #1f333d;
-  font: 12px/1.3 Inter, "Microsoft YaHei", sans-serif;
+  font: 12px/1.3 'Poppins Branding';
 }
 .level-layout-field textarea { resize: vertical; }
 .level-layout-color-select { display: grid; grid-template-columns: 22px minmax(0, 1fr); align-items: center; gap: 7px; min-width: 0; }
@@ -207,7 +207,7 @@
 .passenger-queue-toolbar strong { flex: 1; color: #173444; font-size: 14px; }
 .passenger-queue-toolbar button,
 .passenger-queue-operations button,
-.passenger-stat-row { min-height: 30px; padding: 5px 9px; border: 1px solid #b8c7ce; border-radius: 4px; background: #fff; color: #243944; font: 600 12px/1 Inter, "Microsoft YaHei", sans-serif; cursor: pointer; }
+.passenger-stat-row { min-height: 30px; padding: 5px 9px; border: 1px solid #b8c7ce; border-radius: 4px; background: #fff; color: #243944; font: 600 12px/1 'Poppins Branding'; cursor: pointer; }
 .passenger-queue-toolbar button:hover,
 .passenger-queue-operations button:hover:not(:disabled) { border-color: #1683a2; background: #eefafd; }
 .passenger-queue-toolbar button:last-child { width: 32px; padding: 0; font-size: 18px; }
@@ -244,7 +244,7 @@
 .passenger-queue-items { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 16px 6px; min-height: 78px; padding: 18px 4px 4px; }
 .passenger-queue-item { position: relative; width: 22px; height: 58px; flex: 0 0 22px; padding: 0; border: 0; border-radius: 5px; background: var(--passenger-color); color: #fff; cursor: grab; }
 .passenger-queue-item small { position: absolute; left: 0; bottom: calc(100% + 2px); width: 30px; color: #526a75; font-size: 9px; text-align: left; }
-.passenger-queue-item span { font: 700 10px/1 Inter, sans-serif; }
+.passenger-queue-item span { font: 700 10px/1 'Poppins Branding'; }
 .passenger-queue-item.is-initial { box-shadow: 0 0 0 2px #0fffe5; }
 .passenger-queue-item.is-selected { outline: 3px solid #111827; box-shadow: inset 0 0 0 2px #fff, 0 0 0 2px #fff; }
 .passenger-queue-item.is-selected.is-initial { box-shadow: inset 0 0 0 2px #fff, 0 0 0 2px #fff, 0 0 0 4px #0fffe5; }

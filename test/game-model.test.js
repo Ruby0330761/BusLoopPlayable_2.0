@@ -895,7 +895,7 @@ test('ambulance step board is enlarged, lowered, and excluded from vehicle picki
   assert.match(viewSource, /AMBULANCE_STEP_BOARD_BASE_SCALE = 0\.56 \* 1\.2 \* 1\.2/);
   assert.match(viewSource, /AMBULANCE_STEP_BOARD_OFFSET_Y = 0\.42 \* 0\.9/);
   assert.match(viewSource, /AMBULANCE_STEP_BOARD_FONT_SIZE = 76 \* 1\.1/);
-  assert.match(viewSource, /900 \$\{AMBULANCE_STEP_BOARD_FONT_SIZE\}px Arial/);
+  assert.match(viewSource, /900 \$\{AMBULANCE_STEP_BOARD_FONT_SIZE\}px "Poppins Branding"/);
   assert.match(viewSource, /size\.y \+ AMBULANCE_STEP_BOARD_OFFSET_Y/);
   assert.match(viewSource, /sprite\.raycast = \(\) => \{\}/);
 });
@@ -1193,7 +1193,6 @@ test('editor sizing, source background ratio, and passenger shadow anchor stay w
   assert.deepEqual(SCENE_TUNING.gameOver, {
     failureDelaySeconds: 2,
     maskOpacity: 0.6,
-    titleFont: 'rounded',
     titleFontSize: 96,
     titlePopSpeed: 1.12,
     titleFadeSpeed: 1.45,
@@ -1239,7 +1238,7 @@ test('editor sizing, source background ratio, and passenger shadow anchor stay w
   assert.match(stylesSource, /Main_Prop_GreenBtn\.png/);
   assert.match(stylesSource, /\.game-over-overlay/);
   assert.match(stylesSource, /--game-over-mask-opacity/);
-  assert.match(stylesSource, /--game-over-title-font-family/);
+  assert.match(stylesSource, /\.game-over-title \{[\s\S]*?'Poppins Branding'/);
   assert.match(stylesSource, /object-fit: contain/);
   assert.match(stylesSource, /\.game-over-logo \{[\s\S]*?box-shadow: none;/);
   assert.match(stylesSource, /@keyframes game-over-title-pop/);
@@ -1267,7 +1266,7 @@ test('editor sizing, source background ratio, and passenger shadow anchor stay w
   assert.match(editorSource, /installGate\.successfulOperationThreshold/);
   assert.match(editorSource, /gameOver\.maskOpacity/);
   assert.match(editorSource, /gameOver\.failureDelaySeconds/);
-  assert.match(editorSource, /gameOver\.titleFont/);
+  assert.doesNotMatch(editorSource, /gameOver\.titleFont/);
   assert.match(editorSource, /gameOver\.titleFontSize/);
   assert.match(editorSource, /gameOver\.logoX/);
   assert.match(editorSource, /gameOver\.logoAppearSpeed/);
@@ -1688,7 +1687,24 @@ test('seat count board displays remaining passengers, not remaining groups', () 
   const viewSource = readFileSync(join('src', 'scene-view.js'), 'utf8');
   assert.match(viewSource, /baseRemaining = Math\.max\(0, vehicle\.seats - vehicle\.boardedGroups\) \* LEVEL_1\.groupSize/);
   assert.match(viewSource, /boardingRemaining \+= 1/);
+  assert.match(viewSource, /context\.font = '700 112px "Poppins Branding"'/);
   assert.match(viewSource, /snapshot\.spots\[vehicle\.spotIndex\]\?\.vehicleId === vehicle\.id/);
+});
+
+test('all UI and canvas font references use the bundled Poppins font', () => {
+  const fontSources = [
+    'styles.css',
+    'main.js',
+    'scene-view.js',
+    'level-layout-editor.js',
+    'level-layout-editor.css',
+    'spatial-conveyor-editor.css'
+  ].map((file) => readFileSync(join('src', file), 'utf8')).join('\n');
+  const externalFontNames = /\b(?:Arial|Inter|Impact|Trebuchet MS|Microsoft YaHei|system-ui|sans-serif)\b/i;
+
+  assert.equal(existsSync(join('public', 'assets', 'unity', 'fonts', 'Poppins-Bold.ttf')), true);
+  assert.match(fontSources, /src: url\('\/assets\/unity\/fonts\/Poppins-Bold\.ttf'\)/);
+  assert.doesNotMatch(fontSources, externalFontNames);
 });
 
 test('matching groups board only an arrived same-color vehicle', () => {
@@ -1995,7 +2011,7 @@ test('main thread saves and restores scene tuning from localStorage', () => {
   assert.match(mainSource, /showResultOverlay\(state\.lastEvent\.reason === 'ambulance-exceed-step' \? 'Ambulance Failed' : 'Game Over'\)/);
   assert.match(mainSource, /^\s*showResultOverlay\('You Win!'\);/m);
   assert.match(mainSource, /gameOverTitle\.textContent = title/);
-  assert.match(mainSource, /function getGameOverTitleFontFamily/);
+  assert.doesNotMatch(mainSource, /function getGameOverTitleFontFamily/);
   assert.match(mainSource, /function InstallFullGame/);
   assert.match(mainSource, /let lastStoreOpenAt = 0/);
   assert.match(mainSource, /let storeOpenAttempts = 0/);
@@ -2074,7 +2090,7 @@ test('main thread saves and restores scene tuning from localStorage', () => {
   assert.match(mainSource, /--cta-font-height/);
   assert.match(mainSource, /--cta-stroke-color/);
   assert.match(mainSource, /--cta-pulse-duration/);
-  assert.match(mainSource, /--game-over-title-font-family/);
+  assert.doesNotMatch(mainSource, /--game-over-title-font-family/);
   assert.match(mainSource, /const updateCtaPosition = \(\) => \{/);
   assert.match(mainSource, /applyCtaTuning\(view\)/);
   assert.match(mainSource, /updateCtaPosition\(\)/);
