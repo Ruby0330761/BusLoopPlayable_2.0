@@ -126,6 +126,14 @@ const PASSENGER_DEFAULT_MATERIAL_COLORS = Object.freeze([
 const scratchPassengerBaseColor = new THREE.Color();
 const scratchPassengerEmissionColor = new THREE.Color();
 
+function decodeOptionalGzip(buffer) {
+  const bytes = buffer instanceof Uint8Array
+    ? buffer
+    : new Uint8Array(buffer);
+  if (bytes[0] === 0x1f && bytes[1] === 0x8b) return gunzipSync(bytes);
+  return bytes;
+}
+
 function isGarageType(value) {
   return value === 2 || String(value ?? '').trim().toLowerCase() === 'garage';
 }
@@ -387,8 +395,9 @@ async function loadVatGeometry(url, loadingManager) {
     loadingManager?.itemEnd(url);
     throw error;
   }
-  const view = new DataView(buffer);
-  const magic = String.fromCharCode(...new Uint8Array(buffer, 0, 4));
+  const bytes = decodeOptionalGzip(buffer);
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  const magic = String.fromCharCode(...bytes.subarray(0, 4));
   if (magic !== 'VATM' || view.getUint32(4, true) !== 1) {
     throw new Error('Unsupported VAT mesh binary.');
   }
@@ -431,9 +440,10 @@ async function loadVatTexture(url, width, height, loadingManager) {
     loadingManager?.itemEnd(url);
     throw error;
   }
-  if (buffer.byteLength !== width * height * 8) throw new Error('Unexpected VAT texture size.');
+  const bytes = decodeOptionalGzip(buffer);
+  if (bytes.byteLength !== width * height * 8) throw new Error('Unexpected VAT texture size.');
   const texture = new THREE.DataTexture(
-    new Uint16Array(buffer),
+    new Uint16Array(bytes.buffer, bytes.byteOffset, bytes.byteLength / 2),
     width,
     height,
     THREE.RGBAFormat,
@@ -481,8 +491,9 @@ async function loadPackedVatTexture(url, loadingManager) {
     loadingManager?.itemEnd(url);
     throw error;
   }
-  const view = new DataView(buffer);
-  const magic = String.fromCharCode(...new Uint8Array(buffer, 0, 4));
+  const bytes = decodeOptionalGzip(buffer);
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  const magic = String.fromCharCode(...bytes.subarray(0, 4));
   if (magic !== 'VATQ' || view.getUint32(4, true) !== 1) {
     throw new Error('Unsupported packed VAT texture binary.');
   }
@@ -498,7 +509,7 @@ async function loadPackedVatTexture(url, loadingManager) {
     view.getFloat32(32, true),
     view.getFloat32(36, true)
   );
-  const packed = unzlibSync(new Uint8Array(buffer, 40));
+  const packed = unzlibSync(bytes.subarray(40));
   if (packed.byteLength !== width * height * 3) throw new Error('Unexpected packed VAT texture size.');
   // Use RGBA8 on the GPU for broader WebGL/WebView compatibility than RGB8.
   const data = new Uint8Array(width * height * 4);
@@ -538,9 +549,12 @@ async function loadPackedFbx(url, loader, loadingManager, resourcePath = null) {
       if (!response.ok) throw new Error(`Packed FBX request failed: ${response.status}`);
       return response.arrayBuffer();
     });
-    const bytes = gunzipSync(new Uint8Array(buffer));
+    const bytes = decodeOptionalGzip(buffer);
     loadingManager?.itemEnd(url);
-    return loader.parse(bytes.buffer, resourcePath ?? url.slice(0, url.lastIndexOf('/') + 1));
+    return loader.parse(
+      bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength),
+      resourcePath ?? url.slice(0, url.lastIndexOf('/') + 1)
+    );
   } catch (error) {
     loadingManager?.itemError(url);
     loadingManager?.itemEnd(url);
@@ -2246,10 +2260,10 @@ export class SceneView {
         ? this.textureLoader.loadAsync(HIDDEN_VEHICLE_ASSETS.questionTexture)
         : Promise.resolve(null);
       const garageModelPromise = hasGarage
-        ? this.fbxLoader.loadAsync(GARAGE_ASSETS.model)
+        ? loadPackedFbx(GARAGE_ASSETS.model, this.fbxLoader, this.loadingManager)
         : Promise.resolve(null);
       const garageShadowModelPromise = hasGarage
-        ? this.fbxLoader.loadAsync(GARAGE_ASSETS.shadowModel)
+        ? loadPackedFbx(GARAGE_ASSETS.shadowModel, this.fbxLoader, this.loadingManager)
         : Promise.resolve(null);
       const garageTexturePromise = hasGarage
         ? this.textureLoader.loadAsync(GARAGE_ASSETS.texture)
@@ -2301,8 +2315,8 @@ export class SceneView {
           LEVEL_1.assets.passengerAnimations.textureHeight,
           this.loadingManager
         ),
-        this.fbxLoader.loadAsync(modelPaths.shadow),
-        this.fbxLoader.loadAsync(modelPaths.arrow),
+        loadPackedFbx(modelPaths.shadow, this.fbxLoader, this.loadingManager),
+        loadPackedFbx(modelPaths.arrow, this.fbxLoader, this.loadingManager),
         turnArrowPromise,
         questionMarkPromise,
         hiddenVehiclePromises[0],
@@ -2313,13 +2327,13 @@ export class SceneView {
         garageShadowModelPromise,
         garageTexturePromise,
         garageShadowTexturePromise,
-        this.fbxLoader.loadAsync(vehiclePaths[4]),
-        this.fbxLoader.loadAsync(vehiclePaths[6]),
-        this.fbxLoader.loadAsync(vehiclePaths[10]),
-        this.fbxLoader.loadAsync(modelPaths.parkingSpot),
-        this.fbxLoader.loadAsync(modelPaths.vehicleShadowBySeats[4]),
-        this.fbxLoader.loadAsync(modelPaths.vehicleShadowBySeats[6]),
-        this.fbxLoader.loadAsync(modelPaths.vehicleShadowBySeats[10]),
+        loadPackedFbx(vehiclePaths[4], this.fbxLoader, this.loadingManager),
+        loadPackedFbx(vehiclePaths[6], this.fbxLoader, this.loadingManager),
+        loadPackedFbx(vehiclePaths[10], this.fbxLoader, this.loadingManager),
+        loadPackedFbx(modelPaths.parkingSpot, this.fbxLoader, this.loadingManager),
+        loadPackedFbx(modelPaths.vehicleShadowBySeats[4], this.fbxLoader, this.loadingManager),
+        loadPackedFbx(modelPaths.vehicleShadowBySeats[6], this.fbxLoader, this.loadingManager),
+        loadPackedFbx(modelPaths.vehicleShadowBySeats[10], this.fbxLoader, this.loadingManager),
         this.textureLoader.loadAsync(LEVEL_1.assets.textures.shadow),
         this.textureLoader.loadAsync(LEVEL_1.assets.textures.parkingSpot),
         this.textureLoader.loadAsync(LEVEL_1.assets.textures.seatCountBoard),
@@ -2529,8 +2543,8 @@ export class SceneView {
       leftSideTexture,
       rightSideTexture
     ] = await Promise.all([
-      this.fbxLoader.loadAsync(CONVEYOR_VEHICLE_ASSETS.beltModel),
-      this.fbxLoader.loadAsync(CONVEYOR_VEHICLE_ASSETS.arrowModel),
+      loadPackedFbx(CONVEYOR_VEHICLE_ASSETS.beltModel, this.fbxLoader, this.loadingManager),
+      loadPackedFbx(CONVEYOR_VEHICLE_ASSETS.arrowModel, this.fbxLoader, this.loadingManager),
       this.textureLoader.loadAsync(CONVEYOR_VEHICLE_ASSETS.beltTexture),
       this.textureLoader.loadAsync(CONVEYOR_VEHICLE_ASSETS.arrowTexture),
       this.textureLoader.loadAsync(CONVEYOR_VEHICLE_ASSETS.doorLeftTexture),
@@ -2565,7 +2579,7 @@ export class SceneView {
       passengerTexture,
       stepBubbleTexture
     ] = await Promise.all([
-      this.fbxLoader.loadAsync(AMBULANCE_ASSETS.vehicleModel),
+      loadPackedFbx(AMBULANCE_ASSETS.vehicleModel, this.fbxLoader, this.loadingManager),
       loadVatGeometry(AMBULANCE_ASSETS.passengerVatMesh, this.loadingManager),
       loadPackedVatTexture(AMBULANCE_ASSETS.passengerVatTexture, this.loadingManager),
       this.textureLoader.loadAsync(AMBULANCE_ASSETS.vehicleTexture),

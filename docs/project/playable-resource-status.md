@@ -1,5 +1,15 @@
 # Playable Resource Status
 
+## PNG compression pass
+
+On 2026-09-08, 62 byte-unique TinyPNG results replaced 112 existing paths across `public`, generated `dist`, spatial-import support, and the explicitly listed artifacts. Dimensions, transparent-pixel behavior, and replacement hashes were verified before the temporary compressed files and ZIPs were removed. Five PNGs rejected by TinyPNG were losslessly re-encoded with pixel equality verified before compression. The requested police textures `Idle_boy_police.png`, `WarningLamp.png`, and `Police_Car.png` were not present at their listed paths and were not replaced.
+
+## FBX/VAT delivery compression
+
+- Raw FBX files, VAT mesh binaries, and the default half-float VAT map are now gzip-compressed in place and decoded by `src/scene-view.js` before parsing.
+- Existing `*.fbx.bin` and `*.vatq` resources remain in their established formats; no VAT quantization was introduced in this pass.
+- The 20-file rollback set, original hashes, compressed hashes, and restore script are under `artifacts/backups/fbx-vat-before-20260908-095053/`.
+
 ## Backgrounds
 
 | Resource | Status | Notes |
@@ -19,9 +29,9 @@
 | `public/assets/unity/conveyors/Loop_03_q80.webp` | wired | `GameSceneDualQueue3.prefab`; paired with its authored closed/queue splines. |
 | `public/assets/unity/conveyors/Loop_06_q80.webp` | wired | `GameSceneDualQueue5.prefab` via nested `ConveyorBelt6.prefab`; paired with merged authored splines. |
 | `public/assets/unity/conveyors/Loop_04_q80.webp` | wired | `GameSceneDualQueue10.prefab`; paired with its authored closed/queue splines. |
-| `tools/spatial-conveyor-import-support/bus-loop-spatial-v1/Loop_initial.png` | wired | Compressed 4x162 spatial road segment, 299 bytes, SHA-256 `1FDF28CF406908C7F8A460E93E3D9756502F2F9017DD5494EA4C03E6A489192D`; embedded into newly imported spatial packages. |
-| `tools/spatial-conveyor-import-support/bus-loop-spatial-v1/Loop_exit.png` | wired | Compressed 214x89 spatial exit overlay, 4,581 bytes, SHA-256 `DBF20835B14ADCCA1694CC9CF5CE2393A5BB254188E7238C018CC2EBBE0204AB`; embedded into newly imported spatial packages. |
-| `artifacts/spatial-conveyors/ConveyorBeltShape.json` | wired | Regenerated at 50,542 bytes with both compressed spatial textures embedded as PNG data URLs. |
+| `tools/spatial-conveyor-import-support/bus-loop-spatial-v1/Loop_initial.png` | wired | TinyPNG-compressed 4x162 spatial road segment, 242 bytes, SHA-256 `069E9BC6EC2AECFAF49B6ED0ED3BFB7CABF62059267CD52D96D3B6269C2F8669`; embedded into newly imported spatial packages. |
+| `tools/spatial-conveyor-import-support/bus-loop-spatial-v1/Loop_exit.png` | wired | TinyPNG-compressed 214x89 spatial exit overlay, 3,963 bytes, SHA-256 `9E9B7EAE27D80C32B64A90BA38CAA0146FF13B872246C86F79F1BB98EA7FF7FB`; embedded into newly imported spatial packages. |
+| `artifacts/spatial-conveyors/ConveyorBeltShape.json` | wired | Preserved at 56 authored points and 49,632 bytes with the current compressed spatial textures embedded as PNG data URLs. |
 
 ## Mechanism resource ownership and packaging
 
@@ -84,7 +94,7 @@ Conveyor vehicles now participate in the conveyor-specific collision context as 
 | `public/assets/unity/mechanisms/hidden-vehicle/models/van_01_c.fbx.bin` | wired | Compressed six-seat hidden-body model; runtime uses a readable charcoal equivalent of Unity's untextured `bus_hidden` material and its meshes as the vehicle-sized hidden-state picking target. |
 | `public/assets/unity/mechanisms/hidden-vehicle/models/bus_01_c.fbx.bin` | wired | Compressed ten-seat hidden-body model; runtime uses a readable charcoal equivalent of Unity's untextured `bus_hidden` material and its meshes as the vehicle-sized hidden-state picking target. |
 | `public/assets/unity/mechanisms/hidden-vehicle/models/questionmark.fbx.bin` | wired | Compressed Unity question-mark marker model. Runtime placement stays forward-facing but is moved inward from the hidden `bus_c_4/6/10` forward-edge anchor; marker meshes are visual-only and excluded from vehicle picking. |
-| `public/assets/unity/mechanisms/hidden-vehicle/textures/question_mark.png` | wired | Unity question-mark marker texture, 1,378 bytes. |
+| `public/assets/unity/mechanisms/hidden-vehicle/textures/question_mark.png` | wired | TinyPNG-compressed Unity question-mark marker texture, 680 bytes. |
 | `public/assets/unity/mechanisms/hidden-vehicle/audio/hidden_reveal.bin` | wired | Unity `hidden_reveal.wav`, re-encoded as 16 kHz mono 16-bit PCM WAV; 84,924 -> 15,062 bytes. |
 
 The Unity hidden-body animation clips and `Effect_Hidden_Bus_Out` feedback controller are represented by the playable runtime state/timing. The source Unity project is not required at runtime.

@@ -1,5 +1,12 @@
 # Findings
 
+## 2026-09-08 Lossless FBX/VAT compression trial
+
+- Compressed the remaining raw FBX files, VAT mesh binaries, and the default half-float VAT map in place with gzip level 9. The original resource paths and model/VAT payload bytes remain unchanged after decompression.
+- Existing `*.fbx.bin` and `*.vatq` resources were not re-quantized or double-compressed; the runtime now detects gzip for raw and already-packed FBX/VAT inputs.
+- The pass reduced the backed-up 20-file set from `2,071,159` bytes to `636,959` bytes. Every decompressed file matched its pre-compression SHA-256.
+- Rollback is preserved under `artifacts/backups/fbx-vat-before-20260908-095053/`, including `manifest.json`, `compression-results.json`, and `restore.ps1`.
+
 ## 2026-09-08 Restored Unity conveyor collision path
 
 - Restored the Unity-style broad forward sweep for conveyor attackers, while ordinary vehicles continue using the existing `mayBlockForwardSweep` path.

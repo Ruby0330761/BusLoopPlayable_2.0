@@ -1,5 +1,28 @@
 # Playable Project Progress
 
+## Completed On 2026-09-08 - Cleared level 33 for reimport
+
+- Removed `level33` from the generated catalog and editor selection list, then deleted its editor-owned Unity source copy, web-level draft, and four web-level revision backups.
+- Preserved `level34`, `level35`, the active `level35` selection, and the external Unity project source. A future `level33.asset` import will be treated as new rather than a replacement.
+
+## Completed On 2026-09-08 - Removed current levels after level 26
+
+- Removed `level28`, `level33`, and `level36` from the generated Unity level catalog and editor selection list while preserving their raw source and web-editor draft files.
+- This is a deletion of the current catalog entries only; future Unity imports may still use IDs above 26.
+- Kept `level26` as the selected production level. Focused catalog/import tests pass for the current catalog change; production build passes. Two unrelated existing assertions still expect older scene-tuning defaults.
+
+## Completed On 2026-09-08 - Lossless FBX/VAT compression trial
+
+- Added gzip decoding to the FBX and VAT loaders, then compressed the remaining raw FBX/VAT resources without changing paths, topology, UVs, or animation values.
+- Backup and per-file hash verification are stored in `artifacts/backups/fbx-vat-before-20260908-095053/`; the restore script is included.
+- Verification: compressed-resource regression 6/6, vehicle-collision 14/14, syntax checks, production build, and browser scene initialization passed. Browser showed only existing Three.js material/texture warnings and no runtime errors.
+
+## Completed On 2026-09-08 - TinyPNG asset replacement
+
+- Replaced 112 existing PNG paths with 62 byte-unique TinyPNG results while preserving dimensions and transparency behavior; the listed police textures `Idle_boy_police.png`, `WarningLamp.png`, and `Police_Car.png` were absent and remain unresolved.
+- Updated only the embedded `Loop_initial` and `Loop_exit` data URLs in `ConveyorBeltShape.json`; all 56 spatial points and authored tuning data were preserved.
+- Verification: all 112 replacement hashes match the compressed manifest, 62/62 PNG outputs pass signature/dimension/transparency checks, production build and AppLovin checks pass. Final single HTML is `4,415,767` bytes; the focused resource suite passes 12/14 with two unrelated existing catalog/editor-contract failures.
+
 ## Completed On 2026-09-08 - Restored Unity conveyor collision logic
 
 - Recovered the previously verified Unity-style broad sweep for conveyor vehicle exit checks and collision feedback after the conflict regression.

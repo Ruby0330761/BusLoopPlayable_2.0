@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { existsSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
+import { gunzipSync } from 'node:zlib';
 import * as THREE from 'three';
 import { BusLoopGame } from '../src/game-model.js';
 import { ACTIVE_LEVEL } from '../src/generated-active-level.js';
@@ -128,6 +129,35 @@ const makeConveyorVehicleLevel = (overrides = {}) => ({
 });
 
 const publicAssetExists = (url) => existsSync(join('public', url.replace(/^\//, '')));
+const decodeOptionalGzipAsset = (bytes) => (
+  bytes[0] === 0x1f && bytes[1] === 0x8b ? gunzipSync(bytes) : bytes
+);
+
+test('FBX and raw VAT resources are losslessly gzip-compressed', () => {
+  const assets = [
+    'public/assets/unity/models/Arrow_01.fbx',
+    'public/assets/unity/models/Car_001.fbx',
+    'public/assets/unity/models/Van_001.fbx',
+    'public/assets/unity/models/Bus_001.fbx',
+    'public/assets/unity/models/Idle_boy01.fbx',
+    'public/assets/unity/models/Idle_boy01_vatmesh.bin',
+    'public/assets/unity/models/Idle_boy01_anim_map.rgba16f',
+    'public/assets/unity/mechanisms/ambulance/models/Ambulance_001.fbx',
+    'public/assets/unity/mechanisms/ambulance/models/Idle_girl_rescuer.fbx',
+    'public/assets/unity/mechanisms/ambulance/models/Idle_girl_rescuer_vatmesh.bin',
+    'public/assets/unity/mechanisms/garage/models/Garage_Truck_01.fbx',
+    'public/assets/unity/mechanisms/garage/models/Garage_Truck_01_FakeShadow.fbx',
+    'public/assets/unity/mechanisms/luxury-vehicle/models/Idle_wealthy_vatmesh.bin',
+    'public/assets/unity/mechanisms/vehicle-transport-belt/models/plane_conveyor.fbx',
+    'public/assets/unity/mechanisms/vehicle-transport-belt/models/plane_conveyor_arrow.fbx'
+  ];
+  for (const asset of assets) {
+    const bytes = readFileSync(asset);
+    assert.deepEqual([...bytes.subarray(0, 2)], [0x1f, 0x8b], asset);
+    assert.ok(decodeOptionalGzipAsset(bytes).byteLength > 0, asset);
+  }
+  assert.match(readFileSync('src/scene-view.js', 'utf8'), /decodeOptionalGzip/);
+});
 
 test('hidden vehicle resources are packed in compressed, editor-owned formats', () => {
   for (const asset of [
@@ -840,7 +870,7 @@ test('an active ambulance reaching zero moves fails immediately', () => {
 
 test('ambulance passenger uses its own VAT clips and forward-facing correction', () => {
   const viewSource = readFileSync(join('src', 'scene-view.js'), 'utf8');
-  const mesh = readFileSync(join('public', 'assets', 'unity', 'mechanisms', 'ambulance', 'models', 'Idle_girl_rescuer_vatmesh.bin'));
+  const mesh = decodeOptionalGzipAsset(readFileSync(join('public', 'assets', 'unity', 'mechanisms', 'ambulance', 'models', 'Idle_girl_rescuer_vatmesh.bin')));
   const texture = readFileSync(join('public', 'assets', 'unity', 'mechanisms', 'ambulance', 'models', 'Idle_girl_rescuer_anim_map.vatq'));
   assert.equal(mesh.subarray(0, 4).toString('ascii'), 'VATM');
   assert.equal(mesh.readUInt32LE(8), 859);
@@ -1478,11 +1508,11 @@ test('luxury passenger animation payload preserves both Unity clips', () => {
 });
 
 test('Unity VAT mesh matches the authored animation texture layout', () => {
-  const mesh = readFileSync(join('public', LEVEL_1.assets.models.passengerVatMesh.replace(/^\//, '')));
+  const mesh = decodeOptionalGzipAsset(readFileSync(join('public', LEVEL_1.assets.models.passengerVatMesh.replace(/^\//, ''))));
   assert.equal(mesh.subarray(0, 4).toString('ascii'), 'VATM');
   assert.equal(mesh.readUInt32LE(8), 471);
   assert.equal(mesh.readUInt32LE(12), 2007);
-  const texture = readFileSync(join('public', LEVEL_1.assets.models.passengerVatTexture.replace(/^\//, '')));
+  const texture = decodeOptionalGzipAsset(readFileSync(join('public', LEVEL_1.assets.models.passengerVatTexture.replace(/^\//, ''))));
   assert.equal(texture.length, 512 * 128 * 4 * 2);
 });
 
@@ -1490,7 +1520,7 @@ test('luxury passenger model is a packed FBX with the authored VAT resources ret
   const passengerModel = readFileSync(join('public', 'assets', 'unity', 'mechanisms', 'luxury-vehicle', 'models', 'Idle_wealthy.fbx.bin'));
   assert.equal(passengerModel[0], 0x1f);
   assert.equal(passengerModel[1], 0x8b);
-  const mesh = readFileSync(join('public', 'assets', 'unity', 'mechanisms', 'luxury-vehicle', 'models', 'Idle_wealthy_vatmesh.bin'));
+  const mesh = decodeOptionalGzipAsset(readFileSync(join('public', 'assets', 'unity', 'mechanisms', 'luxury-vehicle', 'models', 'Idle_wealthy_vatmesh.bin')));
   assert.equal(mesh.subarray(0, 4).toString('ascii'), 'VATM');
   assert.equal(mesh.readUInt32LE(8), 824);
   assert.equal(mesh.readUInt32LE(12), 3606);
