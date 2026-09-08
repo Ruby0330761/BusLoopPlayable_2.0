@@ -1,5 +1,62 @@
 # Playable Project Progress
 
+## Completed On 2026-09-08 - Arrow compression and garage audio/package-flow recovery
+
+- Replaced the current `public/assets/unity/models/Arrow_01.fbx` contents with gzip bytes, reducing `126,928 -> 18,056` bytes while preserving the decoded SHA-256 and the existing asset path/runtime orientation.
+- Revalidated the garage audio conversion outputs (`garage_out.wav` `64,846` bytes and `garage_clear.wav` `14,636` bytes) against `artifacts/backups/garage-audio-before-20260908-104218/conversion-results.json`.
+- Revalidated the AppLovin JavaScript Data URI compatibility and deduplication path; the rebuilt package deduplicated 3 repeated Data URIs and saved approximately `190,338` source bytes. Current production selection has no garage mechanism, so garage audio is correctly omitted by the mechanism whitelist.
+- Backup: `artifacts/backups/arrow-01-before-20260908-/`; AppLovin package regenerated at `3,099,943` bytes and `npm.cmd run check:applovin` passes all checks.
+
+## Completed On 2026-09-08 - Single-color Google and Unity delivery batches
+
+- Converted the 24 Android/IOS `SingleYellow`, `SingleBlue`, and `SingleLightBlue` AppLovin variants into 24 Google Ads ZIP packages and 24 Unity single-HTML packages.
+- Published the outputs under `D:/Project/Convert-playable/google/{Android,IOS}` and `D:/Project/Convert-playable/unity/{Android,IOS}` with matching platform and variant names.
+- Unity pipeline and full-inventory branding/MRAID lifecycle tests pass; source modules differ only by the required no-argument Unity CTA and viewable-ready handoff. All 24 Unity packages pass final checks with a maximum size of 3,236,907 bytes.
+- All 24 Google packages contain root-level `index.html`, `index.js`, and `style.css`, exactly one `exitapi.js`, one `ExitApi.exit()` CTA, portrait orientation/size metadata, and no unsupported remote asset tags. Maximum ZIP size is 1,941,349 bytes across 3 files; official platform upload/preview remains external validation.
+
+## Completed On 2026-09-08 - Single-color AppLovin background and Icon variants
+
+- Generated 24 AppLovin single-HTML packages for `SingleYellow`, `SingleBlue`, and `SingleLightBlue`: four background variants (`BG01 winter`, `JP` Sakura, `winter` BG02 winter, and `summer` BG02 summer) with Android and IOS Icon versions.
+- Preserved all gameplay, guide, branding geometry, and other package parameters; only the embedded background, embedded Icon, platform name, and background suffix differ.
+- Verified all 24 inline modules and package constraints, with sizes from `3,071,500` to `3,289,237` bytes. Browser samples covered every background and both Icons; vehicle interaction worked. The existing source packages still log `EncodingError: Unable to decode audio data` after interaction, independent of variant generation.
+
+## Completed On 2026-09-08 - Rebuilt level35 from user-provided live export
+
+- Decoded and applied the complete tuning payload; product text is `Bus Fever Party！`, guides target `level35` / vehicle `89` with first-click masking enabled, conveyor is `dualQueue3`, parking count is `4`, and install threshold is `15`.
+- Confirmed exact semantic equality between `src/scene-tuning.js` and `artifacts/scene-tuning.json`; `artifacts/selected-level.txt` is `level35`.
+- Rebuilt the 84-vehicle production session and regenerated `artifacts/applovin/index.html` at `3,104,185` bytes. AppLovin static checks pass, including the 5 MB limit.
+
+## Completed On 2026-09-08 - Rebuilt level34 from user-provided live export
+
+- Decoded the complete tuning payload and applied it to `artifacts/scene-tuning.json`; product text is `Bus Fever Party！`, guides target `level34` / vehicle `89` with first-click masking enabled, conveyor is `dualQueue3`, parking count is `4`, and install threshold is `15`.
+- Confirmed exact semantic equality between `src/scene-tuning.js` and `artifacts/scene-tuning.json`; `artifacts/selected-level.txt` is `level34`.
+- Rebuilt the 84-vehicle production session and regenerated `artifacts/applovin/index.html` at `3,104,193` bytes. AppLovin static checks pass, including the 5 MB limit.
+
+## Completed On 2026-09-08 - Rebuilt level3666 from user-provided live export
+
+- Decoded the complete `window.__busLoop.exportTuning()` payload supplied by the user and wrote it to `artifacts/scene-tuning.json`.
+- Applied and verified the export: product text is `Bus Fever Party！`, normal and first-click guides target `level3666` / vehicle `89`, first-click masking is enabled, conveyor is `dualQueue3`, parking count is `4`, and install threshold is `15`.
+- Rebuilt the 84-vehicle production session and regenerated `artifacts/applovin/index.html` at `3,104,209` bytes. AppLovin static checks pass, including the 5 MB limit.
+
+## Completed On 2026-09-08 - Refreshed level3666 package from live editor tuning
+
+- Re-exported the complete live editor state through `window.__busLoop.exportTuning()` into `artifacts/scene-tuning.json`; this includes product text `Bus Fever-Car Jam Escape`, guide target `level15`/vehicle `157`, first-click guide target `level7`/vehicle `89` (disabled), `BG01 冬季`, `dualQueue2`, CTA, and install threshold `18`.
+- Ran `npm run apply:tuning` and confirmed exact semantic equality between `src/scene-tuning.js` and `artifacts/scene-tuning.json`; `artifacts/selected-level.txt` is `level3666`.
+- Rebuilt the 84-vehicle production session and regenerated `artifacts/applovin/index.html` at `3,104,213` bytes. `npm run check:applovin` passes all checks, including the 5 MB limit.
+
+## Completed On 2026-09-08 - level3666 AppLovin package
+
+- Exported the live editor runtime tuning through `window.__busLoop.exportTuning()` into `artifacts/scene-tuning.json`, including the current `level3666` selection and modified editor values.
+- Applied the export with `npm run apply:tuning`; `src/scene-tuning.js`, `artifacts/scene-tuning.json`, and `artifacts/selected-level.txt` now agree on `level3666`, `BG01 冬季`, `dualQueue2`, CTA settings, and the install threshold `18`.
+- Generated the production session for 84 vehicles and rebuilt `artifacts/applovin/index.html` at `3,104,214` bytes. AppLovin static checks pass, including the 5,000,000-byte limit.
+
+## Completed On 2026-09-08 - Garage audio and AppLovin data URI optimization
+
+- Converted `garage_out.wav` from 48 kHz stereo 24-bit PCM to 24 kHz mono 16-bit PCM (`391,034 -> 64,846` bytes) and `garage_clear.wav` from 44.1 kHz stereo 16-bit PCM to 24 kHz mono 16-bit PCM (`55,852 -> 14,636` bytes), preserving duration and validating PCM playback metadata.
+- Added final JavaScript Data URI deduplication to the AppLovin packager. Repeated inlined resources are declared once and reused by runtime URL values; HTML/CSS references and omitted-resource placeholders remain unchanged.
+- Original WAV files and conversion hashes are preserved under `artifacts/backups/garage-audio-before-20260908-104218/`.
+- Verification: production build, current AppLovin package, static package checks, syntax checks, and a temporary garage-enabled package all pass. The temporary garage package saved approximately `377 KB` after audio conversion and URI deduplication.
+
 ## Completed On 2026-09-08 - Cleared level 33 for reimport
 
 - Removed `level33` from the generated catalog and editor selection list, then deleted its editor-owned Unity source copy, web-level draft, and four web-level revision backups.

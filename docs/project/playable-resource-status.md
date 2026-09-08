@@ -25,7 +25,7 @@ On 2026-09-08, 62 byte-unique TinyPNG results replaced 112 existing paths across
 
 | Resource | Status | Notes |
 | --- | --- | --- |
-| `public/assets/unity/models/Arrow_01.fbx` | wired | Ordinary vehicle direction marker, refreshed from Unity `Assets/BusJam/Game/Models/Car_0307/Arrow_01.fbx`; turn vehicles continue to use their dedicated `Arrow_02` model. |
+| `public/assets/unity/models/Arrow_01.fbx` | wired/packed | Current ordinary vehicle direction marker, refreshed from Unity `Assets/BusJam/Game/Models/Car_0307/Arrow_01.fbx` and stored as gzip bytes in place (`126,928 -> 18,056` bytes); turn vehicles continue to use their dedicated `Arrow_02` model. |
 
 ## Conveyor layouts
 
