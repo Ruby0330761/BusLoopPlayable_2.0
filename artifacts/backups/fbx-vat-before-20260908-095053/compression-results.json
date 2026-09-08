@@ -1,0 +1,186 @@
+{
+  "createdAt": "2026-09-08T01:52:31.587Z",
+  "algorithm": "gzip level 9, original bytes preserved after gunzip",
+  "files": [
+    {
+      "path": "public/assets/unity/mechanisms/ambulance/models/Ambulance_001.fbx",
+      "originalBytes": 164816,
+      "compressedBytes": 48924,
+      "originalSha256": "f2373fc518f26941c9c69555f0950daccf039867f5a8aec568def6b3bd5d7fb6",
+      "roundTripSha256": "f2373fc518f26941c9c69555f0950daccf039867f5a8aec568def6b3bd5d7fb6",
+      "compressedSha256": "99618f6ec0ae0311d57855bd9b9839611b38bd8be56159628bc4dd87a2372f43",
+      "roundTripMatches": true
+    },
+    {
+      "path": "public/assets/unity/mechanisms/ambulance/models/Idle_girl_rescuer_vatmesh.bin",
+      "originalBytes": 41556,
+      "compressedBytes": 24152,
+      "originalSha256": "5bea1b7a46692c483fc34370768f78a6df790ef2e825b23aa1684e34e15beaec",
+      "roundTripSha256": "5bea1b7a46692c483fc34370768f78a6df790ef2e825b23aa1684e34e15beaec",
+      "compressedSha256": "1d767803763321d06fbb7956a05f4be568a3a3b8345ab04530c54ebdadae86ba",
+      "roundTripMatches": true
+    },
+    {
+      "path": "public/assets/unity/mechanisms/ambulance/models/Idle_girl_rescuer.fbx",
+      "originalBytes": 120128,
+      "compressedBytes": 57121,
+      "originalSha256": "c17a3d2088ab8debe4a637bcf7312277ed79ccfc4a211c6be20df401119f97ce",
+      "roundTripSha256": "c17a3d2088ab8debe4a637bcf7312277ed79ccfc4a211c6be20df401119f97ce",
+      "compressedSha256": "bc1df2c049b07d5afd1475d50df9e258bb354a6e6163c174ca87145d816fff07",
+      "roundTripMatches": true
+    },
+    {
+      "path": "public/assets/unity/mechanisms/garage/models/Garage_Truck_01_FakeShadow.fbx",
+      "originalBytes": 15104,
+      "compressedBytes": 3930,
+      "originalSha256": "1969e8cd5f9296765558168ad17c5142cc67b1e7eaaa1f4d7514c7f7db4a1872",
+      "roundTripSha256": "1969e8cd5f9296765558168ad17c5142cc67b1e7eaaa1f4d7514c7f7db4a1872",
+      "compressedSha256": "aca962111a8a00bab503dea7a63af143d2325b7615e34f07e74188698b46958f",
+      "roundTripMatches": true
+    },
+    {
+      "path": "public/assets/unity/mechanisms/garage/models/Garage_Truck_01.fbx",
+      "originalBytes": 212658,
+      "compressedBytes": 42757,
+      "originalSha256": "ba90c541f5d2e134fffb2b64d313b16325d2ee737e03cfa782da436e41ad82d3",
+      "roundTripSha256": "ba90c541f5d2e134fffb2b64d313b16325d2ee737e03cfa782da436e41ad82d3",
+      "compressedSha256": "f22f6d8dc8976c3bbb0c6a11fb852e9522dc878c625504b1fb246212c8e6562b",
+      "roundTripMatches": true
+    },
+    {
+      "path": "public/assets/unity/mechanisms/luxury-vehicle/models/Idle_wealthy_vatmesh.bin",
+      "originalBytes": 40808,
+      "compressedBytes": 22239,
+      "originalSha256": "1975585206002b791dc2420c97090f34aca73d58280590533efdbb6a48b16a15",
+      "roundTripSha256": "1975585206002b791dc2420c97090f34aca73d58280590533efdbb6a48b16a15",
+      "compressedSha256": "f7ecd755f81f757107a231734c0bddd8bc8f301df0c1b7b9e6fa5c4e12140ea0",
+      "roundTripMatches": true
+    },
+    {
+      "path": "public/assets/unity/mechanisms/vehicle-transport-belt/models/plane_conveyor_arrow.fbx",
+      "originalBytes": 13568,
+      "compressedBytes": 3508,
+      "originalSha256": "b50f623e103bf5580736fed47c38d868f43e3125fb6a531478bc595ca64d1235",
+      "roundTripSha256": "b50f623e103bf5580736fed47c38d868f43e3125fb6a531478bc595ca64d1235",
+      "compressedSha256": "c0d557de2843ba73ecced79e2c120ce3ea78e7ebad7eee0753f523c4aa01fc0d",
+      "roundTripMatches": true
+    },
+    {
+      "path": "public/assets/unity/mechanisms/vehicle-transport-belt/models/plane_conveyor.fbx",
+      "originalBytes": 14784,
+      "compressedBytes": 3908,
+      "originalSha256": "acd31d7224b3e884e7ac6cfde71c513d514d6a416c6dade7fa518903bc7c7e68",
+      "roundTripSha256": "acd31d7224b3e884e7ac6cfde71c513d514d6a416c6dade7fa518903bc7c7e68",
+      "compressedSha256": "f7d83627f74a3e8ef58748a402d583df0a4b703bf026daa7a30e09f82fbece49",
+      "roundTripMatches": true
+    },
+    {
+      "path": "public/assets/unity/models/Arrow_01.fbx",
+      "originalBytes": 133760,
+      "compressedBytes": 21713,
+      "originalSha256": "666717237ae5b085320368a942475cd417cf327d716b3c41f8942c033e1bdec1",
+      "roundTripSha256": "666717237ae5b085320368a942475cd417cf327d716b3c41f8942c033e1bdec1",
+      "compressedSha256": "568765b05bfbce4be39c8ffbc6322c699e9dc84a536ba10f24d42a172b9819e6",
+      "roundTripMatches": true
+    },
+    {
+      "path": "public/assets/unity/models/Bus_001.fbx",
+      "originalBytes": 135616,
+      "compressedBytes": 49791,
+      "originalSha256": "adc2e52eb230289028d93598d243ec0c39df6034a3ac08c3c3fdc72e3cd7a8a3",
+      "roundTripSha256": "adc2e52eb230289028d93598d243ec0c39df6034a3ac08c3c3fdc72e3cd7a8a3",
+      "compressedSha256": "5c815e60829e40265a1b9dc687acab5b939872d707020ddf6fd2ecc43b505677",
+      "roundTripMatches": true
+    },
+    {
+      "path": "public/assets/unity/models/Bus_FakeShadow.fbx",
+      "originalBytes": 16416,
+      "compressedBytes": 4250,
+      "originalSha256": "30cf676204231feb4e0452a09b4552d49f978d9b2c9d1ff1542c0ff5d2c7185e",
+      "roundTripSha256": "30cf676204231feb4e0452a09b4552d49f978d9b2c9d1ff1542c0ff5d2c7185e",
+      "compressedSha256": "6739663d5928943326ee738ef3ad19be7192d7906fdd295aef4fcb2f5bee89f5",
+      "roundTripMatches": true
+    },
+    {
+      "path": "public/assets/unity/models/Car_001.fbx",
+      "originalBytes": 56400,
+      "compressedBytes": 31269,
+      "originalSha256": "a0c50a17404686606a9cae06666ddc857da69503b9b6086bacdb90420bb3819e",
+      "roundTripSha256": "a0c50a17404686606a9cae06666ddc857da69503b9b6086bacdb90420bb3819e",
+      "compressedSha256": "3eb200456121c9fe27ef94199535c1c69185d6b0834aa88e0297576bf97b91ae",
+      "roundTripMatches": true
+    },
+    {
+      "path": "public/assets/unity/models/Car_FakeShadow.fbx",
+      "originalBytes": 12688,
+      "compressedBytes": 3374,
+      "originalSha256": "aa95458b686835005f1fc907b4a7f0d831dfedec5269fe4047bf49d6fb50e278",
+      "roundTripSha256": "aa95458b686835005f1fc907b4a7f0d831dfedec5269fe4047bf49d6fb50e278",
+      "compressedSha256": "e5a9912a1c92a304d1092f60a4dffce01269bc5b8e01250f9c1037dfcc5dc0df",
+      "roundTripMatches": true
+    },
+    {
+      "path": "public/assets/unity/models/Car_P.fbx",
+      "originalBytes": 29552,
+      "compressedBytes": 8865,
+      "originalSha256": "90d564dadc7877ef47f9c7d8582d7714349359a3a8cf2619f503c5eb156cf243",
+      "roundTripSha256": "90d564dadc7877ef47f9c7d8582d7714349359a3a8cf2619f503c5eb156cf243",
+      "compressedSha256": "db989381e50e52d1af5d1ef55117fbc172ff9d336214c16dc53e1eda49b66eb0",
+      "roundTripMatches": true
+    },
+    {
+      "path": "public/assets/unity/models/Idle_boy01_anim_map.rgba16f",
+      "originalBytes": 524288,
+      "compressedBytes": 190072,
+      "originalSha256": "469bd30fbfa71ebde7cada138f04bf8b15347bbecd95b2078dfc93640534a6c1",
+      "roundTripSha256": "469bd30fbfa71ebde7cada138f04bf8b15347bbecd95b2078dfc93640534a6c1",
+      "compressedSha256": "92213d0724184247ef469232e01cab7083cb2755ee187612b79da533c348356c",
+      "roundTripMatches": true
+    },
+    {
+      "path": "public/assets/unity/models/Idle_boy01_vatmesh.bin",
+      "originalBytes": 23116,
+      "compressedBytes": 11601,
+      "originalSha256": "e897f7dfee80fb60e0587968483179ae7abb0bd974a10224c36517baa516f273",
+      "roundTripSha256": "e897f7dfee80fb60e0587968483179ae7abb0bd974a10224c36517baa516f273",
+      "compressedSha256": "0922796414d981589f56e9284af42ececec1509ed4fa0ff5cc2580abdccca8d3",
+      "roundTripMatches": true
+    },
+    {
+      "path": "public/assets/unity/models/Idle_boy01.fbx",
+      "originalBytes": 232285,
+      "compressedBytes": 42265,
+      "originalSha256": "c424d24b5e934dd129f3944e1f9b2922c89424f777d131b786c79c1a2f4557c9",
+      "roundTripSha256": "c424d24b5e934dd129f3944e1f9b2922c89424f777d131b786c79c1a2f4557c9",
+      "compressedSha256": "292c086d0b39ae4cb1afeb63c674c6118113e25c90dcdc4b13f1ec08ae47a5e4",
+      "roundTripMatches": true
+    },
+    {
+      "path": "public/assets/unity/models/Shadow_01.fbx",
+      "originalBytes": 139856,
+      "compressedBytes": 18582,
+      "originalSha256": "8cbfcd60a1ea3ce3a677de22729c63e291d4abe676eecfe2979f2bf700ed0b0c",
+      "roundTripSha256": "8cbfcd60a1ea3ce3a677de22729c63e291d4abe676eecfe2979f2bf700ed0b0c",
+      "compressedSha256": "f2c03b6bff37099daec67118f12934ab820ef07dd01e1ab9a49213a4fba6dad9",
+      "roundTripMatches": true
+    },
+    {
+      "path": "public/assets/unity/models/Van_001.fbx",
+      "originalBytes": 131072,
+      "compressedBytes": 45251,
+      "originalSha256": "7ff91e04f312cf6bbdc7d43ebd33452c0d01aab830b206590f5fcb0d97e9951d",
+      "roundTripSha256": "7ff91e04f312cf6bbdc7d43ebd33452c0d01aab830b206590f5fcb0d97e9951d",
+      "compressedSha256": "728ef08d6571765188f539f5409a1d17751d53c02af5a51167ddc6a52f528073",
+      "roundTripMatches": true
+    },
+    {
+      "path": "public/assets/unity/models/Van_FakeShadow.fbx",
+      "originalBytes": 12688,
+      "compressedBytes": 3387,
+      "originalSha256": "ddda3c3e8f3a95a0fdcb9d62dce290fabdb97245d78eaddafcf4b1b1d71daba7",
+      "roundTripSha256": "ddda3c3e8f3a95a0fdcb9d62dce290fabdb97245d78eaddafcf4b1b1d71daba7",
+      "compressedSha256": "8efc67c65f769ebd0eb1bb5a3ff542d92e4e67ac69290140ed5fddac09585de4",
+      "roundTripMatches": true
+    }
+  ]
+}

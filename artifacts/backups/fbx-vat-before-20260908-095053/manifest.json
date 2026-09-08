@@ -1,0 +1,126 @@
+{
+  "createdAt": "2026-09-08T09:50:53.8254333+08:00",
+  "purpose": "Lossless FBX/VAT compression rollback backup",
+  "files": [
+    {
+      "path": "public/assets/unity/mechanisms/ambulance/models/Ambulance_001.fbx",
+      "bytes": 164816,
+      "sha256": "f2373fc518f26941c9c69555f0950daccf039867f5a8aec568def6b3bd5d7fb6",
+      "header": "4B 61 79 64 61 72 61 20"
+    },
+    {
+      "path": "public/assets/unity/mechanisms/ambulance/models/Idle_girl_rescuer_vatmesh.bin",
+      "bytes": 41556,
+      "sha256": "5bea1b7a46692c483fc34370768f78a6df790ef2e825b23aa1684e34e15beaec",
+      "header": "56 41 54 4D 01 00 00 00"
+    },
+    {
+      "path": "public/assets/unity/mechanisms/ambulance/models/Idle_girl_rescuer.fbx",
+      "bytes": 120128,
+      "sha256": "c17a3d2088ab8debe4a637bcf7312277ed79ccfc4a211c6be20df401119f97ce",
+      "header": "4B 61 79 64 61 72 61 20"
+    },
+    {
+      "path": "public/assets/unity/mechanisms/garage/models/Garage_Truck_01_FakeShadow.fbx",
+      "bytes": 15104,
+      "sha256": "1969e8cd5f9296765558168ad17c5142cc67b1e7eaaa1f4d7514c7f7db4a1872",
+      "header": "4B 61 79 64 61 72 61 20"
+    },
+    {
+      "path": "public/assets/unity/mechanisms/garage/models/Garage_Truck_01.fbx",
+      "bytes": 212658,
+      "sha256": "ba90c541f5d2e134fffb2b64d313b16325d2ee737e03cfa782da436e41ad82d3",
+      "header": "3B 20 46 42 58 20 37 2E"
+    },
+    {
+      "path": "public/assets/unity/mechanisms/luxury-vehicle/models/Idle_wealthy_vatmesh.bin",
+      "bytes": 40808,
+      "sha256": "1975585206002b791dc2420c97090f34aca73d58280590533efdbb6a48b16a15",
+      "header": "56 41 54 4D 01 00 00 00"
+    },
+    {
+      "path": "public/assets/unity/mechanisms/vehicle-transport-belt/models/plane_conveyor_arrow.fbx",
+      "bytes": 13568,
+      "sha256": "b50f623e103bf5580736fed47c38d868f43e3125fb6a531478bc595ca64d1235",
+      "header": "4B 61 79 64 61 72 61 20"
+    },
+    {
+      "path": "public/assets/unity/mechanisms/vehicle-transport-belt/models/plane_conveyor.fbx",
+      "bytes": 14784,
+      "sha256": "acd31d7224b3e884e7ac6cfde71c513d514d6a416c6dade7fa518903bc7c7e68",
+      "header": "4B 61 79 64 61 72 61 20"
+    },
+    {
+      "path": "public/assets/unity/models/Arrow_01.fbx",
+      "bytes": 133760,
+      "sha256": "666717237ae5b085320368a942475cd417cf327d716b3c41f8942c033e1bdec1",
+      "header": "4B 61 79 64 61 72 61 20"
+    },
+    {
+      "path": "public/assets/unity/models/Bus_001.fbx",
+      "bytes": 135616,
+      "sha256": "adc2e52eb230289028d93598d243ec0c39df6034a3ac08c3c3fdc72e3cd7a8a3",
+      "header": "4B 61 79 64 61 72 61 20"
+    },
+    {
+      "path": "public/assets/unity/models/Bus_FakeShadow.fbx",
+      "bytes": 16416,
+      "sha256": "30cf676204231feb4e0452a09b4552d49f978d9b2c9d1ff1542c0ff5d2c7185e",
+      "header": "4B 61 79 64 61 72 61 20"
+    },
+    {
+      "path": "public/assets/unity/models/Car_001.fbx",
+      "bytes": 56400,
+      "sha256": "a0c50a17404686606a9cae06666ddc857da69503b9b6086bacdb90420bb3819e",
+      "header": "4B 61 79 64 61 72 61 20"
+    },
+    {
+      "path": "public/assets/unity/models/Car_FakeShadow.fbx",
+      "bytes": 12688,
+      "sha256": "aa95458b686835005f1fc907b4a7f0d831dfedec5269fe4047bf49d6fb50e278",
+      "header": "4B 61 79 64 61 72 61 20"
+    },
+    {
+      "path": "public/assets/unity/models/Car_P.fbx",
+      "bytes": 29552,
+      "sha256": "90d564dadc7877ef47f9c7d8582d7714349359a3a8cf2619f503c5eb156cf243",
+      "header": "4B 61 79 64 61 72 61 20"
+    },
+    {
+      "path": "public/assets/unity/models/Idle_boy01_anim_map.rgba16f",
+      "bytes": 524288,
+      "sha256": "469bd30fbfa71ebde7cada138f04bf8b15347bbecd95b2078dfc93640534a6c1",
+      "header": "21 33 05 00 51 32 00 3C"
+    },
+    {
+      "path": "public/assets/unity/models/Idle_boy01_vatmesh.bin",
+      "bytes": 23116,
+      "sha256": "e897f7dfee80fb60e0587968483179ae7abb0bd974a10224c36517baa516f273",
+      "header": "56 41 54 4D 01 00 00 00"
+    },
+    {
+      "path": "public/assets/unity/models/Idle_boy01.fbx",
+      "bytes": 232285,
+      "sha256": "c424d24b5e934dd129f3944e1f9b2922c89424f777d131b786c79c1a2f4557c9",
+      "header": "3B 20 46 42 58 20 37 2E"
+    },
+    {
+      "path": "public/assets/unity/models/Shadow_01.fbx",
+      "bytes": 139856,
+      "sha256": "8cbfcd60a1ea3ce3a677de22729c63e291d4abe676eecfe2979f2bf700ed0b0c",
+      "header": "4B 61 79 64 61 72 61 20"
+    },
+    {
+      "path": "public/assets/unity/models/Van_001.fbx",
+      "bytes": 131072,
+      "sha256": "7ff91e04f312cf6bbdc7d43ebd33452c0d01aab830b206590f5fcb0d97e9951d",
+      "header": "4B 61 79 64 61 72 61 20"
+    },
+    {
+      "path": "public/assets/unity/models/Van_FakeShadow.fbx",
+      "bytes": 12688,
+      "sha256": "ddda3c3e8f3a95a0fdcb9d62dce290fabdb97245d78eaddafcf4b1b1d71daba7",
+      "header": "4B 61 79 64 61 72 61 20"
+    }
+  ]
+}
