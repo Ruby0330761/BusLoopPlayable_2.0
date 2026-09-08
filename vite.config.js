@@ -14,8 +14,9 @@ import {
 } from './scripts/unity-level-importer.mjs';
 
 const BUILTIN_LEVEL_IDS = new Set([
-  'level5', 'level8', 'level9', 'level10', 'level12', 'level13', 'level15', 'level16',
-  'level17', 'level18'
+  'level5', 'level7', 'level8', 'level9', 'level10', 'level12', 'level13', 'level15',
+  'level16', 'level17', 'level18', 'level22', 'level26', 'level28', 'level29', 'level33',
+  'level39'
 ]);
 const LEVEL_ARTIFACT_PATH = path.resolve('artifacts', 'unity-levels.json');
 const WEB_LEVEL_ROOT = path.resolve('artifacts', 'web-levels');
@@ -46,6 +47,9 @@ function validateWebLevelDocument(document, levelId) {
   if (document?.format !== 'bus-loop-web-level-v1' || document?.key !== levelId) {
     throw new Error('Web level document identity is invalid.');
   }
+  if (typeof document.displayName !== 'string' || !document.displayName.trim() || document.displayName.length > 80) {
+    throw new Error('Web level display name is invalid.');
+  }
   if (!Array.isArray(document.vehicles) || document.vehicles.length > 2000) {
     throw new Error('Web level vehicles are invalid.');
   }
@@ -72,14 +76,87 @@ async function readWebLevelDocument(levelId) {
   return { document, revision: spatialRevision(source) };
 }
 
-async function saveWebLevelDocument(levelId, { document, baseRevision }) {
+function normalizeLevelDisplayName(value) {
+  return String(value ?? '').normalize('NFKC').trim().toLocaleLowerCase();
+}
+
+async function readImportedLevelIdentities() {
+  let levels = [];
+  try {
+    const artifact = JSON.parse(await readFile(LEVEL_ARTIFACT_PATH, 'utf8'));
+    levels = Array.isArray(artifact.levels) ? artifact.levels : [];
+  } catch (error) {
+    if (error.code !== 'ENOENT') throw error;
+  }
+  const identities = new Map(levels.map((level) => [level.key, {
+    key: level.key,
+    displayName: String(level.displayName ?? level.key ?? '').trim(),
+    source: 'catalog'
+  }]));
+  for (const key of BUILTIN_LEVEL_IDS) {
+    if (!identities.has(key)) identities.set(key, { key, displayName: `${key} (${key}.asset)`, source: 'catalog' });
+  }
+  return [...identities.values()];
+}
+
+async function readWebLevelIdentities() {
+  let entries;
+  try { entries = await readdir(WEB_LEVEL_ROOT, { withFileTypes: true }); }
+  catch (error) { if (error.code === 'ENOENT') return []; throw error; }
+  return (await Promise.all(entries
+    .filter((entry) => entry.isFile() && /^level[1-9]\d*\.json$/.test(entry.name))
+    .map(async (entry) => {
+      const key = entry.name.slice(0, -5);
+      try {
+        const document = JSON.parse(await readFile(path.join(WEB_LEVEL_ROOT, entry.name), 'utf8'));
+        return { key, displayName: String(document.displayName ?? '').trim(), source: 'web' };
+      } catch {
+        return { key, displayName: '', source: 'web' };
+      }
+    }))).filter(Boolean);
+}
+
+async function getWebLevelAvailability(levelId, displayName) {
+  validateWebLevelId(levelId);
+  const normalizedName = normalizeLevelDisplayName(displayName);
+  if (!normalizedName) throw new Error('Web level display name is required.');
+  const [webLevels, importedLevels] = await Promise.all([
+    readWebLevelIdentities(),
+    readImportedLevelIdentities()
+  ]);
+  const webIdConflict = webLevels.find((level) => level.key === levelId);
+  if (webIdConflict) return { available: false, reason: 'web', conflict: webIdConflict };
+  const catalogIdConflict = importedLevels.find((level) => level.key === levelId);
+  if (catalogIdConflict) return { available: false, reason: 'catalog', conflict: catalogIdConflict };
+  const nameConflict = [...webLevels, ...importedLevels]
+    .find((level) => normalizeLevelDisplayName(level.displayName) === normalizedName);
+  return nameConflict
+    ? { available: false, reason: 'name', conflict: nameConflict }
+    : { available: true, reason: null, conflict: null };
+}
+
+async function saveWebLevelDocument(levelId, { document, baseRevision, createOnly = false }) {
   validateWebLevelId(levelId);
   validateWebLevelDocument(document, levelId);
+  if (createOnly) {
+    const availability = await getWebLevelAvailability(levelId, document.displayName);
+    if (!availability.available) {
+      const field = availability.reason === 'name' ? 'name' : 'id';
+      const error = new Error(`A level with this ${field} already exists. Choose another ${field}.`);
+      error.statusCode = 409;
+      throw error;
+    }
+  }
   await mkdir(WEB_LEVEL_ROOT, { recursive: true });
   const targetPath = path.join(WEB_LEVEL_ROOT, `${levelId}.json`);
   let currentSource = null;
   try { currentSource = await readFile(targetPath, 'utf8'); }
   catch (error) { if (error.code !== 'ENOENT') throw error; }
+  if (createOnly && currentSource) {
+    const error = new Error('A level with this id already exists. Choose another id.');
+    error.statusCode = 409;
+    throw error;
+  }
   if (currentSource && baseRevision !== spatialRevision(currentSource)) {
     const error = new Error('The level changed outside this editor. Reopen it before saving.');
     error.statusCode = 409;
@@ -109,7 +186,7 @@ async function saveWebLevelDocument(levelId, { document, baseRevision }) {
     await unlink(temporaryPath).catch(() => {});
     throw error;
   }
-  return { document, revision: spatialRevision(source), targetPath };
+  return { document, revision: spatialRevision(source), targetPath, created: !currentSource };
 }
 
 function sendJson(response, statusCode, payload) {
@@ -330,7 +407,25 @@ export default defineConfig({
       });
 
       server.middlewares.use(async (request, response, next) => {
-        const pathname = new URL(request.url, 'http://localhost').pathname;
+        const requestUrl = new URL(request.url, 'http://localhost');
+        const pathname = requestUrl.pathname;
+        if (pathname === '/__level-authoring' && request.method === 'GET') {
+          try {
+            const items = (await readWebLevelIdentities())
+              .filter((level) => level.displayName)
+              .sort((first, second) => Number(first.key.slice(5)) - Number(second.key.slice(5)));
+            sendJson(response, 200, { items });
+          } catch (error) {
+            sendJson(response, 500, { error: error.message });
+          }
+          return;
+        }
+        const webLevelStatusMatch = pathname.match(/^\/__level-authoring-status\/(level[1-9]\d*)$/);
+        if (webLevelStatusMatch && request.method === 'GET') {
+          try { sendJson(response, 200, await getWebLevelAvailability(webLevelStatusMatch[1], requestUrl.searchParams.get('name'))); }
+          catch (error) { sendJson(response, error.statusCode ?? 400, { error: error.message }); }
+          return;
+        }
         const webLevelMatch = pathname.match(/^\/__level-authoring\/(level[1-9]\d*)$/);
         if (webLevelMatch && request.method === 'GET') {
           try { sendJson(response, 200, await readWebLevelDocument(webLevelMatch[1])); }
@@ -341,7 +436,7 @@ export default defineConfig({
           try {
             const body = JSON.parse(await readRequestBody(request, MAX_WEB_LEVEL_BYTES, 'Web level'));
             const result = await saveWebLevelDocument(webLevelMatch[1], body);
-            sendJson(response, 200, {
+            sendJson(response, result.created ? 201 : 200, {
               document: result.document,
               revision: result.revision,
               savedPath: path.relative(process.cwd(), result.targetPath).replaceAll('\\', '/')

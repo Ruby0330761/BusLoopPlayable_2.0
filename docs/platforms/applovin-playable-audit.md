@@ -2,6 +2,12 @@
 
 更新时间基线：2026-04-03
 
+## Level40 test package - 2026-09-08
+
+- `artifacts/applovin/test.html`: `4,499,201` bytes, SHA-256 `6E426E0457733E361417ADAA032CEC3553885BB1B5ED818E0CD063777B26FD6F`.
+- The package contains saved web-authored Level40 with one vehicle and `4+0` passengers; all 23 current static checks pass.
+- Local final-package browser QA rendered correctly and accepted a real vehicle click with no error-level logs. Official AppLovin preview/upload and real-device validation remain pending.
+
 ## 官方依据
 
 - Axon / AppLovin Best Practices  

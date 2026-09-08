@@ -131,6 +131,13 @@ test('production active module contains only the selected playable session level
   for (const level of PLAYABLE_LEVEL_SEQUENCE) {
     assert.match(source, new RegExp(`"sourceFile": "${level.sourceFile}"`));
   }
+  if (!LEVEL_CATALOG[selectedLevel]) {
+    const webDocument = JSON.parse(readFileSync(`artifacts/web-levels/${selectedLevel}.json`, 'utf8'));
+    assert.equal(ACTIVE_LEVEL.sourceFile, `artifacts/web-levels/${selectedLevel}.json`);
+    assert.equal(ACTIVE_LEVEL.displayName, webDocument.displayName);
+    assert.equal(ACTIVE_LEVEL.vehicles.length, webDocument.vehicles.length);
+    assert.deepEqual(ACTIVE_LEVEL.passengerQueues, webDocument.passengerQueues);
+  }
   for (const key of Object.keys(IMPORTED_EXPECTATIONS)) {
     if (sessionKeys.has(key)) continue;
     assert.doesNotMatch(source, new RegExp(`"key": "${key}"`));
@@ -332,6 +339,9 @@ test('editor level selection reloads the runtime and production build regenerate
   assert.match(packageJson.scripts.prebuild, /generate-active-spatial-conveyor\.mjs/);
   const generatorSource = readFileSync('scripts/generate-active-level.mjs', 'utf8');
   assert.match(generatorSource, /selected-level\.txt/);
+  assert.match(generatorSource, /artifacts', 'web-levels'/);
+  assert.match(generatorSource, /levelDocumentToRuntime/);
+  assert.match(generatorSource, /deriveLevelMechanics/);
   assert.match(generatorSource, /SCENE_TUNING\.background\?\.asset/);
   assert.match(generatorSource, /background: selectedBackground/);
   assert.match(generatorSource, /Selected background asset does not exist/);

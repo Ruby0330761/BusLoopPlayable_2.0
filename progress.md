@@ -1,5 +1,33 @@
 # Progress
 
+## 2026-09-08 - Queue editor one-click depth sort
+
+- Started: map the existing queue editor and vehicle-depth data path, then implement and verify the requested single/dual-queue ordering.
+- Implemented a reversible model action that rebuilds current vehicle depths and refills existing queue lengths in queue-head/queue-body playback order without changing passenger totals.
+- Added the queue-editor `一键排序` control plus focused dual-queue and UI-wiring regressions; targeted verification is next.
+- Verification complete: both touched source files pass syntax checks and the focused model/editor suites pass `21/21`. The user guide and durable project progress now describe the sort behavior.
+
+## 2026-09-08 Level40 test package completed
+
+- Added production-generation support for saved `artifacts/web-levels/level<number>.json` documents, using the same document-to-runtime conversion as browser preview and deriving mechanism metadata for package resource pruning.
+- Selected and generated Level40 with one vehicle and `4+0` passengers; focused production-selection and LevelEditor model tests pass `17/17`.
+- Production build and all 23 AppLovin checks pass. `artifacts/applovin/test.html` is `4,499,201` bytes with SHA-256 `6E426E0457733E361417ADAA032CEC3553885BB1B5ED818E0CD063777B26FD6F`.
+- Final-package browser QA rendered correctly and the vehicle responded to a real click; there were no error-level logs.
+
+## 2026-09-07 Gate, conveyor, and elevator Unity parity completed
+
+- Matched the web editor to Unity for conveyor exit-width sizing, textured frame/badges, ordered one-row vehicles, and top-level width serialization.
+- Matched gate line/curve locking, vehicle-length spacing, cyan path bounds, selected-vehicle Hermite tangent handles, refresh, and whole-group transforms.
+- Matched elevator `1 x 2` defaults, dual-layer counts/editing, red/yellow status, outside detection/centering, upper-layer exit state, whole-group transforms, and eight-handle resizing without moving vehicles.
+- Focused model/editor tests and browser QA cover all three mechanisms; the web LevelEditor guide now documents the final workflow.
+
+## 2026-09-07 Web level create and save/apply
+
+- Confirmed that editor save already writes `artifacts/web-levels/<levelId>.json`; the apparent delay exists because only the separate preview action stores the runtime override and reloads the playable.
+- Added the new-level dialog, positive-integer ID checks, Unity/web collision checks, create-only server protection, and atomic saving of new JSON files.
+- Successful saves now become the active authored playable immediately; reloading and reopening the editor retains the saved new level, while selecting another catalog level clears the authored override.
+- Verification passed: touched-file syntax checks, focused editor/model tests `14/14`, actual HTTP create-only conflict `409`, and browser create/save/reload/reopen QA. The temporary `level999999` file was deleted and durable selection restored to `level16`.
+
 ## 2026-09-07 Mechanism-aware production resource pruning
 
 - Classified mechanism assets under `public/assets/unity/mechanisms/` and added shared manifest/type derivation in `src/mechanism-resources.js`.
@@ -503,3 +531,11 @@ No build was run during this documentation cleanup. Verification was limited to 
 - Added the full-screen three-pane layout editor, development save/load service with optimistic revisions and backups, JSON/Unity/CSV/Excel export, JSON import, and in-browser playable preview restore.
 - Desktop browser QA rendered 37 Level9 vehicles, added a vehicle, exposed its full inspector, undid to 37 vehicles, and passed validation. Exact element bounds showed no horizontal overflow; 390x844 responsive QA also had no overflow.
 - Browser QA found the dirty marker stayed after undoing back to the original document; switched dirty tracking to document-content comparison.
+- New-level creation now requires both an unused `level<number>` key and an unused display name across imported Unity levels and saved web levels. Name checks use NFKC normalization, trim surrounding whitespace, and ignore case.
+- Focused tests pass `14/14`; syntax checks, service-level availability/create-only conflict checks, and browser QA all pass. A duplicate `LEVEL9 (LEVEL9.ASSET)` name was rejected while using an otherwise unused ID, and no temporary level file was created.
+- Saved web levels are now listed in the scene editor's current-level selector by display name. Selecting one restores its JSON document before reload instead of sending the web-only key through the Unity production selector.
+- Browser QA showed `Level 40` in the dropdown, selected it successfully, and reopened `level40` with Unity ID 40, one vehicle, and four passengers. Focused tests and touched-file syntax checks pass.
+- Started a zero-to-one web LevelEditor guide using the supplied Unity Markdown only as a structure/style reference. Current phase is verifying the live web editor workflow and exact control behavior before writing the document.
+- Completed `docs/project/web-level-editor-user-guide.md`: a 609-line zero-to-one guide covering entry, new-level identity, layout controls, all current container and vehicle mechanisms, Unity color IDs, passenger queue editing, depth, exact validation scope, persistence/backup paths, preview/export differences, and a delivery checklist.
+- Markdown verification passed: balanced fences, 15 H1 sections, 32 H2 sections, nine tables, all required workflow topics present, no placeholders, and no whitespace errors.
+- Reopened the web LevelEditor work to align gate queues, conveyor belts, and elevators with the Unity editor. The optional planning recovery script still cannot run because Python is unavailable; comparison will proceed from current project records and authoritative Unity source.

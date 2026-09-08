@@ -628,6 +628,25 @@ export function createSceneEditor(root, {
     levelOpenFolderButton.disabled = busy;
   }
 
+  async function refreshWebLevelOptions() {
+    const controls = inputs.get('level.selected');
+    if (!controls?.select) return [];
+    const response = await fetch('/__level-authoring', { cache: 'no-store' });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(payload.error || `HTTP ${response.status}`);
+    for (const option of controls.select.querySelectorAll('[data-web-level]')) option.remove();
+    for (const item of payload.items ?? []) {
+      if (!item?.key || !item.displayName || controls.select.querySelector(`option[value="${CSS.escape(item.key)}"]`)) continue;
+      const option = document.createElement('option');
+      option.value = item.key;
+      option.textContent = item.displayName;
+      option.dataset.webLevel = 'true';
+      controls.select.append(option);
+    }
+    controls.select.value = getTuning().level?.selected ?? '';
+    return payload.items ?? [];
+  }
+
   levelEditButton.addEventListener('click', async () => {
     setLevelBusy(true);
     levelStatus.textContent = '正在打开关卡布局编辑器...';
@@ -900,5 +919,8 @@ export function createSceneEditor(root, {
   refreshSpatialConveyorOptions().catch((error) => {
     spatialStatus.textContent = `\u5217\u8868\u4e0d\u53ef\u7528\uff1a${error.message}`;
   });
-  return { sync, setCollapsed, refreshSpatialConveyorOptions };
+  refreshWebLevelOptions().catch((error) => {
+    levelStatus.textContent = `\u7f51\u9875\u5173\u5361\u5217\u8868\u4e0d\u53ef\u7528\uff1a${error.message}`;
+  });
+  return { sync, setCollapsed, refreshSpatialConveyorOptions, refreshWebLevelOptions };
 }

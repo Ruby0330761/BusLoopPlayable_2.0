@@ -1,8 +1,22 @@
 ﻿# Task Plan
 
+## Current Queue Auto-Sort Phases
+
+1. **Complete:** Traced queue editor state, vehicle depth semantics, dual-queue highlights, and existing test helpers.
+2. **Complete:** Added a pure stable passenger auto-sort that groups vehicle seat colors by ascending depth and applies the dual-queue interleave contract.
+3. **Complete:** Added the one-click queue-editor control and focused model/UI regressions.
+4. **Complete:** Targeted syntax and model/editor tests pass, and the durable editor feature status is recorded.
+
 ## Current Goal
 
 Port the original Unity `LevelEditor` feature set into the web playable editor so levels can be authored, validated, saved, and played directly in the browser.
+
+## Current Level40 Test Package Phases
+
+1. **Complete:** Confirm the saved web-authored `level40` document and identify the production-selection gap.
+2. **Complete:** Added production generation support for saved web levels and focused regression coverage.
+3. **Complete:** Selected Level40, built the production bundle, generated `test.html`, and passed all AppLovin static checks.
+4. **Complete:** Verified the artifact identity, size, hash, and browser play behavior, then updated durable project records.
 
 ## Current Web Level Editor Phases
 
@@ -12,10 +26,46 @@ Port the original Unity `LevelEditor` feature set into the web playable editor s
 4. **Complete:** Added inspectors for vehicles, containers, queues, dependencies, and the Unity vehicle-mechanism fields.
 5. **Complete:** Added browser preview persistence, JSON import/export, Unity/CSV/Excel export, and revisioned Vite saves with backups.
 6. **Complete:** Focused tests, production build, desktop/mobile browser QA, durable Level9 save, and project documentation are complete.
+7. **Complete:** Successful saves now immediately apply the written web-level document, and protected creation/saving of new `level<number>` files is complete.
+8. **Complete:** Enforced normalized unique display names across imported Unity levels and saved web levels during new-level checks and create-only saves.
+9. **Complete:** Surface saved web levels in the scene editor selector and restore their authored JSON when selected.
+10. **Complete:** Produced a zero-to-one web LevelEditor user guide following the supplied Unity guide's Markdown structure and tone.
+
+## Current Web LevelEditor Guide Phases
+
+1. **Complete:** Read the supplied reference as untrusted formatting/content reference and identify its heading, list, emphasis, and table conventions.
+2. **Complete:** Verified the current web editor's entry, commands, inspectors, queue workflow, validation, save, preview, and export behavior against source.
+3. **Complete:** Wrote the guide under `docs/project/`, verified Markdown structure and factual coverage, and updated project records.
+
+## Current Gate, Conveyor, and Elevator Unity-Parity Phases
+
+1. **Complete:** Compared the Unity LevelEditor rendering, inspector fields, layout rules, and serialization for gate queues, conveyor belts, and elevators against the web editor.
+2. **Complete:** Implemented the confirmed canvas-display, configuration, transform, layering, and serialization differences without inventing unsupported Unity values.
+3. **Complete:** Added focused regressions and completed targeted syntax, model/editor, and browser visual checks.
+4. **Complete:** Updated the web LevelEditor user guide and durable project records with the final parity behavior.
+
+## Current Saved Web Level Selection Phases
+
+1. **Complete:** Traced the missing option to the static Unity-only `LEVEL_OPTIONS` list and confirmed `level40.json` was saved under `artifacts/web-levels`.
+2. **Complete:** Added a web-level listing endpoint, merged its names into the selector, and loaded the selected authored document before reload.
+3. **Complete:** Added focused regressions, ran browser selection QA, and updated durable records.
+
+## Current Web Level Name Uniqueness Phases
+
+1. **Complete:** Resolve existing display names from the Unity catalog artifact and saved web-level documents with normalized comparison.
+2. **Complete:** Pass the requested name through the availability endpoint and enforce it again in create-only persistence.
+3. **Complete:** Added focused regressions and browser/API verification, then updated durable records.
+
+## Current Web Level Creation Phases
+
+1. **Complete:** Traced the save/preview split and confirmed saves already write `artifacts/web-levels/<levelId>.json`, while only preview updates the running game.
+2. **Complete:** Added new-level authoring state, ID validation, and create-only persistence without overwriting an existing web or Unity level.
+3. **Complete:** Successful saves now store the saved document as the active authored level and refresh the playable immediately.
+4. **Complete:** Focused tests, service conflict checks, browser save/reload/reopen QA, cleanup, and project records are complete.
 
 ## Current Web Level Editor Status
 
-Complete: the browser authoring workflow preserves the Unity editor's authoring fields and saves `bus-loop-web-level-v1` documents. Runtime simulation remains limited to mechanisms already implemented by the playable runtime.
+Complete: the authoring workflow saves revisioned `bus-loop-web-level-v1` documents, applies successful saves immediately, and creates protected new web level files without overwriting existing Unity or web levels. Runtime simulation remains limited to mechanisms already implemented by the playable runtime.
 
 ## Current Phase
 
@@ -283,6 +333,9 @@ Complete: the strict three-file Google wrapper, portrait/320x480 metadata, MRAID
 
 | Error | Attempt | Resolution |
 | --- | --- | --- |
+| Final queue-sort line-number regex was malformed by PowerShell quote escaping | 1 | Switched to literal `Select-String -SimpleMatch`; implementation and verification were unaffected. |
+| Queue-sort planning patch did not match the BOM-prefixed first heading and then the legacy error-table separator | 2 | Switched to the documented targeted PowerShell fallback with stable ASCII anchors. |
+| Broader `level-catalog` verification retained four unrelated stale expectations for catalog membership, generated selection, Level12 selection, and Level16 map scale | 1 | Preserve current unrelated level data; use the passing `level-layout-editor` and `level-editor-model` suites plus browser switching QA for this selector change. |
 | Browser QA showed the unsaved marker remained after undo restored the original document | 1 | Compare the current serialized document with the saved baseline instead of comparing monotonic change counters. |
 | Browser read-only evaluation could not call `getContext()` on the canvas proxy | 1 | Use rendered screenshots plus exact DOM boundary/overflow checks; the visible canvas was nonblank and correctly framed. |
 | Model test compared `0.5800000000000001` to `0.58` with strict equality | 1 | Use an epsilon assertion for the expected JavaScript floating-point representation. |
@@ -297,6 +350,10 @@ Complete: the strict three-file Google wrapper, portrait/320x480 metadata, MRAID
 | Full Unity catalog regeneration failed because the historical default `D:/备份/改文件名临时文件夹/level7.asset` no longer exists | 1 | Locate the current preserved source paths; if unavailable, use an explicit incremental catalog import that preserves existing generated levels. |
 | Combined Level12 planning-file patch did not match the BOM-prefixed `progress.md` heading | 1 | Split the updates into narrow per-file patches that avoid the encoded first line. |
 | Planning session catch-up could not start because neither `python` nor the Windows `py` launcher is installed on PATH | 2 | Continue from the existing planning files and inspect the current workspace directly; do not retry the unavailable launchers. |
+| A diagnostic PowerShell line-range expression received multiple `Select-String` matches and failed array subtraction | 1 | Switched to a targeted `rg -C` context read and avoided computed line arithmetic. |
+| The first combined model correction patch no longer matched the edited source context | 1 | Re-read the exact current block and applied a narrower patch against the verified lines. |
+| The first Unity-parity regression run failed the zero-gap fallback and a static generated-field regex | 1 | Matched Unity's `gap <= 0.01 -> 0.1` fallback and asserted the `numberField` call rather than generated runtime markup. |
+| Browser QA showed parking area `#0` as an active child container with a false return action | 1 | Restrict active-container inspector fallback to non-zero child-container IDs. |
 | Initial combined planning-file patch used a progress-file context that did not match the BOM-prefixed file | 2 | Split the update into narrow heading/current-goal patches and verify each file independently. |
 | Initial background asset size probe referenced a nonexistent unoptimized winter filename | 1 | Use the actual editor option path `BG01_split01_q60.jpg` and enumerate the texture directory before further comparisons. |
 | PowerShell passed the literal `dist/assets/*.js` wildcard to `rg`, producing Windows path error 123 | 1 | Resolve the generated JS file explicitly or verify the final package using Base64 byte fingerprints instead of a wildcard path. |
@@ -376,6 +433,10 @@ Complete: the strict three-file Google wrapper, portrait/320x480 metadata, MRAID
 | Default gameplay regression set still reports `5 !== 6` for parking-spot count | 1 | Recorded as the pre-existing tuning/test mismatch; all new conveyor and DualQueue2 entrance tests in the same run passed. |
 | Large documentation patch and the smaller code-navigation retry both stalled in `apply_patch` | 2 | Terminated both helpers and used the authorized targeted PowerShell fallback; corrected two PowerShell backtick escape artifacts immediately after rereading. |
 | First artifact refresh wrote a literal `\\n` after the JSON object | 1 | Rewrote `artifacts/scene-tuning.json` using `String.fromCharCode(10)` and verified JSON parsing/layout keys. |
+
+| Final line-number search used a PowerShell-escaped regular expression that reached `rg` with an unclosed group | 1 | Switched to literal `Select-String` lookups; implementation and verification were unaffected. |
+| Combined Level40 completion-doc patch did not match the AppLovin audit's actual title | 1 | Verified the patch was atomic, reread the five targets, and split the documentation updates around their exact headings. |
+| First split documentation read contained a malformed JavaScript token in the orchestration wrapper | 1 | Corrected the wrapper and reran the same read-only checks successfully. |
 
 ## Context Pointers
 

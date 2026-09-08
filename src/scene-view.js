@@ -51,6 +51,8 @@ const GUIDE_HAND_TEXTURE_URL = '/assets/applovin/main-guide-hand_q80.webp';
 const TURN_ARROW_ASSET_URL = MECHANISM_ASSETS.turnVehicle.arrow;
 const TURN_ARROW_SCALE = 0.8;
 const TURN_ARROW_FORWARD_OFFSET = 0.18;
+const VEHICLE_ARROW_HIDDEN_STATES = new Set(['at-spot', 'boarding-final', 'departing', 'done']);
+export const shouldHideVehicleArrow = (state) => VEHICLE_ARROW_HIDDEN_STATES.has(state);
 const HIDDEN_QUESTION_MARK_FORWARD_FACTOR = 0.45;
 const HIDDEN_VEHICLE_BODY_COLOR = 0x2a2a2a;
 const HIDDEN_VEHICLE_ASSETS = MECHANISM_ASSETS.hiddenVehicle;
@@ -3802,6 +3804,10 @@ export class SceneView {
       }
       view.userData.spatialHadActiveHit = activeHit;
       this.updateHiddenVehicleVisual(view, vehicle);
+      const hideArrowAtSpot = shouldHideVehicleArrow(vehicle.state);
+      if (view.userData.arrowRoot && (!vehicle.isHidden || hideArrowAtSpot)) {
+        view.userData.arrowRoot.visible = !hideArrowAtSpot;
+      }
       const isMovable = vehicle.state === 'parked'
         && !vehicle.turnRotation?.active
         && !vehicle.hiddenReveal

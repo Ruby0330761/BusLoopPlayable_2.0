@@ -18,7 +18,8 @@ import { SCENE_TUNING } from '../src/scene-tuning.js';
 import { GameAudioController } from '../src/audio-controller.js';
 import {
   DreamteckClosedBSplineCurve3,
-  makeClosedConveyorCurve
+  makeClosedConveyorCurve,
+  shouldHideVehicleArrow
 } from '../src/scene-view.js';
 import {
   buildOutStationPoints,
@@ -1056,6 +1057,16 @@ test('turn vehicles use the dedicated Unity arrow and normal parking orientation
   assert.match(viewSource, /arrow\.rotation\.y = deg\(vehicle\.isTurnVehicle \? 0 : SCENE_TUNING\.facing\.arrowYawDegrees\)/);
   assert.match(viewSource, /view\.rotation\.y = deg\(SCENE_TUNING\.facing\.parkingSpotYawDegrees \+ 180\) \+ vehicleYawOffset/);
   assert.doesNotMatch(viewSource, /view\.rotation\.y = vehicle\.isTurnVehicle\s*\?/);
+});
+
+test('vehicle arrows hide after entering a parking spot', () => {
+  for (const state of ['parked', 'colliding', 'moving-to-spot']) {
+    assert.equal(shouldHideVehicleArrow(state), false, state);
+  }
+  for (const state of ['at-spot', 'boarding-final', 'departing', 'done']) {
+    assert.equal(shouldHideVehicleArrow(state), true, state);
+  }
+  assert.match(sceneViewSource, /view\.userData\.arrowRoot\.visible = !hideArrowAtSpot/);
 });
 
 test('background asset selection uses the optimized Sakura image and remains editor-switchable', () => {

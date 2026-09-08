@@ -24,6 +24,7 @@ if (ACTIVE_SPATIAL_CONVEYOR_PACKAGE) {
 
 const TUNING_STORAGE_KEY = 'bus-loop-scene-tuning-v3';
 const LEGACY_TUNING_STORAGE_KEY = 'bus-loop-scene-tuning-v2';
+const LEVEL_EDITOR_PREVIEW_STORAGE_KEY = 'bus-loop-level-editor-preview-v1';
 const STORE_URL = {
   android: {
     web: 'https://play.google.com/store/apps/details?id=gridplus.busjam.carpuzzle',
@@ -641,6 +642,25 @@ function clearSavedTuning() {
   localStorage.removeItem(TUNING_STORAGE_KEY);
 }
 
+function readLevelEditorPreviewDocument() {
+  try {
+    const source = localStorage.getItem(LEVEL_EDITOR_PREVIEW_STORAGE_KEY);
+    const document = source ? JSON.parse(source) : null;
+    return document?.format === 'bus-loop-web-level-v1' && /^level[1-9]\d*$/.test(document.key) ? document : null;
+  } catch (error) {
+    console.warn('Authored level preview could not be restored.', error);
+    return null;
+  }
+}
+
+async function readSavedWebLevelDocument(levelKey) {
+  const response = await fetch(`/__level-authoring/${encodeURIComponent(levelKey)}`, { cache: 'no-store' });
+  if (response.status === 404) return null;
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(payload.error || `HTTP ${response.status}`);
+  return payload.document ?? null;
+}
+
 async function startRuntime() {
   loadSavedTuning();
   let sessionLevels = PLAYABLE_LEVEL_SEQUENCE;
@@ -649,16 +669,22 @@ async function startRuntime() {
     await refreshSpatialConveyorPackages().catch((error) => {
       console.warn('Spatial conveyor packages could not be loaded.', error);
     });
-    let selectedLevel = getLevelDefinition(SCENE_TUNING.level?.selected);
-    try {
-      const previewSource = localStorage.getItem('bus-loop-level-editor-preview-v1');
-      const previewDocument = previewSource ? JSON.parse(previewSource) : null;
-      if (previewDocument?.key === selectedLevel.key) {
-        const { levelDocumentToRuntime } = await import('./level-editor-model.js');
-        selectedLevel = levelDocumentToRuntime(previewDocument, selectedLevel);
+    const selectedKey = SCENE_TUNING.level?.selected;
+    let selectedLevel = getLevelDefinition(selectedKey);
+    let previewDocument = readLevelEditorPreviewDocument();
+    if (!previewDocument && selectedLevel.key !== selectedKey) {
+      previewDocument = await readSavedWebLevelDocument(selectedKey);
+      if (previewDocument) {
+        localStorage.setItem(LEVEL_EDITOR_PREVIEW_STORAGE_KEY, JSON.stringify(previewDocument));
       }
-    } catch (error) {
-      console.warn('Authored level preview could not be restored.', error);
+    }
+    if (previewDocument) {
+      const { levelDocumentToRuntime } = await import('./level-editor-model.js');
+      selectedLevel = levelDocumentToRuntime(previewDocument, selectedLevel);
+      if (SCENE_TUNING.level?.selected !== previewDocument.key) {
+        SCENE_TUNING.level.selected = previewDocument.key;
+        saveTuning(SCENE_TUNING, { immediate: true });
+      }
     }
     sessionLevels = selectedLevel.key === 'level9'
       ? [selectedLevel, getLevelDefinition('level7')]
@@ -829,8 +855,14 @@ async function startRuntime() {
         import('./level-layout-editor.js'),
         import('./level-catalog.js')
       ]);
+      let baseLevel = getLevelDefinition(SCENE_TUNING.level?.selected);
+      const previewDocument = readLevelEditorPreviewDocument();
+      if (previewDocument) {
+        const { levelDocumentToRuntime } = await import('./level-editor-model.js');
+        baseLevel = levelDocumentToRuntime(previewDocument, baseLevel);
+      }
       levelLayoutEditor = await createLevelLayoutEditor({
-        baseLevel: getLevelDefinition(SCENE_TUNING.level?.selected),
+        baseLevel,
         onPreview: () => window.location.reload(),
         onClose: () => {
           levelLayoutEditor = null;
@@ -848,14 +880,27 @@ async function startRuntime() {
 
   function applyTuningPatch(next, { path, syncEditor = false } = {}) {
     if (path === 'level.selected') {
-      saveTuning(next, { immediate: true });
-      fetch('/__playable-level', {
-        method: 'POST',
-        headers: { 'Content-Type': 'text/plain' },
-        body: next.level.selected
-      }).catch((error) => {
-        console.warn('Could not persist the selected playable level.', error);
-      }).finally(() => window.location.reload());
+      void (async () => {
+        try {
+          const webDocument = await readSavedWebLevelDocument(next.level.selected);
+          if (webDocument) {
+            localStorage.setItem(LEVEL_EDITOR_PREVIEW_STORAGE_KEY, JSON.stringify(webDocument));
+          } else {
+            const response = await fetch('/__playable-level', {
+              method: 'POST',
+              headers: { 'Content-Type': 'text/plain' },
+              body: next.level.selected
+            });
+            if (!response.ok) throw new Error(`HTTP ${response.status}`);
+            localStorage.removeItem(LEVEL_EDITOR_PREVIEW_STORAGE_KEY);
+          }
+          saveTuning(next, { immediate: true });
+          window.location.reload();
+        } catch (error) {
+          console.warn('Could not load the selected playable level.', error);
+          editor.sync();
+        }
+      })();
       return next;
     }
     if (path?.startsWith('branding.')) {

@@ -6,17 +6,42 @@ import { pathToFileURL } from 'node:url';
 const root = process.cwd();
 const tuningUrl = `${pathToFileURL(path.join(root, 'src', 'scene-tuning.js')).href}?t=${Date.now()}`;
 const catalogUrl = `${pathToFileURL(path.join(root, 'src', 'level-catalog.js')).href}?t=${Date.now()}`;
-const [{ SCENE_TUNING }, { LEVEL_CATALOG }] = await Promise.all([
+const editorModelUrl = `${pathToFileURL(path.join(root, 'src', 'level-editor-model.js')).href}?t=${Date.now()}`;
+const mechanismResourcesUrl = `${pathToFileURL(path.join(root, 'src', 'mechanism-resources.js')).href}?t=${Date.now()}`;
+const [{ SCENE_TUNING }, { LEVEL_CATALOG }, { levelDocumentToRuntime }, { deriveLevelMechanics }] = await Promise.all([
   import(tuningUrl),
-  import(catalogUrl)
+  import(catalogUrl),
+  import(editorModelUrl),
+  import(mechanismResourcesUrl)
 ]);
 
 const selectionPath = path.join(root, 'artifacts', 'selected-level.txt');
 const selected = existsSync(selectionPath)
   ? (await readFile(selectionPath, 'utf8')).trim()
   : (SCENE_TUNING.level?.selected ?? 'level5');
-const level = LEVEL_CATALOG[selected];
-if (!level) throw new Error(`Unknown SCENE_TUNING.level.selected value: ${selected}`);
+
+async function resolveProductionLevel(levelKey) {
+  if (LEVEL_CATALOG[levelKey]) return LEVEL_CATALOG[levelKey];
+  if (!/^level[1-9]\d*$/u.test(levelKey)) {
+    throw new Error(`Unknown SCENE_TUNING.level.selected value: ${levelKey}`);
+  }
+  const webLevelPath = path.join(root, 'artifacts', 'web-levels', `${levelKey}.json`);
+  if (!existsSync(webLevelPath)) {
+    throw new Error(`Unknown SCENE_TUNING.level.selected value: ${levelKey}`);
+  }
+  const document = JSON.parse(await readFile(webLevelPath, 'utf8'));
+  if (document?.format !== 'bus-loop-web-level-v1' || document?.key !== levelKey) {
+    throw new Error(`Invalid saved web level document: ${levelKey}`);
+  }
+  const runtimeLevel = levelDocumentToRuntime(document, LEVEL_CATALOG.level5);
+  return {
+    ...runtimeLevel,
+    sourceFile: path.relative(root, webLevelPath).replaceAll(path.sep, '/'),
+    mechanics: deriveLevelMechanics(runtimeLevel)
+  };
+}
+
+const level = await resolveProductionLevel(selected);
 
 const selectedBackground = SCENE_TUNING.background?.asset;
 if (typeof selectedBackground !== 'string' || !selectedBackground.startsWith('/assets/')) {
@@ -39,7 +64,7 @@ function withSelectedBackground(sessionLevel) {
 
 const sessionLevelKeys = selected === 'level9' ? ['level9', 'level7'] : [selected];
 const sessionLevels = sessionLevelKeys.map((key) => {
-  const sessionLevel = LEVEL_CATALOG[key];
+  const sessionLevel = key === selected ? level : LEVEL_CATALOG[key];
   if (!sessionLevel) throw new Error(`Unknown session level value: ${key}`);
   return withSelectedBackground(sessionLevel);
 });

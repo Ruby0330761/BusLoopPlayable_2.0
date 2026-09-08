@@ -21,6 +21,12 @@ On 2026-09-08, 62 byte-unique TinyPNG results replaced 112 existing paths across
 | `public/assets/applovin/textures/BG01_split01_Sakura.png` | source | Supplied 2100x3382 Sakura source; preserved unchanged and excluded from production packages. |
 | `public/assets/applovin/textures/BG01_split01_Sakura_q60.jpg` | wired | Editor option `BG01 \u6a31\u82b1`; 278,157-byte delivery derivative preserved alone in `level10-sakura.html` and excluded from the winter package. |
 
+## Vehicle visuals
+
+| Resource | Status | Notes |
+| --- | --- | --- |
+| `public/assets/unity/models/Arrow_01.fbx` | wired | Ordinary vehicle direction marker, refreshed from Unity `Assets/BusJam/Game/Models/Car_0307/Arrow_01.fbx`; turn vehicles continue to use their dedicated `Arrow_02` model. |
+
 ## Conveyor layouts
 
 | Resource | Status | Notes |
