@@ -117,28 +117,9 @@ function getMinimumVehicleWidth(level, vehicles) {
   return getVehicleCollisionSize(level, null)?.width ?? 0;
 }
 
-function mayBlockForwardSweep(attackerBox, candidateBox) {
-  const delta = subtract(candidateBox.position, attackerBox.position);
-  const forwardDistance = dot(delta, attackerBox.forward);
-  const candidateRadius = Math.hypot(candidateBox.size.width, candidateBox.size.length) * 0.5;
-  const minForward = -attackerBox.size.length * 0.5;
-  const maxForward = FORWARD_SCAN_LENGTH - attackerBox.size.length * 0.5;
-  // The conservative radius is only a gap guard for bodies genuinely ahead
-  // of the attacker's front. Overlapping/rear bodies remain governed by SAT.
-  if (forwardDistance < attackerBox.size.length * 0.5 - EPSILON) return false;
-  if (forwardDistance + candidateRadius < minForward
-    || forwardDistance - candidateRadius > maxForward) return false;
-  const lateralDistance = Math.max(
-    0,
-    dot(delta, delta) - forwardDistance * forwardDistance
-  );
-  const maximumLateralDistance = candidateRadius + attackerBox.size.width * 0.5;
-  return lateralDistance <= maximumLateralDistance * maximumLateralDistance;
-}
-
 // Unity's VehicleContext uses a broad forward sweep before resolving the
-// rotated-box contact. Conveyor vehicles need this path as well, but it must
-// remain separate from the ordinary-vehicle conservative fallback above.
+// rotated-box contact. Conveyor vehicles need this path in addition to their
+// authored slot and narrow-gap checks.
 function mayBlockUnitySweep(attackerBox, candidateBox) {
   const delta = subtract(candidateBox.position, attackerBox.position);
   const forwardDistance = dot(delta, attackerBox.forward);
@@ -855,26 +836,25 @@ export class VehicleCollisionContext {
 
   getDirectVehicleCandidates(game, vehicle) {
     if (!vehicle || isConveyorType(vehicle.containerType)) return [];
-    const attackerBox = boxForVehicle(this.level, vehicle);
-    const scanBox = extendBoxForward(attackerBox);
+    const scanBox = extendBoxForward(boxForVehicle(this.level, vehicle));
     const result = [];
     for (const candidate of game.vehicles ?? []) {
       if (candidate.id === vehicle.id
         || !['parked', 'colliding'].includes(candidate.state)
         || !game.isVehicleBlocking(candidate, vehicle)) continue;
       const candidateBox = boxForVehicle(this.level, candidate);
-      const exactSweep = boxesOverlap(scanBox, candidateBox);
-      if (!exactSweep && !mayBlockForwardSweep(attackerBox, candidateBox)) continue;
+      // The Unity-style sweep is the attacker's actual forward body. A
+      // conservative radius corridor is reserved for conveyor attackers;
+      // applying it here can report two cars as blockers even when neither
+      // touches the sweep, leaving clickVehicle with no contact to animate.
+      if (!boxesOverlap(scanBox, candidateBox)) continue;
       result.push({
         type: 'vehicle',
         id: candidate.id,
         vehicle: candidate,
-        box: candidateBox,
-        conservativeSweep: !exactSweep
+        box: candidateBox
       });
     }
-    const conservative = result.filter((candidate) => candidate.conservativeSweep);
-    if (conservative.length < 2) return result.filter((candidate) => !candidate.conservativeSweep);
     return result;
   }
 
@@ -961,10 +941,7 @@ export class VehicleCollisionContext {
       candidates.filter((candidate) => candidate.type === 'vehicle').map((candidate) => candidate.id)
     );
     const directCandidates = this.getDirectVehicleCandidates(game, vehicle);
-    const hasExactCandidate = candidates.length > 0
-      || directCandidates.some((candidate) => !candidate.conservativeSweep);
     for (const candidate of directCandidates) {
-      if (candidate.conservativeSweep && hasExactCandidate) continue;
       if (knownVehicleIds.has(candidate.id)) continue;
       candidates.push(candidate);
       knownVehicleIds.add(candidate.id);

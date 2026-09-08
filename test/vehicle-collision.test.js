@@ -180,18 +180,18 @@ test('blocked vehicle selects a direct geometry candidate and animates collision
   assert.equal(game.getVehicle(1).collision.targetType, 'vehicle');
 });
 
-test('narrow gap between forward vehicles remains a blocking corridor', () => {
+test('ordinary vehicles do not block on a non-overlapping narrow gap', () => {
   const game = new BusLoopGame(createLevel({
     vehicles: [
       { id: 1, seats: 4, colorIndex: 0, x: 0, z: 0, yaw: 0 },
-      { id: 2, seats: 4, colorIndex: 1, x: -0.4, z: 2, yaw: 0 },
-      { id: 3, seats: 4, colorIndex: 2, x: 0.4, z: 2, yaw: 0 }
+      { id: 2, seats: 4, colorIndex: 1, x: -0.45, z: 2, yaw: 0 },
+      { id: 3, seats: 4, colorIndex: 2, x: 0.45, z: 2, yaw: 0 }
     ]
   }));
-  assert.deepEqual(game.getBlockers(1), [2, 3]);
+  assert.deepEqual(game.getBlockers(1), []);
   const result = game.clickVehicle(1);
-  assert.equal(result.reason, 'blocked');
-  assert.equal(game.getVehicle(1).collision.targetId, 2);
+  assert.deepEqual(result, { ok: true, spotIndex: 0 });
+  assert.equal(game.getVehicle(1).state, 'moving-to-spot');
 });
 
 test('conveyor vehicles treat sub-1.2-minimum-width forward gaps as blocked', () => {
