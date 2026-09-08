@@ -1,5 +1,11 @@
 # Findings
 
+## 2026-09-08 Restored Unity conveyor collision path
+
+- Restored the Unity-style broad forward sweep for conveyor attackers, while ordinary vehicles continue using the existing `mayBlockForwardSweep` path.
+- Conveyor obstacles are retained for collision resolution even when outside the exit `viewRange`; that range now only determines whether the belt has a usable global exit.
+- Conveyor collision feedback first selects the nearest Unity-style non-conveyor obstacle, then the authored same-belt slot candidate, then the narrow-gap fallback. This preserves conveyor slot behavior and keeps the 1.2-width gap guard conveyor-only.
+
 ## 2026-09-07 Conveyor parameters fixed from screenshots
 
 - The authoritative component transforms are the user's explicit screenshot values: belt `Y=-0.01`, `Z scale=1.50`; arrow `X scale=1.50`, `Z scale=1.05`; both doors `Z scale=1.20`, `X rotation=150°`; side panels `X=-4.00/+4.00`; all omitted fields are zero/one as shown.

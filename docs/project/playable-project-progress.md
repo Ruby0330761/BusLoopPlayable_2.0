@@ -1,5 +1,11 @@
 # Playable Project Progress
 
+## Completed On 2026-09-08 - Restored Unity conveyor collision logic
+
+- Recovered the previously verified Unity-style broad sweep for conveyor vehicle exit checks and collision feedback after the conflict regression.
+- Kept ordinary vehicles on their existing collision path; same-belt vehicles still use slot ordering, with the conveyor-only narrow-gap guard as fallback.
+- Verification: vehicle-collision 14/14, conveyor model 16/16, mechanism/config resources 5/5, syntax check, and production build passed.
+
 ## Completed On 2026-09-07 - Conveyor narrow-gap collision guard
 
 - Added a conveyor-only forward corridor rule: gaps between two obstacles narrower than `1.2` times the narrowest configured vehicle collision width are treated as blocked when a conveyor vehicle exits through them.
