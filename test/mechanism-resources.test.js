@@ -42,9 +42,14 @@ test('entry banner uses the supplied title/background images and keeps the match
   assert.match(sceneSource, /assets\.superHardTitle/);
   assert.match(sceneSource, /this\.entryBanner = this\.createEntryBanner\(\)/);
   assert.match(sceneSource, /this\.updateEntryBanner\(\)/);
-  assert.match(editorSource, /entryBanner\.debug\.preview/);
-  assert.match(editorSource, /entryBanner\.debug\.components/);
+  assert.doesNotMatch(editorSource, /entryBanner\.debug/);
+  assert.match(editorSource, /entryBanner\.components\./);
+  assert.doesNotMatch(editorSource, /EntryBanner \u4e34\u65f6\u8c03\u8bd5/);
   assert.match(tuningSource, /"entryBanner": \{/);
+  assert.match(tuningSource, /"components": \{/);
+  assert.doesNotMatch(tuningSource, /"debug": \{/);
+  assert.match(sceneSource, /SCENE_TUNING\.entryBanner\?\.components/);
+  assert.doesNotMatch(sceneSource, /entryBanner\?\.debug/);
   assert.match(sceneSource, /const alpha = frame\(\[\[start, 0\], \[end, 1\], \[end \+ 0\.25, 1\], \[end \+ 0\.32, 0\]\]/);
   assert.match(styleSource, /\.entry-banner-arrow-group[\s\S]*z-index: 3/);
   assert.match(styleSource, /\.entry-banner-label-group[\s\S]*z-index: 4/);

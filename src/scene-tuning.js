@@ -1,9 +1,9 @@
 export const SCENE_TUNING = {
   "level": {
-    "selected": "level13"
+    "selected": "level42"
   },
   "preview": {
-    "enabled": 1,
+    "enabled": 0,
     "width": 1080,
     "height": 2160
   },
@@ -28,8 +28,8 @@ export const SCENE_TUNING = {
     "text": {
       "enabled": 1,
       "locked": 1,
-      "content": "Bus Fever-Car Jam Escape",
-      "x": 534,
+      "content": "Bus Fever Party！",
+      "x": 567,
       "y": 2114,
       "width": 800,
       "height": 100
@@ -71,7 +71,7 @@ export const SCENE_TUNING = {
     "bottom": 46
   },
   "installGate": {
-    "successfulOperationThreshold": 18
+    "successfulOperationThreshold": 20
   },
   "gameOver": {
     "failureDelaySeconds": 2,
@@ -84,7 +84,8 @@ export const SCENE_TUNING = {
     "logoWidth": 645,
     "logoHeight": 587,
     "logoRadius": 30,
-    "logoAppearSpeed": 1.45
+    "logoAppearSpeed": 1.45,
+    "titleFont": "rounded"
   },
   "facing": {
     "passengerYawDegrees": 180,
@@ -103,7 +104,7 @@ export const SCENE_TUNING = {
     "groundY": 0.025
   },
   "conveyorLayout": {
-    "selected": "spatial:ConveyorBeltShape"
+    "selected": "dualQueue3"
   },
   "spatialConveyor": {
     "capacity": 128,
@@ -390,11 +391,11 @@ export const SCENE_TUNING = {
     "opacity": 1
   },
   "parkingSpots": {
-    "count": 6,
-    "startX": -2.3,
+    "count": 5,
+    "startX": -1.8,
     "spacing": 0.95,
     "y": 0.035,
-    "z": 0.55,
+    "z": 0.8,
     "modelWidth": 0.78,
     "modelDepth": 1.46,
     "scaleX": 0.7,
@@ -443,7 +444,7 @@ export const SCENE_TUNING = {
   },
   "vehicleArea": {
     "unityToWorldScale": 2,
-    "positionUnitScale": 0.84,
+    "positionUnitScale": 0.74,
     "sourceRootX": 0,
     "sourceRootZ": -2.92,
     "positionPivotX": 0,
@@ -466,7 +467,7 @@ export const SCENE_TUNING = {
       "6": 1.23,
       "10": 1.48
     },
-    "modelScale": 0.75
+    "modelScale": 0.68
   },
   "vehicleBoardingPulse": {
     "scale": 1.09,
@@ -474,8 +475,8 @@ export const SCENE_TUNING = {
   },
   "vehicleGuideHand": {
     "enabled": 1,
-    "levelKey": "level13",
-    "vehicleId": 130,
+    "levelKey": "level17",
+    "vehicleId": 144,
     "offsetX": 0.25,
     "offsetY": 0.38,
     "offsetZ": 0.46,
@@ -491,7 +492,7 @@ export const SCENE_TUNING = {
   },
   "firstClickGuide": {
     "enabled": 0,
-    "levelKey": "level7",
+    "levelKey": "level35",
     "vehicleId": 89,
     "durationSeconds": 3,
     "maskOpacity": 0.8,
@@ -501,33 +502,66 @@ export const SCENE_TUNING = {
   },
   "entryBanner": {
     "enabled": 1,
-    "style": "hard",
+    "style": "superhard",
     "positionX": 540,
     "positionY": 1080,
     "scale": 1,
-    "durationSeconds": 1.45,
-    "maskEnabled": 1,
+    "durationSeconds": 2.2,
+    "maskEnabled": true,
     "maskOpacity": 0.62,
-    "debug": {
-      "preview": 0,
-      "components": {
+    "components": {
         "banner": {
-          "position": { "x": 0, "y": 0, "z": 0 },
-          "scale": { "x": 1, "y": 1, "z": 1 },
-          "rotation": { "x": 0, "y": 0, "z": 0 }
+          "position": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "scale": {
+            "x": 1.9,
+            "y": 1.9,
+            "z": 1
+          },
+          "rotation": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          }
         },
         "arrows": {
-          "position": { "x": 0, "y": 0, "z": 0 },
-          "scale": { "x": 1, "y": 1, "z": 1 },
-          "rotation": { "x": 0, "y": 0, "z": 0 }
+          "position": {
+            "x": 0,
+            "y": -20,
+            "z": 0
+          },
+          "scale": {
+            "x": 2,
+            "y": 2,
+            "z": 1
+          },
+          "rotation": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          }
         },
         "label": {
-          "position": { "x": 0, "y": 0, "z": 0 },
-          "scale": { "x": 1, "y": 1, "z": 1 },
-          "rotation": { "x": 0, "y": 0, "z": 0 }
+          "position": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "scale": {
+            "x": 0.8,
+            "y": 0.8,
+            "z": 1
+          },
+          "rotation": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          }
         }
       }
-    }
   },
   "passengers": {
     "modelHeight": 0.48,
@@ -670,14 +704,17 @@ export const SCENE_TUNING = {
       "speedEnd": 0.72
     },
     "hit": {
-      "sizeScale": 2,
-      "particleHit2SizeScale": 1,
-      "particleHit1SizeScale": 1,
-      "particleHitSizeScale": 1
+      "sizeScale": 3.3,
+      "particleHit2SizeScale": 2,
+      "particleHit1SizeScale": 2.15,
+      "particleHitSizeScale": 4.7
     }
   },
   "shadows": {
     "y": 0.006,
     "opacity": 0.55
+  },
+  "audio": {
+    "vehicleCollisionVolume": 0.75
   }
 };

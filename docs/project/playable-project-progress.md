@@ -1,5 +1,17 @@
 # Playable Project Progress
 
+## Completed On 2026-09-09 - Rebuilt level42 with EntryBanner inline resources
+
+- Decoded and applied the complete tuning payload; level `level42` uses `BG01 冬季`, `dualQueue3`, product text `Bus Fever Party！`, and the enabled `superhard` EntryBanner (`2.2s`, mask opacity `0.62`).
+- Generated the 69-vehicle production session and packaged the selected mechanism resources (`ordinaryConveyor`, `entryBanner`) into `artifacts/applovin/index.html`.
+- Verification: `src/scene-tuning.js` matches `artifacts/scene-tuning.json`, `artifacts/selected-level.txt` is `level42`, and AppLovin static checks pass at `3,461,573` bytes.
+
+## Completed On 2026-09-09 - EntryBanner tuning finalized
+
+- Moved the banner, arrow-group, and title XYZ transform values from temporary debug tuning into the formal `entryBanner.components` defaults without changing their current values.
+- Removed the temporary preview/component adjustment menu and all runtime dependencies on `entryBanner.debug`.
+- Verification: EntryBanner mechanism resource tests and JavaScript syntax checks passed before packaging verification.
+
 ## Completed On 2026-09-09 - EntryBanner upload resource cleanup
 
 - Retained only the six EntryBanner runtime PNGs used by `MECHANISM_RESOURCE_MANIFEST`: Hard/SuperHard title and background images plus the red/purple arrow groups.

@@ -1229,7 +1229,7 @@ export class SceneView {
   updateEntryBannerComponentTransforms() {
     const banner = this.entryBanner;
     if (!banner) return;
-    const components = SCENE_TUNING.entryBanner?.debug?.components ?? {};
+    const components = SCENE_TUNING.entryBanner?.components ?? {};
     const toNumber = (value, fallback = 0) => Number.isFinite(Number(value)) ? Number(value) : fallback;
     const transform = (component = {}, defaultScale = 1) => {
       const position = component.position ?? {};
@@ -1280,30 +1280,12 @@ export class SceneView {
     banner.scene.style.width = `${1080 * uiScale}px`;
   }
 
-  showEntryBannerPreview() {
-    const banner = this.entryBanner;
-    if (!banner) return;
-    banner.root.hidden = false;
-    banner.root.classList.add('is-preview');
-    banner.bannerGroup.hidden = false;
-    banner.bannerGroup.style.opacity = '1';
-    banner.mask.style.opacity = banner.mask.hidden ? '0' : '1';
-    banner.bannerGroup.style.transform = 'translateY(-50%) scale(1, 1)';
-    banner.label.style.transform = 'translate(-50%, -50%) scale(1)';
-    for (const arrow of banner.arrows) {
-      arrow.hidden = false;
-      arrow.style.opacity = '1';
-      arrow.style.transform = 'translate(-50%, -50%) translateY(3px)';
-    }
-  }
-
   updateEntryBannerTuning() {
     const banner = this.entryBanner;
     if (!banner) return;
     const tuning = SCENE_TUNING.entryBanner ?? {};
     const enabled = Boolean(tuning.enabled);
-    const preview = Boolean(tuning.debug?.preview);
-    if (!enabled && !preview) {
+    if (!enabled) {
       this.hideEntryBanner();
       return;
     }
@@ -1325,11 +1307,6 @@ export class SceneView {
       THREE.MathUtils.clamp(Number(tuning.scale ?? 1), 0.3, 2)
     ));
     this.updateEntryBannerLayout();
-    if (preview) {
-      this.entryBannerState = null;
-      this.showEntryBannerPreview();
-      return;
-    }
     banner.root.classList.remove('is-preview');
     this.updateEntryBannerFrame(0);
   }
@@ -1337,10 +1314,6 @@ export class SceneView {
   showEntryBanner() {
     const banner = this.entryBanner;
     if (!banner || !SCENE_TUNING.entryBanner?.enabled) return;
-    if (SCENE_TUNING.entryBanner?.debug?.preview) {
-      this.updateEntryBannerTuning();
-      return;
-    }
     this.entryBannerState = { startedAt: globalThis.performance?.now?.() ?? Date.now() };
     this.updateEntryBannerTuning();
     banner.root.hidden = false;

@@ -58,7 +58,7 @@ const CONVEYOR_LAYOUT_FIELD_GROUPS = CONVEYOR_LAYOUT_OPTIONS.flatMap(([layoutId,
 ));
 
 function makeEntryBannerComponentFields(label, component) {
-  const root = `entryBanner.debug.components.${component}`;
+  const root = `entryBanner.components.${component}`;
   return [
     [`${label} X 位移`, `${root}.position.x`, -600, 600, 1],
     [`${label} Y 位移`, `${root}.position.y`, -600, 600, 1],
@@ -455,13 +455,7 @@ const FIELD_GROUPS = [
       ['\u7f29\u653e', 'entryBanner.scale', 0.3, 2, 0.01],
       ['\u64ad\u653e\u65f6\u95f4', 'entryBanner.durationSeconds', 0.5, 8, 0.05],
       ['\u663e\u793a\u906e\u7f69', 'entryBanner.maskEnabled', 0, 1, 1, null, 'toggle'],
-      ['\u906e\u7f69\u900f\u660e\u5ea6', 'entryBanner.maskOpacity', 0, 1, 0.01]
-    ]
-  },
-  {
-    title: 'EntryBanner \u4e34\u65f6\u8c03\u8bd5',
-    fields: [
-      ['\u56fa\u5b9a\u9884\u89c8', 'entryBanner.debug.preview', 0, 1, 1, null, 'toggle'],
+      ['\u906e\u7f69\u900f\u660e\u5ea6', 'entryBanner.maskOpacity', 0, 1, 0.01],
       ...makeEntryBannerComponentFields('\u6a2a\u5e45\u4e3b\u4f53', 'banner'),
       ...makeEntryBannerComponentFields('\u7bad\u5934\u7ec4', 'arrows'),
       ...makeEntryBannerComponentFields('\u6807\u9898', 'label')
