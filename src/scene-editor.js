@@ -15,7 +15,8 @@ const BACKGROUND_OPTIONS = [
   ['/assets/applovin/textures/BG01_split01_q60.jpg', 'BG01 \u51ac\u5b63'],
   ['/assets/applovin/textures/BG02_split01_winter_q60.jpg', 'BG02 \u51ac\u5b63'],
   ['/assets/applovin/textures/BG02_split01_summer_q60.jpg', 'BG02 \u590f\u5b63'],
-  ['/assets/applovin/textures/BG01_split01_Sakura_q60.jpg', 'BG01 \u6a31\u82b1']
+  ['/assets/applovin/textures/BG01_split01_Sakura_q60.jpg', 'BG01 \u6a31\u82b1'],
+  ['/assets/applovin/textures/BG01_split01_Grassland_q60.jpg', 'BG01 \u8349\u5730']
 ];
 
 const BRANDING_ICON_OPTIONS = [

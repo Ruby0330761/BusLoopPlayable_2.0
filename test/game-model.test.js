@@ -1069,22 +1069,25 @@ test('vehicle arrows hide after entering a parking spot', () => {
   assert.match(sceneViewSource, /view\.userData\.arrowRoot\.visible = !hideArrowAtSpot/);
 });
 
-test('background asset selection uses the optimized Sakura image and remains editor-switchable', () => {
+test('background asset selection remains editor-switchable with optimized variants', () => {
   const editorSource = readFileSync(join('src', 'scene-editor.js'), 'utf8');
   const viewSource = readFileSync(join('src', 'scene-view.js'), 'utf8');
   const backgroundPath = join('public', SCENE_TUNING.background.asset.replace(/^\//, ''));
   const sakuraPath = join('public', 'assets', 'applovin', 'textures', 'BG01_split01_Sakura_q60.jpg');
+  const grasslandPath = join('public', 'assets', 'applovin', 'textures', 'BG01_split01_Grassland_q60.jpg');
 
   assert.equal(SCENE_TUNING.background.asset, ACTIVE_LEVEL.assets.background);
-  assert.match(SCENE_TUNING.background.asset, /BG01_split01_Sakura_q60\.jpg$/);
   assert.ok(statSync(backgroundPath).size < 350_000);
   assert.deepEqual(readImageDimensions(readFileSync(backgroundPath)), { width: 2100, height: 3382 });
   assert.ok(statSync(sakuraPath).size < 350_000);
+  assert.ok(statSync(grasslandPath).size < 350_000);
+  assert.deepEqual(readImageDimensions(readFileSync(grasslandPath)), { width: 2100, height: 3382 });
   assert.match(editorSource, /BACKGROUND_OPTIONS/);
   assert.match(editorSource, /BG01_split01_q60\.jpg/);
   assert.match(editorSource, /BG02_split01_winter_q60\.jpg/);
   assert.match(editorSource, /BG02_split01_summer_q60\.jpg/);
   assert.match(editorSource, /BG01_split01_Sakura_q60\.jpg/);
+  assert.match(editorSource, /BG01_split01_Grassland_q60\.jpg/);
   assert.match(viewSource, /this\.setArtworkPlaneTexture\(this\.backgroundPlane, getSelectedBackgroundUrl\(\)\)/);
 });
 
