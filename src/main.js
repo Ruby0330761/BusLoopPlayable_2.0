@@ -749,6 +749,7 @@ async function startRuntime() {
   view.ready?.finally(() => {
     updateLoadingProgress(1);
     loadingScreen?.classList.add('is-hidden');
+    view.showEntryBanner?.();
     window.setTimeout(() => loadingScreen?.remove(), 360);
   });
   function initializeGameQueues({ resetSlots = false } = {}) {

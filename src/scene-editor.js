@@ -57,6 +57,21 @@ const CONVEYOR_LAYOUT_FIELD_GROUPS = CONVEYOR_LAYOUT_OPTIONS.flatMap(([layoutId,
   makeConveyorLayoutGroups(layoutId, label)
 ));
 
+function makeEntryBannerComponentFields(label, component) {
+  const root = `entryBanner.debug.components.${component}`;
+  return [
+    [`${label} X 位移`, `${root}.position.x`, -600, 600, 1],
+    [`${label} Y 位移`, `${root}.position.y`, -600, 600, 1],
+    [`${label} Z 位移`, `${root}.position.z`, -600, 600, 1],
+    [`${label} X 缩放`, `${root}.scale.x`, 0.1, 3, 0.01],
+    [`${label} Y 缩放`, `${root}.scale.y`, 0.1, 3, 0.01],
+    [`${label} Z 缩放`, `${root}.scale.z`, 0.1, 3, 0.01],
+    [`${label} X 旋转`, `${root}.rotation.x`, -180, 180, 1],
+    [`${label} Y 旋转`, `${root}.rotation.y`, -180, 180, 1],
+    [`${label} Z 旋转`, `${root}.rotation.z`, -180, 180, 1]
+  ];
+}
+
 const FIELD_GROUPS = [
   {
     title: '\u5173\u5361',
@@ -427,6 +442,31 @@ const FIELD_GROUPS = [
     ]
   }
 ,
+  {
+    title: '\u5165\u573a\u6a2a\u5e45 EntryBanner',
+    fields: [
+      ['\u542f\u7528', 'entryBanner.enabled', 0, 1, 1, null, 'toggle'],
+      ['\u96be\u5ea6\u6837\u5f0f', 'entryBanner.style', 0, 0, 1, [
+        ['hard', 'Hard'],
+        ['superhard', 'SuperHard']
+      ]],
+      ['X \u4f4d\u7f6e', 'entryBanner.positionX', 0, 2160, 1],
+      ['Y \u4f4d\u7f6e', 'entryBanner.positionY', 0, 4320, 1],
+      ['\u7f29\u653e', 'entryBanner.scale', 0.3, 2, 0.01],
+      ['\u64ad\u653e\u65f6\u95f4', 'entryBanner.durationSeconds', 0.5, 8, 0.05],
+      ['\u663e\u793a\u906e\u7f69', 'entryBanner.maskEnabled', 0, 1, 1, null, 'toggle'],
+      ['\u906e\u7f69\u900f\u660e\u5ea6', 'entryBanner.maskOpacity', 0, 1, 0.01]
+    ]
+  },
+  {
+    title: 'EntryBanner \u4e34\u65f6\u8c03\u8bd5',
+    fields: [
+      ['\u56fa\u5b9a\u9884\u89c8', 'entryBanner.debug.preview', 0, 1, 1, null, 'toggle'],
+      ...makeEntryBannerComponentFields('\u6a2a\u5e45\u4e3b\u4f53', 'banner'),
+      ...makeEntryBannerComponentFields('\u7bad\u5934\u7ec4', 'arrows'),
+      ...makeEntryBannerComponentFields('\u6807\u9898', 'label')
+    ]
+  },
   {
     title: 'Effect_Hit \u7c92\u5b50',
     fields: [

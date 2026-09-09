@@ -91,6 +91,102 @@ body { user-select: none; overscroll-behavior: none; }
   user-select: none;
 }
 .first-click-guide-hand[hidden] { display: none; }
+.entry-banner-overlay {
+  position: absolute;
+  z-index: 9;
+  left: 0;
+  top: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  pointer-events: none;
+}
+.entry-banner-overlay[hidden] { display: none; }
+.entry-banner-screen-mask {
+  position: absolute;
+  z-index: 1;
+  inset: 0;
+  background: rgba(0, 0, 0, var(--entry-banner-mask-opacity, .62));
+  opacity: 0;
+  pointer-events: none;
+}
+.entry-banner-scene {
+  position: absolute;
+  z-index: 2;
+  aspect-ratio: 1080 / 610;
+  container-type: inline-size;
+  transform: translate(-50%, -50%) scale(var(--entry-banner-scale, 1));
+  transform-origin: center;
+}
+.entry-banner-content {
+  position: absolute;
+  inset: 0;
+  perspective: 1000px;
+  transform-style: preserve-3d;
+  pointer-events: none;
+}
+.entry-banner-content img {
+  position: absolute;
+  display: block;
+  max-width: none;
+  pointer-events: none;
+  user-select: none;
+  -webkit-user-drag: none;
+}
+.entry-banner-banner-group {
+  position: absolute;
+  left: 0;
+  top: 55%;
+  width: 100%;
+  height: 31%;
+  z-index: 1;
+  transform-origin: center;
+}
+.entry-banner-arrow-group {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  transform-origin: center;
+}
+.entry-banner-label-group {
+  position: absolute;
+  inset: 0;
+  z-index: 4;
+  transform-origin: center;
+}
+.entry-banner-card {
+  left: 0;
+  top: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: fill;
+  filter: drop-shadow(0 5px 0 rgba(107, 52, 18, .22));
+}
+.entry-banner-arrow {
+  width: auto;
+  height: auto;
+  object-fit: fill;
+  will-change: opacity, transform;
+  filter: drop-shadow(0 2px 1px rgba(76, 22, 88, .28));
+}
+.entry-banner-arrow-1 { left: 30%; top: 51%; width: 3.07%; height: 21%; }
+.entry-banner-arrow-2 { left: 35.6%; top: 29%; width: 4.54%; height: 31%; }
+.entry-banner-arrow-3 { left: 43.8%; top: -8%; width: 3.68%; height: 25%; }
+.entry-banner-arrow-4 { left: 52.5%; top: -1%; width: 6.13%; height: 42%; }
+.entry-banner-arrow-5 { left: 62.3%; top: 22%; width: 3.07%; height: 21%; }
+.entry-banner-arrow-6 { left: 68.2%; top: 46%; width: 4.09%; height: 28%; }
+.entry-banner-label {
+  position: absolute;
+  z-index: 1;
+  left: 50%;
+  top: 50%;
+  width: auto;
+  height: 67.5%;
+  object-fit: contain;
+  filter: none;
+  transform: translate(-50%, -50%) scale(0);
+  transform-origin: center;
+}
 .loading-screen {
   position: absolute;
   z-index: 30;

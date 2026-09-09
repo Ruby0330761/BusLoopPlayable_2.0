@@ -2,6 +2,7 @@ const MECHANISM_ROOT = '/assets/unity/mechanisms';
 
 export const MECHANISM_TYPES = Object.freeze({
   ordinaryConveyor: 'ordinaryConveyor',
+  entryBanner: 'entryBanner',
   spatialConveyor: 'spatialConveyor',
   luxuryVehicle: 'luxuryVehicle',
   ambulance: 'ambulance',
@@ -13,6 +14,7 @@ export const MECHANISM_TYPES = Object.freeze({
 
 export const MECHANISM_TYPE_ORDER = Object.freeze([
   MECHANISM_TYPES.ordinaryConveyor,
+  MECHANISM_TYPES.entryBanner,
   MECHANISM_TYPES.spatialConveyor,
   MECHANISM_TYPES.luxuryVehicle,
   MECHANISM_TYPES.ambulance,
@@ -30,6 +32,14 @@ export const MECHANISM_RESOURCE_MANIFEST = Object.freeze({
     '/assets/unity/conveyors/Loop_06_q80.webp'
   ]),
   [MECHANISM_TYPES.spatialConveyor]: Object.freeze([]),
+  [MECHANISM_TYPES.entryBanner]: Object.freeze([
+    `${MECHANISM_ROOT}/entry-banner/sprites/Main_EntryBanner_PurpleArrows.png`,
+    `${MECHANISM_ROOT}/entry-banner/sprites/Main_EntryBanner_RedArrows.png`,
+    `${MECHANISM_ROOT}/entry-banner/sprites/Hard.png`,
+    `${MECHANISM_ROOT}/entry-banner/sprites/HardBg.png`,
+    `${MECHANISM_ROOT}/entry-banner/sprites/SuperHard.png`,
+    `${MECHANISM_ROOT}/entry-banner/sprites/SuperHardBg.png`
+  ]),
   [MECHANISM_TYPES.luxuryVehicle]: Object.freeze([
     `${MECHANISM_ROOT}/luxury-vehicle/models/Luxury_001.fbx.bin`,
     `${MECHANISM_ROOT}/luxury-vehicle/models/Idle_wealthy.fbx.bin`,
@@ -86,6 +96,14 @@ export const MECHANISM_RESOURCE_MANIFEST = Object.freeze({
 });
 
 export const MECHANISM_ASSETS = Object.freeze({
+  entryBanner: Object.freeze({
+    hardTitle: `${MECHANISM_ROOT}/entry-banner/sprites/Hard.png`,
+    hardBackground: `${MECHANISM_ROOT}/entry-banner/sprites/HardBg.png`,
+    superHardTitle: `${MECHANISM_ROOT}/entry-banner/sprites/SuperHard.png`,
+    superHardBackground: `${MECHANISM_ROOT}/entry-banner/sprites/SuperHardBg.png`,
+    purpleArrows: `${MECHANISM_ROOT}/entry-banner/sprites/Main_EntryBanner_PurpleArrows.png`,
+    redArrows: `${MECHANISM_ROOT}/entry-banner/sprites/Main_EntryBanner_RedArrows.png`
+  }),
   luxuryVehicle: Object.freeze({
     vehicleModel: `${MECHANISM_ROOT}/luxury-vehicle/models/Luxury_001.fbx.bin`,
     passengerModel: `${MECHANISM_ROOT}/luxury-vehicle/models/Idle_wealthy.fbx.bin`,
@@ -192,8 +210,12 @@ export function deriveLevelMechanics(level = {}) {
   };
 }
 
-export function getMechanismTypesForLevels(levels = [], { spatialSelection = null } = {}) {
+export function getMechanismTypesForLevels(
+  levels = [],
+  { spatialSelection = null, entryBannerEnabled = false } = {}
+) {
   const types = [];
+  if (entryBannerEnabled) addType(types, MECHANISM_TYPES.entryBanner);
   for (const level of levels) {
     const metadata = level?.mechanics ?? deriveLevelMechanics(level);
     for (const type of metadata.types ?? []) addType(types, type);

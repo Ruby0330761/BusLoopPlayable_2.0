@@ -46,6 +46,8 @@ import {
 
 const ease = (t) => 1 - Math.pow(1 - t, 3);
 const deg = (value) => THREE.MathUtils.degToRad(value);
+const ENTRY_BANNER_TIMELINE_SECONDS = 1.45;
+const ENTRY_BANNER_DURATION_SECONDS = ENTRY_BANNER_TIMELINE_SECONDS;
 const ARROW_OUTLINE_SCALE = 1.28;
 const GUIDE_HAND_TEXTURE_URL = '/assets/applovin/main-guide-hand_q80.webp';
 const TURN_ARROW_ASSET_URL = MECHANISM_ASSETS.turnVehicle.arrow;
@@ -1134,6 +1136,8 @@ export class SceneView {
     this.guideHand = null;
     this.guideHandMaterial = null;
     this.firstClickGuideMask = this.createFirstClickGuideMask();
+    this.entryBanner = this.createEntryBanner();
+    this.entryBannerState = null;
     this.vehiclePathLines = [];
     this.vehicleDeparturePathLines = [];
     this.lastSnapshot = null;
@@ -1173,6 +1177,223 @@ export class SceneView {
     root.append(hand);
     parent.append(root);
     return { root, pieces, hole, hand };
+  }
+
+  createEntryBanner() {
+    const parent = this.canvas.parentElement;
+    if (!parent) return null;
+    const assets = MECHANISM_ASSETS.entryBanner;
+    const root = document.createElement('div');
+    root.className = 'entry-banner-overlay';
+    root.hidden = true;
+
+    const mask = document.createElement('div');
+    mask.className = 'entry-banner-screen-mask';
+    const scene = document.createElement('div');
+    scene.className = 'entry-banner-scene';
+    const content = document.createElement('div');
+    content.className = 'entry-banner-content';
+    const bannerGroup = document.createElement('div');
+    bannerGroup.className = 'entry-banner-banner-group';
+    const arrowGroup = document.createElement('div');
+    arrowGroup.className = 'entry-banner-arrow-group';
+    const labelGroup = document.createElement('div');
+    labelGroup.className = 'entry-banner-label-group';
+
+    const makeImage = (className, source, alt = '') => {
+      const image = document.createElement('img');
+      image.className = className;
+      image.src = source;
+      image.alt = alt;
+      image.draggable = false;
+      return image;
+    };
+
+    const card = makeImage('entry-banner-card', assets.hardBackground);
+    const arrows = Array.from({ length: 6 }, (_, index) => {
+      const arrow = makeImage(`entry-banner-arrow entry-banner-arrow-${index + 1}`, assets.redArrows);
+      arrow.dataset.arrowIndex = String(index);
+      return arrow;
+    });
+    const label = makeImage('entry-banner-label', assets.hardTitle, 'HARD');
+    arrowGroup.append(...arrows);
+    labelGroup.append(label);
+    bannerGroup.append(card, arrowGroup, labelGroup);
+    content.append(bannerGroup);
+    scene.append(content);
+    root.append(mask, scene);
+    parent.append(root);
+    return { root, mask, scene, content, bannerGroup, card, arrowGroup, arrows, labelGroup, label };
+  }
+
+  updateEntryBannerComponentTransforms() {
+    const banner = this.entryBanner;
+    if (!banner) return;
+    const components = SCENE_TUNING.entryBanner?.debug?.components ?? {};
+    const toNumber = (value, fallback = 0) => Number.isFinite(Number(value)) ? Number(value) : fallback;
+    const transform = (component = {}, defaultScale = 1) => {
+      const position = component.position ?? {};
+      const scale = component.scale ?? {};
+      const rotation = component.rotation ?? {};
+      return `translate3d(${toNumber(position.x) / 10.8}cqw, ${toNumber(position.y) / 10.8}cqw, ${toNumber(position.z) / 10.8}cqw) rotateX(${toNumber(rotation.x)}deg) rotateY(${toNumber(rotation.y)}deg) rotateZ(${toNumber(rotation.z)}deg) scale3d(${toNumber(scale.x, defaultScale)}, ${toNumber(scale.y, defaultScale)}, ${toNumber(scale.z, defaultScale)})`;
+    };
+    banner.card.style.transform = transform(components.banner);
+    banner.arrowGroup.style.transform = transform(components.arrows);
+    banner.labelGroup.style.transform = transform(components.label);
+  }
+
+  updateEntryBannerLayout() {
+    const banner = this.entryBanner;
+    const parent = banner?.root?.parentElement;
+    if (!banner || !parent) return;
+    const canvasRect = this.canvas.getBoundingClientRect();
+    const parentRect = parent.getBoundingClientRect();
+    const canvasWidth = Math.max(1, Number(canvasRect.width) || this.canvas.clientWidth || 1);
+    const canvasHeight = Math.max(1, Number(canvasRect.height) || this.canvas.clientHeight || 1);
+    const designWidth = Math.max(1, Number(SCENE_TUNING.preview?.width) || 1080);
+    const designHeight = Math.max(1, Number(SCENE_TUNING.preview?.height) || 2160);
+    const backgroundBounds = this.getBackgroundCanvasBounds?.();
+    const playableLeft = Number.isFinite(backgroundBounds?.left) ? backgroundBounds.left : 0;
+    const playableRight = Number.isFinite(backgroundBounds?.right) ? backgroundBounds.right : canvasWidth;
+    const playableTop = Number.isFinite(backgroundBounds?.top) ? backgroundBounds.top : 0;
+    const playableBottom = Number.isFinite(backgroundBounds?.bottom) ? backgroundBounds.bottom : canvasHeight;
+    const playableWidth = Math.max(1, Math.min(canvasWidth, playableRight) - Math.max(0, playableLeft));
+    const playableHeight = Math.max(1, Math.min(canvasHeight, playableBottom) - Math.max(0, playableTop));
+    const uiScale = Math.min(1, playableWidth / designWidth, playableHeight / designHeight);
+    const positionX = Number.isFinite(Number(SCENE_TUNING.entryBanner?.positionX))
+      ? Number(SCENE_TUNING.entryBanner.positionX)
+      : designWidth / 2;
+    const positionY = Number.isFinite(Number(SCENE_TUNING.entryBanner?.positionY))
+      ? Number(SCENE_TUNING.entryBanner.positionY)
+      : designHeight / 2;
+
+    const parentContentLeft = parentRect.left + (parent.clientLeft || 0);
+    const parentContentTop = parentRect.top + (parent.clientTop || 0);
+    banner.root.style.left = `${canvasRect.left - parentContentLeft + Math.max(0, playableLeft)}px`;
+    banner.root.style.top = `${canvasRect.top - parentContentTop + Math.max(0, playableTop)}px`;
+    banner.root.style.right = 'auto';
+    banner.root.style.bottom = 'auto';
+    banner.root.style.width = `${playableWidth}px`;
+    banner.root.style.height = `${playableHeight}px`;
+    banner.scene.style.left = `${playableWidth / 2 + (positionX - designWidth / 2) * uiScale}px`;
+    banner.scene.style.top = `${playableHeight / 2 + (positionY - designHeight / 2) * uiScale}px`;
+    banner.scene.style.width = `${1080 * uiScale}px`;
+  }
+
+  showEntryBannerPreview() {
+    const banner = this.entryBanner;
+    if (!banner) return;
+    banner.root.hidden = false;
+    banner.root.classList.add('is-preview');
+    banner.bannerGroup.hidden = false;
+    banner.bannerGroup.style.opacity = '1';
+    banner.mask.style.opacity = banner.mask.hidden ? '0' : '1';
+    banner.bannerGroup.style.transform = 'translateY(-50%) scale(1, 1)';
+    banner.label.style.transform = 'translate(-50%, -50%) scale(1)';
+    for (const arrow of banner.arrows) {
+      arrow.hidden = false;
+      arrow.style.opacity = '1';
+      arrow.style.transform = 'translate(-50%, -50%) translateY(3px)';
+    }
+  }
+
+  updateEntryBannerTuning() {
+    const banner = this.entryBanner;
+    if (!banner) return;
+    const tuning = SCENE_TUNING.entryBanner ?? {};
+    const enabled = Boolean(tuning.enabled);
+    const preview = Boolean(tuning.debug?.preview);
+    if (!enabled && !preview) {
+      this.hideEntryBanner();
+      return;
+    }
+    const style = String(tuning.style ?? 'hard').toLowerCase() === 'superhard' ? 'superhard' : 'hard';
+    const assets = MECHANISM_ASSETS.entryBanner;
+    banner.root.classList.toggle('is-superhard', style === 'superhard');
+    banner.mask.hidden = !Boolean(tuning.maskEnabled);
+    banner.mask.style.setProperty('--entry-banner-mask-opacity', String(
+      THREE.MathUtils.clamp(Number(tuning.maskOpacity ?? 0.62), 0, 1)
+    ));
+    banner.card.src = style === 'superhard' ? assets.superHardBackground : assets.hardBackground;
+    for (const arrow of banner.arrows) {
+      arrow.src = style === 'superhard' ? assets.purpleArrows : assets.redArrows;
+    }
+    banner.label.src = style === 'superhard' ? assets.superHardTitle : assets.hardTitle;
+    banner.label.alt = style === 'superhard' ? 'SUPER HARD' : 'HARD';
+    this.updateEntryBannerComponentTransforms();
+    banner.scene.style.setProperty('--entry-banner-scale', String(
+      THREE.MathUtils.clamp(Number(tuning.scale ?? 1), 0.3, 2)
+    ));
+    this.updateEntryBannerLayout();
+    if (preview) {
+      this.entryBannerState = null;
+      this.showEntryBannerPreview();
+      return;
+    }
+    banner.root.classList.remove('is-preview');
+    this.updateEntryBannerFrame(0);
+  }
+
+  showEntryBanner() {
+    const banner = this.entryBanner;
+    if (!banner || !SCENE_TUNING.entryBanner?.enabled) return;
+    if (SCENE_TUNING.entryBanner?.debug?.preview) {
+      this.updateEntryBannerTuning();
+      return;
+    }
+    this.entryBannerState = { startedAt: globalThis.performance?.now?.() ?? Date.now() };
+    this.updateEntryBannerTuning();
+    banner.root.hidden = false;
+    banner.root.classList.remove('is-active');
+    void banner.root.offsetWidth;
+    banner.root.classList.add('is-active');
+  }
+
+  hideEntryBanner() {
+    if (!this.entryBanner) return;
+    this.entryBannerState = null;
+    this.entryBanner.root.classList.remove('is-active');
+    this.entryBanner.root.hidden = true;
+  }
+
+  updateEntryBanner(time = globalThis.performance?.now?.() ?? Date.now()) {
+    if (!this.entryBannerState || !SCENE_TUNING.entryBanner?.enabled) return;
+    const duration = Math.max(0.5, Number(SCENE_TUNING.entryBanner.durationSeconds) || ENTRY_BANNER_DURATION_SECONDS);
+    const progress = (time - this.entryBannerState.startedAt) / (duration * 1000);
+    this.updateEntryBannerFrame(progress * ENTRY_BANNER_TIMELINE_SECONDS);
+    if (progress >= 1) this.hideEntryBanner();
+  }
+
+  updateEntryBannerFrame(time) {
+    const banner = this.entryBanner;
+    if (!banner) return;
+    const frame = (keys, valueAtEnd = 0) => {
+      if (time <= keys[0][0]) return keys[0][1];
+      for (let index = 1; index < keys.length; index += 1) {
+        const [endTime, endValue] = keys[index];
+        const [startTime, startValue] = keys[index - 1];
+        if (time <= endTime) return THREE.MathUtils.lerp(startValue, endValue, (time - startTime) / Math.max(0.0001, endTime - startTime));
+      }
+      return valueAtEnd ?? keys[keys.length - 1][1];
+    };
+    const bannerScaleY = frame([[0, 0.1], [0.233, 1.1], [0.383, 1], [1.283, 1], [ENTRY_BANNER_TIMELINE_SECONDS, 0]], 0);
+    const fade = frame([[0, 0], [0.12, 1], [1.25, 1], [ENTRY_BANNER_TIMELINE_SECONDS, 0]], 0);
+    const maskFade = frame([[0, 0], [0.12, 1], [1.22, 1], [ENTRY_BANNER_TIMELINE_SECONDS, 0]], 0);
+    const labelScale = frame([[0, 0], [0.266, 1.1], [0.416, 1]], 1);
+    banner.bannerGroup.style.opacity = String(fade);
+    banner.mask.style.opacity = String(maskFade);
+    banner.bannerGroup.style.transform = `translateY(-50%) scale(1, ${bannerScaleY})`;
+    banner.bannerGroup.hidden = time >= ENTRY_BANNER_TIMELINE_SECONDS;
+    banner.label.style.transform = `translate(-50%, -50%) scale(${labelScale})`;
+    const arrowKeys = [[0.533, 0.8], [0.383, 0.65], [0.266, 0.683], [0.35, 0.633], [0.466, 0.7], [0.55, 0.783]];
+    for (let index = 0; index < banner.arrows.length; index += 1) {
+      const arrow = banner.arrows[index];
+      const [start, end] = arrowKeys[index];
+      const alpha = frame([[start, 0], [end, 1], [end + 0.25, 1], [end + 0.32, 0]], 0);
+      arrow.style.opacity = String(alpha);
+      arrow.style.transform = `translate(-50%, -50%) translateY(${frame([[start, 55], [end, 3]], 3)}px)`;
+      arrow.hidden = alpha <= 0.001;
+    }
   }
 
   buildGarageViews() {
@@ -3485,6 +3706,7 @@ export class SceneView {
     this.updateLuxuryMaterialTuning();
     this.updateVehicleArrowTuning();
     this.updateGuideHandTuning();
+    this.updateEntryBannerTuning();
     this.applyConveyorVisualTuning();
 
     this.buildPathCurves();
@@ -3923,6 +4145,7 @@ export class SceneView {
     this.vehicleEffects?.update(snapshot);
     this.updateVehiclePathPreview(snapshot, game);
     this.updateGuideHand(snapshot.time, snapshot);
+    this.updateEntryBanner();
     this.updateFirstClickGuideMask(snapshot);
   }
 
@@ -4591,6 +4814,7 @@ export class SceneView {
     this.camera.updateProjectionMatrix();
     this.camera.updateMatrixWorld(true);
     this.renderer.setSize(width, height, false);
+    this.updateEntryBannerLayout();
     if (this.fullQueueCurves) this.updateQueueCurvesForCamera();
   }
 

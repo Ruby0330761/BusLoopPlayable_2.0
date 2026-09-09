@@ -499,6 +499,36 @@ export const SCENE_TUNING = {
     "holeScaleX": 0.62,
     "holeScaleY": 0.62
   },
+  "entryBanner": {
+    "enabled": 1,
+    "style": "hard",
+    "positionX": 540,
+    "positionY": 1080,
+    "scale": 1,
+    "durationSeconds": 1.45,
+    "maskEnabled": 1,
+    "maskOpacity": 0.62,
+    "debug": {
+      "preview": 0,
+      "components": {
+        "banner": {
+          "position": { "x": 0, "y": 0, "z": 0 },
+          "scale": { "x": 1, "y": 1, "z": 1 },
+          "rotation": { "x": 0, "y": 0, "z": 0 }
+        },
+        "arrows": {
+          "position": { "x": 0, "y": 0, "z": 0 },
+          "scale": { "x": 1, "y": 1, "z": 1 },
+          "rotation": { "x": 0, "y": 0, "z": 0 }
+        },
+        "label": {
+          "position": { "x": 0, "y": 0, "z": 0 },
+          "scale": { "x": 1, "y": 1, "z": 1 },
+          "rotation": { "x": 0, "y": 0, "z": 0 }
+        }
+      }
+    }
+  },
   "passengers": {
     "modelHeight": 0.48,
     "modelScale": 1.25,

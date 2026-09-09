@@ -1,5 +1,30 @@
 # Playable Project Progress
 
+## Completed On 2026-09-09 - EntryBanner upload resource cleanup
+
+- Retained only the six EntryBanner runtime PNGs used by `MECHANISM_RESOURCE_MANIFEST`: Hard/SuperHard title and background images plus the red/purple arrow groups.
+- Removed 15 unused files from the EntryBanner source directory: Unity reference scripts/Prefab, legacy banner background/mask/person/solid-color sprites, and the unused EntryTipTextBanner assets. The removed files totaled `1,104,467 bytes` before deletion.
+- Verification: resource manifest tests `3/3`, production build, AppLovin packaging, and static package checks passed after cleanup.
+
+## Completed On 2026-09-09 - EntryBanner playable-boundary correction
+
+- Corrected the EntryBanner overlay origin to use the stage content box, removing the phone-preview border offset that exposed a strip of the mask in portrait mode.
+- Changed the mask clip boundary to the renderer's projected background bounds, so landscape mode covers the full actual playable content area while the banner keeps its height-based design scale.
+- Verification: EntryBanner tests `3/3`, portrait boundary equality, landscape background-boundary coverage, production build, AppLovin packaging, and static package checks passed.
+
+## Completed On 2026-09-09 - EntryBanner playable viewport layout
+
+- Changed EntryBanner and its mask from stage-wide percentage sizing to a centered, uniformly scaled playable viewport based on the canvas and the configured preview dimensions; wide screens now keep the banner at design scale and leave outside areas uncovered.
+- Kept the existing EntryBanner tuning menu, component transforms, image assets, layer order, and animation behavior unchanged; resize and live tuning both refresh the bounded layout.
+- Verification: EntryBanner tests `3/3`, portrait and 1920x1080 landscape browser checks, tuning interaction, production build, AppLovin packaging, and static package checks passed. Final single HTML is `3,484,148` bytes (`3.323 MiB`).
+
+## Completed On 2026-09-09 - EntryBanner image version and merge recovery
+
+- Restored the complete EntryBanner runtime after branch conflict: image-based Hard/SuperHard backgrounds and title sprites, load-complete playback trigger, CSS layout, and the temporary editor menu with banner/arrow/title XYZ position, scale, and rotation controls.
+- Kept the supplied title image above the arrow group (`label z-index 4`, `arrow z-index 3`) and retained per-arrow opacity keyframes for fade-in and fade-out.
+- Added the four supplied PNGs to the EntryBanner mechanism manifest; obsolete red/purple background sprites are no longer selected for production packaging. Existing saved tuning continues to merge over the restored defaults.
+- Verification: EntryBanner tests `3/3`, syntax checks, Hard/SuperHard browser preview, temporary menu presence, image dimensions, layer order, zero error-level browser logs, production build, and AppLovin static package checks. Final single HTML is `3,483,511` bytes (`3.322 MiB`).
+
 ## Completed On 2026-09-08 - Single bundled font policy
 
 - Confirmed `public/assets/unity/fonts/Poppins-Bold.ttf` is byte-identical to Unity's source, then changed all runtime and development-editor CSS/Canvas text to the local `Poppins Branding` family. Removed the Game Over system-font selector and its stale tuning field.
