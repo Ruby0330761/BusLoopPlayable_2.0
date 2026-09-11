@@ -1,6 +1,7 @@
 import { readFile, stat } from 'node:fs/promises';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
+import { validateStoreLink } from '../src/store-links.js';
 
 const ROOT = process.cwd();
 const PACKAGE_FILE = path.join(ROOT, 'artifacts', 'applovin', 'index.html');
@@ -11,10 +12,6 @@ const BRANDING_ICON_ASSETS = [
   '/assets/icon-android.jpg',
   '/assets/icon-ios.png'
 ];
-const ALLOWED_URLS = new Set([
-  'https://play.google.com/store/apps/details?id=gridplus.busjam.carpuzzle',
-  'https://apps.apple.com/app/id6746743297'
-]);
 const ALLOWED_URL_PREFIXES = [
   'http://www.w3.org/'
 ];
@@ -49,8 +46,7 @@ function mimeForAsset(asset) {
     ['.png', 'image/png'],
     ['.mp3', 'audio/mpeg'],
     ['.wav', 'audio/wav'],
-    ['.webp', 'image/webp'],
-    ['.ttf', 'font/ttf']
+    ['.webp', 'image/webp']
   ]).get(extension) ?? 'application/octet-stream';
 }
 
@@ -71,6 +67,11 @@ async function main() {
   ]);
   const tuningUrl = `${pathToFileURL(TUNING_FILE).href}?t=${Date.now()}`;
   const { SCENE_TUNING } = await import(tuningUrl);
+  const storeLinks = {
+    android: validateStoreLink('android', SCENE_TUNING.storeLinks?.android, 'SCENE_TUNING.storeLinks.android'),
+    ios: validateStoreLink('ios', SCENE_TUNING.storeLinks?.ios, 'SCENE_TUNING.storeLinks.ios')
+  };
+  const allowedUrls = new Set(Object.values(storeLinks));
   const selectedIconAsset = SCENE_TUNING.branding?.icon?.asset;
   if (!BRANDING_ICON_ASSETS.includes(selectedIconAsset)) {
     throw new Error(`Unsupported branding Icon asset: ${selectedIconAsset}`);
@@ -84,7 +85,8 @@ async function main() {
     ? JSON.parse(await readFile(path.join(SPATIAL_PACKAGE_ROOT, `${selectedSpatialId}.json`), 'utf8'))
     : null;
   const mechanismTypes = getMechanismTypesForLevels(PLAYABLE_LEVEL_SEQUENCE, {
-    spatialSelection: selectedConveyor
+    spatialSelection: selectedConveyor,
+    entryBannerEnabled: Boolean(SCENE_TUNING.entryBanner?.enabled)
   });
   const selectedMechanismUrls = getMechanismResourcePaths(mechanismTypes);
   const allMechanismUrls = getMechanismResourcePaths(Object.keys(MECHANISM_RESOURCE_MANIFEST));
@@ -146,10 +148,10 @@ async function main() {
       pass: !/window\.open/iu.test(html)
     },
     {
-      name: 'data URL fetch compatibility layer present',
-      pass: /installDataUrlFetchCompat/iu.test(html) &&
-        /dataUrlFetchCompat/iu.test(html) &&
-        /new Response\(bytes/iu.test(html)
+      name: 'data-only offline request loader present',
+      pass: /function __playableDataRequest/iu.test(html) &&
+        /new Response\(bytes/iu.test(html) &&
+        !/\bfetch\s*\(/iu.test(html)
     },
     {
       name: 'inline binary data assets present',
@@ -166,8 +168,8 @@ async function main() {
       detail: `${omittedMechanismUrls.length} resources omitted`
     },
     {
-      name: 'iOS App Store direct scheme present',
-      pass: /itms-apps:\/\/itunes\.apple\.com\/app\/id6746743297/iu.test(html)
+      name: 'configured Android and iOS store URLs present',
+      pass: Object.values(storeLinks).every((url) => html.includes(url))
     },
     {
       name: 'MRAID ready/default wait present',
@@ -210,9 +212,8 @@ async function main() {
       pass: !html.includes(legacyLogoDataUri)
     },
     {
-      name: 'branding Poppins font inlined',
-      pass: /font-family:["']?Poppins Branding["']?/iu.test(html) &&
-        /src:url\(["']?data:font\/ttf;base64,/iu.test(html)
+      name: 'no bundled font or external font reference',
+      pass: !/@font-face|data:font\/|\.(?:eot|otf|ttf|woff2?)\b/iu.test(html)
     },
     {
       name: 'inline audio assets present',
@@ -222,12 +223,12 @@ async function main() {
       name: 'no disallowed remote URLs',
       pass: collectMatches(html, /https?:\/\/[^"'`\s<>)]+/giu)
         .every((url) => (
-          ALLOWED_URLS.has(url) ||
+          allowedUrls.has(url) ||
           ALLOWED_URL_PREFIXES.some((prefix) => url.startsWith(prefix))
         )),
       detail: collectMatches(html, /https?:\/\/[^"'`\s<>)]+/giu)
         .filter((url) => (
-          !ALLOWED_URLS.has(url) &&
+          !allowedUrls.has(url) &&
           !ALLOWED_URL_PREFIXES.some((prefix) => url.startsWith(prefix))
         ))
         .join(', ')

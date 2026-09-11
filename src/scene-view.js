@@ -1015,6 +1015,20 @@ export function isGuideLevelActive(tuning, activeLevelKey = LEVEL_1.key) {
   return !levelKey || levelKey === activeLevelKey;
 }
 
+export function shouldShowVehicleGuideHand({
+  enabled,
+  showAtStart,
+  hasInteracted,
+  inactiveSeconds,
+  idleDelaySeconds
+} = {}) {
+  if (!enabled) return false;
+  if (!hasInteracted && showAtStart) return true;
+  const inactive = Math.max(0, Number(inactiveSeconds) || 0);
+  const delay = Math.max(0, Number(idleDelaySeconds) || 0);
+  return inactive >= delay;
+}
+
 function makePassengerGroup(groupScale) {
   const group = new THREE.Group();
   group.scale.setScalar(groupScale);
@@ -1135,8 +1149,9 @@ export class SceneView {
     this.vehicleEffects = null;
     this.guideHand = null;
     this.guideHandMaterial = null;
+    this.guideHandActivity = { hasInteracted: false, lastInteractionTime: 0 };
     this.firstClickGuideMask = this.createFirstClickGuideMask();
-    this.entryBanner = this.createEntryBanner();
+    this.entryBanner = SCENE_TUNING.entryBanner?.enabled ? this.createEntryBanner() : null;
     this.entryBannerState = null;
     this.vehiclePathLines = [];
     this.vehicleDeparturePathLines = [];
@@ -1146,10 +1161,11 @@ export class SceneView {
     this.applyTuning();
     this.ready = this.loadUnityAssets();
     window.addEventListener('resize', () => this.resize());
-    if ('ResizeObserver' in window) {
+    if (__PLAYABLE_PLATFORM__ !== 'mintegral' && 'ResizeObserver' in window) {
       this.resizeObserver = new ResizeObserver(() => this.resize());
       this.resizeObserver.observe(canvas);
     }
+    canvas.addEventListener('pointerdown', () => this.recordGuideInteraction());
     canvas.addEventListener('pointerup', (event) => this.pick(event));
   }
 
@@ -1281,14 +1297,15 @@ export class SceneView {
   }
 
   updateEntryBannerTuning() {
-    const banner = this.entryBanner;
-    if (!banner) return;
     const tuning = SCENE_TUNING.entryBanner ?? {};
     const enabled = Boolean(tuning.enabled);
     if (!enabled) {
       this.hideEntryBanner();
       return;
     }
+    if (!this.entryBanner) this.entryBanner = this.createEntryBanner();
+    const banner = this.entryBanner;
+    if (!banner) return;
     const style = String(tuning.style ?? 'hard').toLowerCase() === 'superhard' ? 'superhard' : 'hard';
     const assets = MECHANISM_ASSETS.entryBanner;
     banner.root.classList.toggle('is-superhard', style === 'superhard');
@@ -1553,7 +1570,7 @@ export class SceneView {
     context.lineWidth = 14;
     context.strokeStyle = '#6f211d';
     context.stroke();
-    context.font = '900 92px "Poppins Branding"';
+    context.font = '900 92px "Poppins Branding", Arial, sans-serif';
     context.textAlign = 'center';
     context.textBaseline = 'middle';
     context.lineJoin = 'round';
@@ -3436,7 +3453,7 @@ export class SceneView {
       const context = canvas.getContext('2d');
       context.clearRect(0, 0, canvas.width, canvas.height);
       context.drawImage(this.ambulanceStepBubbleTexture.image, 8, 8, 176, 176);
-      context.font = `900 ${AMBULANCE_STEP_BOARD_FONT_SIZE}px "Poppins Branding"`;
+      context.font = `900 ${AMBULANCE_STEP_BOARD_FONT_SIZE}px "Poppins Branding", Arial, sans-serif`;
       context.textAlign = 'center';
       context.textBaseline = 'middle';
       context.lineJoin = 'round';
@@ -3604,7 +3621,7 @@ export class SceneView {
     const canvas = board.userData.textCanvas;
     const context = canvas.getContext('2d');
     context.clearRect(0, 0, canvas.width, canvas.height);
-    context.font = '700 112px "Poppins Branding"';
+    context.font = '700 112px "Poppins Branding", Arial, sans-serif';
     context.textAlign = 'center';
     context.textBaseline = 'middle';
     context.lineJoin = 'round';
@@ -3791,6 +3808,7 @@ export class SceneView {
     this.blockerCacheSignature = '';
     this.initialEntryPathStates.clear();
     this.queueEntryPathStates.clear();
+    this.resetGuideHandActivity();
     this.applyTuning();
     if (animate) {
       this.startVehicleEntrance();
@@ -4129,17 +4147,58 @@ export class SceneView {
     this.updateGuideHand(this.lastSnapshot?.time ?? 0);
   }
 
+  resetGuideHandActivity(time = 0) {
+    this.guideHandActivity = {
+      hasInteracted: false,
+      lastInteractionTime: Math.max(0, Number(time) || 0)
+    };
+  }
+
+  recordGuideInteraction(time = this.lastSnapshot?.time ?? 0) {
+    this.guideHandActivity = {
+      hasInteracted: true,
+      lastInteractionTime: Math.max(0, Number(time) || 0)
+    };
+    if (this.guideHand) this.guideHand.visible = false;
+  }
+
+  resolveGuideHandTarget(snapshot, tuning) {
+    const vehicles = snapshot?.vehicles ?? [];
+    const preferredId = Math.round(tuning.vehicleId ?? 1);
+    const preferred = vehicles.find((vehicle) => vehicle.id === preferredId);
+    const candidates = preferred
+      ? [preferred, ...vehicles.filter((vehicle) => vehicle.id !== preferredId)]
+      : vehicles;
+    for (const vehicle of candidates) {
+      const target = this.vehicleViews.get(vehicle.id);
+      const isHidden = vehicle.isHidden && !vehicle.hiddenRevealed;
+      const isMovable = vehicle.state === 'parked'
+        && !vehicle.turnRotation?.active
+        && !vehicle.hiddenReveal
+        && !isHidden
+        && (!this.lastGame || this.getVehicleBlockers(this.lastGame, vehicle.id).length === 0);
+      if (isMovable && target?.visible) return target;
+    }
+    return null;
+  }
+
   updateGuideHand(time = 0, snapshot = this.lastSnapshot) {
     if (!this.guideHand) return;
-    if (SCENE_TUNING.firstClickGuide?.enabled) {
+    if (this.isFirstClickGuideActive(snapshot)) {
       this.guideHand.visible = false;
       return;
     }
     const tuning = SCENE_TUNING.vehicleGuideHand ?? {};
-    const targetId = Math.round(tuning.vehicleId ?? 1);
-    const target = this.vehicleViews.get(targetId);
-    const targetState = snapshot?.vehicles?.find((vehicle) => vehicle.id === targetId)?.state;
-    if (!tuning.enabled || !isGuideLevelActive(tuning) || !target || !target.visible || targetState !== 'parked') {
+    const activity = this.guideHandActivity ?? { hasInteracted: false, lastInteractionTime: 0 };
+    const showHand = shouldShowVehicleGuideHand({
+      enabled: tuning.enabled && isGuideLevelActive(tuning),
+      showAtStart: tuning.showAtStart,
+      hasInteracted: activity.hasInteracted,
+      inactiveSeconds: Math.max(0, time - activity.lastInteractionTime),
+      idleDelaySeconds: tuning.idleDelaySeconds
+    });
+    const target = showHand ? this.resolveGuideHandTarget(snapshot, tuning) : null;
+    if (!target) {
       this.guideHand.visible = false;
       return;
     }
@@ -4224,8 +4283,10 @@ export class SceneView {
 
     const guide = SCENE_TUNING.firstClickGuide ?? {};
     const padding = Math.max(0, Number(guide.holePadding) || 0);
-    const baseCenterX = (bounds.minX + bounds.maxX) * 0.5;
-    const baseCenterY = (bounds.minY + bounds.maxY) * 0.5;
+    const configuredRadius = Number(guide.holeRadius);
+    const radius = Math.max(0, Number.isFinite(configuredRadius) ? configuredRadius : 16);
+    const baseCenterX = (bounds.minX + bounds.maxX) * 0.5 + (Number(guide.holeOffsetX) || 0);
+    const baseCenterY = (bounds.minY + bounds.maxY) * 0.5 + (Number(guide.holeOffsetY) || 0);
     const scaledWidth = Math.max(0, (bounds.maxX - bounds.minX + padding * 2) * Math.max(0.01, Number(guide.holeScaleX) || 1));
     const scaledHeight = Math.max(0, (bounds.maxY - bounds.minY + padding * 2) * Math.max(0.01, Number(guide.holeScaleY) || 1));
     const left = Math.max(0, baseCenterX - scaledWidth * 0.5);
@@ -4242,6 +4303,7 @@ export class SceneView {
     };
 
     mask.root.style.setProperty('--first-click-guide-opacity', String(THREE.MathUtils.clamp(guide.maskOpacity ?? 0.8, 0, 1)));
+    mask.root.style.setProperty('--first-click-guide-radius', `${radius}px`);
     setRect(mask.pieces.top, 0, 0, rect.width, top);
     setRect(mask.pieces.left, 0, top, left, height);
     setRect(mask.pieces.right, right, top, rect.width - right, height);

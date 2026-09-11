@@ -7,8 +7,13 @@ import { createLevelSession } from './level-session.js';
 import { SceneView } from './scene-view.js';
 import { clampCenteredRectX } from './scene-layout.js';
 import { SCENE_TUNING } from './scene-tuning.js';
+import { isValidStoreLink, resolveStoreLink } from './store-links.js';
 import { createGameAudioController } from './audio-controller.js';
-import { MECHANISM_ASSETS } from './mechanism-resources.js';
+import {
+  getMechanismAudioConfig,
+  getMechanismTypesForLevels
+} from './mechanism-resources.js';
+import { createPlatformBridge } from './platform-bridge.js';
 import {
   getSpatialConveyorId,
   isSpatialConveyorSelection,
@@ -16,7 +21,8 @@ import {
   refreshSpatialConveyorPackages
 } from './spatial-conveyor-runtime.js';
 
-const DEFAULT_SCENE_TUNING = structuredClone(SCENE_TUNING);
+const EDITOR_ENABLED = import.meta.env.DEV;
+const DEFAULT_SCENE_TUNING = EDITOR_ENABLED ? structuredClone(SCENE_TUNING) : null;
 
 if (ACTIVE_SPATIAL_CONVEYOR_PACKAGE) {
   registerSpatialConveyorPackage(ACTIVE_SPATIAL_CONVEYOR_PACKAGE);
@@ -24,22 +30,19 @@ if (ACTIVE_SPATIAL_CONVEYOR_PACKAGE) {
 
 const TUNING_STORAGE_KEY = 'bus-loop-scene-tuning-v3';
 const LEGACY_TUNING_STORAGE_KEY = 'bus-loop-scene-tuning-v2';
-const LEVEL_EDITOR_PREVIEW_STORAGE_KEY = 'bus-loop-level-editor-preview-v1';
-const STORE_URL = {
-  android: {
-    web: 'https://play.google.com/store/apps/details?id=gridplus.busjam.carpuzzle',
-    mraid: ['https://play.google.com/store/apps/details?id=gridplus.busjam.carpuzzle']
-  },
-  ios: {
-    web: 'https://apps.apple.com/app/id6746743297',
-    mraid: [
-      'itms-apps://itunes.apple.com/app/id6746743297',
-      'https://apps.apple.com/app/id6746743297'
-    ]
-  }
-};
+const LEVEL_EDITOR_PREVIEW_STORAGE_KEY = 'bus-loop-level-editor-preview-v3';
+const LEGACY_LEVEL_EDITOR_PREVIEW_STORAGE_KEYS = Object.freeze([
+  'bus-loop-level-editor-preview-v1',
+  'bus-loop-level-editor-preview-v2'
+]);
+const LEVEL_EDITOR_PREVIEW_FORMAT = 'bus-loop-level-editor-preview-v3';
+const LEVEL36_VEHICLE_SCALE_MIGRATION_KEY = 'bus-loop-level36-vehicle-scale-v1';
+const LEVEL36_VEHICLE_COMPACTION_MIGRATION_KEY = 'bus-loop-level36-vehicle-compaction-v1';
+const LEVEL36_TIMED_GUIDE_MIGRATION_KEY = 'bus-loop-level36-timed-guide-v1';
+const DEFAULT_STORE_LINKS = Object.freeze({ ...SCENE_TUNING.storeLinks });
 const STORE_OPEN_COOLDOWN_MS = 800;
-const EDITOR_ENABLED = import.meta.env.DEV;
+let platformVisible = true;
+let platformBridge;
 const $ = (selector) => document.querySelector(selector);
 const app = $('#app');
 const stage = $('#stage');
@@ -50,35 +53,17 @@ const loadingProgressBar = $('#loading-progress-bar');
 const loadingProgressValue = $('#loading-progress-value');
 const gameOverOverlay = $('#game-over-overlay');
 const gameOverTitle = $('#game-over-title');
+const gameOverLogo = $('#game-over-logo');
 const ctaButton = $('#cta-button');
 const brandingItems = {
   icon: $('#branding-icon'),
   logo: $('#branding-logo'),
   text: $('#branding-text')
 };
-const sceneEditorRoot = EDITOR_ENABLED ? $('#scene-editor') : null;
+if (gameOverLogo && brandingItems.logo?.src) gameOverLogo.src = brandingItems.logo.src;
+const sceneEditorRoot = $('#scene-editor');
 const PASSENGER_MATERIAL_TUNING_PREFIX = 'passengerMaterial.';
 const PASSENGER_MATERIAL_COLOR_INDEX_PATTERN = /^passengerMaterial\.(?:solidColors|colors)\.(\d+)(?:\.|$)/;
-const AMBULANCE_AUDIO_CONFIG = Object.freeze({
-  clips: [MECHANISM_ASSETS.ambulance.audio],
-  volume: 0.72
-});
-const TURN_VEHICLE_AUDIO_CONFIG = Object.freeze({
-  clips: [MECHANISM_ASSETS.turnVehicle.audio],
-  volume: 0.7
-});
-const HIDDEN_VEHICLE_AUDIO_CONFIG = Object.freeze({
-  clips: [MECHANISM_ASSETS.hiddenVehicle.audio],
-  volume: 0.7933884
-});
-const GARAGE_OUT_AUDIO_CONFIG = Object.freeze({
-  clips: [MECHANISM_ASSETS.garage.outAudio],
-  volume: 0.7979798
-});
-const GARAGE_CLEAR_AUDIO_CONFIG = Object.freeze({
-  clips: [MECHANISM_ASSETS.garage.clearAudio],
-  volume: 1
-});
 const isPassengerMaterialTuningPath = (path) => path?.startsWith(PASSENGER_MATERIAL_TUNING_PREFIX);
 const getPassengerMaterialColorIndex = (path) => {
   const match = path?.match(PASSENGER_MATERIAL_COLOR_INDEX_PATTERN);
@@ -112,7 +97,7 @@ function migrateGuideHandMotionTuning(source) {
   const guideHand = source?.vehicleGuideHand;
   if (!guideHand) return false;
   let changed = false;
-  if (Number(guideHand.vehicleId) === 1) {
+  if (guideHand.levelKey === 'level33' && Number(guideHand.vehicleId) === 1) {
     guideHand.vehicleId = 89;
     changed = true;
   }
@@ -124,6 +109,104 @@ function migrateGuideHandMotionTuning(source) {
     guideHand.approachOffsetX = 0.62;
     changed = true;
   }
+  return changed;
+}
+
+function migrateLevel33EnhancementTuning(source) {
+  let changed = false;
+  const guideHand = source?.vehicleGuideHand;
+  if (guideHand?.levelKey === 'level33' && Number(guideHand.size) === 1.63) {
+    guideHand.size = 2.2;
+    changed = true;
+  }
+
+  const firstClickGuide = source?.firstClickGuide;
+  if (
+    firstClickGuide?.levelKey === 'level33'
+    && Number(firstClickGuide.vehicleId) === 89
+    && Number(firstClickGuide.holePadding) === 15
+  ) {
+    firstClickGuide.holePadding = 30;
+    changed = true;
+  }
+
+  const bounds = source?.vehiclePath?.parkingBounds;
+  const hasLegacyBounds = source?.level?.selected === 'level33'
+    && Number(bounds?.minX) === -2.1
+    && Number(bounds?.maxX) === 2.2
+    && Number(bounds?.minZ) === -3.02
+    && Number(bounds?.maxZ) === 2.12;
+  if (hasLegacyBounds) {
+    Object.assign(bounds, {
+      minX: -3,
+      maxX: 2.95,
+      minZ: -3.22,
+      maxZ: 2.82
+    });
+    changed = true;
+  }
+  return changed;
+}
+
+function migrateLevel36VehicleScaleTuning(source) {
+  if (
+    source?.level?.selected !== 'level36'
+    || localStorage.getItem(LEVEL36_VEHICLE_SCALE_MIGRATION_KEY) === '1'
+  ) return false;
+  localStorage.setItem(LEVEL36_VEHICLE_SCALE_MIGRATION_KEY, '1');
+  if (Number(source?.vehicleArea?.modelScale) !== 0.75) return false;
+  source.vehicleArea.modelScale = 0.7;
+  return true;
+}
+
+function migrateLevel36VehicleCompactionTuning(source) {
+  if (
+    source?.level?.selected !== 'level36'
+    || localStorage.getItem(LEVEL36_VEHICLE_COMPACTION_MIGRATION_KEY) === '1'
+  ) return false;
+  localStorage.setItem(LEVEL36_VEHICLE_COMPACTION_MIGRATION_KEY, '1');
+  let changed = false;
+  if (Number(source?.vehicleArea?.positionUnitScale) === 0.84) {
+    source.vehicleArea.positionUnitScale = 0.8;
+    changed = true;
+  }
+  const offsetZ = Number(source?.vehicleArea?.offsetZ);
+  if ([0, -0.5, -0.25].includes(offsetZ)) {
+    source.vehicleArea.offsetZ = -0.1;
+    changed = true;
+  }
+  return changed;
+}
+
+function migrateLevel36TimedGuideTuning(source) {
+  if (
+    source?.level?.selected !== 'level36'
+    || localStorage.getItem(LEVEL36_TIMED_GUIDE_MIGRATION_KEY) === '1'
+  ) return false;
+  localStorage.setItem(LEVEL36_TIMED_GUIDE_MIGRATION_KEY, '1');
+  let changed = false;
+  const assignChanged = (target, values) => {
+    for (const [key, value] of Object.entries(values)) {
+      if (target[key] === value) continue;
+      target[key] = value;
+      changed = true;
+    }
+  };
+  source.vehicleGuideHand ??= {};
+  source.firstClickGuide ??= {};
+  assignChanged(source.vehicleGuideHand, {
+    enabled: 1,
+    levelKey: 'level36',
+    vehicleId: 1,
+    showAtStart: 1,
+    idleDelaySeconds: 5
+  });
+  assignChanged(source.firstClickGuide, {
+    enabled: 0,
+    levelKey: 'level36',
+    vehicleId: 1,
+    maskOpacity: 0
+  });
   return changed;
 }
 
@@ -222,41 +305,24 @@ function migrateSpatialSpeedTuning(source) {
   return changed;
 }
 
-function waitForMraidReady(onReady) {
-  const mraid = window.mraid;
-  if (!mraid?.getState || !mraid?.addEventListener) {
-    onReady();
-    return;
+function migrateCtaScreenPositionTuning(source) {
+  const cta = source?.cta;
+  if (!cta) return false;
+  let changed = false;
+  for (const key of ['worldX', 'worldY', 'worldZ', 'bottom']) {
+    if (!(key in cta)) continue;
+    delete cta[key];
+    changed = true;
   }
-
-  let started = false;
-  const startOnce = () => {
-    if (started) return;
-    started = true;
-    mraid.removeEventListener?.('ready', startOnce);
-    onReady();
-  };
-
-  let state = 'default';
-  try {
-    state = mraid.getState();
-  } catch (error) {
-    console.warn('MRAID state could not be read; starting playable.', error);
-    startOnce();
-    return;
+  if (Number(cta.y) === 1868) {
+    cta.y = 2018;
+    changed = true;
   }
-
-  if (state === 'loading') {
-    mraid.addEventListener('ready', startOnce);
-    return;
+  if (Number(cta.height) === 137) {
+    cta.height = 110;
+    changed = true;
   }
-
-  if (state === 'default') {
-    startOnce();
-    return;
-  }
-
-  startOnce();
+  return changed;
 }
 
 function applyPreviewFrame() {
@@ -275,7 +341,12 @@ function loadSavedTuning() {
     if (saved) {
       const savedTuning = JSON.parse(saved);
       const guideHandMotionMigrated = migrateGuideHandMotionTuning(savedTuning);
+      const level33EnhancementMigrated = migrateLevel33EnhancementTuning(savedTuning);
+      const level36VehicleScaleMigrated = migrateLevel36VehicleScaleTuning(savedTuning);
+      const level36VehicleCompactionMigrated = migrateLevel36VehicleCompactionTuning(savedTuning);
+      const level36TimedGuideMigrated = migrateLevel36TimedGuideTuning(savedTuning);
       const spatialSpeedMigrated = migrateSpatialSpeedTuning(savedTuning);
+      const ctaScreenPositionMigrated = migrateCtaScreenPositionTuning(savedTuning);
       const luxuryPassengerRotationRemoved = delete savedTuning.luxuryPassengerRotation;
       const luxuryPassengerOffsetRemoved = delete savedTuning.luxuryPassengerOffset;
       const luxuryMaterialDebugRemoved = delete savedTuning.luxuryMaterialDebug;
@@ -290,7 +361,12 @@ function loadSavedTuning() {
       migrateLegacyConveyorTuning(savedTuning);
       if (
         guideHandMotionMigrated
+        || level33EnhancementMigrated
+        || level36VehicleScaleMigrated
+        || level36VehicleCompactionMigrated
+        || level36TimedGuideMigrated
         || spatialSpeedMigrated
+        || ctaScreenPositionMigrated
         || luxuryPassengerRotationRemoved
         || luxuryPassengerOffsetRemoved
         || luxuryMaterialDebugRemoved
@@ -306,7 +382,12 @@ function loadSavedTuning() {
     if (!legacySaved) return;
     const legacy = JSON.parse(legacySaved);
     migrateGuideHandMotionTuning(legacy);
+    migrateLevel33EnhancementTuning(legacy);
+    migrateLevel36VehicleScaleTuning(legacy);
+    migrateLevel36VehicleCompactionTuning(legacy);
+    migrateLevel36TimedGuideTuning(legacy);
     migrateSpatialSpeedTuning(legacy);
+    migrateCtaScreenPositionTuning(legacy);
     migrateLegacyPackageTuning(legacy);
     delete legacy.luxuryMaterialDebug;
     delete legacy.luxuryMaterial;
@@ -409,7 +490,7 @@ function applyBrandingTuning(backgroundBounds = null) {
       if (asset && element.getAttribute('src') !== asset) element.setAttribute('src', asset);
     }
     if (key === 'text') {
-      const content = String(config.content ?? 'Bus Fever-Car Jam Escape');
+      const content = String(config.content ?? 'Bus Fever Party!');
       element.textContent = content;
       element.setAttribute('aria-label', content);
     }
@@ -489,36 +570,35 @@ let audio = null;
 let lastStoreOpenAt = 0;
 let storeOpenAttempts = 0;
 
-function applyCtaTuning(view = null) {
+function applyCtaTuning() {
   if (!ctaButton) return;
   const cta = SCENE_TUNING.cta ?? {};
-  const designWidth = Math.max(1, Number(SCENE_TUNING.preview?.width) || 1080);
-  const designHeight = Math.max(1, Number(SCENE_TUNING.preview?.height) || 2160);
-  const stageRect = stage?.getBoundingClientRect();
-  const stageWidth = stageRect?.width || designWidth;
-  const stageHeight = stageRect?.height || designHeight;
+  const metrics = getBrandingStageMetrics();
   const height = Math.max(1, Number(cta.height) || 68);
   const width = Math.max(1, height * (Number(cta.stretchX) || 2.75));
   const fontSize = Math.max(1, Number(cta.fontSize) || 28);
   const fontHeight = Math.max(1, Number(cta.fontHeight) || fontSize);
-  const centerX = Number.isFinite(Number(cta.x)) ? Number(cta.x) : designWidth / 2;
+  const centerX = Number.isFinite(Number(cta.x)) ? Number(cta.x) : metrics.designWidth / 2;
   const centerY = Number.isFinite(Number(cta.y))
     ? Number(cta.y)
-    : designHeight - Math.max(0, Number(cta.bottom) || 0) - height / 2;
+    : metrics.designHeight - height / 2;
   const pulseSpeed = Math.max(0.01, Number(cta.pulseSpeed) || 0.55);
-  const isGameOverVisible = ctaButton.dataset.gameOverVisible === '1';
-  const uiScale = getStageUiScale(stageWidth, designWidth);
-  const worldX = Number(cta.worldX);
-  const worldY = Number(cta.worldY);
-  const worldZ = Number(cta.worldZ);
-  const worldPosition = view && Number.isFinite(worldX) && Number.isFinite(worldZ)
-    ? view.projectWorldToCanvas?.({
-      x: worldX,
-      y: Number.isFinite(worldY) ? worldY : 0,
-      z: worldZ
-    })
-    : null;
-  ctaButton.hidden = !(isGameOverVisible && Boolean(cta.enabled ?? 1));
+  const uiScale = metrics.uiScale;
+  const renderedWidth = width * uiScale;
+  const renderedHeight = height * uiScale;
+  const left = clampConfigNumber(
+    centerX * metrics.positionScaleX,
+    renderedWidth / 2,
+    metrics.stageWidth - renderedWidth / 2,
+    metrics.stageWidth / 2
+  );
+  const top = clampConfigNumber(
+    centerY * metrics.positionScaleY,
+    renderedHeight / 2,
+    metrics.stageHeight - renderedHeight / 2,
+    metrics.stageHeight - renderedHeight / 2
+  );
+  ctaButton.hidden = !Boolean(cta.enabled ?? 1);
   ctaButton.style.setProperty('--cta-width', scaledPx(width, uiScale));
   ctaButton.style.setProperty('--cta-height', scaledPx(height, uiScale));
   ctaButton.style.setProperty('--cta-padding-x', scaledPx(24, uiScale));
@@ -529,8 +609,8 @@ function applyCtaTuning(view = null) {
   ctaButton.style.setProperty('--cta-pulse-scale', String(Math.max(1, Number(cta.pulseScale) || 1.08)));
   ctaButton.style.setProperty('--cta-pulse-duration', `${1 / pulseSpeed}s`);
   ctaButton.style.setProperty('--game-over-cta-appear-duration', durationCss(cta.appearSpeed, 1.45));
-  ctaButton.style.left = `${worldPosition?.x ?? stageWidth / 2 + (centerX - designWidth / 2) * uiScale}px`;
-  ctaButton.style.top = `${worldPosition?.y ?? stageHeight / 2 + (centerY - designHeight / 2) * uiScale}px`;
+  ctaButton.style.left = `${left}px`;
+  ctaButton.style.top = `${top}px`;
 }
 
 function applyGameOverTuning() {
@@ -568,7 +648,9 @@ function isIOSDevice() {
 }
 
 function getStoreTarget() {
-  return isIOSDevice() ? STORE_URL.ios : STORE_URL.android;
+  const platform = isIOSDevice() ? 'ios' : 'android';
+  const web = resolveStoreLink(platform, SCENE_TUNING.storeLinks?.[platform], DEFAULT_STORE_LINKS[platform]);
+  return { web, mraid: [web] };
 }
 
 function getMraidStoreUrl(target) {
@@ -581,21 +663,15 @@ function openStore() {
   if (now - lastStoreOpenAt < STORE_OPEN_COOLDOWN_MS) return;
   lastStoreOpenAt = now;
   const target = getStoreTarget();
-  if (window.mraid?.open) {
-    const url = getMraidStoreUrl(target);
-    storeOpenAttempts += 1;
-    try {
-      window.mraid.open(url);
-      return;
-    } catch (error) {
-      lastStoreOpenAt = 0;
-      console.warn('MRAID store open failed.', error);
-    }
-  }
+  const url = getMraidStoreUrl(target);
+  storeOpenAttempts += 1;
+  if (platformBridge?.openStore({ ios: url, android: url })) return;
+  lastStoreOpenAt = 0;
 }
 
 function InstallFullGame() {
   audio?.unlock();
+  platformBridge?.end();
   openStore();
 }
 
@@ -635,24 +711,45 @@ function clearSavedTuning() {
 function readLevelEditorPreviewDocument() {
   try {
     const source = localStorage.getItem(LEVEL_EDITOR_PREVIEW_STORAGE_KEY);
-    const document = source ? JSON.parse(source) : null;
-    return document?.format === 'bus-loop-web-level-v1' && /^level[1-9]\d*$/.test(document.key) ? document : null;
+    const entry = source ? JSON.parse(source) : null;
+    const document = entry?.format === LEVEL_EDITOR_PREVIEW_FORMAT ? entry.document : null;
+    if (document?.format !== 'bus-loop-web-level-v1' || !/^level[1-9]\d*$/.test(document.key)) return null;
+    return {
+      document,
+      mode: entry.mode === 'draft' ? 'draft' : 'saved',
+      baseRevision: typeof entry.baseRevision === 'string' ? entry.baseRevision : null
+    };
   } catch (error) {
     console.warn('Authored level preview could not be restored.', error);
     return null;
   }
 }
 
-async function readSavedWebLevelDocument(levelKey) {
+function writeLevelEditorPreviewDocument(document, mode = 'saved', baseRevision = null) {
+  localStorage.setItem(LEVEL_EDITOR_PREVIEW_STORAGE_KEY, JSON.stringify({
+    format: LEVEL_EDITOR_PREVIEW_FORMAT,
+    mode: mode === 'draft' ? 'draft' : 'saved',
+    baseRevision: typeof baseRevision === 'string' ? baseRevision : null,
+    document
+  }));
+}
+
+async function readSavedWebLevelEntry(levelKey) {
   const response = await fetch(`/__level-authoring/${encodeURIComponent(levelKey)}`, { cache: 'no-store' });
   if (response.status === 404) return null;
   const payload = await response.json().catch(() => ({}));
   if (!response.ok) throw new Error(payload.error || `HTTP ${response.status}`);
-  return payload.document ?? null;
+  return {
+    document: payload.document ?? null,
+    revision: typeof payload.revision === 'string' ? payload.revision : null
+  };
 }
 
 async function startRuntime() {
-  loadSavedTuning();
+  if (EDITOR_ENABLED) {
+    loadSavedTuning();
+    for (const key of LEGACY_LEVEL_EDITOR_PREVIEW_STORAGE_KEYS) localStorage.removeItem(key);
+  }
   let sessionLevels = PLAYABLE_LEVEL_SEQUENCE;
   if (EDITOR_ENABLED) {
     const { getLevelDefinition } = await import('./level-catalog.js');
@@ -661,13 +758,14 @@ async function startRuntime() {
     });
     const selectedKey = SCENE_TUNING.level?.selected;
     let selectedLevel = getLevelDefinition(selectedKey);
-    let previewDocument = readLevelEditorPreviewDocument();
-    if (!previewDocument && selectedLevel.key !== selectedKey) {
-      previewDocument = await readSavedWebLevelDocument(selectedKey);
-      if (previewDocument) {
-        localStorage.setItem(LEVEL_EDITOR_PREVIEW_STORAGE_KEY, JSON.stringify(previewDocument));
-      }
-    }
+    const previewEntry = readLevelEditorPreviewDocument();
+    const savedEntry = await readSavedWebLevelEntry(selectedKey);
+    const savedRevision = savedEntry?.revision ?? null;
+    const useDraft = previewEntry?.mode === 'draft'
+      && previewEntry.document.key === selectedKey
+      && previewEntry.baseRevision === savedRevision;
+    const previewDocument = useDraft ? previewEntry.document : savedEntry?.document;
+    if (!useDraft) localStorage.removeItem(LEVEL_EDITOR_PREVIEW_STORAGE_KEY);
     if (previewDocument) {
       const { levelDocumentToRuntime } = await import('./level-editor-model.js');
       selectedLevel = levelDocumentToRuntime(previewDocument, selectedLevel);
@@ -685,13 +783,10 @@ async function startRuntime() {
   applyPreviewFrame();
 
   let game = new BusLoopGame(levelSession.currentLevel());
+  const mechanismTypes = getMechanismTypesForLevels(sessionLevels);
   audio = createGameAudioController({
-    ...LEVEL_1.assets.audio,
-    ambulance_countdown: AMBULANCE_AUDIO_CONFIG,
-    turn_vehicle_complete: TURN_VEHICLE_AUDIO_CONFIG,
-    hidden_vehicle_reveal: HIDDEN_VEHICLE_AUDIO_CONFIG,
-    garage_out: GARAGE_OUT_AUDIO_CONFIG,
-    garage_clear: GARAGE_CLEAR_AUDIO_CONFIG
+    ...Object.assign({}, ...sessionLevels.map((level) => level.assets?.audio ?? {})),
+    ...getMechanismAudioConfig(mechanismTypes)
   });
   audio.resetEventHistory();
   const endPanel = $('#end-panel');
@@ -717,13 +812,15 @@ async function startRuntime() {
     return levelSession.recordSuccessfulVehicle(vehicleId, getSuccessfulOperationThreshold());
   };
 
+  let view;
   const handleVehicleClick = (vehicleId) => {
+    view?.recordGuideInteraction();
     const result = game.clickVehicle(vehicleId);
     if (result?.ok && markInstallVehicle(vehicleId)) InstallFullGame();
     return result;
   };
 
-  const view = new SceneView(
+  view = new SceneView(
     canvas,
     handleVehicleClick,
     {
@@ -734,14 +831,11 @@ async function startRuntime() {
   const updateCtaPosition = () => {
     view.resize();
     applyGameOverTuning();
-    applyCtaTuning(view);
+    applyCtaTuning();
     applyBrandingTuning(view.getBackgroundCanvasBounds());
   };
   updateCtaPosition();
-  document.fonts?.load?.('700 16px "Poppins Branding"')
-    .then(() => applyBrandingTuning(view.getBackgroundCanvasBounds()))
-    .catch(() => {});
-  if ('ResizeObserver' in window && stage) {
+  if (__PLAYABLE_PLATFORM__ !== 'mintegral' && 'ResizeObserver' in window && stage) {
     new ResizeObserver(updateCtaPosition).observe(stage);
   } else {
     window.addEventListener('resize', updateCtaPosition);
@@ -751,6 +845,7 @@ async function startRuntime() {
     loadingScreen?.classList.add('is-hidden');
     view.showEntryBanner?.();
     window.setTimeout(() => loadingScreen?.remove(), 360);
+    platformBridge?.ready();
   });
   function initializeGameQueues({ resetSlots = false } = {}) {
     game.initializeQueues(
@@ -847,13 +942,19 @@ async function startRuntime() {
         import('./level-catalog.js')
       ]);
       let baseLevel = getLevelDefinition(SCENE_TUNING.level?.selected);
-      const previewDocument = readLevelEditorPreviewDocument();
+      const previewEntry = readLevelEditorPreviewDocument();
+      const previewDocument = previewEntry?.mode === 'draft'
+        && previewEntry.document.key === SCENE_TUNING.level?.selected
+        ? previewEntry.document
+        : null;
       if (previewDocument) {
         const { levelDocumentToRuntime } = await import('./level-editor-model.js');
         baseLevel = levelDocumentToRuntime(previewDocument, baseLevel);
       }
       levelLayoutEditor = await createLevelLayoutEditor({
         baseLevel,
+        initialDocument: previewDocument,
+        initialRevision: previewDocument ? previewEntry.baseRevision : null,
         onPreview: () => window.location.reload(),
         onClose: () => {
           levelLayoutEditor = null;
@@ -873,9 +974,9 @@ async function startRuntime() {
     if (path === 'level.selected') {
       void (async () => {
         try {
-          const webDocument = await readSavedWebLevelDocument(next.level.selected);
-          if (webDocument) {
-            localStorage.setItem(LEVEL_EDITOR_PREVIEW_STORAGE_KEY, JSON.stringify(webDocument));
+          const webEntry = await readSavedWebLevelEntry(next.level.selected);
+          if (webEntry?.document) {
+            writeLevelEditorPreviewDocument(webEntry.document, 'saved', webEntry.revision);
           } else {
             const response = await fetch('/__playable-level', {
               method: 'POST',
@@ -894,6 +995,17 @@ async function startRuntime() {
       })();
       return next;
     }
+    if (path?.startsWith('storeLinks.')) {
+      const platform = path.slice('storeLinks.'.length);
+      if (!isValidStoreLink(platform, next.storeLinks?.[platform])) {
+        if (syncEditor) editor.sync();
+        return SCENE_TUNING;
+      }
+      deepMerge(SCENE_TUNING.storeLinks, next.storeLinks);
+      saveTuning(SCENE_TUNING);
+      if (syncEditor) editor.sync();
+      return SCENE_TUNING;
+    }
     if (path?.startsWith('branding.')) {
       deepMerge(SCENE_TUNING, next);
       applyBrandingTuning(view.getBackgroundCanvasBounds());
@@ -902,6 +1014,9 @@ async function startRuntime() {
       return SCENE_TUNING;
     }
     const materialOnly = isPassengerMaterialTuningPath(path);
+    const restartOpeningGuide = path?.startsWith('firstClickGuide.')
+      && Boolean(Number(next.firstClickGuide?.enabled));
+    const restartVehicleGuide = path?.startsWith('vehicleGuideHand.');
     const conveyorStructureChanged = !materialOnly && (
       path === 'conveyorLayout.selected'
       || path === 'spatialConveyor.capacity'
@@ -920,17 +1035,21 @@ async function startRuntime() {
       updateCtaPosition();
     }
     saveTuning(tuning, { immediate: conveyorStructureChanged });
+    if (restartOpeningGuide) reset();
+    if (restartVehicleGuide) view.resetGuideHandActivity();
     if (syncEditor) editor.sync();
     return tuning;
   }
 
-  for (const [key, element] of Object.entries(brandingItems)) {
-    bindBrandingDrag(element, key, (x, y) => {
-      const next = structuredClone(SCENE_TUNING);
-      next.branding[key].x = Math.round(x);
-      next.branding[key].y = Math.round(y);
-      applyTuningPatch(next, { path: `branding.${key}.position`, syncEditor: true });
-    });
+  if (EDITOR_ENABLED) {
+    for (const [key, element] of Object.entries(brandingItems)) {
+      bindBrandingDrag(element, key, (x, y) => {
+        const next = structuredClone(SCENE_TUNING);
+        next.branding[key].x = Math.round(x);
+        next.branding[key].y = Math.round(y);
+        applyTuningPatch(next, { path: `branding.${key}.position`, syncEditor: true });
+      });
+    }
   }
 
   if (EDITOR_ENABLED && sceneEditorRoot) {
@@ -1005,11 +1124,11 @@ async function startRuntime() {
   function showResultOverlay(title = 'Game Over') {
     if (!gameOverOverlay || gameOverActive) return;
     gameOverActive = true;
+    platformBridge?.end();
     clearGameOverTimers();
     applyGameOverTuning();
     if (gameOverTitle) gameOverTitle.textContent = title;
-    if (ctaButton) ctaButton.dataset.gameOverVisible = '1';
-    applyCtaTuning(view);
+    applyCtaTuning();
     gameOverOverlay.hidden = false;
     gameOverOverlay.classList.remove('is-active', 'is-title-fading', 'is-cta-ready');
     void gameOverOverlay.offsetWidth;
@@ -1027,15 +1146,13 @@ async function startRuntime() {
     clearGameOverTimers();
     gameOverOverlay?.classList.remove('is-active', 'is-title-fading', 'is-cta-ready');
     if (gameOverOverlay) gameOverOverlay.hidden = true;
-    if (ctaButton) {
-      ctaButton.dataset.gameOverVisible = '0';
-      applyCtaTuning(view);
-    }
+    applyCtaTuning();
   }
 
   unsubscribeGame = game.subscribe(syncHud);
   function reset() {
     endPanel.hidden = true;
+    platformBridge?.retry();
     hideGameOver();
     unsubscribeGame();
     const initialLevel = levelSession.reset();
@@ -1063,6 +1180,7 @@ async function startRuntime() {
   }, { capture: true });
   canvas.addEventListener('pointerdown', () => {
     if (spatialEditorActive) return;
+    platformBridge?.challenge();
     audio.unlock();
     pressed = true;
     clearTimeout(pressTimer);
@@ -1085,13 +1203,13 @@ async function startRuntime() {
   window.addEventListener('pointerup', release);
   window.addEventListener('pointercancel', release);
   window.addEventListener('blur', release);
-  window.addEventListener('beforeunload', flushTuningSave);
+  if (EDITOR_ENABLED) window.addEventListener('beforeunload', flushTuningSave);
 
   let previous = performance.now();
   function frame(now) {
     const delta = (now - previous) / 1000;
     previous = now;
-    if (!spatialEditorActive) game.update(delta);
+    if (platformVisible && !spatialEditorActive) game.update(delta);
     const renderState = isSpatialOptimizationEnabled('liveRenderState')
       ? game.renderState()
       : game.snapshot();
@@ -1104,13 +1222,6 @@ async function startRuntime() {
   window.__busLoop = {
     get game() { return game; },
     get view() { return view; },
-    tuning: SCENE_TUNING,
-    setTuning: (patch, { path } = {}) => {
-      return applyTuningPatch(patch, { path, syncEditor: true });
-    },
-    exportTuning: () => JSON.stringify(SCENE_TUNING, null, 2),
-    saveTuning: () => saveTuning(SCENE_TUNING, { immediate: true }),
-    clearSavedTuning,
     snapshot: () => game.snapshot(),
     clickVehicle: (id) => handleVehicleClick(Number(id)),
     InstallFullGame,
@@ -1125,11 +1236,24 @@ async function startRuntime() {
       for (let time = 0; time < seconds; time += increment) game.update(increment);
       return game.snapshot();
     },
-    reset
+    reset,
+    ...(EDITOR_ENABLED ? {
+      tuning: SCENE_TUNING,
+      setTuning: (patch, { path } = {}) => applyTuningPatch(patch, { path, syncEditor: true }),
+      exportTuning: () => JSON.stringify(SCENE_TUNING, null, 2),
+      saveTuning: () => saveTuning(SCENE_TUNING, { immediate: true }),
+      clearSavedTuning
+    } : {})
   };
 }
 
-waitForMraidReady(startRuntime);
-
-
-
+platformBridge = createPlatformBridge({
+  onStart: startRuntime,
+  onVisibilityChange: (visible) => {
+    platformVisible = visible;
+    audio?.setVisible(visible);
+  },
+  onSizeChange: () => window.dispatchEvent(new Event('resize')),
+  onRetry: () => window.__busLoop?.reset?.()
+});
+platformBridge.initialize();

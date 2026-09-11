@@ -5,7 +5,10 @@ import { pathToFileURL } from 'node:url';
 
 const root = process.cwd();
 const tuningUrl = `${pathToFileURL(path.join(root, 'src', 'scene-tuning.js')).href}?t=${Date.now()}`;
-const catalogUrl = `${pathToFileURL(path.join(root, 'src', 'level-catalog.js')).href}?t=${Date.now()}`;
+const catalogPath = process.env.PLAYABLE_LEVEL_CATALOG_PATH
+  ? path.resolve(process.env.PLAYABLE_LEVEL_CATALOG_PATH)
+  : path.join(root, 'src', 'level-catalog.js');
+const catalogUrl = `${pathToFileURL(catalogPath).href}?t=${Date.now()}`;
 const editorModelUrl = `${pathToFileURL(path.join(root, 'src', 'level-editor-model.js')).href}?t=${Date.now()}`;
 const mechanismResourcesUrl = `${pathToFileURL(path.join(root, 'src', 'mechanism-resources.js')).href}?t=${Date.now()}`;
 const [{ SCENE_TUNING }, { LEVEL_CATALOG }, { levelDocumentToRuntime }, { deriveLevelMechanics }] = await Promise.all([

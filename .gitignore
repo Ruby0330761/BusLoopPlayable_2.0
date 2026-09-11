@@ -1,5 +1,6 @@
 node_modules/
 dist/
+artifacts/playable-exports/
 .pnpm-store/
 %SystemDrive%/
 BusLoopPlayable_new/

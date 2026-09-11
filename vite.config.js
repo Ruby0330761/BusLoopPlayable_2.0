@@ -26,6 +26,91 @@ const MAX_WEB_LEVEL_BYTES = 2 * 1024 * 1024;
 const MAX_PREFAB_BYTES = 12 * 1024 * 1024;
 const MAX_SPATIAL_PACKAGE_BYTES = 4 * 1024 * 1024;
 const SPATIAL_BACKUP_ROOT = path.resolve('artifacts', 'spatial-conveyor-backups');
+const PLAYABLE_BUILD_PLATFORM = process.env.PLAYABLE_PLATFORM || 'applovin';
+const LEVEL_CATALOG_ALIAS = process.env.PLAYABLE_LEVEL_CATALOG_PATH
+  ? [{
+      find: './level-catalog.js',
+      replacement: path.resolve(process.env.PLAYABLE_LEVEL_CATALOG_PATH)
+    }]
+  : [];
+const MAX_PLAYABLE_EXPORT_BYTES = 1024 * 1024;
+const PLAYABLE_EXPORT_PLATFORMS = new Set([
+  'applovin',
+  'google-ads',
+  'meta',
+  'unityads',
+  'mintegral',
+  'moloco',
+  'tiktok'
+]);
+let playableExportInFlight = false;
+
+const FBX_BINARY_IMAGE_BRANCH = `\t\t} else { // Binary Format
+
+\t\t\tconst array = new Uint8Array( content );
+\t\t\treturn window.URL.createObjectURL( new Blob( [ array ], { type: type } ) );
+
+\t\t}`;
+const FBX_DATA_IMAGE_BRANCH = `\t\t} else { // Binary Format
+
+\t\t\tconst array = new Uint8Array( content );
+\t\t\tlet binary = '';
+\t\t\tfor ( let i = 0; i < array.length; i ++ ) binary += String.fromCharCode( array[ i ] );
+\t\t\treturn 'data:' + type + ';base64,' + btoa( binary );
+
+\t\t}`;
+const FILE_LOADER_BLOB_RESPONSE = 'return response.blob();';
+const FILE_LOADER_UNSUPPORTED_RESPONSE = "return Promise.reject( new TypeError( 'Binary object responses are unavailable in this playable.' ) );";
+function rewriteMintegralSyntax(plugin, source) {
+  const replacements = [];
+  const visit = (node) => {
+    if (!node || typeof node !== 'object') return;
+    if (Array.isArray(node)) {
+      node.forEach(visit);
+      return;
+    }
+    if (node.type === 'NewExpression' && node.callee?.type === 'Identifier' && node.callee.name === 'Error') {
+      replacements.push({ start: node.start, end: node.callee.end, value: 'Error' });
+    }
+    for (const [key, value] of Object.entries(node)) {
+      if (!['start', 'end', 'loc'].includes(key)) visit(value);
+    }
+  };
+  visit(plugin.parse(source));
+  if (replacements.length === 0) return source;
+  let output = source;
+  for (const { start, end, value } of replacements.sort((a, b) => b.start - a.start)) {
+    output = `${output.slice(0, start)}${value}${output.slice(end)}`;
+  }
+  return output;
+}
+
+function mintegralRuntimeCompatibility() {
+  return {
+    name: 'mintegral-runtime-compatibility',
+    apply: 'build',
+    enforce: 'pre',
+    transform(source, id) {
+      if (PLAYABLE_BUILD_PLATFORM !== 'mintegral' || !/\.[cm]?js(?:\?|$)/u.test(id)) return null;
+      let output = source;
+      if (/[\\/]three[\\/]examples[\\/]jsm[\\/]loaders[\\/]FBXLoader\.js(?:\?|$)/u.test(id)) {
+        if (!output.includes(FBX_BINARY_IMAGE_BRANCH)) {
+          this.error('The Mintegral FBX image compatibility branch no longer matches the installed Three.js source.');
+        }
+        output = output.replace(FBX_BINARY_IMAGE_BRANCH, FBX_DATA_IMAGE_BRANCH);
+      }
+      if (/[\\/]three[\\/](?:src[\\/]loaders[\\/]FileLoader|build[\\/]three\.core)\.js(?:\?|$)/u.test(id)) {
+        const matches = output.split(FILE_LOADER_BLOB_RESPONSE).length - 1;
+        if (matches !== 1) {
+          this.error('The Mintegral FileLoader response compatibility branch no longer matches the installed Three.js source.');
+        }
+        output = output.replace(FILE_LOADER_BLOB_RESPONSE, FILE_LOADER_UNSUPPORTED_RESPONSE);
+      }
+      output = rewriteMintegralSyntax(this, output);
+      return output === source ? null : { code: output, map: null };
+    }
+  };
+}
 
 function validateSpatialPackageId(packageId) {
   if (!packageId || /[<>:"/\\|?*\x00-\x1f]/.test(packageId) || path.basename(packageId) !== packageId) {
@@ -308,6 +393,7 @@ async function saveSpatialConveyorPackage({ packageData, baseRevision }) {
 async function openFolder(folderRoot) {
   const folderPath = path.resolve(folderRoot);
   await mkdir(folderPath, { recursive: true });
+  if (process.env.PLAYABLE_REMOTE_EDITOR === '1') return folderPath;
   const command = process.platform === 'win32'
     ? 'explorer.exe'
     : process.platform === 'darwin' ? 'open' : 'xdg-open';
@@ -389,8 +475,40 @@ function readRequestBody(request, maxBytes, label = 'Prefab') {
   });
 }
 
+function playableExportFilename(fileName, format) {
+  const expectedExtension = format === 'zip' ? '.zip' : '.html';
+  const baseName = path.basename(String(fileName ?? '').replaceAll('\\', '/'));
+  if (!baseName || !baseName.toLowerCase().endsWith(expectedExtension)) {
+    return `bus-loop-playable${expectedExtension}`;
+  }
+  return baseName;
+}
+
+function playableExportDisposition(fileName) {
+  const asciiName = fileName.replace(/[^A-Za-z0-9._-]/g, '_') || 'bus-loop-playable';
+  return `attachment; filename="${asciiName}"; filename*=UTF-8''${encodeURIComponent(fileName)}`;
+}
+
 export default defineConfig({
-  plugins: [{
+  esbuild: PLAYABLE_BUILD_PLATFORM === 'mintegral'
+    ? { pure: ['console.error'] }
+    : undefined,
+  build: {
+    modulePreload: { polyfill: PLAYABLE_BUILD_PLATFORM !== 'mintegral' }
+  },
+  resolve: {
+    alias: [
+      ...LEVEL_CATALOG_ALIAS,
+      ...(PLAYABLE_BUILD_PLATFORM === 'applovin' ? [] : [{
+          find: './platform-bridge.js',
+          replacement: path.resolve('src', 'platform-bridges', `${PLAYABLE_BUILD_PLATFORM}.js`)
+        }])
+    ]
+  },
+  define: {
+    __PLAYABLE_PLATFORM__: JSON.stringify(PLAYABLE_BUILD_PLATFORM)
+  },
+  plugins: [mintegralRuntimeCompatibility(), {
     name: 'playable-editor-services',
     configureServer(server) {
       server.middlewares.use('/__playable-level', async (request, response, next) => {
@@ -409,6 +527,92 @@ export default defineConfig({
       server.middlewares.use(async (request, response, next) => {
         const requestUrl = new URL(request.url, 'http://localhost');
         const pathname = requestUrl.pathname;
+        if (pathname === '/__playable-export' || pathname === '/__playable-export-all') {
+          if (request.method !== 'POST') {
+            response.setHeader('Allow', 'POST');
+            sendJson(response, 405, { error: '仅支持 POST 导出请求。' });
+            return;
+          }
+          if (playableExportInFlight) {
+            sendJson(response, 409, { error: '已有试玩包正在导出，请稍后重试。' });
+            return;
+          }
+
+          playableExportInFlight = true;
+          try {
+            let payload;
+            try {
+              payload = JSON.parse(await readRequestBody(
+                request,
+                MAX_PLAYABLE_EXPORT_BYTES,
+                'Playable export request'
+              ));
+            } catch (error) {
+              if (error.statusCode === 413) throw error;
+              const invalidPayloadError = new Error('导出请求不是有效的 JSON。');
+              invalidPayloadError.statusCode = 400;
+              throw invalidPayloadError;
+            }
+            if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
+              const error = new Error('导出请求格式无效。');
+              error.statusCode = 400;
+              throw error;
+            }
+            const exportAll = pathname === '/__playable-export-all';
+            if (!exportAll && !PLAYABLE_EXPORT_PLATFORMS.has(payload.platform)) {
+              const error = new Error('不支持该导出平台。');
+              error.statusCode = 400;
+              throw error;
+            }
+            if (!payload.tuning || typeof payload.tuning !== 'object' || Array.isArray(payload.tuning)) {
+              const error = new Error('导出请求缺少有效的场景参数。');
+              error.statusCode = 400;
+              throw error;
+            }
+
+            const { exportAllPlayablePackages, exportPlayablePackage } = await import('./scripts/export-playable-package.mjs');
+            const result = await (exportAll ? exportAllPlayablePackages : exportPlayablePackage)({
+              projectRoot: process.cwd(),
+              ...(exportAll ? {} : { platform: payload.platform }),
+              tuning: payload.tuning
+            });
+            if (
+              !result?.filePath
+              || result.resourceMode !== 'package-only'
+              || !['html', 'zip'].includes(result.format)
+              || result.checkSummary?.passed !== true
+            ) {
+              throw new Error('Playable export did not produce a verified artifact.');
+            }
+
+            const fileName = playableExportFilename(result.fileName, result.format);
+            const file = await readFile(result.filePath);
+            const passedCount = Number(result.checkSummary.passedCount) || 0;
+            const totalCount = Number(result.checkSummary.totalCount) || passedCount;
+            response.statusCode = 200;
+            response.setHeader('Content-Type', result.format === 'zip' ? 'application/zip' : 'text/html; charset=utf-8');
+            response.setHeader('Content-Length', file.byteLength);
+            response.setHeader('Content-Disposition', playableExportDisposition(fileName));
+            response.setHeader('Cache-Control', 'no-store');
+            response.setHeader('X-Content-Type-Options', 'nosniff');
+            response.setHeader('X-Playable-Resource-Mode', result.resourceMode);
+            response.setHeader('X-Playable-Check', `passed; ${passedCount}/${totalCount}`);
+            response.end(file);
+          } catch (error) {
+            const statusCode = Number.isInteger(error.statusCode) && error.statusCode >= 400 && error.statusCode < 500
+              ? error.statusCode
+              : 500;
+            if (statusCode === 500) console.error('[playable-export] Export failed:', error);
+            sendJson(response, statusCode, {
+              error: statusCode === 500
+                ? '试玩包生成或本地检测失败，未生成下载文件。请查看开发服务器日志。'
+                : error.message
+            });
+          } finally {
+            playableExportInFlight = false;
+          }
+          return;
+        }
         if (pathname === '/__level-authoring' && request.method === 'GET') {
           try {
             const items = (await readWebLevelIdentities())

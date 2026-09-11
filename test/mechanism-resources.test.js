@@ -3,7 +3,9 @@ import assert from 'node:assert/strict';
 import { existsSync, readFileSync } from 'node:fs';
 import {
   MECHANISM_RESOURCE_MANIFEST,
+  MECHANISM_TYPES,
   deriveLevelMechanics,
+  getMechanismAudioConfig,
   getMechanismTypesForLevels
 } from '../src/mechanism-resources.js';
 import { LEVEL_CATALOG } from '../src/level-catalog.js';
@@ -40,7 +42,8 @@ test('entry banner uses the supplied title/background images and keeps the match
   assert.match(sceneSource, /assets\.superHardBackground/);
   assert.match(sceneSource, /assets\.hardTitle/);
   assert.match(sceneSource, /assets\.superHardTitle/);
-  assert.match(sceneSource, /this\.entryBanner = this\.createEntryBanner\(\)/);
+  assert.match(sceneSource, /this\.entryBanner = SCENE_TUNING\.entryBanner\?\.enabled \? this\.createEntryBanner\(\) : null/);
+  assert.match(sceneSource, /if \(!this\.entryBanner\) this\.entryBanner = this\.createEntryBanner\(\)/);
   assert.match(sceneSource, /this\.updateEntryBanner\(\)/);
   assert.doesNotMatch(editorSource, /entryBanner\.debug/);
   assert.match(editorSource, /entryBanner\.components\./);
@@ -101,16 +104,16 @@ test('level mechanism metadata distinguishes ordinary levels from mechanism leve
       vehicleTransportBelt: 0
     }
   });
-  assert.deepEqual(LEVEL_CATALOG.level29.mechanics.types, [
-    'ordinaryConveyor', 'luxuryVehicle', 'turnVehicle'
+  assert.deepEqual(LEVEL_CATALOG.level26.mechanics.types, [
+    'ordinaryConveyor', 'ambulance'
   ]);
-  assert.equal(LEVEL_CATALOG.level29.mechanics.isMechanicLevel, true);
-  assert.deepEqual(LEVEL_CATALOG.level33.mechanics.types, [
-    'ordinaryConveyor', 'turnVehicle', 'hiddenVehicle'
+  assert.equal(LEVEL_CATALOG.level26.mechanics.isMechanicLevel, true);
+  assert.deepEqual(LEVEL_CATALOG.level28.mechanics.types, [
+    'ordinaryConveyor', 'turnVehicle'
   ]);
-  assert.deepEqual(LEVEL_CATALOG.level39.mechanics.types, [
-    'ordinaryConveyor', 'turnVehicle', 'garage'
-  ]);
+  assert.equal(LEVEL_CATALOG.level28.mechanics.isMechanicLevel, true);
+  assert.deepEqual(LEVEL_CATALOG.level33.mechanics.types, ['ordinaryConveyor']);
+  assert.equal(LEVEL_CATALOG.level33.mechanics.isMechanicLevel, false);
 });
 
 test('mechanism metadata can be derived from imported level fields', () => {
@@ -125,4 +128,24 @@ test('mechanism metadata can be derived from imported level fields', () => {
     'ordinaryConveyor', 'luxuryVehicle', 'ambulance', 'turnVehicle',
     'hiddenVehicle', 'garage', 'vehicleTransportBelt'
   ]);
+});
+
+test('mechanism audio config includes only mechanisms used by the session', () => {
+  assert.deepEqual(getMechanismAudioConfig([MECHANISM_TYPES.ordinaryConveyor]), {});
+
+  const config = getMechanismAudioConfig([
+    MECHANISM_TYPES.turnVehicle,
+    MECHANISM_TYPES.hiddenVehicle
+  ]);
+  assert.deepEqual(Object.keys(config), ['turn_vehicle_complete', 'hidden_vehicle_reveal']);
+  assert.equal(
+    config.turn_vehicle_complete.clips[0],
+    '/assets/unity/mechanisms/turn-vehicle/audio/guidemove.bin'
+  );
+  assert.equal(
+    config.hidden_vehicle_reveal.clips[0],
+    '/assets/unity/mechanisms/hidden-vehicle/audio/hidden_reveal.bin'
+  );
+  assert.equal('ambulance_countdown' in config, false);
+  assert.equal('garage_out' in config, false);
 });

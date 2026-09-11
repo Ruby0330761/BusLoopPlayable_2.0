@@ -1,5 +1,69 @@
 # Progress
 
+## 2026-09-11 - Opening and idle hand hint complete
+
+- Disabled the Level 36 opening mask and added an immediate hand hint that hides on interaction and reappears after five idle seconds.
+- Added editable hint timing/target controls and movable-target fallback. Focused tests, saved-tuning migration coverage, production build, and browser state checks pass.
+
+## 2026-09-10 - Added level36 dense multicolor layout
+
+- Rebuilt `artifacts/web-levels/level36.json` from the clarified reference with 82 vehicles: a filled, high-density center, mostly orthogonal rows, 17 local diagonals, and no hollow rectangular frame.
+- Selected `level36` and retained the `dualQueue3` conveyor style. Converted the 14 minibuses in the right two columns into 4-seat cars, then reduced the queues to `274+268` so all `542` seats still match passengers exactly across nine colors.
+- Reassigned 26 same-capacity vehicles to change the visible color placement without changing any color's total capacity. Reduced vehicle models from `0.75` to `0.70`, compacted the field with map scale `0.80`, retained a slight `-0.10` upward offset, and added guarded migrations for old cached Level 36 values.
+- Added revision-aware `v3` preview caching so stale browser drafts cannot hide newer saved layouts or colors. Added visual-spacing clearance for the vehicle meshes; focused level/editor tests pass `18/18`, the production build passes, and browser QA confirms the revised models, scale, colors, and CTA clearance with zero error-level console logs.
+
+## 2026-09-10 - BL04 blue variant complete
+
+- Replaced Level 33's yellow vehicles/passengers with blue while preserving the center pink vehicle and first-wave pink passengers.
+- Regenerated catalog/production data; blue seats and passengers both total `624`, pink seats and passengers both total `10`. Focused tests `16/16`, production build, and browser QA pass.
+
+## 2026-09-10 - Categorized scene editor complete
+
+- Split the right-side editor into `关卡 / 画面 / 传送带 / 车辆 / 引导 / 导出` tabs while retaining collapsible parameter groups and existing tuning behavior.
+- Verified every category, cyclic arrow-key plus Home/End navigation, desktop layout, and `390x844` layout with no horizontal overflow. Focused tests pass `22/22`; production build passes.
+
+## 2026-09-10 - Custom playable package naming complete
+
+- Added a default-open `\u5bfc\u51fa\u547d\u540d` editor section for all ten documented name segments, including editable channel codes for all seven platforms.
+- Exported artifacts now follow the business naming order; Mintegral uses its required underscore-only equivalent, while platform-native internal entry names stay intact.
+- Focused tests pass `21/21`, the production build passes, and the rebuilt aggregate passes all local static, payload, and runtime gates (`227/241`; `14` external manual gates). SHA-256: `6bf26168ad0da41918a58df8ea175934b044a1487a2127b2458d71fdb7b1b592`.
+
+## 2026-09-10 - Disabled EntryBanner export fixed
+
+- Resolved `RUNTIME-IMAGE-001` by lazily creating EntryBanner image elements only when enabled. AppLovin CLI and editor HTTP exports now pass `30/32` local checks.
+
+## 2026-09-09 - Opening spotlight radius control complete
+
+- Added the `光效圆角` editor parameter (`0-120`) and persisted it as `firstClickGuide.holeRadius`; zero produces square corners.
+- Focused tests `2/2`, production build, and live browser verification at `0px`/`32px` pass.
+
+## 2026-09-09 - Rainbow EntryBanner sync complete
+
+- Synced remote `Rainbow` through `18f8a48`; retained the local Level 33/editor/exporter work and added EntryBanner plus the `BG01 草地` option.
+- EntryBanner defaults off beside the existing opening guide. Its enabled AppLovin export includes the real six-image resource set and passes `30/32` local gates; focused tests, production build, and browser preview pass.
+
+## 2026-09-09 - BL04 flat-loop enhancement complete
+
+- `level33` now uses the ordinary `dualQueue3` loop, four parking spots, the center pink vehicle/opening guide, ten pink passengers at the front of queue one, and the current `Bus Fever Party!` name.
+- Expanded the drive-to-station perimeter to prevent turn-in clipping; all 12 initially movable vehicle paths pass sampled overlap checks against the parked layout. Existing Level 33 editor saves with the old full boundary signature now migrate to the corrected perimeter.
+- Enlarged the guide hand from `1.63` to `2.2` and replaced the four-piece square cutout with a true `16px` rounded spotlight. Focused tests pass `30/30`, production build passes, and browser QA confirms the migrated path values and corrected guide mask.
+- Added live spotlight margin, X/Y, width, and height controls; every change replays the opening guide. The editor's right-side groups are now independently collapsible, focused tests pass `2/2`, and the production build plus browser UI check pass.
+
+## 2026-09-08 - Rainbow sync preserved and revalidated
+
+- Fast-forwarded to remote `Rainbow` commits `1e60914` and `d1093e2`, then restored all local editor/exporter work.
+- Reconciled the remote local-Poppins change with platform rules by retaining the font in development and stripping the bundled font rule/resource during package generation.
+- Focused exporter, bridge, runtime, and collision tests pass `42/42`; all seven platform artifacts pass static, payload, and runtime gates with zero static failures or warnings.
+- Full-suite status is `198/222`; the same `24` stale project assertions remain. Final aggregate SHA-256 is `6d4e2941f19056f3891bc00e4a431774da45359f84aaa2d50fb1a19e4540d6cb` (`9,372,749` bytes).
+
+## 2026-09-08 - Seven-platform package-only export validation complete
+
+- Fixed the last Mintegral/runtime blocker by deriving mechanism audio from the active session instead of preloading omitted one-byte package placeholders.
+- Added controlled preload failure handling and a browser runtime gate that rejects one-byte or failed `decodeAudioData` calls after trusted interaction.
+- Rebuilt all seven native artifacts. Static checks have zero failures and warnings, payload and runtime checks pass for every platform, and artifact/report byte counts, SHA-256 values, and check-batch IDs match.
+- Focused export/bridge/runtime tests pass `28/28`; focused mechanism/audio tests pass `5/5`. The full repository suite is `197/221`; the remaining `24` failures are unrelated stale level, tuning, editor-contract, spatial, and effect expectations in the current dirty workspace.
+- Current post-sync aggregate: `artifacts/playable-exports/bus-loop-all-platforms.zip`, `9,372,749` bytes, SHA-256 `6d4e2941f19056f3891bc00e4a431774da45359f84aaa2d50fb1a19e4540d6cb`.
+
 ## 2026-09-08 - Queue editor one-click depth sort
 
 - Started: map the existing queue editor and vehicle-depth data path, then implement and verify the requested single/dual-queue ordering.

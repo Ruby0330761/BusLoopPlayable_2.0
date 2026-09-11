@@ -7,7 +7,9 @@ import { deriveLevelMechanics } from '../src/mechanism-resources.js';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const EXTRACT_SCRIPT = path.join(ROOT, 'scripts', 'extract-unity-levels.mjs');
-const CATALOG_PATH = path.join(ROOT, 'src', 'level-catalog.js');
+const CATALOG_PATH = process.env.PLAYABLE_LEVEL_CATALOG_PATH
+  ? path.resolve(process.env.PLAYABLE_LEVEL_CATALOG_PATH)
+  : path.join(ROOT, 'src', 'level-catalog.js');
 const LEVEL_ARTIFACT_PATH = path.join(ROOT, 'artifacts', 'unity-levels.json');
 
 export const MAX_UNITY_LEVEL_BYTES = 8 * 1024 * 1024;

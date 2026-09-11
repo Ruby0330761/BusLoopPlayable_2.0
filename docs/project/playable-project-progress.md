@@ -1,5 +1,52 @@
 # Playable Project Progress
 
+## Completed On 2026-09-11 - Opening and idle hand hint
+
+- Replaced Level 36's dimmed opening spotlight with an unobstructed hand hint: the hand appears immediately, hides on canvas interaction, and returns after five seconds without input.
+- Added editor controls for the opening toggle and idle delay, plus automatic fallback to another movable vehicle when the configured target has already moved.
+- Focused guide/level tests pass `17/17`, the saved-tuning migration test passes, the production build passes, and browser QA confirms all three visual states.
+
+## Completed On 2026-09-10 - Level 36 dense multicolor layout
+
+- Rebuilt the independent web-authored `level36` after the clarified comparison: its 82 vehicles now form the reference's filled, high-density irregular field instead of a hollow rectangular perimeter.
+- The level keeps the `dualQueue3` top conveyor and uses mostly horizontal/vertical rows with 17 local diagonals. The 14 minibuses in the right two columns are now 4-seat cars; queues were reduced to `274+268`, exactly matching all `542` seats across nine colors.
+- Reassigned 26 vehicle colors across the field so the color placement is visibly distinct from the reference while preserving every per-color seat/passenger total. Reduced the vehicle model scale from `0.75` to `0.70`, compacted the field with map scale `0.80`, and retained only a slight upward offset of `-0.10`; guarded migrations update existing Level 36 editor sessions.
+- Upgraded authored-level preview caching to revision-aware `v3`: stale `v1`/`v2` drafts are removed, and a draft can override disk only while its saved base revision still matches. Vehicle spacing includes visual-model clearance; focused level/editor tests pass `18/18`, the production build passes, and browser QA confirms the revised car models, scale, colors, and CTA clearance with zero error-level console logs.
+
+## Completed On 2026-09-10 - BL04 blue variant
+
+- Changed all 83 non-target Level 33 vehicles and their 624 matching passengers from yellow to blue; center vehicle 89 and the first ten pink passengers remain pink.
+- Regenerated the catalog and production level from the editor-owned Unity source. Color seat/passenger totals remain exact (`blue 624`, `pink 10`).
+- Focused catalog/guide checks pass `16/16`, production build passes, and live browser QA confirms the blue vehicle and passenger presentation.
+
+## Completed On 2026-09-10 - Categorized scene editor
+
+- Reorganized the right-side editor into six focused tabs: level, visual, conveyor, vehicle, guide, and export; only the selected category's collapsible sections are shown.
+- Kept all existing controls and auto-save behavior intact, with keyboard navigation across tabs and the playable export/naming controls grouped together.
+- Focused editor/export tests pass `22/22`; production build, desktop browser QA, and `390x844` responsive browser QA pass without horizontal overflow.
+
+## Completed On 2026-09-10 - Custom delivery naming
+
+- Added editable fields for the complete delivery name: requirement, material, iteration, language, format, designer, requester, per-platform channel, steps, and stamina.
+- Single-platform downloads and the seven artifacts inside the aggregate ZIP now use those values in the documented order. Platform-required entry names remain unchanged; Mintegral automatically uses underscores because its delivery contract forbids hyphens.
+- Editor-only naming metadata is stripped from playable runtime code. Focused tests pass `21/21`, production build passes, and the exact seven-platform aggregate passes `227/241` local checks with only `14` official/manual gates remaining. Final ZIP: `9,277,160` bytes, SHA-256 `6bf26168ad0da41918a58df8ea175934b044a1487a2127b2458d71fdb7b1b592`.
+
+## Completed On 2026-09-10 - Disabled EntryBanner export fix
+
+- Fixed `RUNTIME-IMAGE-001` when exporting with EntryBanner disabled: the renderer now creates its six image elements lazily only when the feature is enabled, so omitted EntryBanner resources no longer appear as broken hidden images.
+- Focused tests pass `25/25`; the production AppLovin export and editor HTTP export both pass `30/32` local checks, with only the two official/manual gates remaining.
+
+## Completed On 2026-09-09 - Adjustable opening spotlight corners
+
+- Added `firstClickGuide.holeRadius` to the editor and export tuning. The opening spotlight radius is adjustable from `0` to `120`; `0` renders a square cutout and larger values produce progressively rounder corners.
+- Radius changes reuse the existing opening-guide replay path and update immediately. Focused tests `2/2`, production build, and browser checks at `0px` and `32px` pass.
+
+## Completed On 2026-09-09 - Rainbow EntryBanner and grassland sync
+
+- Fast-forwarded `Rainbow` from `d1093e2` to `18f8a48`, bringing in the EntryBanner runtime/editor/assets and the `BG01 草地` background while preserving the local Level 33, opening guide, collapsible editor, store-link, and seven-platform exporter changes.
+- Kept EntryBanner disabled in the Level 33 baseline so it does not overlap the existing pink-vehicle opening guide; its Hard/SuperHard controls and six packaged image resources remain available in the editor.
+- Fixed the merged package/check paths to whitelist EntryBanner assets when enabled. Focused tests pass `35/35`, production build passes, browser preview renders the banner without error logs, and an enabled AppLovin export passes `30/32` local checks (`2` official/manual gates remain).
+
 ## Completed On 2026-09-09 - Rebuilt level42 with EntryBanner inline resources
 
 - Decoded and applied the complete tuning payload; level `level42` uses `BG01 冬季`, `dualQueue3`, product text `Bus Fever Party！`, and the enabled `superhard` EntryBanner (`2.2s`, mask opacity `0.62`).
@@ -36,11 +83,63 @@
 - Kept the supplied title image above the arrow group (`label z-index 4`, `arrow z-index 3`) and retained per-arrow opacity keyframes for fade-in and fade-out.
 - Added the four supplied PNGs to the EntryBanner mechanism manifest; obsolete red/purple background sprites are no longer selected for production packaging. Existing saved tuning continues to merge over the restored defaults.
 - Verification: EntryBanner tests `3/3`, syntax checks, Hard/SuperHard browser preview, temporary menu presence, image dimensions, layer order, zero error-level browser logs, production build, and AppLovin static package checks. Final single HTML is `3,483,511` bytes (`3.322 MiB`).
+## Completed On 2026-09-09 - BL04 flat-loop enhancement
+
+- Updated the playable name to `Bus Fever Party!`, selected `level33` with the ordinary `dualQueue3` flat loop, retained the center pink vehicle and opening dim/highlight guide, and reduced parking to four spots.
+- Moved ten pink passengers to the head of the first queue without changing the `323+311` passenger totals; the remaining passengers and vehicles stay yellow in this variant.
+- Expanded the station-route perimeter so all 12 initially movable vehicles clear the parked layout while turning, enlarged the guide hand from `1.63` to `2.2`, changed the opening spotlight to a true `16px` rounded cutout, and added an exact migration for the stale Level 33 hand/path values already saved by the editor. Focused guide/catalog/collision checks pass `30/30`, production build passes, and browser QA confirms the migrated values and corrected opening guide.
+- The opening-guide editor now exposes spotlight margin, X/Y offsets, width, and height; changing any of them immediately restarts the preview. Every right-side editor section is independently collapsible, with the opening-guide section expanded by default. Focused guide tests pass `2/2`, production build passes, and browser QA confirms the controls and disclosure states.
+
+## Completed On 2026-09-09 - AppLovin preview CTA and export compatibility
+
+- Kept `mraid.open()` as the AppLovin-container CTA. In ordinary `file://`, HTTP, or HTTPS previews without MRAID, an explicit `Play Now` click follows a temporary anchor; the build contains no forbidden `location.assign`, `location.href`, or `window.open` fallback.
+- Fixed local-file and hosted-preview CTA errors plus the earlier export regression. Platform bridge tests pass `9/9`; production build passes; the verified AppLovin export passes `30/32` checks with the remaining `2` official/manual gates. The updated intranet page at `page.hupogames.com/40e6e11e-226c-47cd-b881-7f5b1de7638b/` was browser-tested through a trusted click and reached the configured Google Play product page.
+
+## Completed On 2026-09-09 - Store links updated
+
+- Kept Android CTA routing on `https://play.google.com/store/apps/details?id=gridplus.busjam.carpuzzle` and changed every iOS CTA path to `https://apps.apple.com/us/app/bus-fever-party/id6746743297`.
+- Updated the AppLovin package allowlist/check so future exports validate the new product URL.
+
+## Completed On 2026-09-09 - CTA moved below the gameplay area
+
+- Replaced CTA world-space projection with responsive screen-space positioning so editor `\u5c4f\u5e55 X/Y` values are authoritative and the button cannot drift back over vehicles.
+- Moved and slightly reduced `Play Now` to sit between the two bottom branding images, preserving the game board and opening pink-vehicle guide.
+- Focused source-contract test, production build, and browser checks of the normal and opening-guide states pass.
+
+## Completed On 2026-09-09 - Opening guide animation editor switch
+
+- Moved the timed dimming/highlight guide settings into a dedicated `\u5f00\u573a\u5f15\u5bfc\u52a8\u753b` editor section and changed its enabled field to a real switch.
+- Turning the animation on binds it to the currently selected level and resets the live preview, so the dimmed screen, target cutout, and animated hand replay immediately; existing vehicle colors and other tuning values are preserved.
+- Focused source-contract test and production build pass. The running LAN development server picks up the change through Vite hot reload.
+
+## Completed On 2026-09-09 - Moloco S3 checker compatibility
+
+- Fixed the actual multi-platform exporter in `BusLoopPlayable_2.0`, not the older `BusLoopPlayable_2.0-main` copy. Moloco output now preserves decoded GLSL while avoiding raw `texelFetch(` substring matches, renames the obsolete Three.js request diagnostic, and blocks any remaining network API markers.
+- Preserved the exact user-uploaded 2,487,935-byte package's gameplay, tuning, and assets in `artifacts/playable-exports/moloco-checker-fix/bus-loop-moloco-fixed.html`; only 13 shader text representations and one diagnostic changed. Output: 2,488,017 bytes; SHA-256 `114bb22dda8cc1c4e2ec795b7e196c08b48c4cc836ced91406730b3e67d03833`.
+- Verification: exporter/bridge tests 21/21, checker S1-S6 6/6, static rules 15 pass / 0 fail / 0 warning, payload PASS, runtime 12/12. A separate production rebuild through the fixed exporter also passes all 28 automated gates; two official/manual gates remain.
+- Playwright comparison at 390x844, 844x390, and 1440x900 confirms nonblank animated canvases, trusted CTA clicks, zero HTTP asset requests and zero network API calls. Five pre-existing Chrome data-URL resource diagnostics reproduce identically in both packages; no new errors. Reports/screenshots are beside the fixed artifact under `reports/`.
+- Existing aggregate ZIPs and original downloads were not overwritten. Re-upload the fixed HTML to the reported checker; official Moloco preview/upload/device acceptance is still pending.
+
+## Completed On 2026-09-08 - Rainbow bug-fix sync and exporter revalidation
+
+- Fast-forwarded `Rainbow` to remote commits `1e60914` (collision fix) and `d1093e2` (local Poppins font), then restored the existing local editor, level, asset, and seven-platform exporter work without dropping changes.
+- Kept local Poppins for development while stripping its `@font-face` and TTF reference in the real platform packaging path; packaged CSS retains `Arial, sans-serif` fallbacks and all seven exact artifacts contain no font resource/reference.
+- Rebuilt the package-only all-platform export. Ruleset `1.5.0` reports `227/241`, with `0` static failures, `0` warnings, payload `PASS`, and runtime `PASS` on every platform; the remaining `14` checks are external manual gates.
+- Focused exporter/bridge/runtime/collision tests pass `42/42`. The full suite is `198/222`; its existing `24` stale level, tuning, editor-contract, spatial, and effect assertions remain outside this merge.
+- Final aggregate: `artifacts/playable-exports/bus-loop-all-platforms.zip`, `9,372,749` bytes, SHA-256 `6d4e2941f19056f3891bc00e4a431774da45359f84aaa2d50fb1a19e4540d6cb`.
+
+## Completed On 2026-09-08 - Package-only multi-platform editor export
+
+- Added platform selection, single-platform export, and one-click export for AppLovin, Google Ads, Meta, Unity Ads, Mintegral, Moloco, and TikTok.
+- The export path is explicitly `package-only`: it packages the current editor tuning in an isolated temporary workspace and does not run asset compression, Tinify, re-encoding, or project-asset writeback. ZIP remains only where the platform delivery format requires it and for the all-platform download container.
+- Added platform-native CTA/lifecycle adapters, guarded development export endpoints, and fail-closed static, payload, and browser-runtime checks. Runtime audio now loads only the mechanism families used by the exported level session, and the runtime gate rejects one-byte placeholders or failed audio decodes.
+- Ruleset `1.5.0` reports `227/241` checks passed across all seven exact artifacts; the remaining `14` items are manual platform gates. Every platform has `0` static failures, `0` warnings, payload `PASS`, and runtime `PASS`.
+- Focused export/bridge/runtime tests pass `28/28`; focused mechanism/audio regressions pass `5/5`. After the Rainbow sync, the final aggregate is `artifacts/playable-exports/bus-loop-all-platforms.zip`, `9,372,749` bytes, SHA-256 `6d4e2941f19056f3891bc00e4a431774da45359f84aaa2d50fb1a19e4540d6cb`. Official Preview, ad-console upload, and representative-device play remain external acceptance steps.
 
 ## Completed On 2026-09-08 - Single bundled font policy
 
-- Confirmed `public/assets/unity/fonts/Poppins-Bold.ttf` is byte-identical to Unity's source, then changed all runtime and development-editor CSS/Canvas text to the local `Poppins Branding` family. Removed the Game Over system-font selector and its stale tuning field.
-- Font-focused regressions and touched-file syntax checks pass; the production build succeeds and copies the same font into `dist/assets/unity/fonts/`. One unrelated existing parking-count assertion still expects `5` while the current tuning uses `6`.
+- Confirmed `public/assets/unity/fonts/Poppins-Bold.ttf` is byte-identical to Unity's source, then changed runtime and development-editor CSS/Canvas text to the local `Poppins Branding` family. Removed the Game Over system-font selector and its stale tuning field.
+- Platform packaging keeps this editor/runtime fix while removing the font-face resource from final playable artifacts and retaining explicit system fallbacks, because the current AppLovin acceptance path reports packaged font references as external-font violations.
 
 ## Completed On 2026-09-08 - Arrow compression and garage audio/package-flow recovery
 
@@ -1228,3 +1327,9 @@ Full 2026-07-07 progress log was archived to:
 - Isolated the confirmed conveyor visual root scale (`1.375`), asymmetric door spacing (`1.17`/`1.20`), and right-edge visibility (`0.93`) in `src/conveyor-mechanism-config.js`; conveyor vehicles remain outside the visual root scale.
 - Reopened a temporary editor submenu for independent XYZ position, scale, and rotation adjustments on the belt, arrow, doors, and side panels; overrides layer over the fixed mechanism base and reset cleanly.
 - Added focused configuration/temporary-override regression coverage and passed syntax checks plus conveyor-focused behavior/resource checks.
+
+## Completed On 2026-09-09 - Editor-managed store links
+
+- Added validated Android Google Play and iOS App Store URL fields under the editor's `\u5546\u5e97\u8df3\u8f6c` section; valid edits auto-save without rebuilding the Three.js scene.
+- Runtime CTA routing and platform exports now consume the editor configuration, while export and AppLovin checks reject invalid or non-HTTPS store domains.
+- Verification: focused export/platform bridge tests pass `22/22`; focused editor/store redirect contracts pass `2/2`; production build, AppLovin packaging, all `23/23` AppLovin static checks, live LAN editor inspection, and an exact exporter run (`30/32` automatic checks passed plus 2 manual gates) pass. The package is `2,489,232` bytes; official upload and device acceptance remain external.

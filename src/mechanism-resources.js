@@ -159,11 +159,51 @@ export const MECHANISM_ASSETS = Object.freeze({
   })
 });
 
+const MECHANISM_AUDIO_CONFIG = Object.freeze({
+  [MECHANISM_TYPES.ambulance]: Object.freeze({
+    ambulance_countdown: Object.freeze({
+      clips: Object.freeze([MECHANISM_ASSETS.ambulance.audio]),
+      volume: 0.72
+    })
+  }),
+  [MECHANISM_TYPES.turnVehicle]: Object.freeze({
+    turn_vehicle_complete: Object.freeze({
+      clips: Object.freeze([MECHANISM_ASSETS.turnVehicle.audio]),
+      volume: 0.7
+    })
+  }),
+  [MECHANISM_TYPES.hiddenVehicle]: Object.freeze({
+    hidden_vehicle_reveal: Object.freeze({
+      clips: Object.freeze([MECHANISM_ASSETS.hiddenVehicle.audio]),
+      volume: 0.7933884
+    })
+  }),
+  [MECHANISM_TYPES.garage]: Object.freeze({
+    garage_out: Object.freeze({
+      clips: Object.freeze([MECHANISM_ASSETS.garage.outAudio]),
+      volume: 0.7979798
+    }),
+    garage_clear: Object.freeze({
+      clips: Object.freeze([MECHANISM_ASSETS.garage.clearAudio]),
+      volume: 1
+    })
+  })
+});
+
+export function getMechanismAudioConfig(types = []) {
+  const enabledTypes = new Set(types);
+  return Object.assign(
+    {},
+    ...MECHANISM_TYPE_ORDER
+      .filter((type) => enabledTypes.has(type))
+      .map((type) => MECHANISM_AUDIO_CONFIG[type] ?? {})
+  );
+}
+
 export const BASE_RUNTIME_ASSET_PATHS = Object.freeze([
   '/assets/applovin/icon_q75.jpg',
   '/assets/applovin/main-guide-hand_q80.webp',
   '/assets/main-loading-icon-small.png',
-  '/assets/unity/fonts/Poppins-Bold.ttf',
   '/assets/unity/ui/Main_Prop_GreenBtn.png'
 ]);
 

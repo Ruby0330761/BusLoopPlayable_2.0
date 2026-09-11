@@ -1,5 +1,37 @@
 ﻿# Task Plan
 
+## Current Hand Hint Phases
+
+1. **Complete:** Removed the Level 36 dimming mask while preserving an immediate opening hand hint.
+2. **Complete:** Hide the hand on canvas interaction and restore it after five seconds of inactivity.
+3. **Complete:** Added editor controls, stale-cache migration, movable-target fallback, focused tests, production build, and browser verification.
+
+## Current Level36 Reference Layout Phases
+
+1. **Complete:** Reinterpreted the supplied comparison as a filled, high-density irregular field rather than a hollow outer frame.
+2. **Complete:** Rebuilt Level 36 with 82 collision-free vehicles, mostly orthogonal rows, local diagonals, and nine colors while retaining `dualQueue3`.
+3. **Complete:** Replaced the 14 minibuses in the right two columns with 4-seat cars, synchronized the queues to `274+268`, reduced vehicle models to `0.70`, and compacted the field around its center to clear both the driving lane and CTA.
+4. **Complete:** Regenerated the active payload, passed focused tests/build, and completed browser visual acceptance with zero error-level logs.
+
+## Current BL04 Enhancement Phases
+
+1. **Complete:** Updated the product name and selected the ordinary `dualQueue3` flat loop for `level33`.
+2. **Complete:** Put ten pink passengers at the start of queue one, retained the center pink vehicle/opening guide, and reduced parking to four spots.
+3. **Complete:** Expanded the station-path perimeter, added full-path overlap regression coverage, and migrated the exact stale editor values that kept the first vehicle on the old path.
+4. **Complete:** Enlarged the opening guide hand to `2.2`, replaced the square-corner mask with a `16px` rounded spotlight, and passed focused tests, production build, and browser visual QA.
+5. **Complete:** Added live spotlight X/Y, width, height, and margin controls, then converted every right-side editor group into an independently collapsible section.
+6. **Complete:** Added a live spotlight corner-radius control; `0` produces a square cutout and values through `120` increase the rounding.
+
+## Current Multi-Platform Export Phases
+
+1. **Complete:** Added the seven platform-native CTA/lifecycle adapters and package formats.
+2. **Complete:** Added editor platform selection, single-platform export, and one-click all-platform export.
+3. **Complete:** Fixed the export contract at `package-only`, with no asset compression, optimization, or project writeback.
+4. **Complete:** Fixed omitted mechanism audio being decoded as a one-byte placeholder and added an artifact-level audio decode gate.
+5. **Complete:** Passed focused tests and the full seven-platform static, payload, and runtime regression with zero local failures or warnings.
+6. **Complete:** Added editable business naming fields and applied them to single-platform downloads and artifacts inside the aggregate ZIP, including Mintegral and Google naming constraints.
+7. **Pending external:** Upload the exact final artifacts to official platform Preview/ad consoles and play them on representative devices.
+
 ## Current Queue Auto-Sort Phases
 
 1. **Complete:** Traced queue editor state, vehicle depth semantics, dual-queue highlights, and existing test helpers.
@@ -9,7 +41,7 @@
 
 ## Current Goal
 
-Port the original Unity `LevelEditor` feature set into the web playable editor so levels can be authored, validated, saved, and played directly in the browser.
+The Level 36 layout and non-blocking opening/idle hand guidance are complete; packaging remains out of scope until requested.
 
 ## Current Level40 Test Package Phases
 
@@ -444,4 +476,3 @@ Complete: the strict three-file Google wrapper, portrait/320x480 metadata, MRAID
 - Code map: `docs/project/code-navigation.md`
 - Durable findings: `findings.md`
 - Resource status: `docs/project/playable-resource-status.md`
-

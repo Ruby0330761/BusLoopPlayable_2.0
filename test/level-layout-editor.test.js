@@ -12,9 +12,13 @@ test('scene editor and main runtime expose the full level layout workspace', () 
   assert.match(sceneEditor, /fetch\('\/__level-authoring'/);
   assert.match(sceneEditor, /option\.textContent = item\.displayName/);
   assert.match(main, /createLevelLayoutEditor/);
+  assert.match(main, /bus-loop-level-editor-preview-v3/);
+  assert.match(main, /LEGACY_LEVEL_EDITOR_PREVIEW_STORAGE_KEYS/);
   assert.match(main, /bus-loop-level-editor-preview-v1/);
-  assert.match(main, /readSavedWebLevelDocument/);
-  assert.match(main, /localStorage\.setItem\(LEVEL_EDITOR_PREVIEW_STORAGE_KEY, JSON\.stringify\(webDocument\)\)/);
+  assert.match(main, /bus-loop-level-editor-preview-v2/);
+  assert.match(main, /readSavedWebLevelEntry/);
+  assert.match(main, /previewEntry\.baseRevision === savedRevision/);
+  assert.match(main, /writeLevelEditorPreviewDocument\(webEntry\.document, 'saved', webEntry\.revision\)/);
   for (const feature of [
     '添加车辆', '添加车库', '添加运输带', '添加闸门', '添加升降舱',
     '新建关卡', '重算深度', '验证', '保存', '试玩', '导入 JSON', 'exportUnityLevelAsset',
@@ -72,7 +76,9 @@ test('scene editor and main runtime expose the full level layout workspace', () 
   assert.match(workspace, /关卡名称已被/);
   assert.match(workspace, /createLevelDocument\(\{ key, unityId: number, displayName \}\)/);
   assert.match(workspace, /body: JSON\.stringify\(\{ document: model\.document, baseRevision: revision, createOnly \}\)/);
-  assert.match(workspace, /localStorage\.setItem\('bus-loop-level-editor-preview-v1', JSON\.stringify\(model\.document\)\)/);
+  assert.match(workspace, /writeLevelEditorPreviewDocument\(model\.document, 'saved', revision\)/);
+  assert.match(workspace, /writeLevelEditorPreviewDocument\(model\.document, 'draft', revision\)/);
+  assert.match(workspace, /initialDocument \? null : persistentDocumentSource\(model\.document\)/);
   assert.match(workspace, /setStatus\(`已保存并应用/);
   assert.match(main, /readLevelEditorPreviewDocument\(\)/);
   assert.match(main, /localStorage\.removeItem\(LEVEL_EDITOR_PREVIEW_STORAGE_KEY\)/);

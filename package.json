@@ -14,6 +14,8 @@
     "apply:tuning": "node scripts/apply-scene-tuning.mjs",
     "check:applovin": "node scripts/check-applovin-package.mjs",
     "package:applovin": "node scripts/package-applovin-single-html.mjs",
+    "export:playable": "node scripts/export-playable-package.mjs",
+    "export:playable:all": "node scripts/export-playable-package.mjs --all",
     "preview": "vite preview --host 127.0.0.1",
     "test": "node --test"
   },

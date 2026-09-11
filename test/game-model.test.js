@@ -223,6 +223,7 @@ test('bus full audio plays each distinct event once without dropping pending eve
   const sources = [];
   const pending = [];
   const audio = new GameAudioController({ bus_full: { clips: ['full'] } });
+  audio.unlocked = true;
   audio.context = {
     state: 'running',
     destination: {},
@@ -248,6 +249,50 @@ test('bus full audio plays each distinct event once without dropping pending eve
   await Promise.resolve();
   assert.equal(sources.length, 2);
   assert.equal(sources.every((source) => source.stopped === false), true);
+});
+
+test('audio remains dormant until a user gesture unlocks playback', async () => {
+  let resumeCalls = 0;
+  const audio = new GameAudioController({ bus_full: { clips: ['full'] } });
+  audio.context = {
+    state: 'suspended',
+    resume() {
+      resumeCalls += 1;
+      this.state = 'running';
+      return Promise.resolve();
+    }
+  };
+  audio.loadClip = () => Promise.resolve(null);
+
+  audio.play('bus_full');
+  assert.equal(resumeCalls, 0);
+  assert.equal(audio.queuedPlays.length, 1);
+
+  audio.unlock();
+  await Promise.resolve();
+  assert.equal(resumeCalls, 1);
+  assert.equal(audio.queuedPlays.length, 0);
+});
+
+test('audio preload contains individual decode failures without rejecting', async () => {
+  const audio = new GameAudioController({
+    bus_hit: { clips: ['valid'] },
+    unused_mechanism: { clips: ['invalid'] }
+  });
+  audio.loadClip = (clip) => (
+    clip === 'invalid' ? Promise.reject(new DOMException('Unable to decode', 'EncodingError')) : Promise.resolve({})
+  );
+
+  const originalWarn = console.warn;
+  const warnings = [];
+  console.warn = (...args) => warnings.push(args);
+  try {
+    await assert.doesNotReject(() => audio.preload());
+  } finally {
+    console.warn = originalWarn;
+  }
+  assert.equal(warnings.length, 1);
+  assert.match(String(warnings[0][0]), /unused_mechanism/);
 });
 
 test('turn vehicle audio is deduplicated per completion event, not per vehicle', () => {
@@ -895,7 +940,7 @@ test('ambulance step board is enlarged, lowered, and excluded from vehicle picki
   assert.match(viewSource, /AMBULANCE_STEP_BOARD_BASE_SCALE = 0\.56 \* 1\.2 \* 1\.2/);
   assert.match(viewSource, /AMBULANCE_STEP_BOARD_OFFSET_Y = 0\.42 \* 0\.9/);
   assert.match(viewSource, /AMBULANCE_STEP_BOARD_FONT_SIZE = 76 \* 1\.1/);
-  assert.match(viewSource, /900 \$\{AMBULANCE_STEP_BOARD_FONT_SIZE\}px "Poppins Branding"/);
+  assert.match(viewSource, /900 \$\{AMBULANCE_STEP_BOARD_FONT_SIZE\}px "Poppins Branding", Arial, sans-serif/);
   assert.match(viewSource, /size\.y \+ AMBULANCE_STEP_BOARD_OFFSET_Y/);
   assert.match(viewSource, /sprite\.raycast = \(\) => \{\}/);
 });
@@ -930,7 +975,7 @@ test('turn vehicle completion audio is bundled in a compact playable-safe format
   const audioPath = join('public', 'assets', 'unity', 'mechanisms', 'turn-vehicle', 'audio', 'guidemove.bin');
   const audio = readFileSync(audioPath);
   const audioSource = readFileSync(join('src', 'audio-controller.js'), 'utf8');
-  const mainSource = readFileSync(join('src', 'main.js'), 'utf8');
+  const mechanismSource = readFileSync(join('src', 'mechanism-resources.js'), 'utf8');
 
   assert.equal(audio.subarray(0, 4).toString('ascii'), 'RIFF');
   assert.equal(audio.subarray(8, 12).toString('ascii'), 'WAVE');
@@ -944,8 +989,8 @@ test('turn vehicle completion audio is bundled in a compact playable-safe format
   assert.match(audioSource, /turnVehicleEventId/);
   assert.match(audioSource, /this\.playedGameEventKeys/);
   assert.match(audioSource, /this\.play\(name\)/);
-  assert.match(mainSource, /MECHANISM_ASSETS\.turnVehicle\.audio/);
-  assert.match(mainSource, /turn_vehicle_complete: TURN_VEHICLE_AUDIO_CONFIG/);
+  assert.match(mechanismSource, /turn_vehicle_complete:[\s\S]*MECHANISM_ASSETS\.turnVehicle\.audio/);
+  assert.match(mechanismSource, /export function getMechanismAudioConfig/);
 });
 
 test('garage Unity model and audio resources are wired into the playable runtime', () => {
@@ -972,7 +1017,7 @@ test('garage Unity model and audio resources are wired into the playable runtime
   }
 
   const audioSource = readFileSync(join('src', 'audio-controller.js'), 'utf8');
-  const mainSource = readFileSync(join('src', 'main.js'), 'utf8');
+  const mechanismSource = readFileSync(join('src', 'mechanism-resources.js'), 'utf8');
   assert.match(sceneViewSource, /MECHANISM_ASSETS\.garage/);
   assert.match(sceneViewSource, /cloneSkeleton\(this\.garageTemplate\)/);
   assert.match(sceneViewSource, /updateGarageViews\(snapshot\)/);
@@ -987,8 +1032,8 @@ test('garage Unity model and audio resources are wired into the playable runtime
   assert.match(sceneViewSource, /GARAGE_SIZE_MULTIPLIER/);
   assert.match(audioSource, /garageReleasedVehicleIds/);
   assert.match(audioSource, /garageClearedIds/);
-  assert.match(mainSource, /garage_out: GARAGE_OUT_AUDIO_CONFIG/);
-  assert.match(mainSource, /garage_clear: GARAGE_CLEAR_AUDIO_CONFIG/);
+  assert.match(mechanismSource, /garage_out:[\s\S]*MECHANISM_ASSETS\.garage\.outAudio/);
+  assert.match(mechanismSource, /garage_clear:[\s\S]*MECHANISM_ASSETS\.garage\.clearAudio/);
 });
 
 test('conveyor vehicle resources and visibility state are wired into the scene renderer', () => {
@@ -1176,11 +1221,8 @@ test('editor sizing, source background ratio, and passenger shadow anchor stay w
   assert.deepEqual(SCENE_TUNING.cta, {
     enabled: 1,
     x: 540,
-    y: 1868,
-    worldX: 0,
-    worldY: 3.17,
-    worldZ: 7.44,
-    height: 137,
+    y: 2018,
+    height: 110,
     stretchX: 3.18,
     fontSize: 63,
     fontHeight: 16,
@@ -1228,8 +1270,9 @@ test('editor sizing, source background ratio, and passenger shadow anchor stay w
   assert.match(indexSource, /Game Over/);
   assert.match(indexSource, /id="game-over-logo"/);
   assert.match(indexSource, /id="cta-button"/);
+  assert.match(indexSource, /<div id="game-over-overlay"[\s\S]*?<\/div>\s*<button id="cta-button"/);
   assert.match(indexSource, /Play Now/);
-  assert.match(indexSource, /Bus Fever - Car Jam Escape/);
+  assert.match(indexSource, /Bus Fever Party!/);
   assert.match(indexSource, /\/assets\/main-loading-icon-small\.png/);
   assert.match(indexSource, /role="progressbar"/);
   assert.match(indexSource, /id="loading-progress-bar"/);
@@ -1246,6 +1289,7 @@ test('editor sizing, source background ratio, and passenger shadow anchor stay w
   assert.match(stylesSource, /\.game-over-logo \{[\s\S]*?box-shadow: none;/);
   assert.match(stylesSource, /@keyframes game-over-title-pop/);
   assert.match(stylesSource, /\.game-over-overlay\.is-cta-ready \.game-over-logo/);
+  assert.match(stylesSource, /\.cta-button \{[\s\S]*?opacity: 1;/);
   assert.match(stylesSource, /@keyframes cta-pulse/);
   assert.match(stylesSource, /--cta-stroke-color/);
   assert.match(stylesSource, /\.cta-button:hover \{/);
@@ -1257,9 +1301,7 @@ test('editor sizing, source background ratio, and passenger shadow anchor stay w
   assert.match(editorSource, /lighting\.directional\.enabled/);
   assert.match(editorSource, /cta\.x/);
   assert.match(editorSource, /cta\.y/);
-  assert.match(editorSource, /cta\.worldX/);
-  assert.match(editorSource, /cta\.worldY/);
-  assert.match(editorSource, /cta\.worldZ/);
+  assert.doesNotMatch(editorSource, /cta\.world[XYZ]/);
   assert.match(editorSource, /cta\.stretchX/);
   assert.match(editorSource, /cta\.fontSize/);
   assert.match(editorSource, /cta\.fontHeight/);
@@ -1690,11 +1732,11 @@ test('seat count board displays remaining passengers, not remaining groups', () 
   const viewSource = readFileSync(join('src', 'scene-view.js'), 'utf8');
   assert.match(viewSource, /baseRemaining = Math\.max\(0, vehicle\.seats - vehicle\.boardedGroups\) \* LEVEL_1\.groupSize/);
   assert.match(viewSource, /boardingRemaining \+= 1/);
-  assert.match(viewSource, /context\.font = '700 112px "Poppins Branding"'/);
+  assert.match(viewSource, /context\.font = '700 112px "Poppins Branding", Arial, sans-serif'/);
   assert.match(viewSource, /snapshot\.spots\[vehicle\.spotIndex\]\?\.vehicleId === vehicle\.id/);
 });
 
-test('all UI and canvas font references use the bundled Poppins font', () => {
+test('all UI and canvas font references prefer bundled Poppins with a package-safe fallback', () => {
   const fontSources = [
     'styles.css',
     'main.js',
@@ -1703,11 +1745,12 @@ test('all UI and canvas font references use the bundled Poppins font', () => {
     'level-layout-editor.css',
     'spatial-conveyor-editor.css'
   ].map((file) => readFileSync(join('src', file), 'utf8')).join('\n');
-  const externalFontNames = /\b(?:Arial|Inter|Impact|Trebuchet MS|Microsoft YaHei|system-ui|sans-serif)\b/i;
+  const legacyFontNames = /\b(?:Inter|Impact|Trebuchet MS|Microsoft YaHei|system-ui)\b/i;
 
   assert.equal(existsSync(join('public', 'assets', 'unity', 'fonts', 'Poppins-Bold.ttf')), true);
   assert.match(fontSources, /src: url\('\/assets\/unity\/fonts\/Poppins-Bold\.ttf'\)/);
-  assert.doesNotMatch(fontSources, externalFontNames);
+  assert.match(fontSources, /["']Poppins Branding["'], Arial, sans-serif/);
+  assert.doesNotMatch(fontSources, legacyFontNames);
 });
 
 test('matching groups board only an arrived same-color vehicle', () => {
@@ -1929,6 +1972,17 @@ test('main thread saves and restores scene tuning from localStorage', () => {
   assert.match(mainSource, /function migrateLevel10PackageTuning/);
   assert.match(mainSource, /function migrateLegacyPackageTuning/);
   assert.match(mainSource, /function migrateSpatialSpeedTuning/);
+  assert.match(mainSource, /function migrateLevel36VehicleScaleTuning/);
+  assert.match(mainSource, /LEVEL36_VEHICLE_SCALE_MIGRATION_KEY/);
+  assert.match(mainSource, /source\.vehicleArea\.modelScale = 0\.7/);
+  assert.match(mainSource, /function migrateLevel36VehicleCompactionTuning/);
+  assert.match(mainSource, /LEVEL36_VEHICLE_COMPACTION_MIGRATION_KEY/);
+  assert.match(mainSource, /source\.vehicleArea\.positionUnitScale = 0\.8/);
+  assert.match(mainSource, /\[0, -0\.5, -0\.25\]\.includes\(offsetZ\)/);
+  assert.match(mainSource, /source\.vehicleArea\.offsetZ = -0\.1/);
+  assert.match(mainSource, /function migrateLevel36TimedGuideTuning/);
+  assert.match(mainSource, /LEVEL36_TIMED_GUIDE_MIGRATION_KEY/);
+  assert.match(mainSource, /idleDelaySeconds: 5/);
   assert.match(mainSource, /spatial\.normalSpeedMultiplier = 1/);
   assert.match(mainSource, /Number\(spatial\.longPressMultiplier\) === 5\.2/);
   assert.match(mainSource, /spatial\.longPressMultiplier = 3/);
@@ -1964,11 +2018,12 @@ test('main thread saves and restores scene tuning from localStorage', () => {
   assert.match(mainSource, /function writeTuning\(value\) \{\s+if \(!EDITOR_ENABLED\) return;/);
   assert.match(mainSource, /function clearSavedTuning\(\) \{\s+if \(!EDITOR_ENABLED\) return;/);
   assert.match(mainSource, /clearSavedTuning/);
-  assert.match(mainSource, /const DEFAULT_SCENE_TUNING = structuredClone\(SCENE_TUNING\);/);
+  assert.match(mainSource, /const DEFAULT_SCENE_TUNING = EDITOR_ENABLED \? structuredClone\(SCENE_TUNING\) : null;/);
+  assert.match(mainSource, /const sceneEditorRoot = \$\('#scene-editor'\)/);
   assert.match(mainSource, /defaultTuning: DEFAULT_SCENE_TUNING/);
   assert.ok(
-    mainSource.indexOf('const DEFAULT_SCENE_TUNING = structuredClone(SCENE_TUNING);')
-      < mainSource.indexOf('loadSavedTuning();')
+    mainSource.indexOf('const DEFAULT_SCENE_TUNING = EDITOR_ENABLED ? structuredClone(SCENE_TUNING) : null;')
+      < mainSource.search(/if \(EDITOR_ENABLED\) \{\s+loadSavedTuning\(\);/)
   );
   assert.match(sceneEditorSource, /defaultTuning = getTuning\(\)/);
   assert.match(sceneEditorSource, /const defaults = structuredClone\(defaultTuning\);/);
@@ -1983,14 +2038,15 @@ test('main thread saves and restores scene tuning from localStorage', () => {
   assert.match(mainSource, /delete savedTuning\.luxuryMaterialDebug/);
   assert.match(mainSource, /savedLuxuryMaterial\.vehicleBrightness !== SCENE_TUNING\.luxuryMaterial\.vehicleBrightness/);
   assert.match(mainSource, /setTimeout\(flushTuningSave, 150\)/);
-  assert.match(mainSource, /beforeunload', flushTuningSave/);
+  assert.match(mainSource, /if \(EDITOR_ENABLED\) window\.addEventListener\('beforeunload', flushTuningSave\)/);
   assert.match(mainSource, /if \(!materialOnly\) \{/);
   assert.match(mainSource, /function initializeGameQueues/);
   assert.match(mainSource, /view\.getConveyorConfig\(\)/);
   assert.match(mainSource, /path === 'conveyorLayout\.selected'/);
   assert.match(mainSource, /path === 'spatialConveyor\.capacity'/);
   assert.match(mainSource, /initializeGameQueues\(\{ resetSlots: conveyorStructureChanged \}\)/);
-  assert.match(mainSource, /createGameAudioController\(\{[\s\S]*\.\.\.LEVEL_1\.assets\.audio,[\s\S]*ambulance_countdown: AMBULANCE_AUDIO_CONFIG[\s\S]*\}\)/);
+  assert.match(mainSource, /const mechanismTypes = getMechanismTypesForLevels\(sessionLevels\)/);
+  assert.match(mainSource, /createGameAudioController\(\{[\s\S]*sessionLevels\.map\(\(level\) => level\.assets\?\.audio \?\? \{\}\)[\s\S]*getMechanismAudioConfig\(mechanismTypes\)[\s\S]*\}\)/);
   assert.match(mainSource, /audio\.handleGameEvent\(state\.lastEvent, state\.time\)/);
   assert.match(mainSource, /audio\.playPassengerUp\(\)/);
   assert.match(mainSource, /audio\.unlock\(\)/);
@@ -2002,15 +2058,19 @@ test('main thread saves and restores scene tuning from localStorage', () => {
   assert.match(mainSource, /loadingScreen\?\.classList\.add\('is-hidden'\)/);
   assert.match(mainSource, /const ctaButton = \$\('#cta-button'\)/);
   assert.match(mainSource, /const gameOverTitle = \$\('#game-over-title'\)/);
-  assert.match(mainSource, /web: 'https:\/\/play\.google\.com\/store\/apps\/details\?id=gridplus\.busjam\.carpuzzle'/);
-  assert.match(mainSource, /web: 'https:\/\/apps\.apple\.com\/app\/id6746743297'/);
-  assert.match(mainSource, /itms-apps:\/\/itunes\.apple\.com\/app\/id6746743297/);
+  assert.equal(SCENE_TUNING.storeLinks.android, 'https://play.google.com/store/apps/details?id=gridplus.busjam.carpuzzle');
+  assert.equal(SCENE_TUNING.storeLinks.ios, 'https://apps.apple.com/us/app/bus-fever-party/id6746743297');
+  assert.match(mainSource, /const DEFAULT_STORE_LINKS = Object\.freeze/);
+  assert.match(mainSource, /resolveStoreLink\(platform, SCENE_TUNING\.storeLinks\?\.\[platform\], DEFAULT_STORE_LINKS\[platform\]\)/);
+  assert.doesNotMatch(mainSource, /const STORE_URL\s*=/);
+  assert.doesNotMatch(mainSource, /itms-apps:\/\/itunes\.apple\.com/);
   assert.match(mainSource, /STORE_OPEN_COOLDOWN_MS = 800/);
   assert.match(mainSource, /function getSuccessfulOperationThreshold\(\)/);
   assert.match(mainSource, /SCENE_TUNING\.installGate\?\.successfulOperationThreshold/);
   assert.match(mainSource, /Math\.max\(1, Math\.floor\(configuredThreshold\)\)/);
   assert.doesNotMatch(mainSource, /INSTALL_GATE_AFTER_SUCCESSFUL_OPERATIONS_ENABLED/);
   assert.match(mainSource, /function applyCtaTuning/);
+  assert.match(mainSource, /ctaButton\.hidden = !Boolean\(cta\.enabled \?\? 1\)/);
   assert.match(mainSource, /showResultOverlay\(state\.lastEvent\.reason === 'ambulance-exceed-step' \? 'Ambulance Failed' : 'Game Over'\)/);
   assert.match(mainSource, /^\s*showResultOverlay\('You Win!'\);/m);
   assert.match(mainSource, /gameOverTitle\.textContent = title/);
@@ -2027,16 +2087,15 @@ test('main thread saves and restores scene tuning from localStorage', () => {
   assert.match(mainSource, /now - lastStoreOpenAt < STORE_OPEN_COOLDOWN_MS/);
   assert.match(mainSource, /const target = getStoreTarget\(\)/);
   assert.match(mainSource, /storeOpenAttempts \+= 1/);
-  assert.match(mainSource, /function waitForMraidReady\(onReady\)/);
-  assert.match(mainSource, /mraid\.getState\(\)/);
-  assert.match(mainSource, /state === 'loading'/);
-  assert.match(mainSource, /mraid\.addEventListener\('ready', startOnce\)/);
-  assert.match(mainSource, /state === 'default'/);
-  assert.match(mainSource, /waitForMraidReady\(startRuntime\)/);
-  assert.match(mainSource, /window\.mraid\?\.open/);
-  assert.match(mainSource, /window\.mraid\.open\(url\)/);
+  assert.match(mainSource, /createPlatformBridge\(\{/);
+  assert.match(mainSource, /onStart: startRuntime/);
+  assert.match(mainSource, /platformBridge\.initialize\(\)/);
+  assert.match(mainSource, /platformBridge\?\.ready\(\)/);
+  assert.match(mainSource, /platformBridge\?\.challenge\(\)/);
+  assert.match(mainSource, /platformBridge\?\.end\(\)/);
+  assert.match(mainSource, /platformBridge\?\.openStore\(\{ ios: url, android: url \}\)/);
   assert.doesNotMatch(mainSource, /window\.open/);
-  assert.match(mainSource, /MRAID store open failed\./);
+  assert.match(mainSource, /platformBridge\?\.openStore\(\{ ios: url, android: url \}\)/);
   assert.match(mainSource, /createLevelSession\(sessionLevels\)/);
   assert.doesNotMatch(mainSource, /let numberCountBus = 0/);
   assert.doesNotMatch(mainSource, /let isFinish = false/);
@@ -2059,15 +2118,15 @@ test('main thread saves and restores scene tuning from localStorage', () => {
   assert.match(mainSource, /height \* \(Number\(cta\.stretchX\)/);
   assert.match(mainSource, /Number\.isFinite\(Number\(cta\.x\)\)/);
   assert.match(mainSource, /Number\.isFinite\(Number\(cta\.y\)\)/);
-  assert.match(mainSource, /Number\(cta\.worldX\)/);
-  assert.match(mainSource, /Number\(cta\.worldZ\)/);
-  assert.match(mainSource, /projectWorldToCanvas/);
+  assert.match(mainSource, /centerX \* metrics\.positionScaleX/);
+  assert.match(mainSource, /centerY \* metrics\.positionScaleY/);
+  assert.doesNotMatch(mainSource, /Number\(cta\.world[XYZ]\)/);
   assert.match(mainSource, /function scaledPx\(value, scale\)/);
 
   const packageSource = readFileSync(join('scripts', 'package-applovin-single-html.mjs'), 'utf8');
-  assert.match(packageSource, /DATA_URL_FETCH_COMPAT_SCRIPT/);
-  assert.match(packageSource, /installDataUrlFetchCompat/);
-  assert.match(packageSource, /dataUrlFetchCompat/);
+  assert.match(packageSource, /DATA_URL_ONLY_REQUEST_SCRIPT/);
+  assert.match(packageSource, /function __playableDataRequest/);
+  assert.match(packageSource, /define: \{ fetch: '__playableDataRequest' \}/);
   assert.match(packageSource, /new Response\(bytes/);
   assert.match(packageSource, /url\.slice\(0, 5\)\.toLowerCase\(\) === 'data:'/);
   assert.match(packageSource, /application\/octet-stream/);
@@ -2075,27 +2134,27 @@ test('main thread saves and restores scene tuning from localStorage', () => {
 
   const checkSource = readFileSync(join('scripts', 'check-applovin-package.mjs'), 'utf8');
   assert.match(checkSource, /no browser window\.open fallback/);
-  assert.match(checkSource, /data URL fetch compatibility layer present/);
+  assert.match(checkSource, /data-only offline request loader present/);
   assert.match(checkSource, /inline binary data assets present/);
   assert.match(checkSource, /branding overlay markup present/);
   assert.match(checkSource, /selected branding Icon and small Logo images inlined/);
   assert.match(checkSource, /unselected branding Icon omitted/);
   assert.match(checkSource, /legacy large branding Logo omitted/);
-  assert.match(checkSource, /branding Poppins font inlined/);
+  assert.match(checkSource, /no (?:bundled|external) font/i);
   assert.match(mainSource, /--cta-width', scaledPx\(width, uiScale\)/);
   assert.match(mainSource, /--cta-height', scaledPx\(height, uiScale\)/);
   assert.match(mainSource, /--cta-font-size', scaledPx\(fontSize, uiScale\)/);
   assert.match(mainSource, /--cta-stroke-width', scaledPx\(Math\.max\(0, Number\(cta\.strokeWidth\) \|\| 0\), uiScale\)/);
   assert.match(mainSource, /const stageRect = stage\?\.getBoundingClientRect\(\)/);
   assert.match(mainSource, /const uiScale = getStageUiScale\(stageWidth, designWidth\)/);
-  assert.match(mainSource, /worldPosition\?\.x \?\? stageWidth \/ 2 \+ \(centerX - designWidth \/ 2\) \* uiScale/);
-  assert.match(mainSource, /worldPosition\?\.y \?\? stageHeight \/ 2 \+ \(centerY - designHeight \/ 2\) \* uiScale/);
+  assert.match(mainSource, /centerX \* metrics\.positionScaleX/);
+  assert.match(mainSource, /centerY \* metrics\.positionScaleY/);
   assert.match(mainSource, /--cta-font-height/);
   assert.match(mainSource, /--cta-stroke-color/);
   assert.match(mainSource, /--cta-pulse-duration/);
   assert.doesNotMatch(mainSource, /--game-over-title-font-family/);
   assert.match(mainSource, /const updateCtaPosition = \(\) => \{/);
-  assert.match(mainSource, /applyCtaTuning\(view\)/);
+  assert.match(mainSource, /applyCtaTuning\(\)/);
   assert.match(mainSource, /updateCtaPosition\(\)/);
 });
 
@@ -2108,13 +2167,11 @@ test('Icon, Logo, and text overlays expose independent responsive editor control
   assert.equal(existsSync(join('public', 'assets', 'icon-android.jpg')), true);
   assert.equal(existsSync(join('public', 'assets', 'icon-ios.png')), true);
   assert.equal(existsSync(join('public', 'assets', 'main-loading-icon-small.png')), true);
-  assert.equal(existsSync(join('public', 'assets', 'unity', 'fonts', 'Poppins-Bold.ttf')), true);
   assert.match(indexSource, /id="branding-overlay"/);
-  assert.match(indexSource, /id="branding-icon"[^>]*>/);
-  assert.doesNotMatch(indexSource, /id="branding-icon"[^>]+src=/);
+  assert.match(indexSource, /id="branding-icon"[^>]+src="\/assets\/icon-android\.jpg"/);
   assert.match(indexSource, /id="branding-logo"[^>]+src="\/assets\/main-loading-icon-small\.png"/);
-  assert.match(indexSource, /id="game-over-logo"[^>]+src="\/assets\/main-loading-icon-small\.png"/);
-  assert.match(indexSource, /id="branding-text"[^>]*>Bus Fever-Car Jam Escape<\/div>/);
+  assert.doesNotMatch(indexSource, /id="game-over-logo"[^>]+src=/);
+  assert.match(indexSource, /id="branding-text"[^>]*>Bus Fever Party!<\/div>/);
 
   for (const key of ['icon', 'logo', 'text']) {
     const config = SCENE_TUNING.branding[key];
@@ -2148,8 +2205,10 @@ test('Icon, Logo, and text overlays expose independent responsive editor control
   assert.match(mainSource, /const positionScaleX = stageWidth \/ designWidth/);
   assert.match(mainSource, /const positionScaleY = stageHeight \/ designHeight/);
   assert.match(mainSource, /function applyBrandingTuning/);
+  assert.match(mainSource, /gameOverLogo\.src = brandingItems\.logo\.src/);
   assert.match(mainSource, /function fitBrandingText/);
   assert.match(mainSource, /function bindBrandingDrag/);
+  assert.match(mainSource, /if \(EDITOR_ENABLED\) \{\s+for \(const \[key, element\] of Object\.entries\(brandingItems\)\)/);
   assert.match(mainSource, /key === 'text'[\s\S]*\? authoredCenterX[\s\S]*: clampCenteredRectX/);
   assert.match(mainSource, /applyBrandingTuning\(view\.getBackgroundCanvasBounds\(\)\)/);
   assert.match(mainSource, /path\?\.startsWith\('branding\.'\)/);
@@ -2166,6 +2225,8 @@ test('Icon, Logo, and text overlays expose independent responsive editor control
   assert.match(mainSource, /Math\.max\(0, Math\.min\(metrics\.designHeight, y\)\)/);
 
   const sceneViewSource = readFileSync(join('src', 'scene-view.js'), 'utf8');
+  assert.match(mainSource, /__PLAYABLE_PLATFORM__ !== 'mintegral' && 'ResizeObserver' in window/);
+  assert.match(sceneViewSource, /__PLAYABLE_PLATFORM__ !== 'mintegral' && 'ResizeObserver' in window/);
   assert.match(sceneViewSource, /getBackgroundCanvasBounds\(\)/);
   assert.match(sceneViewSource, /this\.backgroundPlane\.matrixWorld/);
   assert.match(sceneViewSource, /left = Math\.max\(0,/);
@@ -2174,17 +2235,23 @@ test('Icon, Logo, and text overlays expose independent responsive editor control
   assert.match(styleSource, /\.branding-overlay/);
   assert.match(styleSource, /\.branding-item\.is-draggable/);
   assert.match(styleSource, /\.branding-item\.is-dragging/);
-  assert.match(styleSource, /Poppins-Bold\.ttf/);
+  assert.match(styleSource, /@font-face[\s\S]*?Poppins-Bold\.ttf/);
+  assert.match(styleSource, /'Poppins Branding', Arial, sans-serif/);
   assert.match(styleSource, /\.branding-text/);
   assert.match(styleSource, /\.editor-field-toggle/);
   assert.match(styleSource, /\.editor-field-text/);
+  assert.match(styleSource, /\.editor-field-url/);
+  assert.match(sceneEditorSource, /storeLinks\.android/);
+  assert.match(sceneEditorSource, /storeLinks\.ios/);
+  assert.match(sceneEditorSource, /type="url"/);
+  assert.match(mainSource, /path\?\.startsWith\('storeLinks\.'\)/);
 });
 
 test('successful operation store redirect uses the baked threshold and remains editor-tunable', () => {
   const mainSource = readFileSync(join('src', 'main.js'), 'utf8');
   const editorSource = readFileSync(join('src', 'scene-editor.js'), 'utf8');
 
-  assert.equal(SCENE_TUNING.installGate.successfulOperationThreshold, 20);
+  assert.equal(SCENE_TUNING.installGate.successfulOperationThreshold, 18);
   assert.match(editorSource, /installGate\.successfulOperationThreshold/);
   assert.match(mainSource, /SCENE_TUNING\.installGate\?\.successfulOperationThreshold/);
   assert.match(mainSource, /^\s*if \(result\?\.ok && markInstallVehicle\(vehicleId\)\) InstallFullGame\(\);/m);

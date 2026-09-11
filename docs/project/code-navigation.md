@@ -22,6 +22,7 @@ Use this file before code changes. Pick the closest change area, then read only 
 | Full-level web authoring, validation, transforms, inspectors, export, persistence, and playable preview | `src/level-layout-editor.js` | `src/level-editor-model.js`, `src/level-layout-editor.css`, `src/scene-editor.js`, `src/main.js`, `vite.config.js`, `test/level-editor-model.test.js`, `test/level-layout-editor.test.js` |
 | Three.js scene rendering, camera, picking, assets, vehicles, passengers, shadows | `src/scene-view.js` | `src/scene-tuning.js`, `src/scene-layout.js`, `test/game-model.test.js`, `test/guide-hand.test.js` |
 | Scene/editor tuning values | `src/scene-tuning.js` | `src/scene-editor.js`, `src/scene-view.js`, `scripts/apply-scene-tuning.mjs`, relevant tests |
+| Store-link validation, normalization, and runtime fallback | `src/store-links.js` | `src/main.js`, `src/scene-tuning.js`, `src/scene-editor.js`, `scripts/export-playable-package.mjs`, `scripts/check-applovin-package.mjs`, `test/playable-export.test.js` |
 | Editor UI controls, toggle/text fields, Icon/Logo/text adjustment, and control grouping | `src/scene-editor.js` | `src/scene-tuning.js`, `src/styles.css` |
 | Responsive layout math, curve transforms, camera fit helpers | `src/scene-layout.js` | `test/scene-layout.test.js` |
 | Vehicle routes, click-to-station paths, station departure, collision distance, hit clips | `src/vehicle-motion.js` | `src/game-model.js`, `test/game-model.test.js` |
@@ -31,6 +32,8 @@ Use this file before code changes. Pick the closest change area, then read only 
 | Build/test scripts or dependency changes | `package.json` | Lockfile if dependency versions change |
 | Vite development server and durable editor level selection | `vite.config.js` | `artifacts/selected-level.txt`, `src/main.js`, `scripts/generate-active-level.mjs` |
 | AppLovin single-HTML packaging | `scripts/package-applovin-single-html.mjs` | `scripts/check-applovin-package.mjs`, `package.json`, `docs/platforms/applovin-playable-audit.md` |
+| Package-only multi-platform playable export, download service, and platform bridges | `scripts/export-playable-package.mjs` | `vite.config.js`, `src/scene-editor.js`, `src/platform-bridge.js`, `src/platform-bridges/*.js`, `test/playable-export.test.js`, `test/platform-bridge.test.js` |
+| Exported artifact browser runtime smoke gate | `scripts/check-playable-runtime.mjs` | `test/playable-runtime-smoke.test.js`, `scripts/export-playable-package.mjs` |
 | Unity VAT extraction utility | `scripts/extract-unity-vat.mjs` | `scripts/extract-unity-passenger-animation.mjs`, `tools/unity-vat-export/Packages/manifest.json` |
 | Unity wealthy passenger animation extraction | `scripts/extract-unity-passenger-animation.mjs` | `src/scene-view.js`, `test/game-model.test.js` |
 | Game model regressions | `test/game-model.test.js` | `src/game-model.js`, `src/vehicle-motion.js`, `src/scene-tuning.js` |
@@ -44,6 +47,8 @@ Use this file before code changes. Pick the closest change area, then read only 
 - `index.html`: DOM shell for the playable. Owns `#app`, `#stage`, `#game-canvas`, branding image/text overlay, message overlay, end panel, reset button, and `#scene-editor` mount.
 - `package.json`: npm metadata, Vite scripts, `node --test` test script, and dependency list.
 - `scripts/package-applovin-single-html.mjs`: AppLovin packaging utility. Reads Vite `dist`, inlines built JS/CSS and `/assets/...` files as data URIs, and writes `artifacts/applovin/index.html`.
+- `scripts/export-playable-package.mjs`: Package-only multi-platform exporter. Applies the current editor tuning in an isolated temporary workspace, builds platform-native HTML/ZIP deliverables, runs the bundled local rules, and publishes only passing artifacts without compressing or rewriting project assets.
+- `scripts/check-playable-runtime.mjs`: Project-level Chrome/CDP runtime gate for exported HTML, ZIP, and directory artifacts. Supplies platform host mocks, waits for BusLoop startup/loading completion, checks visible canvas pixels, and rejects runtime, console, or resource errors.
 - `scripts/check-applovin-package.mjs`: AppLovin static upload precheck for `artifacts/applovin/index.html`, including size, single-file, inline-resource, WAV, remote URL, and MRAID CTA checks.
 - `scripts/apply-scene-tuning.mjs`: Applies exported editor tuning JSON from `artifacts/scene-tuning.json` (or `--input`) into `src/scene-tuning.js` and synchronizes `artifacts/selected-level.txt` before production packaging.
 - `scripts/spatial-conveyor-importer.mjs`: Standalone Node importer for the BusLoop `ConveyorBeltTemplate` spatial-track family. Merges prefab overrides with bundled Dreamteck/template support, embeds required textures, and writes one removable JSON package per imported prefab under `artifacts/spatial-conveyors/`.
@@ -54,7 +59,8 @@ Use this file before code changes. Pick the closest change area, then read only 
 
 ### Runtime source
 
-- `src/main.js`: Browser entry point. Wires `BusLoopGame`, `SceneView`, `GameAudioController`, and `createSceneEditor`; handles saved tuning migration, responsive branding image/text positioning, text fitting and dragging, HUD sync, reset, long press speed-up, animation frame loop, and `window.__busLoop` QA/debug API.
+- `src/main.js`: Browser entry point. Wires `BusLoopGame`, `SceneView`, `GameAudioController`, the selected platform bridge, and `createSceneEditor`; handles saved tuning migration, responsive branding image/text positioning, text fitting and dragging, HUD sync, reset, long press speed-up, animation frame loop, and `window.__busLoop` QA/debug API.
+- `src/platform-bridge.js` and `src/platform-bridges/*.js`: AppLovin baseline plus build-selected Google Ads, Meta, Unity Ads, Mintegral, Moloco, and TikTok lifecycle/CTA adapters.
 - `src/audio-controller.js`: Runtime audio bridge. Owns Unity-named sound config playback, WebAudio unlocking/preloading, random clip choice, game-event de-duping, and passenger-up playback.
 - `src/game-model.js`: Pure gameplay state machine. Owns vehicle click handling, blocker checks, station assignment, route progress, conveyor/queue passenger flow, boarding events, win/fail checks, snapshots, and subscriptions.
 - `src/vehicle-collision.js`: Unity-style runtime collision context. Owns per-vehicle collision sizes, current-pose oriented boxes, drive-out graph decisions, direct candidates, and edge contact points.
@@ -66,7 +72,8 @@ Use this file before code changes. Pick the closest change area, then read only 
 - `src/scene-view.js`: Main Three.js renderer. Owns scene construction, camera/background fit, texture/model/VAT loading, path curves, parking spots, vehicle/passenger visuals, shadows, arrows, seat boards, effects integration, picking, snapshot rendering, resize, and per-frame render.
 - `src/conveyor-mechanism-config.js`: Non-editor, baked conveyor mechanism values. Owns the confirmed 1.375 visual root scale, asymmetric door spacing, right-edge visibility boundary, and explicit imported-component transform baseline so reset/localStorage cannot change them.
 - `src/scene-tuning.js`: Single mutable tuning object. Owns editor-facing values for preview/crop, branding image/text visibility/lock/content/geometry, camera, facing, path transforms, background, conveyor art, parking spots, seat boards, vehicle paths, vehicle area mapping, passengers, shadows, arrows, and effects.
-- `src/scene-editor.js`: Generated editor panel. Owns `FIELD_GROUPS`, input/range/select/toggle/text bindings, Icon/Logo/text adjustment controls, nested tuning path get/set helpers, collapsed UI behavior, reset-to-default hook, and editor labels.
+- `src/store-links.js`: Shared Google Play and Apple App Store product-URL validation, normalization, and runtime fallback helpers used by the editor, playable, exporter, and package checker.
+- `src/scene-editor.js`: Generated editor panel. Owns `FIELD_GROUPS`, input/range/select/toggle/text/URL bindings, single/all-platform package export controls, Icon/Logo/text adjustment controls, nested tuning path get/set helpers, collapsed UI behavior, reset-to-default hook, and editor labels.
 - `src/spatial-conveyor-runtime.js`: Shared spatial package registry plus Unity transform application and Dreamteck repeated-mesh geometry generation. Development packages come from Vite endpoints; production registers the generated active package before scene creation.
 - `src/spatial-conveyor-edit-model.js`: Pure spatial-point editing state. Owns stable imported pivots, selection, curve-sampled insertion, prepend/append/delete, and bounded undo/redo history.
 - `src/spatial-conveyor-editor.js`: Development-only on-demand spatial point editor. Owns Three.js point handles, TransformControls, box/range/multi-selection, numeric point editing, live preview, explicit save/save-as, and unsaved-change handling.
@@ -97,6 +104,9 @@ Use this file before code changes. Pick the closest change area, then read only 
 - `test/mechanism-resources.test.js`: Mechanism resource ownership, imported level mechanism metadata, and mechanism type derivation.
 - `test/level-editor-model.test.js`: Full-level document normalization, editing commands, snapping/alignment, depth rebuild, parity validation, runtime conversion, and export regressions.
 - `test/level-layout-editor.test.js`: Full-level workspace entry, responsive styling, and revisioned development save-service wiring regressions.
+- `test/playable-export.test.js`: Package-only export contract, supported platform list, tuning validation, multi-file split behavior, and editor/server route wiring.
+- `test/platform-bridge.test.js`: AppLovin readiness/analytics and platform-native CTA/lifecycle adapter regressions.
+- `test/playable-runtime-smoke.test.js`: Runtime-gate entry discovery and real-browser rendered-canvas smoke coverage.
 
 ### Conveyor layout subsystem
 
@@ -108,5 +118,3 @@ Use this file before code changes. Pick the closest change area, then read only 
 ## Maintenance Rule
 
 Update this file when code files are added, removed, renamed, or when a file's main responsibility moves. Do not update it for small internal refactors that keep the same ownership boundaries.
-
-

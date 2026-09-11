@@ -3,6 +3,7 @@ import {
   isSpatialConveyorSelection,
   refreshSpatialConveyorPackages
 } from './spatial-conveyor-runtime.js';
+import { isValidStoreLink } from './store-links.js';
 
 const CONVEYOR_LAYOUT_OPTIONS = [
   ['dualQueue2', 'GameSceneDualQueue2'],
@@ -23,6 +24,45 @@ const BRANDING_ICON_OPTIONS = [
   ['/assets/icon-android.jpg', 'Android'],
   ['/assets/icon-ios.png', 'iOS']
 ];
+
+const PLAYABLE_EXPORT_PLATFORMS = [
+  ['applovin', 'AppLovin', 'HTML'],
+  ['google-ads', 'Google Ads', 'ZIP'],
+  ['meta', 'Meta', 'ZIP'],
+  ['unityads', 'Unity Ads', 'HTML'],
+  ['mintegral', 'Mintegral', 'ZIP'],
+  ['moloco', 'Moloco', 'HTML'],
+  ['tiktok', 'TikTok', 'ZIP']
+];
+
+const EDITOR_CATEGORIES = [
+  ['level', '\u5173\u5361'],
+  ['visual', '\u753b\u9762'],
+  ['conveyor', '\u4f20\u9001\u5e26'],
+  ['vehicle', '\u8f66\u8f86'],
+  ['guide', '\u5f15\u5bfc'],
+  ['export', '\u5bfc\u51fa']
+];
+
+function editorCategoryForGroup(group) {
+  const path = group.fields?.[0]?.[1] ?? '';
+  if (path.startsWith('exportNaming.')) return 'export';
+  if (path.startsWith('level.')) return 'level';
+  if (/^(?:conveyorLayout|conveyorLayouts|spatialConveyor|queueCurves|passengerShadows)\./.test(path)) {
+    return 'conveyor';
+  }
+  if (/^(?:parkingSpots|vehiclePath|vehicleDeparturePath|vehicleArea)\./.test(path)) return 'vehicle';
+  if (/^(?:cta|installGate|gameOver|vehicleGuideHand|firstClickGuide|entryBanner)\./.test(path)) return 'guide';
+  return 'visual';
+}
+
+function isValidExportNamingPart(value) {
+  const normalized = String(value ?? '').trim();
+  return normalized.length > 0
+    && normalized.length <= 64
+    && !normalized.includes('..')
+    && /^[A-Za-z0-9_-]+$/.test(normalized);
+}
 
 function makeConveyorLayoutGroups(layoutId, label) {
   const root = `conveyorLayouts.${layoutId}`;
@@ -74,6 +114,28 @@ function makeEntryBannerComponentFields(label, component) {
 }
 
 const FIELD_GROUPS = [
+  {
+    title: '\u5bfc\u51fa\u547d\u540d',
+    defaultOpen: true,
+    fields: [
+      ['\u9700\u6c42\u7f16\u53f7', 'exportNaming.requirementCode', 0, 0, 1, null, 'filename'],
+      ['\u7d20\u6750\u7f16\u53f7', 'exportNaming.materialCode', 0, 0, 1, null, 'filename'],
+      ['\u524d\u8d34/\u8bf1\u5bfc\u7f16\u53f7', 'exportNaming.iterationCode', 0, 0, 1, null, 'filename'],
+      ['\u8bed\u8a00', 'exportNaming.language', 0, 0, 1, null, 'filename'],
+      ['\u683c\u5f0f', 'exportNaming.format', 0, 0, 1, null, 'filename'],
+      ['\u8bbe\u8ba1\u5e08', 'exportNaming.designer', 0, 0, 1, null, 'filename'],
+      ['\u9700\u6c42\u4eba', 'exportNaming.requester', 0, 0, 1, null, 'filename'],
+      ['AppLovin \u6e20\u9053', 'exportNaming.channels.applovin', 0, 0, 1, null, 'filename'],
+      ['Google Ads \u6e20\u9053', 'exportNaming.channels.google-ads', 0, 0, 1, null, 'filename'],
+      ['Meta \u6e20\u9053', 'exportNaming.channels.meta', 0, 0, 1, null, 'filename'],
+      ['Mintegral \u6e20\u9053', 'exportNaming.channels.mintegral', 0, 0, 1, null, 'filename'],
+      ['Moloco \u6e20\u9053', 'exportNaming.channels.moloco', 0, 0, 1, null, 'filename'],
+      ['TikTok \u6e20\u9053', 'exportNaming.channels.tiktok', 0, 0, 1, null, 'filename'],
+      ['Unity Ads \u6e20\u9053', 'exportNaming.channels.unityads', 0, 0, 1, null, 'filename'],
+      ['\u6b65\u6570', 'exportNaming.steps', 0, 0, 1, null, 'filename'],
+      ['\u4f53\u529b', 'exportNaming.stamina', 0, 0, 1, null, 'filename']
+    ]
+  },
   {
     title: '\u5173\u5361',
     fields: [
@@ -163,11 +225,8 @@ const FIELD_GROUPS = [
     title: 'CTA',
     fields: [
       ['Enabled', 'cta.enabled', 0, 1, 1],
-      ['X', 'cta.x', 0, 1080, 1],
-      ['Y', 'cta.y', 0, 2160, 1],
-      ['World X', 'cta.worldX', -10, 10, 0.01],
-      ['World Y', 'cta.worldY', -1, 4, 0.01],
-      ['World Z', 'cta.worldZ', -12, 16, 0.01],
+      ['\u5c4f\u5e55 X', 'cta.x', 0, 1080, 1],
+      ['\u5c4f\u5e55 Y', 'cta.y', 0, 2160, 1],
       ['Height', 'cta.height', 36, 140, 1],
       ['Stretch X', 'cta.stretchX', 1, 5, 0.01],
       ['Font Size', 'cta.fontSize', 12, 64, 1],
@@ -182,7 +241,9 @@ const FIELD_GROUPS = [
   {
     title: '\u5546\u5e97\u8df3\u8f6c',
     fields: [
-      ['\u6210\u529f\u64cd\u4f5c\u6b21\u6570', 'installGate.successfulOperationThreshold', 1, 200, 1]
+      ['\u6210\u529f\u64cd\u4f5c\u6b21\u6570', 'installGate.successfulOperationThreshold', 1, 200, 1],
+      ['Android \u94fe\u63a5', 'storeLinks.android', 0, 0, 1, null, 'url'],
+      ['iOS \u94fe\u63a5', 'storeLinks.ios', 0, 0, 1, null, 'url']
     ]
   },
   {
@@ -411,7 +472,21 @@ const FIELD_GROUPS = [
       ['\u6a21\u578b\u5927\u5c0f', 'vehicleArea.modelScale', 0.3, 2.5, 0.05],
       ['\u4e0a\u8f66\u653e\u5927\u500d\u6570', 'vehicleBoardingPulse.scale', 1, 2, 0.01],
       ['\u4e0a\u8f66\u7f29\u653e\u901f\u5ea6', 'vehicleBoardingPulse.speed', 0, 20, 0.1],
-      ['\u5f15\u5bfc\u5c0f\u624b\u663e\u793a', 'vehicleGuideHand.enabled', 0, 1, 1],
+      ['\u7bad\u5934 X', 'vehicleArrow.offsetX', -0.8, 0.8, 0.01],
+      ['\u7bad\u5934\u9ad8\u5ea6', 'vehicleArrow.offsetY', 0, 0.8, 0.01],
+      ['\u7bad\u5934 Z', 'vehicleArrow.offsetZ', -0.8, 0.8, 0.01],
+      ['\u7bad\u5934\u63cf\u8fb9\u8272', 'vehicleArrow.outlineColor', 0, 16777215, 1],
+      ['\u7bad\u5934\u63cf\u8fb9\u7c97\u7ec6', 'vehicleArrow.outlineScale', 1, 1.8, 0.01],
+      ['\u7bad\u5934\u63cf\u8fb9\u6df1\u5ea6\u6d4b\u8bd5', 'vehicleArrow.outlineDepthTest', 0, 1, 1]
+    ]
+  },
+  {
+    title: '\u5c0f\u624b\u63d0\u793a',
+    defaultOpen: true,
+    fields: [
+      ['\u63d0\u793a\u5f00\u542f', 'vehicleGuideHand.enabled', 0, 1, 1, null, 'toggle'],
+      ['\u5f00\u573a\u7acb\u5373\u663e\u793a', 'vehicleGuideHand.showAtStart', 0, 1, 1, null, 'toggle'],
+      ['\u65e0\u64cd\u4f5c\u7b49\u5f85\uff08\u79d2\uff09', 'vehicleGuideHand.idleDelaySeconds', 1, 30, 0.5],
       ['\u5f15\u5bfc\u5173\u5361', 'vehicleGuideHand.levelKey', 0, 0, 1, LEVEL_OPTIONS],
       ['\u5f15\u5bfc\u8f66 ID', 'vehicleGuideHand.vehicleId', 1, 200, 1],
       ['\u5c0f\u624b X', 'vehicleGuideHand.offsetX', -3, 3, 0.01],
@@ -425,21 +500,24 @@ const FIELD_GROUPS = [
       ['\u9760\u8fd1\u7f29\u653e', 'vehicleGuideHand.nearScale', 0.1, 2, 0.01],
       ['\u8fdc\u79bb\u7f29\u653e', 'vehicleGuideHand.farScale', 0.1, 3, 0.01],
       ['\u5c0f\u624b\u901f\u5ea6', 'vehicleGuideHand.speed', 0.1, 6, 0.01],
-      ['\u5c0f\u624b\u900f\u660e\u5ea6', 'vehicleGuideHand.opacity', 0, 1, 0.01],
-      ['\u9996\u6b65\u906e\u7f69\u5f00\u542f', 'firstClickGuide.enabled', 0, 1, 1],
-      ['\u9996\u6b65\u5f15\u5bfc\u5173\u5361', 'firstClickGuide.levelKey', 0, 0, 1, LEVEL_OPTIONS],
-      ['\u9996\u6b65\u8f66 ID', 'firstClickGuide.vehicleId', 1, 200, 1],
-      ['\u906e\u7f69\u6301\u7eed\u65f6\u95f4', 'firstClickGuide.durationSeconds', 0, 10, 0.1],
+      ['\u5c0f\u624b\u900f\u660e\u5ea6', 'vehicleGuideHand.opacity', 0, 1, 0.01]
+    ]
+  },
+  {
+    title: '\u5f00\u573a\u5f15\u5bfc\u52a8\u753b',
+    defaultOpen: true,
+    fields: [
+      ['\u52a8\u753b\u5f00\u542f', 'firstClickGuide.enabled', 0, 1, 1, null, 'toggle'],
+      ['\u751f\u6548\u5173\u5361', 'firstClickGuide.levelKey', 0, 0, 1, LEVEL_OPTIONS],
+      ['\u76ee\u6807\u8f66 ID', 'firstClickGuide.vehicleId', 1, 200, 1],
+      ['\u6301\u7eed\u65f6\u95f4', 'firstClickGuide.durationSeconds', 0, 10, 0.1],
       ['\u906e\u7f69\u900f\u660e\u5ea6', 'firstClickGuide.maskOpacity', 0, 1, 0.01],
-      ['\u9ad8\u4eae\u8fb9\u8ddd', 'firstClickGuide.holePadding', 0, 120, 1],
-      ['\u9ad8\u4eae\u5bbd\u5ea6\u7f29\u653e', 'firstClickGuide.holeScaleX', 0.2, 3, 0.01],
-      ['\u9ad8\u4eae\u9ad8\u5ea6\u7f29\u653e', 'firstClickGuide.holeScaleY', 0.2, 3, 0.01],
-      ['\u7bad\u5934 X', 'vehicleArrow.offsetX', -0.8, 0.8, 0.01],
-      ['\u7bad\u5934\u9ad8\u5ea6', 'vehicleArrow.offsetY', 0, 0.8, 0.01],
-      ['\u7bad\u5934 Z', 'vehicleArrow.offsetZ', -0.8, 0.8, 0.01],
-      ['\u7bad\u5934\u63cf\u8fb9\u8272', 'vehicleArrow.outlineColor', 0, 16777215, 1],
-      ['\u7bad\u5934\u63cf\u8fb9\u7c97\u7ec6', 'vehicleArrow.outlineScale', 1, 1.8, 0.01],
-      ['\u7bad\u5934\u63cf\u8fb9\u6df1\u5ea6\u6d4b\u8bd5', 'vehicleArrow.outlineDepthTest', 0, 1, 1]
+      ['\u5149\u6548\u8fb9\u8ddd', 'firstClickGuide.holePadding', 0, 120, 1],
+      ['\u5149\u6548\u5706\u89d2', 'firstClickGuide.holeRadius', 0, 120, 1],
+      ['\u5149\u6548 X \u504f\u79fb', 'firstClickGuide.holeOffsetX', -240, 240, 1],
+      ['\u5149\u6548 Y \u504f\u79fb', 'firstClickGuide.holeOffsetY', -240, 240, 1],
+      ['\u5149\u6548\u5bbd\u5ea6', 'firstClickGuide.holeScaleX', 0.2, 3, 0.01],
+      ['\u5149\u6548\u9ad8\u5ea6', 'firstClickGuide.holeScaleY', 0.2, 3, 0.01]
     ]
   }
 ,
@@ -514,6 +592,23 @@ function formatColor(value) {
   return `#${hex.toString(16).padStart(6, '0')}`;
 }
 
+function downloadFilename(response, platform) {
+  const disposition = response.headers.get('Content-Disposition') ?? '';
+  const encoded = disposition.match(/filename\*=UTF-8''([^;]+)/i)?.[1];
+  if (encoded) {
+    try {
+      return decodeURIComponent(encoded);
+    } catch {
+      // Fall through to the ASCII filename or a deterministic fallback.
+    }
+  }
+  const quoted = disposition.match(/filename="([^"]+)"/i)?.[1];
+  if (quoted) return quoted;
+  if (platform === 'all') return 'bus-loop-all-platforms.zip';
+  const format = PLAYABLE_EXPORT_PLATFORMS.find(([id]) => id === platform)?.[2] ?? 'ZIP';
+  return `bus-loop-${platform}.${format.toLowerCase()}`;
+}
+
 export function createSceneEditor(root, {
   getTuning,
   defaultTuning = getTuning(),
@@ -533,6 +628,27 @@ export function createSceneEditor(root, {
     </header>
     <div class="editor-body">
       <p class="editor-help">\u56fe\u7247\u4e0e\u884c\u8d70\u66f2\u7ebf\u53ef\u5206\u522b\u8c03\u8282\u3002\u6bcf\u6b21\u8c03\u6574\u4f1a\u81ea\u52a8\u4fdd\u5b58\u3002</p>
+      <nav class="editor-category-tabs" role="tablist" aria-label="\u7f16\u8f91\u5668\u529f\u80fd\u5206\u7c7b">
+        ${EDITOR_CATEGORIES.map(([id, label], index) => (
+          `<button type="button" role="tab" data-editor-category-tab="${id}" aria-selected="${index === 0}" tabindex="${index === 0 ? 0 : -1}">${label}</button>`
+        )).join('')}
+      </nav>
+      <details class="editor-section editor-playable-export" data-editor-category="export" open>
+        <summary class="editor-section-summary"><h3>\u5bfc\u51fa\u8bd5\u73a9</h3></summary>
+        <label class="editor-export-platform">
+          <span>\u6295\u653e\u5e73\u53f0</span>
+          <select class="editor-export-select">
+            ${PLAYABLE_EXPORT_PLATFORMS.map(([id, label, format]) => (
+              `<option value="${id}">${label} (${format})</option>`
+            )).join('')}
+          </select>
+        </label>
+        <div class="editor-export-actions">
+          <button class="editor-export-button" type="button">\u5bfc\u51fa\u5f53\u524d\u5e73\u53f0</button>
+          <button class="editor-export-all-button" type="button">\u4e00\u952e\u5bfc\u51fa\u5168\u90e8</button>
+        </div>
+        <p class="editor-export-status" role="status" aria-live="polite" aria-atomic="true">\u5c31\u7eea</p>
+      </details>
       <div class="editor-fields"></div>
       <button class="editor-reset" type="button">\u6062\u590d\u9ed8\u8ba4\u53c2\u6570</button>
     </div>
@@ -540,18 +656,118 @@ export function createSceneEditor(root, {
 
   const fieldsRoot = root.querySelector('.editor-fields');
   const inputs = new Map();
+  const exportSelect = root.querySelector('.editor-export-select');
+  const exportButton = root.querySelector('.editor-export-button');
+  const exportAllButton = root.querySelector('.editor-export-all-button');
+  const exportStatus = root.querySelector('.editor-export-status');
+  const categoryTabs = [...root.querySelectorAll('[data-editor-category-tab]')];
+
+  function setEditorCategory(category, { focus = false } = {}) {
+    if (!EDITOR_CATEGORIES.some(([id]) => id === category)) return;
+    root.dataset.editorCategory = category;
+    for (const tab of categoryTabs) {
+      const selected = tab.dataset.editorCategoryTab === category;
+      tab.setAttribute('aria-selected', String(selected));
+      tab.tabIndex = selected ? 0 : -1;
+      if (selected && focus) tab.focus();
+    }
+    for (const panel of root.querySelectorAll('[data-editor-category]')) {
+      panel.classList.toggle('is-category-hidden', panel.dataset.editorCategory !== category);
+    }
+  }
+
+  categoryTabs.forEach((tab, index) => {
+    tab.addEventListener('click', () => setEditorCategory(tab.dataset.editorCategoryTab));
+    tab.addEventListener('keydown', (event) => {
+      let nextIndex = null;
+      if (event.key === 'ArrowRight' || event.key === 'ArrowDown') nextIndex = (index + 1) % categoryTabs.length;
+      if (event.key === 'ArrowLeft' || event.key === 'ArrowUp') nextIndex = (index - 1 + categoryTabs.length) % categoryTabs.length;
+      if (event.key === 'Home') nextIndex = 0;
+      if (event.key === 'End') nextIndex = categoryTabs.length - 1;
+      if (nextIndex == null) return;
+      event.preventDefault();
+      setEditorCategory(categoryTabs[nextIndex].dataset.editorCategoryTab, { focus: true });
+    });
+  });
+
+  async function exportPlayable({ all = false } = {}) {
+    const invalidNamingControl = [...inputs.values()]
+      .find((controls) => controls.isFilename && !controls.updateValidity());
+    if (invalidNamingControl) {
+      invalidNamingControl.textInput.reportValidity();
+      exportStatus.dataset.state = 'error';
+      exportStatus.textContent = '\u5bfc\u51fa\u5931\u8d25\uff1a\u8bf7\u5148\u4fee\u6b63\u5bfc\u51fa\u547d\u540d\u5b57\u6bb5';
+      return;
+    }
+    const platform = all ? null : exportSelect.value;
+    const platformLabel = all
+      ? '\u5168\u90e8 7 \u4e2a\u5e73\u53f0'
+      : (PLAYABLE_EXPORT_PLATFORMS.find(([id]) => id === platform)?.[1] ?? platform);
+    exportSelect.disabled = true;
+    exportButton.disabled = true;
+    exportAllButton.disabled = true;
+    exportButton.setAttribute('aria-busy', 'true');
+    exportAllButton.setAttribute('aria-busy', 'true');
+    exportStatus.dataset.state = 'busy';
+    exportStatus.textContent = `\u6b63\u5728\u6253\u5305 ${platformLabel} \u5e76\u6267\u884c\u672c\u5730\u68c0\u6d4b...`;
+    try {
+      const response = await fetch(all ? '/__playable-export-all' : '/__playable-export', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(all ? { tuning: getTuning() } : { platform, tuning: getTuning() })
+      });
+      if (!response.ok) {
+        const payload = await response.json().catch(() => ({}));
+        throw new Error(payload.error || `HTTP ${response.status}`);
+      }
+
+      const blob = await response.blob();
+      const filename = all
+        ? (downloadFilename(response, 'all').replace(/\.html$/i, '.zip'))
+        : downloadFilename(response, platform);
+      const objectUrl = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = objectUrl;
+      link.download = filename;
+      link.hidden = true;
+      document.body.append(link);
+      link.click();
+      link.remove();
+      setTimeout(() => URL.revokeObjectURL(objectUrl), 0);
+
+      const check = response.headers.get('X-Playable-Check');
+      exportStatus.dataset.state = 'success';
+      exportStatus.textContent = `\u5df2\u4e0b\u8f7d ${filename}${check ? `\uff08\u672c\u5730\u68c0\u6d4b ${check}\uff09` : ''}\uff0c\u5f85\u5e73\u53f0\u9a8c\u6536`;
+    } catch (error) {
+      exportStatus.dataset.state = 'error';
+      exportStatus.textContent = `\u5bfc\u51fa\u5931\u8d25\uff1a${error.message}`;
+    } finally {
+      exportSelect.disabled = false;
+      exportButton.disabled = false;
+      exportAllButton.disabled = false;
+      exportButton.removeAttribute('aria-busy');
+      exportAllButton.removeAttribute('aria-busy');
+    }
+  }
+
+  exportButton.addEventListener('click', () => exportPlayable());
+  exportAllButton.addEventListener('click', () => exportPlayable({ all: true }));
 
   for (const group of FIELD_GROUPS) {
-    const section = document.createElement('section');
+    const section = document.createElement('details');
     section.className = 'editor-section';
+    section.dataset.editorCategory = editorCategoryForGroup(group);
+    section.open = Boolean(group.defaultOpen);
     if (group.conveyorLayout) section.dataset.conveyorLayout = group.conveyorLayout;
     if (group.spatialOnly) section.dataset.spatialOnly = 'true';
     if (group.spatialImportAnchor) section.dataset.spatialImportAnchor = 'true';
-    section.innerHTML = `<h3>${group.title}</h3>`;
+    section.innerHTML = `<summary class="editor-section-summary"><h3>${group.title}</h3></summary>`;
     for (const [label, path, min, max, step, options, control] of group.fields) {
       const isColor = /color$/i.test(path) || /^passengerMaterial\.solidColors\.\d+$/.test(path);
       const isToggle = control === 'toggle';
-      const isText = control === 'text';
+      const isFilename = control === 'filename';
+      const isText = control === 'text' || isFilename;
+      const isUrl = control === 'url';
       const row = document.createElement('label');
       row.className = 'editor-field';
       row.dataset.path = path;
@@ -559,10 +775,11 @@ export function createSceneEditor(root, {
       if (options) row.classList.add('editor-field-select');
       if (isToggle) row.classList.add('editor-field-toggle');
       if (isText) row.classList.add('editor-field-text');
+      if (isUrl) row.classList.add('editor-field-url');
       const optionsMarkup = options
         ? `<select class="editor-select">${options.map(([value, text]) => `<option value="${value}">${text}</option>`).join('')}</select>`
         : '';
-      const rangeMarkup = isColor || isToggle || isText
+      const rangeMarkup = isColor || isToggle || isText || isUrl
         ? ''
         : `<input class="editor-range" type="range" min="${min}" max="${max}" step="${step}">`;
       row.innerHTML = `
@@ -571,8 +788,9 @@ export function createSceneEditor(root, {
         ${options ? '' : rangeMarkup}
         ${isColor && !options ? '<input class="editor-color" type="color">' : ''}
         ${isToggle ? `<input class="editor-checkbox" type="checkbox" role="switch" aria-label="${group.title} ${label}">` : ''}
-        ${isText ? `<input class="editor-text" type="text" aria-label="${group.title} ${label}">` : ''}
-        ${options || isToggle || isText ? '' : `<input class="editor-number" type="number" min="${min}" max="${max}" step="${step}" aria-label="${group.title} ${label}">`}
+        ${isText ? `<input class="editor-text" type="text"${isFilename ? ' maxlength="64" pattern="[A-Za-z0-9_-]+" spellcheck="false"' : ''} aria-label="${group.title} ${label}">` : ''}
+        ${isUrl ? `<input class="editor-url" type="url" inputmode="url" spellcheck="false" aria-label="${group.title} ${label}">` : ''}
+        ${options || isToggle || isText || isUrl ? '' : `<input class="editor-number" type="number" min="${min}" max="${max}" step="${step}" aria-label="${group.title} ${label}">`}
       `;
       const select = row.querySelector('.editor-select');
       const range = row.querySelector('.editor-range');
@@ -580,6 +798,7 @@ export function createSceneEditor(root, {
       const color = row.querySelector('.editor-color');
       const checkbox = row.querySelector('.editor-checkbox');
       const textInput = row.querySelector('.editor-text');
+      const urlInput = row.querySelector('.editor-url');
       if (options) {
         const commitOption = (value) => {
           const next = structuredClone(getTuning());
@@ -597,19 +816,53 @@ export function createSceneEditor(root, {
         checkbox.addEventListener('change', () => {
           const next = structuredClone(getTuning());
           setAtPath(next, path, checkbox.checked ? 1 : 0);
+          if ((path === 'firstClickGuide.enabled' || path === 'vehicleGuideHand.enabled') && checkbox.checked) {
+            const guideKey = path.split('.')[0];
+            setAtPath(next, `${guideKey}.levelKey`, getAtPath(next, 'level.selected'));
+          }
           setTuning(next, { path });
+          if (path === 'firstClickGuide.enabled') sync();
         });
         inputs.set(path, { row, checkbox, step });
         section.append(row);
         continue;
       }
       if (isText) {
+        const updateValidity = () => {
+          if (!isFilename) return true;
+          const valid = isValidExportNamingPart(textInput.value);
+          textInput.setAttribute('aria-invalid', String(!valid));
+          textInput.setCustomValidity(valid ? '' : '\u4ec5\u652f\u6301 1-64 \u4f4d\u82f1\u6587\u5b57\u6bcd\u3001\u6570\u5b57\u3001\u4e2d\u5212\u7ebf\u548c\u4e0b\u5212\u7ebf\uff0c\u4e0d\u80fd\u5305\u542b ..');
+          return valid;
+        };
         textInput.addEventListener('input', () => {
+          updateValidity();
           const next = structuredClone(getTuning());
           setAtPath(next, path, textInput.value);
           setTuning(next, { path });
         });
-        inputs.set(path, { row, textInput });
+        textInput.addEventListener('blur', updateValidity);
+        inputs.set(path, { row, textInput, isFilename, updateValidity });
+        section.append(row);
+        continue;
+      }
+      if (isUrl) {
+        const platform = path.endsWith('.ios') ? 'ios' : 'android';
+        const updateValidity = () => {
+          const valid = isValidStoreLink(platform, urlInput.value);
+          urlInput.setAttribute('aria-invalid', String(!valid));
+          urlInput.setCustomValidity(valid ? '' : `\u8bf7\u8f93\u5165\u6709\u6548\u7684 ${platform === 'ios' ? 'Apple App Store' : 'Google Play'} HTTPS \u5546\u54c1\u94fe\u63a5`);
+          return valid;
+        };
+        urlInput.addEventListener('input', () => {
+          if (!updateValidity()) return;
+          const next = structuredClone(getTuning());
+          const value = urlInput.value.trim();
+          setAtPath(next, path, value);
+          setTuning(next, { path });
+        });
+        urlInput.addEventListener('blur', updateValidity);
+        inputs.set(path, { row, urlInput, platform, updateValidity });
         section.append(row);
         continue;
       }
@@ -748,10 +1001,11 @@ export function createSceneEditor(root, {
     }
   });
 
-  const spatialSection = document.createElement('section');
+  const spatialSection = document.createElement('details');
   spatialSection.className = 'editor-section editor-spatial-conveyor';
+  spatialSection.dataset.editorCategory = 'conveyor';
   spatialSection.innerHTML = `
-    <h3>\u7acb\u4f53\u8f68\u9053\u7f16\u8f91</h3>
+    <summary class="editor-section-summary"><h3>\u7acb\u4f53\u8f68\u9053\u7f16\u8f91</h3></summary>
     <div class="editor-spatial-actions">
       <button class="editor-spatial-import" type="button">\u5bfc\u5165 Prefab</button>
       <button class="editor-spatial-refresh" type="button">\u5237\u65b0\u5217\u8868</button>
@@ -917,6 +1171,12 @@ export function createSceneEditor(root, {
       }
       if (controls.textInput) {
         controls.textInput.value = value ?? '';
+        controls.updateValidity?.();
+        continue;
+      }
+      if (controls.urlInput) {
+        controls.urlInput.value = value ?? '';
+        controls.updateValidity();
         continue;
       }
       if (controls.range) controls.range.value = String(value);
@@ -945,6 +1205,7 @@ export function createSceneEditor(root, {
   });
 
   if (matchMedia('(max-width: 760px)').matches) setCollapsed(true);
+  setEditorCategory('level');
   sync();
   refreshSpatialConveyorOptions().catch((error) => {
     spatialStatus.textContent = `\u5217\u8868\u4e0d\u53ef\u7528\uff1a${error.message}`;

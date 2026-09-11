@@ -54,6 +54,8 @@ export class GameAudioController {
   constructor(audioConfig = {}) {
     this.audioConfig = audioConfig;
     this.context = null;
+    this.unlocked = false;
+    this.visible = true;
     this.buffers = new Map();
     this.playedGameEventKeys = new Set();
     this.queuedPlays = [];
@@ -62,6 +64,7 @@ export class GameAudioController {
 
   getContext() {
     if (this.context) return this.context;
+    if (!this.unlocked) return null;
     const AudioContextClass = globalThis.AudioContext ?? globalThis.webkitAudioContext;
     if (!AudioContextClass) return null;
     this.context = new AudioContextClass();
@@ -69,8 +72,10 @@ export class GameAudioController {
   }
 
   unlock() {
+    this.unlocked = true;
     const context = this.getContext();
     if (!context) return;
+    if (!this.visible) return;
     if (context.state === 'suspended') {
       void context.resume().then(() => this.flushQueuedPlays());
     } else {
@@ -80,9 +85,16 @@ export class GameAudioController {
   }
 
   preload() {
-    for (const data of Object.values(this.audioConfig)) {
-      for (const clip of data.clips ?? []) void this.loadClip(clip);
+    const pending = [];
+    for (const [name, data] of Object.entries(this.audioConfig)) {
+      for (const clip of data.clips ?? []) {
+        pending.push(this.loadClip(clip).catch((error) => {
+          console.warn(`Unable to preload audio "${name}".`, error);
+          return null;
+        }));
+      }
     }
+    return Promise.all(pending);
   }
 
   loadClip(url) {
@@ -96,20 +108,40 @@ export class GameAudioController {
       })
       .then((data) => context.decodeAudioData(data));
     this.buffers.set(url, bufferPromise);
+    void bufferPromise.catch(() => {
+      if (this.buffers.get(url) === bufferPromise) this.buffers.delete(url);
+    });
     return bufferPromise;
   }
 
   play(name, clipOverride = null) {
     const data = this.audioConfig[name];
     const clip = clipOverride ?? chooseClip(data?.clips);
-    const context = this.getContext();
     if (!clip || !data) return;
+    if (!this.unlocked || !this.visible) {
+      this.queuedPlays.push({ name, clip });
+      return;
+    }
+    const context = this.getContext();
     if (!context || context.state !== 'running') {
       this.queuedPlays.push({ name, clip });
       if (context?.state === 'suspended') void context.resume().then(() => this.flushQueuedPlays());
       return;
     }
     this.startPlayback(name, clip, data, context);
+  }
+
+  setVisible(visible) {
+    this.visible = Boolean(visible);
+    const context = this.context;
+    if (!context) return;
+    if (!this.visible) {
+      if (context.state === 'running') void context.suspend?.();
+      return;
+    }
+    if (this.unlocked && context.state === 'suspended') {
+      void context.resume().then(() => this.flushQueuedPlays());
+    }
   }
 
   flushQueuedPlays() {

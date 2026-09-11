@@ -1,13 +1,22 @@
 import { mkdir, readFile, readdir, stat, writeFile } from 'node:fs/promises';
 import path from 'node:path';
+import { transformWithEsbuild } from 'vite';
 
 const ROOT = process.cwd();
 const DIST_DIR = path.join(ROOT, 'dist');
 const OUTPUT_DIR = path.join(ROOT, 'artifacts', 'applovin');
 const OUTPUT_FILE = path.join(OUTPUT_DIR, 'index.html');
-const DATA_URL_FETCH_COMPAT_SCRIPT = `;(function installDataUrlFetchCompat(){
-  if (typeof globalThis.fetch !== 'function' || typeof globalThis.Response !== 'function') return;
-  var originalFetch = globalThis.fetch.bind(globalThis);
+const PLAYABLE_PLATFORM = process.env.PLAYABLE_PLATFORM || 'applovin';
+const OFFLINE_REQUEST_PLATFORMS = new Set([
+  'applovin',
+  'google-ads',
+  'meta',
+  'unityads',
+  'mintegral',
+  'moloco',
+  'tiktok'
+]);
+const DATA_URL_ONLY_REQUEST_SCRIPT = `;function __playableDataRequest(input) {
   function getRequestUrl(input) {
     if (typeof input === 'string') return input;
     if (input && typeof input.url === 'string') return input.url;
@@ -34,15 +43,10 @@ const DATA_URL_FETCH_COMPAT_SCRIPT = `;(function installDataUrlFetchCompat(){
       headers: { 'Content-Type': contentType }
     });
   }
-  globalThis.fetch = function dataUrlFetchCompat(input, init) {
-    var url = getRequestUrl(input);
-    if (url.slice(0, 5).toLowerCase() === 'data:') {
-      var response = decodeDataUrl(url);
-      if (response) return Promise.resolve(response);
-    }
-    return originalFetch(input, init);
-  };
-}());\n`;
+  var url = getRequestUrl(input);
+  if (url.slice(0, 5).toLowerCase() === 'data:') return Promise.resolve(decodeDataUrl(url));
+  return Promise.reject(new TypeError('Only embedded data: assets are available in this playable.'));
+}\n`;
 
 const MIME_TYPES = new Map([
   ['.bin', 'application/octet-stream'],
@@ -132,8 +136,37 @@ function replaceBundledDynamicAssetUrls(content, assetMap) {
   return next.replaceAll('"/assets/unity/mechanisms"', '""');
 }
 
+function reuseDocumentImageAsset(html, js, assetMap, elementId) {
+  const escapedId = elementId.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&');
+  const imageTag = html.match(new RegExp(`<img\\b(?=[^>]*\\bid=["']${escapedId}["'])[^>]*>`, 'iu'))?.[0];
+  const sourceUrl = imageTag?.match(/\bsrc=["']([^"']+)["']/iu)?.[1];
+  const dataUri = sourceUrl ? assetMap.get(sourceUrl) : null;
+  if (!dataUri) return js;
+
+  const expression = `document.getElementById(${JSON.stringify(elementId)}).src`;
+  const literals = [JSON.stringify(dataUri), `'${dataUri}'`];
+  let output = js;
+  for (const literal of literals) output = output.split(literal).join(expression);
+  return output;
+}
+
 function normalizeLineEndings(content) {
   return content.replace(/\r\n?/gu, '\n');
+}
+
+function dedupeEmbeddedAssetLiterals(source, assetMap) {
+  let next = source;
+  const declarations = [];
+  const dataUris = [...new Set(assetMap.values())].filter((value) => value.length >= 4096);
+  for (const dataUri of dataUris) {
+    const literal = JSON.stringify(dataUri);
+    const occurrences = next.split(literal).length - 1;
+    if (occurrences < 2) continue;
+    const name = `__playableEmbeddedAsset${declarations.length}`;
+    next = next.split(literal).join(name);
+    declarations.push(`var ${name}=${literal};`);
+  }
+  return `${declarations.join('')}\n${next}`;
 }
 
 function stripEditorCss(css) {
@@ -145,6 +178,12 @@ function stripEditorCss(css) {
   return withoutEditorBlock.replace(/#app\.is-phone-preview \.scene-editor\{[^}]*\}/gu, '');
 }
 
+function stripBundledFontFaces(css) {
+  return css.replace(/@font-face\s*\{[^{}]*\}/giu, (rule) => (
+    /(?:Poppins Branding|Poppins-Bold\.ttf)/iu.test(rule) ? '' : rule
+  ));
+}
+
 function inlineCss(html, css, cssPath) {
   const escapedPath = cssPath.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&');
   const pattern = new RegExp(`\\s*<link\\b(?=[^>]*href="${escapedPath}")[^>]*>\\s*`, 'u');
@@ -152,8 +191,18 @@ function inlineCss(html, css, cssPath) {
   return html.replace(pattern, () => `\n    <style>\n${css}\n    </style>\n`);
 }
 
-function inlineModule(html, js, jsPath) {
-  const safeJs = `${DATA_URL_FETCH_COMPAT_SCRIPT}${js}`.replaceAll('</script', '<\\/script');
+async function inlineModule(html, js, jsPath, assetMap) {
+  if (!OFFLINE_REQUEST_PLATFORMS.has(PLAYABLE_PLATFORM)) {
+    throw new Error(`Unsupported offline playable platform: ${PLAYABLE_PLATFORM}`);
+  }
+  const transformed = await transformWithEsbuild(js, 'playable-runtime.js', {
+    define: { fetch: '__playableDataRequest' },
+    format: 'esm',
+    minify: true,
+    target: 'es2020'
+  });
+  const dedupedJs = dedupeEmbeddedAssetLiterals(transformed.code, assetMap);
+  const safeJs = `${DATA_URL_ONLY_REQUEST_SCRIPT}${dedupedJs}`.replaceAll('</script', '<\\/script');
   const escapedPath = jsPath.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&');
   const pattern = new RegExp(`\\s*<script\\b(?=[^>]*src="${escapedPath}")[^>]*><\\/script>\\s*`, 'u');
   if (!pattern.test(html)) throw new Error(`Unable to inline module ${jsPath}.`);
@@ -187,12 +236,16 @@ async function main() {
     readFile(path.join(DIST_DIR, jsPath), 'utf8'),
     readFile(path.join(DIST_DIR, cssPath), 'utf8')
   ]);
+  const packagedCssSource = stripBundledFontFaces(cssSource);
   const spatialSelection = SCENE_TUNING.conveyorLayout?.selected;
-  const mechanismTypes = getMechanismTypesForLevels(PLAYABLE_LEVEL_SEQUENCE, { spatialSelection });
+  const mechanismTypes = getMechanismTypesForLevels(PLAYABLE_LEVEL_SEQUENCE, {
+    spatialSelection,
+    entryBannerEnabled: Boolean(SCENE_TUNING.entryBanner?.enabled)
+  });
   const realAssetUrls = new Set(BASE_RUNTIME_ASSET_PATHS);
   for (const level of PLAYABLE_LEVEL_SEQUENCE) collectAssetUrls(level, realAssetUrls);
   collectAssetUrls(html, realAssetUrls);
-  collectAssetUrls(cssSource, realAssetUrls);
+  collectAssetUrls(packagedCssSource, realAssetUrls);
   collectAssetUrls({
     background: SCENE_TUNING.background?.asset,
     icon: SCENE_TUNING.branding?.icon?.asset,
@@ -207,11 +260,12 @@ async function main() {
   for (const assetUrl of realAssetUrls) {
     if (!availableUrls.has(assetUrl)) throw new Error(`Required production asset is missing: ${assetUrl}`);
   }
-  const js = replaceAssetUrls(replaceBundledDynamicAssetUrls(jsSource, assetMap), assetMap);
-  const css = stripEditorCss(replaceAssetUrls(cssSource, assetMap));
+  const jsWithAssets = replaceAssetUrls(replaceBundledDynamicAssetUrls(jsSource, assetMap), assetMap);
+  const js = reuseDocumentImageAsset(html, jsWithAssets, assetMap, 'branding-icon');
+  const css = stripEditorCss(replaceAssetUrls(packagedCssSource, assetMap));
 
   let output = inlineCss(html, css, cssPath);
-  output = inlineModule(output, js, jsPath);
+  output = await inlineModule(output, js, jsPath, assetMap);
   output = replaceAssetUrls(output, assetMap);
 
   await mkdir(OUTPUT_DIR, { recursive: true });

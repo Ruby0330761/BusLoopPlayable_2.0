@@ -32,7 +32,8 @@ function toModuleSource(tuning) {
 function parseArgs() {
   const inputFlag = process.argv.findIndex((arg) => arg === '--input');
   return {
-    input: inputFlag >= 0 ? path.resolve(process.argv[inputFlag + 1]) : DEFAULT_INPUT
+    input: inputFlag >= 0 ? path.resolve(process.argv[inputFlag + 1]) : DEFAULT_INPUT,
+    stripExportMetadata: process.argv.includes('--strip-export-metadata')
   };
 }
 
@@ -64,7 +65,7 @@ function migrateLegacyConveyorTuning(target, patch) {
 }
 
 async function main() {
-  const { input } = parseArgs();
+  const { input, stripExportMetadata } = parseArgs();
   const current = structuredClone(await importCurrentTuning());
   const patch = JSON.parse(await readFile(input, 'utf8'));
   // Conveyor mechanism presentation is shipped from its isolated fixed config.
@@ -72,6 +73,7 @@ async function main() {
   delete patch.conveyorVisual;
   const next = deepMerge(current, patch);
   delete next.conveyorVisual;
+  if (stripExportMetadata) delete next.exportNaming;
   migrateLegacyConveyorTuning(next, patch);
   await writeFile(TUNING_FILE, toModuleSource(next), 'utf8');
   if (typeof next.level?.selected === 'string') {

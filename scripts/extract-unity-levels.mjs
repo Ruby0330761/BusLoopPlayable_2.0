@@ -5,7 +5,9 @@ import { deriveLevelMechanics } from '../src/mechanism-resources.js';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const artifactPath = join(root, 'artifacts', 'unity-levels.json');
-const catalogPath = join(root, 'src', 'level-catalog.js');
+const catalogPath = process.env.PLAYABLE_LEVEL_CATALOG_PATH
+  ? resolve(process.env.PLAYABLE_LEVEL_CATALOG_PATH)
+  : join(root, 'src', 'level-catalog.js');
 const activePath = join(root, 'src', 'generated-active-level.js');
 const defaultSources = [
   'D:/备份/改文件名临时文件夹/level5.asset',

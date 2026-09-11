@@ -1,5 +1,67 @@
 # Findings
 
+## 2026-09-11 Hand hint behavior
+
+- The regular 3D guide hand and the first-click spotlight are separate systems. A no-mask requirement must disable `firstClickGuide`; setting only its opacity to zero still leaves its timed interaction behavior active.
+- Idle timing uses gameplay time and resets on canvas input. After the configured vehicle leaves, guidance should resolve the next visible, unblocked parked vehicle instead of disappearing permanently.
+- Existing Level 36 editor caches need a guarded migration for `showAtStart=1`, `idleDelaySeconds=5`, and the disabled first-click mask so saved tuning cannot hide the new defaults.
+
+## 2026-09-10 Level36 reference composition
+
+- The earlier Level 18 outer-ring plus Level 5 center interpretation was incorrect: it left a large hollow center and overused diagonal vehicles.
+- The corrected reference is an 82-vehicle, high-density irregular field with filled center bands, mostly horizontal/vertical vehicles, 17 local diagonals, and nine visible colors. Its spacing includes extra visual clearance beyond the logical collision boxes to prevent model clipping.
+- The reference's right two columns contain 14 small cars rather than minibuses. Those vehicles now use 4 seats, making total capacity `542`; passenger queues are `274+268` and retain exact per-color seat parity.
+- A `0.70` global vehicle model scale gives the requested smaller composition. Existing Level 36 editor sessions that still store the former `0.75` value require a guarded one-time cache migration so the saved tuning does not hide the new default.
+- Compacting `vehicleArea.positionUnitScale` from `0.84` to `0.80` pulls both ends of the field toward its center. With `offsetZ=-0.10`, this clears the bottom CTA without crowding the front driving lane; existing Level 36 sessions migrate offsets `0`, `-0.5`, and `-0.25` plus the old map scale.
+- Color placement should not reproduce the reference one-for-one. Swapping colors only between equal-seat vehicles changes the composition while preserving exact per-color vehicle capacity and the existing validated passenger queues.
+- The reference's upper passenger presentation maps to the existing `dualQueue3` runtime layout. The web-level `conveyorBeltName` records this authoring intent, while `scene-tuning.conveyorLayout.selected` remains the runtime selector used for packaging.
+- A stale browser draft can override a newer saved web-level document. Preview storage now uses a revision-aware `v3` envelope: `v1`/`v2` entries are removed, and an explicit unsaved draft may override disk only while its recorded base revision still matches the current saved document.
+
+## 2026-09-10 Level33 blue variant
+
+- Level 33 uses color index `0` for every non-target vehicle and passenger; vehicle 89 and its ten first-wave passengers retain pink color index `2`.
+- The editor-owned `artifacts/unity-level-sources/level33.asset` is the durable source; regenerate `artifacts/unity-levels.json`, `src/level-catalog.js`, and `src/generated-active-level.js` after color changes.
+
+## 2026-09-10 Delivery-name platform boundary
+
+- The business order is `requirement-material-iteration-language-format-designer-requester-channel-steps-stamina`, with channel codes `AL/GG/FB/MT/MO/TT/UN` by default.
+- Mintegral permits only ASCII letters, digits, and underscores in the ZIP base name, so its separator must be `_`; the other platforms retain `-`. Google Ads additionally limits the ZIP base name to 50 characters.
+- Naming metadata belongs to the editor/export layer and must be removed from the production tuning module before bundling. Otherwise Unity Ads detects the `applovin` channel-map key as forbidden AppLovin residue.
+- Platform-required ZIP entries such as root `index.html`, `backup.jpg`, and `config.json` must not be renamed to the business delivery name.
+
+## 2026-09-09 Level33 station-path clearance
+
+- A vehicle can pass the initial forward collision check yet visually intersect a neighboring parked vehicle when the rounded station path starts turning too close to the layout boundary.
+- For the BL04 `level33` layout, the verified path perimeter is `minX=-3`, `maxX=2.95`, `minZ=-3.22`, `maxZ=2.82`. A regression samples the complete station path, including the in-motion vehicle scale, for all 12 initially movable vehicles against every stationary vehicle.
+- Editor `localStorage` can override updated source defaults after a reload. The old Level 33 perimeter and `1.63` guide-hand size now migrate only when the complete saved legacy signature matches, preserving later manual tuning.
+- Four rectangular mask pieces leave square transparent wedges around a rounded guide border. The opening spotlight now uses the rounded hole's outer shadow as the mask, so the visible cutout and border share the same corner geometry.
+- Spotlight placement is editor-controlled in canvas CSS pixels after target-bound centering; margin and independent width/height scales remain separate controls. Any `firstClickGuide.*` edit restarts the live opening preview so expired three-second guides can still be tuned directly.
+
+## 2026-09-09 Moloco raw-text network false positives
+
+- The uploaded Moloco package already routes real resource loading through the data-only `__playableDataRequest`. Raw case-insensitive `fetch(` scanning also matches 13 GLSL `texelFetch(` calls; token scanning additionally matches Three.js's obsolete `fetch for` error text.
+- `prepareMolocoHtml` changes only those known non-network representations and rejects remaining network API markers. The GLSL escape is decoded by JavaScript before compilation; regression tests compare decoded shader text and prove actual fetch/XHR/WebSocket/beacon APIs still block export. Do not encode real network APIs to bypass checks.
+- Local checker parity alone missed the stricter raw-substring scan. Keep both static patterns plus actual browser offline/CTA verification. Original and fixed packages show the same five Chrome `ERR_INVALID_URL` diagnostics for embedded gzip model URLs under the extra Playwright probe; this baseline issue is not caused by the Moloco text fix.
+
+## 2026-09-08 Development font versus platform package boundary
+
+- The editor/runtime source keeps the project-local `Poppins-Bold.ttf` so development matches the remote Rainbow font fix.
+- Final platform artifacts must not embed or reference that font because AppLovin classifies packaged font declarations as an external-font violation. The shared single-HTML generation path removes the Poppins `@font-face` before asset collection and leaves `Arial, sans-serif` fallbacks in CSS and Canvas text.
+- This boundary is enforced in the real generator, not by editing final HTML/ZIP files; all seven rebuilt exact artifacts pass static, payload, and runtime gates and contain no font files or font URLs.
+
+## 2026-09-08 Mechanism audio packaging boundary
+
+- The packager intentionally replaces unselected mechanism resources with the exact one-byte sentinel `data:application/octet-stream;base64,AA==`. The previous runtime registered every mechanism sound regardless of the active session, so the first trusted interaction attempted to decode omitted audio and raised `EncodingError`.
+- Runtime audio configuration must be built from the union of `sessionLevels` mechanism types. Ordinary sessions therefore preload only their base `bus_hit`, `passenger_up`, and `bus_full` clips; mechanism audio is included only when its owning mechanism is active.
+- Per-clip preload failures are contained to prevent unhandled rejections, while the artifact runtime gate records every `decodeAudioData` input and result. A one-byte payload or rejected decode now fails `RUNTIME-AUDIO-002`, so the fallback does not conceal a broken selected audio asset.
+
+## 2026-09-08 Package-only export boundary
+
+- Editor export consumes the project's existing assets as-is and must not run an asset-compression or resource-optimization stage, rewrite assets, or persist the submitted tuning back into the project.
+- HTML versus ZIP remains platform-native delivery packaging: AppLovin, Unity Ads, and Moloco emit HTML; Google Ads, Meta, Mintegral, and TikTok emit ZIP. The all-platform ZIP is only an aggregate delivery container.
+- An export launched from Vite's development middleware inherits `NODE_ENV=development` unless the child build overrides it. Every export build must force `NODE_ENV=production`; otherwise editor dynamic imports and `modulepreload` markers leak into Mintegral delivery.
+- Passing local rules means there is no known blocker within ruleset `1.5.0`; official platform Preview, ad-console upload, and device play are still required before calling a package platform-ready.
+
 ## 2026-09-08 Lossless FBX/VAT compression trial
 
 - Compressed the remaining raw FBX files, VAT mesh binaries, and the default half-float VAT map in place with gzip level 9. The original resource paths and model/VAT payload bytes remain unchanged after decompression.
@@ -223,7 +285,7 @@
 
 - A packaged branding overlay can be fully present and correctly inlined yet remain invisible if design-space Y uses the width scale on a short/landscape stage. With the saved bottom layout, the previous 1280x720 package placed the three elements at Y 1235-1344, entirely below the 720px stage.
 - Branding position adaptation must use `stageWidth/designWidth` for X and `stageHeight/designHeight` for Y. Asset dimensions should use the smaller of those scales so Icon, Logo, and text keep their aspect instead of stretching.
-- AppLovin static validation now checks the branding mount, data-URI Icon/Logo images, and data-URI Poppins TTF independently of the generic inline-asset checks.
+- At this stage AppLovin static validation checked the branding mount, data-URI Icon/Logo images, and a data-URI Poppins TTF independently. The 2026-09-08 platform-package font boundary above supersedes the TTF requirement.
 
 ## 2026-08-24 Icon/Logo and text editor overlays
 
