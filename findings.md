@@ -1,5 +1,18 @@
 # Findings
 
+## 2026-09-15 Fire-truck UI and mechanism-package contract
+
+- Unity's `Effect_Firetruck_Fire` is a full-stretch Canvas effect with warning images covering the stage and particle emitters anchored around its edges; it must not be represented as content inside the top countdown panel. The countdown card is a separate `FireTruckCD_Empty` UI element.
+- `30s` activates the first full-stage warning and `20s` activates the stronger warning/fire animation. The playable retains its own configured total duration and existing timeout result.
+- Exported `Object.freeze` manifest entries need pure annotations for Rollup to discard the script-only resource manifest from the runtime bundle. Otherwise each selected mechanism URL is inlined twice in a single-HTML package.
+- Runtime audio configuration must be selected from `getMechanismTypesForLevels`, the same source used by packaging. Preloading every mechanism audio entry attempts to decode the package's omitted-resource placeholder and produces `EncodingError` after the first user interaction.
+
+## 2026-09-14 Fire-truck VAT UV and winding contract
+
+- The Unity firefighter VAT source uses the opposite X handedness from `Idle_boy_firefighter.FBX`; matching must happen in mirrored FBX space, while runtime still applies `mirrorX` to the sampled VAT position.
+- The FBX contains UV seam variants at shared positions. Fire-truck VATM v2 therefore stores per-FBX-vertex UV/normal data plus a separate compact VAT-index attribute; collapsing the mesh to one vertex per VAT sample corrupts texture mapping.
+- After the runtime X mirror, FBX triangle winding must remain unchanged. Swapping triangle corners would invert the corrected normals again.
+
 ## 2026-09-08 Lossless FBX/VAT compression trial
 
 - Compressed the remaining raw FBX files, VAT mesh binaries, and the default half-float VAT map in place with gzip level 9. The original resource paths and model/VAT payload bytes remain unchanged after decompression.

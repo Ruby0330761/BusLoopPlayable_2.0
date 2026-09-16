@@ -1,5 +1,141 @@
 # Playable Project Progress
 
+## Completed On 2026-09-16 - Rebuilt level33 package with police foreground video
+
+- Applied the latest `level33` export with `police.mp4` enabled, first-click guide enabled for `level33`, passenger Emoji and random playable audio enabled, and transition video disabled by its runtime toggle.
+- Regenerated the 83-vehicle production session and AppLovin single HTML; selected mechanism resources are `ordinaryConveyor`, `passengerEmoji`, `randomPlayableAudio`, and `policeCar`.
+- Verification: tuning files match and `artifacts/selected-level.txt` is `level33`; all AppLovin static checks pass at `4,907,331` bytes, leaving `92,669` bytes under the 5 MB limit.
+
+## Completed On 2026-09-16 - Foreground transition enable switch
+
+- Added a `使用转场特效` switch to the foreground-video editor group. It defaults on; when off, runtime skips the effect and AppLovin packaging omits its video resource.
+- Verification: foreground-video tests `3/3` pass, production build passes, and browser interaction confirmed off/on state changes and restore. Package regeneration is blocked because the currently selected foreground video is missing from `public/assets/playable/foreground-videos/`.
+
+## Completed On 2026-09-16 - Rebuilt level33 media package from latest export
+
+- Applied the latest complete `level33` export with foreground video, transition video, passenger Emoji, and random playable audio enabled; EntryBanner remains disabled in this export.
+- Regenerated the 83-vehicle production session and inlined the selected media/mechanism resources.
+- Verification: tuning files match, `artifacts/selected-level.txt` is `level33`, and AppLovin static checks pass at `4,958,228` bytes, leaving `41,772` bytes under the 5,000,000-byte limit.
+
+## Corrected On 2026-09-16 - Random playable audio initial cooldown
+
+- Fixed repeated successful vehicle clicks resetting the first random-audio timer. Only the first valid click now establishes the initial cooldown; subsequent clicks cannot postpone it.
+- Verification: random-audio scheduler tests `4/4` pass and the existing runtime/package wiring remains unchanged.
+
+## Completed On 2026-09-16 - level33 media/package size reduction
+
+- Added single-HTML JavaScript Data URI sharing for repeated large assets and reused the branding logo source for the game-over logo.
+- Re-encoded the selected foreground video at the original `728x1280/30fps` resolution with no audio (`683,739` bytes), converted the transparent Emoji atlas to lossless WebP (`108,832` bytes), and compressed the police siren to gzip-wrapped 16 kHz mono 16-bit WAV (`52,425` bytes).
+- Verification: production build, package generation, and AppLovin static checks pass; final package is `4,958,226` bytes. Emoji/random-audio/police resource tests pass; the unrelated firefighter texture hash baseline remains failing.
+
+## Completed On 2026-09-16 - level33 full-mechanism package
+
+- Applied the supplied complete tuning export for `level33`: foreground video and transition enabled, passenger Emoji enabled with auto-hide on vehicle `73`, random playable audio enabled (`9.5-11.5s` interval), and the existing gameplay effects/audio settings preserved.
+- Generated the 83-vehicle production session and inlined `passengerEmoji`, `randomPlayableAudio`, `policeCar`, and both selected foreground video assets alongside the ordinary conveyor resources.
+- Verification: tuning files match and `artifacts/selected-level.txt` is `level33`. Final AppLovin package is `5,668,738` bytes, exceeding the 5,000,000-byte limit by `668,738` bytes; all other static checks pass.
+
+## Completed On 2026-09-16 - Optional random playable audio
+
+- Added the `可玩素材随机音频` editor submenu below the angry Emoji controls. It configures enable/package inclusion, bounded 5-30 second minimum/maximum intervals, master volume, and independent `police ring`, `move`, and `hey move it` volumes.
+- Added the three user-supplied clips under `public/assets/unity/mechanisms/random-playable-audio/audio/`; the WAV is gzip-wrapped for delivery and the two MP3 files remain compressed. Playback starts only after the first successful vehicle click, observes the initial cooldown, never repeats the immediately previous clip, and stops after the store CTA.
+- Verification: scheduler tests `3/3`, mechanism resource tests pass except the pre-existing firefighter texture hash mismatch, Vite build passes, default AppLovin package checks pass at `3,727,514` bytes (`3.555 MiB`) with the three clips omitted, and enabled-package checks pass at `4,500,966` bytes (`4.292 MiB`) with `randomPlayableAudio` selected.
+
+## Completed On 2026-09-16 - Foreground video size reduction
+
+- Kept the clearer audio-free H.264 foreground clip at `728x1280`, `900,690` bytes, rather than adopting lower-resolution candidates that looked visibly soft or showed timestamp drift in browser re-encoding tests. It remains compressed from the original `1,665,775` bytes.
+- Retained the temporarily tested `540x950` version under `artifacts/backups/foreground-video-540x950-before-restore-20260916/`, and the active `900,690`-byte version under `artifacts/backups/foreground-video-before-compression-20260916/`. Both the foreground and transition files contain only a `vide` track.
+- Verification: level33 enabled packaging is `4,979,455` bytes (`4.749 MiB`) with both clips selected, all AppLovin checks pass, and the packaged transition plays muted with `screen` blending. The final default remains foreground-video disabled; the regenerated default package is `3,727,487` bytes.
+
+## Completed On 2026-09-16 - Foreground fade transition effect
+
+- Added a separately imported/selected foreground transition clip that starts `0.15s` after the intro fade begins, stays muted, uses CSS `screen` blending, and continues over the loaded level after the intro layer has disappeared. Gameplay, passenger Emoji, and EntryBanner remain gated until the transition finishes.
+- Added transition selection/import and delay controls to the existing foreground-video editor section. AppLovin packaging embeds the selected transition only when the foreground video itself is enabled; deleting it from the shared storage folder and refreshing clears the stale transition selection.
+- Re-encoded the supplied one-second transition as audio-free H.264 at `480x844`, reducing `237,667 -> 38,141` bytes while preserving the checked smoke frames. The supplied source is retained under `artifacts/backups/foreground-transition-before-compression-20260916/`.
+- Verification: focused tests `3/3`, source syntax checks, Vite build, and enabled/disabled AppLovin checks pass. The enabled package is `4,976,793` bytes under the `5,000,000` byte limit; desktop/mobile browser timing measured `153ms`/`151ms`, with full-stage bounds, muted playback, and computed `mix-blend-mode: screen`. The final default remains foreground-video disabled and packages at `3,724,825` bytes.
+
+## Completed On 2026-09-15 - Passenger Emoji playback delay
+
+- Added `开始后延迟播放` to the Emoji editor controls, with a `0-60s` range and a default of `0s`.
+- Emoji animation now stays on its first frame until the playable intro/loading flow finishes and the configured delay elapses. The timer restarts on level reset and multi-level handoff.
+- Verification: source syntax checks, browser control interaction with a temporary `10s` delay, production build, AppLovin packaging, and static package checks pass.
+
+## Corrected On 2026-09-15 - Passenger Emoji responsive anchoring
+
+- Changed Emoji positioning from independent X/Y viewport scaling to a centered design-coordinate transform using one uniform scale. Wide screens now expose more side space without stretching the Emoji's horizontal offset away from its authored scene position.
+- Updated editor dragging to use the matching inverse transform, so manual placement remains stable across portrait and landscape layouts.
+- Verification: scene-layout tests `15/15`, browser checks at `1280x720` and `390x844` show the same relative center offset, production build, AppLovin packaging, and static checks pass. The package is `3,721,116` bytes (`3.549 MiB`).
+
+## Completed On 2026-09-15 - Passenger Emoji vehicle-triggered auto-hide
+
+- Added two editor controls under `生气表情 Emoji调整`: the target level and vehicle ID, plus an `自动隐藏` switch. When the configured vehicle reaches its parking spot, the Emoji latches hidden for that level; reset or a non-matching level restores it.
+- Kept the feature disabled by default and migrated the stale `level42` default to the available `level29` option. The overlay remains pointer-transparent, so the new behavior does not affect vehicle clicking.
+- Verification: `node --check src/main.js`, mechanism/Emoji resource tests, browser menu interaction, Vite build, AppLovin packaging, and static package checks pass. The regenerated package is `3,716,576` bytes (`3.544 MiB`).
+
+## Completed On 2026-09-15 - Foreground video asset menu and conditional packaging
+
+- Added an editor submenu for imported MP4/WebM foreground animation assets with file selection, binary import, storage-folder access, manual refresh, and a display/package toggle. The catalog is derived directly from `public/assets/playable/foreground-videos/`; deleting a selected file and refreshing clears the stale selection and disables it.
+- Added conditional AppLovin packaging: only the selected foreground video is embedded when display is enabled; disabled and unselected videos are omitted. Runtime video display is intentionally not implemented yet.
+- Verification: focused importer/menu/package tests, touched-file syntax checks, full Vite build, and both enabled/disabled AppLovin packaging checks pass. The temporary enabled-video fixture was removed and the final package was regenerated with foreground video disabled.
+
+## Completed On 2026-09-15 - Muted foreground video startup playback
+
+- Added a full-playable-area foreground video stage between startup and gameplay. Video decoding/playback and scene loading now run concurrently; if the video finishes first, its last frame remains visible until the initialized level can be revealed directly, before gameplay and EntryBanner begin.
+- Gameplay updates and vehicle input remain paused throughout the configured intro. Load, decode, autoplay, and abnormal-duration failures release the gate automatically so an invalid asset cannot strand the playable.
+- Runtime display remains conditional on the existing foreground-video selection and display toggle; disabled videos continue to be excluded from production packaging.
+- Re-encoded `20260915-161751.mp4` as audio-free H.264 at the original `728x1280`, `30fps`, and `4.48s`: `1,665,775` to `900,690` bytes. The original is retained under `artifacts/backups/foreground-video-before-compression-20260915-1805/`.
+- Added ratio-safe presentation for wide and extra-tall screens: the main video remains uncropped with `contain`, while a single first-frame canvas fills and softens the otherwise empty area. Absolute stage-bound video sizing prevents Grid intrinsic dimensions from turning `contain` into accidental crop. The backdrop reuses the already decoded video frame, adds no package asset, caps its raster resolution, and redraws on layout changes.
+- Verification: enabled AppLovin packaging is `4,922,433` bytes and passes all platform checks. Browser QA at `844x390`, `360x900`, and `390x844` confirms matching overlay/video boxes, silent playback, full portrait content, and softened fill outside the source aspect ratio. The final project default remains unselected/disabled.
+
+## Completed On 2026-09-15 - Fire-truck model and audio delivery compression
+
+- Gzip-compressed the runtime fire-engine FBX, firefighter VAT mesh/VAT animation map, and two fire-truck audio payloads. The runtime now decodes compressed model and audio resources transparently.
+- Kept the source firefighter FBX in the retained mechanism folder and created a rollback copy under `artifacts/backups/firetruck-model-audio-before-gzip-20260915/`.
+- Verification: fire-truck resource tests `11/11`, syntax checks, Vite build, and AppLovin packaging/static checks pass. The selected fire-truck package is `4,334,060` bytes (`4.133 MiB`).
+
+## Corrected On 2026-09-15 - Fire-truck HUD playable-area and timer composition
+
+- Aligned the fire-truck HUD to the actual game canvas instead of the phone-preview frame, so warning images and corner flames are clipped to the playable area on both portrait and wide layouts.
+- Changed warning imagery to fill the actual playable rectangle without cropping the Unity top effect, and rebuilt the countdown as one continuous rounded card; removed the visible readout panel seam and matched Unity's truck, clock, and text offsets.
+- Verification: focused fire-truck resource tests, `node --check src/main.js`, Vite build, and browser geometry checks at `1280x720` phone preview plus `1440x900` wide layout pass.
+
+## Completed On 2026-09-15 - Fire-truck full-stage warning UI parity
+
+- Replaced the large composite fire-truck panel with Unity-style layers: a compact independent top timer plus full-stage warning images and animated edge flames. The warning layer now stretches to the complete playable stage, remains clipped to it, and never receives pointer input.
+- Matched Unity's visual thresholds at `30s` and `20s` while preserving the playable's existing countdown completion and failure behavior. Focus/visibility pause behavior remains active.
+- Converted the three large warning/fire images to runtime WebP and the two Unity fire-truck clips to compact 16 kHz mono PCM `.bin` files. Original PNG/WAV source copies remain available but are omitted from the package whitelist.
+- Fixed production tree-shaking for mechanism manifests and made runtime audio initialization use the same per-level mechanism selection as packaging, preventing omitted audio placeholders from being decoded.
+- Verification: seven focused fire-truck/resource tests, touched-file syntax checks, Vite build, AppLovin packaging, and all static package checks pass. Browser QA covered `390x844` and `1204x720` stages, both warning phases, click-through input, and post-audio-unlock console health. The level29 single HTML is `4,626,308` bytes (`4.412 MiB`).
+
+## Corrected On 2026-09-14 - Fixed fire-truck passenger VAT UV and face orientation
+
+- Rebuilt the firefighter VAT mesh from Unity's `VertexAnimtion/Idle_boy_firefighter_1` source, matching VAT coordinates against the mirrored FBX space.
+- Preserved the FBX's per-face UV seams and normals in VATM v2, added the per-vertex VAT index table, and kept triangle winding correct after the runtime X mirror.
+- Verification: UV mismatch `0`, negative winding fraction `0`, focused mechanism/game-model tests, production build, and `level29` browser smoke test pass.
+
+## Corrected On 2026-09-14 - Restored actual fire-truck passenger texture
+
+- Restored the mechanism passenger texture from Unity `Textures/Car_0307/Idle_boy_firefighter.png`, which is the firefighter texture used by the actual source asset.
+- Updated the resource regression hash and retained the independent fixed brightness path; no passenger tuning or mechanism behavior was changed.
+
+## Completed On 2026-09-14 - Finalized fire-truck passenger tuning
+
+- Rebound the fire-truck passenger VAT material directly to Unity's `Idle_boy_firefighter.png` base-color asset and kept its material brightness independent from ordinary passengers.
+- Applied the confirmed passenger values as fixed runtime defaults: rotation `(0°, 180°, 0°)`, local position `(-0.34, 0, 0)`, and material brightness `1.00`.
+- Removed the development-only `消防车乘客临时调试` menu and its saved tuning field so the fixed values cannot be overridden by stale editor state.
+- Verification: fire-truck focused scene tests `2/2`, mechanism resource tests `8/8`, syntax checks, production build, AppLovin packaging, and static package checks pass. Existing unrelated `game-model` baseline failures remain unchanged.
+
+## Completed On 2026-09-14 - Fixed fire-truck level stuck at 100% loading
+
+- Added the missing color-index `12` fallback for fire-truck placeholder vehicles and passengers, plus the matching passenger-count board palette, so scene initialization can complete before dedicated fire-truck assets finish loading.
+- Updated fire-truck importer/resource regression coverage and synchronized mechanism-level assertions with the current catalog.
+- Verification: `level29` loads in the browser with no error-level logs; mechanism resource tests `6/6`, Unity importer tests `18/18`, syntax checks, production build, AppLovin packaging, and static package checks pass. Production package is `3,309,095` bytes (`3.156 MiB`) with only `ordinaryConveyor` selected.
+
+## Completed On 2026-09-14 - Fixed police level stuck at 100% loading
+
+- Added a valid fallback color for Unity police `colorIndex: 11`, allowing `level280` to construct its placeholder vehicles before the dedicated police FBX/material assets finish loading.
+- Browser verification: `level280` reaches the playable scene and renders the police vehicle; no new runtime error remains.
+- Verification: police/import/render regression checks, production build, AppLovin packaging, and static package checks pass. Final package is `4,086,808` bytes (`3.897 MiB`).
+
 ## Completed On 2026-09-09 - Rebuilt level42 with EntryBanner inline resources
 
 - Decoded and applied the complete tuning payload; level `level42` uses `BG01 冬季`, `dualQueue3`, product text `Bus Fever Party！`, and the enabled `superhard` EntryBanner (`2.2s`, mask opacity `0.62`).
@@ -1228,3 +1364,48 @@ Full 2026-07-07 progress log was archived to:
 - Isolated the confirmed conveyor visual root scale (`1.375`), asymmetric door spacing (`1.17`/`1.20`), and right-edge visibility (`0.93`) in `src/conveyor-mechanism-config.js`; conveyor vehicles remain outside the visual root scale.
 - Reopened a temporary editor submenu for independent XYZ position, scale, and rotation adjustments on the belt, arrow, doors, and side panels; overrides layer over the fixed mechanism base and reset cleanly.
 - Added focused configuration/temporary-override regression coverage and passed syntax checks plus conveyor-focused behavior/resource checks.
+
+## Completed On 2026-09-14 - Police car mechanism import
+
+- Added the Unity police car mechanism as `policeCar`: dedicated vehicle and police passenger FBX/texture resources, zero-based color index `11` validation, editor normalization, mechanism metadata, and per-level AppLovin resource pruning.
+- Added the Unity `police_siren` clip as a mono 22.05 kHz `.bin` PCM asset (`320,730` -> `79,668` bytes). Police vehicles retain the normal `bus_full` sound and play the siren once when entering departure; a non-pickable red/blue warning lamp is shown while departing.
+- Verification: police importer tests `17/17`, police audio/scene contract tests `3/3`, production build, AppLovin packaging, and static package checks pass. The current ordinary selected level package is `3,289,543` bytes and omits police resources.
+
+## Completed On 2026-09-14 - Police passenger temporary transform tuning
+
+- Added a temporary scene-editor group for police passenger XYZ rotation and XYZ position. The controls apply through a police-only model pivot, preserving the passenger base yaw and fake shadow transform.
+- Verification: touched-file syntax checks, three focused police/audio/scene tests, and development browser interaction on `level280` passed.
+
+## Completed On 2026-09-14 - Police passenger transform finalized
+
+- Compared the editor values with the supplied reference and fixed the police passenger model at rotation `(0°, 90°, 0°)` and local position `(-0.01, 0, -0.40)`.
+- Removed the temporary tuning fields and runtime debug pivot; the final transform remains model-only and does not move the passenger shadow.
+
+## Completed On 2026-09-14 - Police passenger fixed offset correction
+
+- Corrected the final implementation to apply the saved offset through a fixed model transform pivot, preserving the normalized police model's original local position instead of overwriting it.
+- Browser verification on `level280` confirms the temporary menu remains removed and the scene loads without error-level console output.
+
+## Completed On 2026-09-15 - Angry passenger Emoji import
+
+- Exported Unity Spine animation `fennu` from `Effect_Emoji.prefab` into a transparent 32-frame sprite sheet and added it as the optional `passengerEmoji` mechanism resource.
+- Added the `生气表情 Emoji 调整` editor group for visibility, lock, position, size, opacity, and loop duration; the overlay is pointer-transparent and responsive to the playable stage.
+- Verification: Emoji resource tests pass, Vite build passes, AppLovin package checks pass. The selected package is `4,504,073` bytes (`4.295 MiB`), with `passengerEmoji` included and 47 unselected mechanism resources omitted.
+
+## Corrected On 2026-09-15 - Angry passenger Emoji frame bounds and preview
+
+- Rebuilt the 8x4 Emoji sheet with complete transparent frames and per-cell margins so the head no longer touches or crosses the frame boundary.
+- Replaced the unreliable two-dimensional CSS animation with exact 32-frame index updates from the main render loop; the editor preview now visibly loops while tuning position, size, opacity, or duration.
+- Verification: all 32 cells have transparent edge margins, Vite build, AppLovin packaging, and static package checks pass. The selected package is `3,521,881` bytes (`3.359 MiB`).
+
+## Corrected On 2026-09-15 - Angry passenger Emoji source animation restoration
+
+- Replaced the accidental repeated-frame sheet with a new 64-frame export rendered directly from the original Spine `biaoqing.skel.bytes`, atlas, and texture data.
+- Preserved the complete `fennu` entrance, angry, and exit poses while assigning 45 frames to the sustained angry interval. Updated the web player to an 8x8 atlas and restored the Unity animation duration (`2.067s`), including migration from the old saved `1.333s` value.
+- Verification: 61/64 frames are pixel-distinct, no frame touches a cell edge, and focused resource/runtime checks cover the 1024x1024 atlas contract.
+
+## Completed On 2026-09-15 - Foreground video full-conveyor reveal
+
+- When a foreground video is enabled and selected, both ordinary and spatial conveyors can initialize with passengers already on the belt; ordinary belts assign passengers by belt progress and immediately rebase both side queues to full waiting positions so authored order is preserved.
+- Added an editor-controlled foreground-video end fade duration (default `0.2s`), applied only to the video overlay.
+- Verification: foreground-video tests, production build, AppLovin packaging/checks, browser preview interaction, and error-level console check passed.

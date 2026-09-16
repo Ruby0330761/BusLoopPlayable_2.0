@@ -75,6 +75,18 @@ Conveyor vehicles now participate in the conveyor-specific collision context as 
 | `public/assets/unity/mechanisms/ambulance/textures/Main_Gamepanel_BubbleLove.png` | wired | Ambulance step-limit board texture. |
 | `public/assets/unity/mechanisms/ambulance/audio/ambulance_countdown_V2.wav` | wired | Ambulance countdown cue. |
 
+## Fire truck
+
+| Resource | Status | Notes |
+| --- | --- | --- |
+| `public/assets/unity/mechanisms/fire-truck/models/Fire Engine.fbx` | wired | Unity fire-engine vehicle model; gzip-compressed in place (`167,392 -> 61,531` bytes) and decoded by the runtime before FBX parsing. |
+| `public/assets/unity/mechanisms/fire-truck/models/Idle_boy_firefighter_vatmesh.bin` / `Idle_boy_firefighter_anim_map.vatq` | wired | Unity firefighter VAT geometry and idle/move animation frames; VATM v2 preserves FBX UV seams and mirrored face winding. Both files are gzip-compressed and decoded before use (`114,256 -> 33,356`; `92,594 -> 91,514` bytes). |
+| `public/assets/unity/mechanisms/fire-truck/textures/Idle_boy_firefighter.png` | wired | Delivery copy of Unity `Textures/Car_0307/Idle_boy_firefighter.png`, the actual firefighter passenger texture used by the source asset. |
+| `public/assets/unity/mechanisms/fire-truck/models/Idle_boy_firefighter.FBX` | retained | Unity passenger source export retained with the mechanism package for parity/debugging. |
+| `public/assets/unity/mechanisms/fire-truck/ui/Warning_01.webp` / `Warning_02.webp` / `Fire_01.webp` | wired | Compressed runtime copies of Unity's full-stage warning layers and 19-frame edge-fire atlas. Matching PNG sources are retained but omitted from production packaging. |
+| `public/assets/unity/mechanisms/fire-truck/ui/Guide_FireTruck_TimeBg.png` / `Main_Prop_Icon_Truck.png` / `Main_Prop_TimeBg.png` / `Main_Prop_Icon_Clock.png` | wired | Unity top countdown card components, rendered independently from the full-stage warning effect. |
+| `public/assets/unity/mechanisms/fire-truck/audio/firetruck_1.bin` / `firetruck_3.bin` | wired | Unity start/fail clips remain 16 kHz mono PCM WAV payloads, wrapped in gzip for delivery (`87,722 -> 67,170`; `56,188 -> 41,254` bytes). The runtime decompresses them before Web Audio decoding. Original WAV files are retained as source references and omitted from the mechanism whitelist. |
+
 ## Turn vehicle
 
 | Resource | Status | Notes |
@@ -143,6 +155,20 @@ All six resources are embedded in the AppLovin single HTML. They remain minimall
 | public/assets/unity/audio/passenger_up_03.wav | wired | `AudioName.passenger_up` random clip, played when a visual passenger reaches the vehicle. |
 | public/assets/unity/audio/bus_full.wav | wired | `AudioName.bus_full`, played when a full vehicle starts leaving the station. |
 | public/assets/unity/mechanisms/turn-vehicle/audio/guidemove.bin | wired | User-confirmed Unity `guidemove.wav` turn-completion cue, re-encoded as 16 kHz mono 16-bit PCM WAV; 8,632 bytes and inlined only for turn-vehicle completion events. |
+
+## Passenger Emoji
+
+| `public/assets/unity/mechanisms/passenger-emoji/angry-emoji-sheet.webp` | wired | Unity Spine `fennu` animation rendered from the original skeleton/atlas as a lossless transparent 8x8, 64-frame WebP sprite sheet (`108,832` bytes). Frames 11-55 densely sample the sustained angry phase; the playable loops it only when this optional mechanism is enabled. |
+
+## Random playable audio
+
+| Resource | Status | Notes |
+| --- | --- | --- |
+| `public/assets/unity/mechanisms/random-playable-audio/audio/police-ring.bin` | wired | User-supplied `9月15日(1).wav`, gzip-wrapped without changing the WAV payload (`876,622 -> 526,389` bytes); runtime decodes the wrapper before WebAudio playback and labels it `police ring`. |
+| `public/assets/unity/mechanisms/random-playable-audio/audio/move.mp3` | wired | User-supplied MP3, retained as the compressed delivery file and labeled `move`. |
+| `public/assets/unity/mechanisms/random-playable-audio/audio/hey-move-it.mp3` | wired | User-supplied MP3, retained as the compressed delivery file and labeled `hey move it`. |
+
+The mechanism is disabled by default and is included in AppLovin only when its editor toggle is enabled. On the first successful vehicle click it schedules a random 5-30 second cooldown, excludes the previous clip, applies master x per-clip volume, and stops permanently after the store CTA is triggered. The default package omits all three assets; the enabled-package verification passed under the 5,000,000-byte limit.
 
 ## Open resource/config gaps
 

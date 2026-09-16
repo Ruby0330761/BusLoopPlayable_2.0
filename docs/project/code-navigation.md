@@ -31,7 +31,9 @@ Use this file before code changes. Pick the closest change area, then read only 
 | Build/test scripts or dependency changes | `package.json` | Lockfile if dependency versions change |
 | Vite development server and durable editor level selection | `vite.config.js` | `artifacts/selected-level.txt`, `src/main.js`, `scripts/generate-active-level.mjs` |
 | AppLovin single-HTML packaging | `scripts/package-applovin-single-html.mjs` | `scripts/check-applovin-package.mjs`, `package.json`, `docs/platforms/applovin-playable-audit.md` |
+| Editor-imported foreground video catalog and conditional packaging | `scripts/foreground-video-importer.mjs` | `vite.config.js`, `src/scene-editor.js`, `src/scene-tuning.js`, `scripts/package-applovin-single-html.mjs`, `scripts/check-applovin-package.mjs`, `test/foreground-video-assets.test.js` |
 | Unity VAT extraction utility | `scripts/extract-unity-vat.mjs` | `scripts/extract-unity-passenger-animation.mjs`, `tools/unity-vat-export/Packages/manifest.json` |
+| Police passenger VAT repair utility | `scripts/rebuild-police-vat.mjs` | `src/scene-view.js`, `public/assets/unity/mechanisms/police-car/models/` |
 | Unity wealthy passenger animation extraction | `scripts/extract-unity-passenger-animation.mjs` | `src/scene-view.js`, `test/game-model.test.js` |
 | Game model regressions | `test/game-model.test.js` | `src/game-model.js`, `src/vehicle-motion.js`, `src/scene-tuning.js` |
 | Scene layout regressions | `test/scene-layout.test.js` | `src/scene-layout.js` |
@@ -46,6 +48,7 @@ Use this file before code changes. Pick the closest change area, then read only 
 - `scripts/package-applovin-single-html.mjs`: AppLovin packaging utility. Reads Vite `dist`, inlines built JS/CSS and `/assets/...` files as data URIs, and writes `artifacts/applovin/index.html`.
 - `scripts/check-applovin-package.mjs`: AppLovin static upload precheck for `artifacts/applovin/index.html`, including size, single-file, inline-resource, WAV, remote URL, and MRAID CTA checks.
 - `scripts/apply-scene-tuning.mjs`: Applies exported editor tuning JSON from `artifacts/scene-tuning.json` (or `--input`) into `src/scene-tuning.js` and synchronizes `artifacts/selected-level.txt` before production packaging.
+- `scripts/foreground-video-importer.mjs`: Validates, stores, and lists editor-imported MP4/WebM foreground animation files under `public/assets/playable/foreground-videos/`; the folder contents are the editor catalog source.
 - `scripts/spatial-conveyor-importer.mjs`: Standalone Node importer for the BusLoop `ConveyorBeltTemplate` spatial-track family. Merges prefab overrides with bundled Dreamteck/template support, embeds required textures, and writes one removable JSON package per imported prefab under `artifacts/spatial-conveyors/`.
 - `scripts/unity-level-importer.mjs`: Validates editor-imported `level<number>.asset` Unity YAML, rejects unsupported mechanisms and invalid vehicle/container/queue references, rolls back failed catalog updates, and stores accepted sources under `artifacts/unity-level-sources/`.
 - `scripts/generate-active-spatial-conveyor.mjs`: Reads the baked conveyor selection, validates the matching imported JSON package, and generates the single spatial conveyor payload included in production builds.
@@ -56,6 +59,7 @@ Use this file before code changes. Pick the closest change area, then read only 
 
 - `src/main.js`: Browser entry point. Wires `BusLoopGame`, `SceneView`, `GameAudioController`, and `createSceneEditor`; handles saved tuning migration, responsive branding image/text positioning, text fitting and dragging, HUD sync, reset, long press speed-up, animation frame loop, and `window.__busLoop` QA/debug API.
 - `src/audio-controller.js`: Runtime audio bridge. Owns Unity-named sound config playback, WebAudio unlocking/preloading, random clip choice, game-event de-duping, and passenger-up playback.
+- `src/random-playable-audio.js`: Pure scheduler for optional playable-material audio. Owns first-click activation, bounded random cooldowns, non-repeating clip selection, per-clip/master volume multiplication, and CTA stopping state.
 - `src/game-model.js`: Pure gameplay state machine. Owns vehicle click handling, blocker checks, station assignment, route progress, conveyor/queue passenger flow, boarding events, win/fail checks, snapshots, and subscriptions.
 - `src/vehicle-collision.js`: Unity-style runtime collision context. Owns per-vehicle collision sizes, current-pose oriented boxes, drive-out graph decisions, direct candidates, and edge contact points.
 - `src/level-data.js`: Small runtime boundary that exports colors and the mutable live `LEVEL_1` binding backed by the current generated session level.
