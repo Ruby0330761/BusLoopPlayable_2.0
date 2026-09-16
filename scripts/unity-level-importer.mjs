@@ -21,10 +21,11 @@ const UNSUPPORTED_MECHANISM_SECTIONS = [
   'vehicleCombinations',
   'vehicleAnchors',
   'vehiclePassengerLocations',
-  'vehicleFiretrucks'
 ];
 const STANDARD_COLOR_INDEX_MAX = 10;
+const POLICE_COLOR_INDEX = 11;
 const AMBULANCE_COLOR_INDEX = 13;
+const FIRE_TRUCK_COLOR_INDEX = 12;
 const LUXURY_COLOR_INDEX = 15;
 const PARKING_AREA_CONTAINER_TYPE = 1;
 const GARAGE_CONTAINER_TYPE = 2;
@@ -156,8 +157,15 @@ function validateVehicles(source) {
       throw invalid(`Vehicle ${id} uses unsupported seat count ${seats}; supported values are 4, 6, and 10.`);
     }
     const colorIndex = requireInteger(record.colorIndex, `${label}.colorIndex`, { min: 0, max: LUXURY_COLOR_INDEX });
-    if (colorIndex > STANDARD_COLOR_INDEX_MAX && colorIndex !== AMBULANCE_COLOR_INDEX && colorIndex !== LUXURY_COLOR_INDEX) {
+    if (colorIndex > STANDARD_COLOR_INDEX_MAX
+      && colorIndex !== POLICE_COLOR_INDEX
+      && colorIndex !== AMBULANCE_COLOR_INDEX
+      && colorIndex !== FIRE_TRUCK_COLOR_INDEX
+      && colorIndex !== LUXURY_COLOR_INDEX) {
       throw invalid(`Vehicle ${id} uses unsupported color index ${colorIndex}.`);
+    }
+    if (colorIndex === POLICE_COLOR_INDEX && seats !== 4) {
+      throw invalid(`Police vehicle ${id} must use 4 seats.`);
     }
     if (colorIndex === LUXURY_COLOR_INDEX && seats !== 6) {
       throw invalid(`Luxury vehicle ${id} must use 6 seats.`);
@@ -179,6 +187,7 @@ function validateVehicles(source) {
       id,
       seats,
       colorIndex,
+      isPolice: colorIndex === POLICE_COLOR_INDEX,
       isHidden,
       isTurnVehicle: Boolean(isTurnVehicle),
       containerType,
@@ -216,6 +225,34 @@ function validateAmbulances(source, vehicles) {
     }
   }
   return ambulances;
+}
+
+function validateFiretrucks(source, vehicles) {
+  const records = section(source, 'vehicleFiretrucks')
+    ? parseRecords(source, 'vehicleFiretrucks', 'vid')
+    : [];
+  const vehiclesById = new Map(vehicles.map((vehicle) => [vehicle.id, vehicle]));
+  const configuredIds = new Set();
+  const firetrucks = records.map((record, index) => {
+    const label = `vehicleFiretrucks[${index}]`;
+    const vid = requireInteger(record.vid, `${label}.vid`);
+    if (configuredIds.has(vid)) throw invalid(`Fire truck vehicle ${vid} is configured more than once.`);
+    configuredIds.add(vid);
+    const vehicle = vehiclesById.get(vid);
+    if (!vehicle) throw invalid(`Fire truck vehicle ${vid} does not exist.`);
+    if (vehicle.seats !== 10) throw invalid(`Fire truck vehicle ${vid} must use 10 seats.`);
+    if (vehicle.colorIndex !== FIRE_TRUCK_COLOR_INDEX) {
+      throw invalid(`Fire truck vehicle ${vid} must use color index ${FIRE_TRUCK_COLOR_INDEX}.`);
+    }
+    const timeLimit = requireInteger(record.timeLimit, `${label}.timeLimit`, { min: 1, max: 86400000 });
+    return { vid, timeLimit };
+  });
+  for (const vehicle of vehicles) {
+    if (vehicle.colorIndex === FIRE_TRUCK_COLOR_INDEX && !configuredIds.has(vehicle.id)) {
+      throw invalid(`Vehicle ${vehicle.id} uses fire truck color index ${FIRE_TRUCK_COLOR_INDEX} but has no vehicleFiretrucks configuration.`);
+    }
+  }
+  return firetrucks;
 }
 
 function validateContainers(source, vehicles) {
@@ -330,7 +367,11 @@ function validatePassengerQueues(source, vehicles) {
     const colorMatch = line.match(/^    colorIndex:\s*(-?\d+)\s*$/);
     if (colorMatch && queueId != null) {
       const colorIndex = requireInteger(colorMatch[1], 'fixedPassengerSequence.colorIndex', { min: 0, max: LUXURY_COLOR_INDEX });
-      if (colorIndex > STANDARD_COLOR_INDEX_MAX && colorIndex !== AMBULANCE_COLOR_INDEX && colorIndex !== LUXURY_COLOR_INDEX) {
+      if (colorIndex > STANDARD_COLOR_INDEX_MAX
+        && colorIndex !== POLICE_COLOR_INDEX
+        && colorIndex !== AMBULANCE_COLOR_INDEX
+        && colorIndex !== FIRE_TRUCK_COLOR_INDEX
+        && colorIndex !== LUXURY_COLOR_INDEX) {
         throw invalid(`Passenger uses unsupported color index ${colorIndex}.`);
       }
       if (!queues.has(queueId)) queues.set(queueId, []);
@@ -411,6 +452,7 @@ export function validateUnityLevelSource({ filename, source }) {
   validateNoUnsupportedMechanisms(source);
   const { vehicles, vehicleIds } = validateVehicles(source);
   const ambulances = validateAmbulances(source, vehicles);
+  const firetrucks = validateFiretrucks(source, vehicles);
   const containers = validateContainers(source, vehicles);
   const conveyorBelts = validateConveyorBelts(source, containers, vehicles);
   const passengerQueues = validatePassengerQueues(source, vehicles);
@@ -429,6 +471,8 @@ export function validateUnityLevelSource({ filename, source }) {
     vehicleCount: vehicles.length,
     turnVehicleCount: vehicles.filter((vehicle) => vehicle.isTurnVehicle).length,
     ambulanceCount: ambulances.length,
+    fireTruckCount: firetrucks.length,
+    policeCount: vehicles.filter((vehicle) => vehicle.colorIndex === POLICE_COLOR_INDEX).length,
     luxuryCount: vehicles.filter((vehicle) => vehicle.colorIndex === LUXURY_COLOR_INDEX).length,
     containerCount: containers.length,
     garageCount: containers.filter((container) => container.type === GARAGE_CONTAINER_TYPE).length,

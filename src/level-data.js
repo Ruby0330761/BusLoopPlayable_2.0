@@ -12,6 +12,12 @@ export const COLORS = Object.freeze({
   8: { name: 'Brown', hex: 0x542c16, css: '#542c16' },
   9: { name: 'DarkGreen', hex: 0x206d53, css: '#206d53' },
   10: { name: 'DarkBlue', hex: 0x15209e, css: '#15209e' },
+  // Police vehicles use their own model/material after assets load, but the
+  // fallback scene still needs a valid color while that work is in flight.
+  11: { name: 'Police', hex: 0x4f6275, css: '#4f6275' },
+  // Fire trucks use their dedicated model/material after assets load, but the
+  // fallback scene still needs a valid color while that work is in flight.
+  12: { name: 'FireTruck', hex: 0xd32f2f, css: '#d32f2f' },
   13: { name: 'Ambulance', hex: 0xffffff, css: '#ffffff' },
   15: { name: 'Luxury', hex: 0xd7b477, css: '#d7b477' }
 });
@@ -28,6 +34,7 @@ export const PASSENGER_COUNT_BOARD_COLORS = Object.freeze({
   8: { background: 0xb46551, outline: '#702a09' },
   9: { background: 0x35ac93, outline: '#226355' },
   10: { background: 0x3e45ff, outline: '#161b6f' },
+  12: { background: 0xf04449, outline: '#8a171b' },
   13: { background: 0xf04449, outline: '#8a171b' },
   15: { background: 0xd8ad6a, outline: '#6d421f' }
 });

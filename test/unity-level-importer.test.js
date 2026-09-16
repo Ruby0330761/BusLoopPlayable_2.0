@@ -89,6 +89,8 @@ test('validates a supported Unity level and reports import counts', () => {
     vehicleCount: 1,
     turnVehicleCount: 0,
     ambulanceCount: 0,
+    fireTruckCount: 0,
+    policeCount: 0,
     luxuryCount: 0,
     garageCount: 0,
     garageVehicleCount: 0,
@@ -101,6 +103,8 @@ test('validates a supported Unity level and reports import counts', () => {
       counts: {
         luxuryVehicle: 0,
         ambulance: 0,
+        fireTruck: 0,
+        policeCar: 0,
         turnVehicle: 0,
         hiddenVehicle: 0,
         garage: 0,
@@ -271,12 +275,30 @@ test('rejects mechanism sections that are not supported by the current editor', 
     }),
     /vehicleExt contains a mechanism/
   );
+});
+
+test('validates fire truck vehicle identity, color, seats, and time limit', () => {
+  const result = validateUnityLevelSource({
+    filename: 'level19.asset',
+    source: makeLevelSource({
+      vehicleSeats: 10,
+      vehicleColorIndex: 12,
+      passengerColors: Array(10).fill(12),
+      firetruckSection: '  vehicleFiretrucks:\n  - vid: 1\n    timeLimit: 90000'
+    })
+  });
+  assert.equal(result.fireTruckCount, 1);
+  assert.deepEqual(result.mechanics.types, ['ordinaryConveyor', 'fireTruck']);
   assert.throws(
     () => validateUnityLevelSource({
       filename: 'level19.asset',
-      source: makeLevelSource({ firetruckSection: '  vehicleFiretrucks:\n  - vid: 1' })
+      source: makeLevelSource({
+        vehicleSeats: 10,
+        vehicleColorIndex: 12,
+        passengerColors: Array(10).fill(12)
+      })
     }),
-    /vehicleFiretrucks contains a mechanism/
+    /has no vehicleFiretrucks configuration/
   );
 });
 
@@ -347,6 +369,31 @@ test('validates luxury vehicles and passengers without requiring a mechanism sec
       })
     }),
     /unsupported color index 14/
+  );
+});
+
+test('validates police vehicles and exposes police mechanism metadata', () => {
+  const result = validateUnityLevelSource({
+    filename: 'level19.asset',
+    source: makeLevelSource({
+      vehicleSeats: 4,
+      vehicleColorIndex: 11,
+      passengerColors: Array(4).fill(11)
+    })
+  });
+  assert.equal(result.policeCount, 1);
+  assert.deepEqual(result.mechanics.types, ['ordinaryConveyor', 'policeCar']);
+
+  assert.throws(
+    () => validateUnityLevelSource({
+      filename: 'level19.asset',
+      source: makeLevelSource({
+        vehicleSeats: 6,
+        vehicleColorIndex: 11,
+        passengerColors: Array(6).fill(11)
+      })
+    }),
+    /Police vehicle 1 must use 4 seats/
   );
 });
 

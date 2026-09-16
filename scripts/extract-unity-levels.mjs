@@ -32,6 +32,8 @@ const unityVehicleCollisionSizes = {
   10: { width: 0.27, length: 0.6785897 }
 };
 const LUXURY_COLOR_INDEX = 15;
+const POLICE_COLOR_INDEX = 11;
+const FIRE_TRUCK_COLOR_INDEX = 12;
 const unityGarageConfig = {
   size: { width: 0.50425464, length: 0.668775 },
   parkOffset: 0.7,
@@ -198,6 +200,13 @@ function parseAmbulances(source) {
   }));
 }
 
+function parseFiretrucks(source) {
+  return records(section(source, 'vehicleFiretrucks', 'containers'), 'vid').map((entry) => ({
+    vid: Number(entry.vid),
+    timeLimit: Number(entry.timeLimit)
+  }));
+}
+
 function parseConveyorBelts(source) {
   const block = section(source, 'conveyorBelts');
   if (!block || block.trim().endsWith('[]')) return [];
@@ -228,6 +237,9 @@ function colorCounts(values) {
 function validateLevel(level) {
   const seatCounts = {};
   for (const vehicle of level.vehicles) {
+    if (vehicle.colorIndex === POLICE_COLOR_INDEX && vehicle.seats !== 4) {
+      throw new Error(`${level.key}: police vehicle ${vehicle.id} must use 4 seats`);
+    }
     seatCounts[vehicle.colorIndex] = (seatCounts[vehicle.colorIndex] ?? 0) + vehicle.seats;
   }
   const passengerCounts = colorCounts(level.passengerQueues.flat());
@@ -270,8 +282,10 @@ function parseUnityLevel(path, baseLevel) {
   const fileName = basename(path);
   const key = fileName.replace(/\.asset$/i, '');
   const ambulanceEntries = parseAmbulances(source);
+  const firetruckEntries = parseFiretrucks(source);
   const conveyorBelts = parseConveyorBelts(source);
   const ambulanceStepLimits = new Map(ambulanceEntries.map((entry) => [entry.vid, entry.stepLimit]));
+  const firetruckTimeLimits = new Map(firetruckEntries.map((entry) => [entry.vid, entry.timeLimit]));
   const vehicles = records(section(source, 'vehicles', 'containers')).map((vehicle) => ({
     id: vehicle.id,
     seats: vehicle.seats,
@@ -281,11 +295,16 @@ function parseUnityLevel(path, baseLevel) {
     yaw: yawFromQuaternion(vehicle.rotation ?? {}),
     isHidden: Boolean(vehicle.isHidden),
     isTurnVehicle: Boolean(vehicle.isTurnVehicle),
+    isPolice: vehicle.colorIndex === POLICE_COLOR_INDEX,
+    isFireTruck: vehicle.colorIndex === FIRE_TRUCK_COLOR_INDEX,
     isLuxury: vehicle.colorIndex === LUXURY_COLOR_INDEX,
     containerType: vehicle.containerType,
     containerId: vehicle.containerId,
     ...(ambulanceStepLimits.has(vehicle.id)
       ? { ambulanceStepLimit: ambulanceStepLimits.get(vehicle.id) }
+      : {})
+    ,...(firetruckTimeLimits.has(vehicle.id)
+      ? { firetruckTimeLimit: firetruckTimeLimits.get(vehicle.id) }
       : {})
   }));
   const containers = records(section(source, 'containers', 'vehicleExt')).map((container) => ({
@@ -311,12 +330,15 @@ function parseUnityLevel(path, baseLevel) {
     conveyorBeltName: String(scalar(source, 'conveyorBeltName', baseLevel.conveyorBeltName ?? '')),
     vehicles,
     turnVehicleCount: vehicles.filter((vehicle) => vehicle.isTurnVehicle).length,
+    policeCount: vehicles.filter((vehicle) => vehicle.isPolice).length,
     luxuryCount: vehicles.filter((vehicle) => vehicle.isLuxury).length,
     vehicleAmbulances: ambulanceEntries,
+    vehicleFiretrucks: firetruckEntries,
     containers,
     mechanics: deriveLevelMechanics({
       vehicles,
       vehicleAmbulances: ambulanceEntries,
+      vehicleFiretrucks: firetruckEntries,
       containers,
       conveyorBelts
     }),

@@ -63,7 +63,11 @@ function normalizeVehicle(vehicle, fallbackId) {
     containerId: Math.max(0, Math.round(finite(vehicle?.containerId))),
     elevatorLayer: Math.max(0, Math.min(1, Math.round(finite(vehicle?.elevatorLayer)))),
     mechanism: {
-      type: vehicle?.mechanism?.type ?? (Number.isInteger(vehicle?.ambulanceStepLimit) ? 'ambulance' : 'normal'),
+      type: vehicle?.mechanism?.type ?? (
+        Number.isInteger(vehicle?.ambulanceStepLimit)
+          ? 'ambulance'
+          : (Number(vehicle?.colorIndex) === 11 ? 'policeCar' : 'normal')
+      ),
       pairVehicleId: vehicle?.mechanism?.pairVehicleId == null ? null : positiveInt(vehicle.mechanism.pairVehicleId),
       distance: Math.max(0.15, finite(vehicle?.mechanism?.distance, 0.25)),
       wrenchColor: Math.max(0, Math.round(finite(vehicle?.mechanism?.wrenchColor))),
