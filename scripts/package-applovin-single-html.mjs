@@ -1,5 +1,6 @@
 import { mkdir, readFile, readdir, stat, writeFile } from 'node:fs/promises';
 import path from 'node:path';
+import { getForegroundVideoAssetUrl } from './foreground-video-importer.mjs';
 
 const ROOT = process.cwd();
 const DIST_DIR = path.join(ROOT, 'dist');
@@ -53,10 +54,12 @@ const MIME_TYPES = new Map([
   ['.jpg', 'image/jpeg'],
   ['.js', 'text/javascript'],
   ['.mp3', 'audio/mpeg'],
+  ['.mp4', 'video/mp4'],
   ['.wav', 'audio/wav'],
   ['.png', 'image/png'],
   ['.rgba16f', 'application/octet-stream'],
   ['.ttf', 'font/ttf'],
+  ['.webm', 'video/webm'],
   ['.webp', 'image/webp']
 ]);
 
@@ -165,6 +168,44 @@ function stripEditorMount(html) {
   return html.replace(/\s*<aside\b(?=[^>]*\bid="scene-editor")[^>]*><\/aside>\s*/u, '\n');
 }
 
+function deduplicateJavaScriptDataUris(source) {
+  const tokenPattern = /data:[^;,]+;base64,[A-Za-z0-9+/=]+/gu;
+  const counts = new Map();
+  for (const match of source.matchAll(tokenPattern)) {
+    const token = match[0];
+    counts.set(token, (counts.get(token) ?? 0) + 1);
+  }
+  const shared = [...counts.entries()]
+    .filter(([, count]) => count > 1)
+    .sort((a, b) => b[0].length - a[0].length);
+  if (!shared.length) return source;
+
+  let next = source;
+  const declarations = [];
+  shared.forEach(([token], index) => {
+    const name = `__busLoopAsset${index}`;
+    for (const quote of ['"', "'", '`']) {
+      next = next.split(`${quote}${token}${quote}`).join(name);
+    }
+    declarations.push(`const ${name}=${JSON.stringify(token)};`);
+  });
+  return `${declarations.join('\n')}\n${next}`;
+}
+
+function injectForegroundVideoAssets(html, foregroundAssetUrl, transitionAssetUrl) {
+  if (!foregroundAssetUrl) return html;
+  const assignments = [
+    `globalThis.__BUS_LOOP_FOREGROUND_VIDEO_ASSET__=${JSON.stringify(foregroundAssetUrl)};`
+  ];
+  if (transitionAssetUrl) {
+    assignments.push(
+      `globalThis.__BUS_LOOP_FOREGROUND_TRANSITION_ASSET__=${JSON.stringify(transitionAssetUrl)};`
+    );
+  }
+  const source = `    <script>${assignments.join('')}<\/script>\n`;
+  return html.replace('</head>', `${source}  </head>`);
+}
+
 async function main() {
   const [{ PLAYABLE_LEVEL_SEQUENCE }, { SCENE_TUNING }, {
     BASE_RUNTIME_ASSET_PATHS,
@@ -188,8 +229,22 @@ async function main() {
     readFile(path.join(DIST_DIR, cssPath), 'utf8')
   ]);
   const spatialSelection = SCENE_TUNING.conveyorLayout?.selected;
-  const mechanismTypes = getMechanismTypesForLevels(PLAYABLE_LEVEL_SEQUENCE, { spatialSelection });
+  const mechanismTypes = getMechanismTypesForLevels(PLAYABLE_LEVEL_SEQUENCE, {
+    spatialSelection,
+    entryBannerEnabled: Boolean(SCENE_TUNING.entryBanner?.enabled),
+    passengerEmojiEnabled: Boolean(SCENE_TUNING.passengerEmoji?.enabled),
+    randomPlayableAudioEnabled: Boolean(SCENE_TUNING.randomPlayableAudio?.enabled)
+  });
   const realAssetUrls = new Set(BASE_RUNTIME_ASSET_PATHS);
+  const foregroundVideoAssetUrl = SCENE_TUNING.foregroundVideo?.enabled
+    && SCENE_TUNING.foregroundVideo?.selected
+    ? getForegroundVideoAssetUrl(SCENE_TUNING.foregroundVideo.selected)
+    : null;
+  const foregroundTransitionAssetUrl = foregroundVideoAssetUrl
+    && SCENE_TUNING.foregroundVideo?.transitionEnabled !== 0
+    && SCENE_TUNING.foregroundVideo?.transitionSelected
+    ? getForegroundVideoAssetUrl(SCENE_TUNING.foregroundVideo.transitionSelected)
+    : null;
   for (const level of PLAYABLE_LEVEL_SEQUENCE) collectAssetUrls(level, realAssetUrls);
   collectAssetUrls(html, realAssetUrls);
   collectAssetUrls(cssSource, realAssetUrls);
@@ -199,6 +254,8 @@ async function main() {
     logo: SCENE_TUNING.branding?.logo?.asset
   }, realAssetUrls);
   for (const assetUrl of getMechanismResourcePaths(mechanismTypes)) realAssetUrls.add(assetUrl);
+  if (foregroundVideoAssetUrl) realAssetUrls.add(foregroundVideoAssetUrl);
+  if (foregroundTransitionAssetUrl) realAssetUrls.add(foregroundTransitionAssetUrl);
   realAssetUrls.delete(jsPath);
   realAssetUrls.delete(cssPath);
 
@@ -207,10 +264,16 @@ async function main() {
   for (const assetUrl of realAssetUrls) {
     if (!availableUrls.has(assetUrl)) throw new Error(`Required production asset is missing: ${assetUrl}`);
   }
-  const js = replaceAssetUrls(replaceBundledDynamicAssetUrls(jsSource, assetMap), assetMap);
+  const js = deduplicateJavaScriptDataUris(
+    replaceAssetUrls(replaceBundledDynamicAssetUrls(jsSource, assetMap), assetMap)
+  );
   const css = stripEditorCss(replaceAssetUrls(cssSource, assetMap));
 
-  let output = inlineCss(html, css, cssPath);
+  let output = injectForegroundVideoAssets(
+    inlineCss(html, css, cssPath),
+    foregroundVideoAssetUrl,
+    foregroundTransitionAssetUrl
+  );
   output = inlineModule(output, js, jsPath);
   output = replaceAssetUrls(output, assetMap);
 

@@ -12,6 +12,13 @@ import {
   MAX_UNITY_LEVEL_BYTES,
   importUnityLevelAsset
 } from './scripts/unity-level-importer.mjs';
+import {
+  DEFAULT_FOREGROUND_VIDEO_ROOT,
+  MAX_FOREGROUND_VIDEO_BYTES,
+  importForegroundVideo,
+  listForegroundVideos,
+  validateForegroundVideoFilename
+} from './scripts/foreground-video-importer.mjs';
 
 const BUILTIN_LEVEL_IDS = new Set([
   'level5', 'level7', 'level8', 'level9', 'level10', 'level12', 'level13', 'level15',
@@ -363,6 +370,43 @@ function decodeLevelFilename(request) {
   return filename;
 }
 
+function decodeForegroundVideoFilename(request) {
+  const rawFilename = request.headers['x-foreground-video-filename'];
+  if (typeof rawFilename !== 'string') throw new Error('Missing foreground video filename.');
+  try {
+    return validateForegroundVideoFilename(decodeURIComponent(rawFilename));
+  } catch (error) {
+    if (error instanceof URIError) throw new Error('Foreground video filename encoding is invalid.');
+    throw error;
+  }
+}
+
+function readBinaryRequestBody(request, maxBytes, label) {
+  return new Promise((resolve, reject) => {
+    const chunks = [];
+    let byteLength = 0;
+    let tooLarge = false;
+    request.on('data', (chunk) => {
+      byteLength += chunk.length;
+      if (byteLength > maxBytes) {
+        tooLarge = true;
+        return;
+      }
+      chunks.push(chunk);
+    });
+    request.on('end', () => {
+      if (tooLarge) {
+        const error = new Error(`${label} exceeds the ${Math.round(maxBytes / 1024 / 1024)} MB import limit.`);
+        error.statusCode = 413;
+        reject(error);
+        return;
+      }
+      resolve(Buffer.concat(chunks));
+    });
+    request.on('error', reject);
+  });
+}
+
 function readRequestBody(request, maxBytes, label = 'Prefab') {
   return new Promise((resolve, reject) => {
     const chunks = [];
@@ -464,6 +508,44 @@ export default defineConfig({
             const result = await importUnityLevelAsset({ filename, source });
             sendJson(response, 201, {
               level: result.level,
+              replaced: result.replaced,
+              savedPath: path.relative(process.cwd(), result.outputPath).replaceAll('\\', '/')
+            });
+          } catch (error) {
+            sendJson(response, error.statusCode ?? 400, { error: error.message });
+          }
+          return;
+        }
+        if (pathname === '/__foreground-videos' && request.method === 'GET') {
+          try {
+            sendJson(response, 200, { items: await listForegroundVideos() });
+          } catch (error) {
+            sendJson(response, 500, { error: error.message });
+          }
+          return;
+        }
+        if (pathname === '/__foreground-videos/open-folder' && request.method === 'POST') {
+          try {
+            const folderPath = await openFolder(DEFAULT_FOREGROUND_VIDEO_ROOT);
+            sendJson(response, 200, {
+              path: path.relative(process.cwd(), folderPath).replaceAll('\\', '/')
+            });
+          } catch (error) {
+            sendJson(response, 500, { error: error.message });
+          }
+          return;
+        }
+        if (pathname === '/__foreground-videos/import' && request.method === 'POST') {
+          try {
+            const filename = decodeForegroundVideoFilename(request);
+            const bytes = await readBinaryRequestBody(
+              request,
+              MAX_FOREGROUND_VIDEO_BYTES,
+              'Foreground video'
+            );
+            const result = await importForegroundVideo({ filename, bytes });
+            sendJson(response, result.replaced ? 200 : 201, {
+              item: result.item,
               replaced: result.replaced,
               savedPath: path.relative(process.cwd(), result.outputPath).replaceAll('\\', '/')
             });

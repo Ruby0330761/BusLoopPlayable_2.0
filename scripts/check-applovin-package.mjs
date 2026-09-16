@@ -1,6 +1,10 @@
 import { readFile, stat } from 'node:fs/promises';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
+import {
+  getForegroundVideoAssetUrl,
+  listForegroundVideos
+} from './foreground-video-importer.mjs';
 
 const ROOT = process.cwd();
 const PACKAGE_FILE = path.join(ROOT, 'artifacts', 'applovin', 'index.html');
@@ -48,7 +52,9 @@ function mimeForAsset(asset) {
     ['.jpeg', 'image/jpeg'],
     ['.png', 'image/png'],
     ['.mp3', 'audio/mpeg'],
+    ['.mp4', 'video/mp4'],
     ['.wav', 'audio/wav'],
+    ['.webm', 'video/webm'],
     ['.webp', 'image/webp'],
     ['.ttf', 'font/ttf']
   ]).get(extension) ?? 'application/octet-stream';
@@ -84,7 +90,10 @@ async function main() {
     ? JSON.parse(await readFile(path.join(SPATIAL_PACKAGE_ROOT, `${selectedSpatialId}.json`), 'utf8'))
     : null;
   const mechanismTypes = getMechanismTypesForLevels(PLAYABLE_LEVEL_SEQUENCE, {
-    spatialSelection: selectedConveyor
+    spatialSelection: selectedConveyor,
+    entryBannerEnabled: Boolean(SCENE_TUNING.entryBanner?.enabled),
+    passengerEmojiEnabled: Boolean(SCENE_TUNING.passengerEmoji?.enabled),
+    randomPlayableAudioEnabled: Boolean(SCENE_TUNING.randomPlayableAudio?.enabled)
   });
   const selectedMechanismUrls = getMechanismResourcePaths(mechanismTypes);
   const allMechanismUrls = getMechanismResourcePaths(Object.keys(MECHANISM_RESOURCE_MANIFEST));
@@ -92,6 +101,29 @@ async function main() {
     selectedMechanismUrls.map((asset) => assetDataUri(asset))
   );
   const omittedMechanismUrls = allMechanismUrls.filter((asset) => !selectedMechanismUrls.includes(asset));
+  const foregroundVideoAsset = SCENE_TUNING.foregroundVideo?.enabled
+    && SCENE_TUNING.foregroundVideo?.selected
+    ? getForegroundVideoAssetUrl(SCENE_TUNING.foregroundVideo.selected)
+    : null;
+  const foregroundTransitionAsset = foregroundVideoAsset
+    && SCENE_TUNING.foregroundVideo?.transitionEnabled !== 0
+    && SCENE_TUNING.foregroundVideo?.transitionSelected
+    ? getForegroundVideoAssetUrl(SCENE_TUNING.foregroundVideo.transitionSelected)
+    : null;
+  const importedForegroundVideos = await listForegroundVideos();
+  const importedForegroundVideoDataUris = await Promise.all(
+    importedForegroundVideos.map((item) => assetDataUri(item.assetUrl))
+  );
+  const selectedForegroundVideoDataUri = foregroundVideoAsset
+    ? await assetDataUri(foregroundVideoAsset)
+    : null;
+  const selectedForegroundTransitionDataUri = foregroundTransitionAsset
+    ? await assetDataUri(foregroundTransitionAsset)
+    : null;
+  const selectedForegroundAssetUrls = new Set([
+    foregroundVideoAsset,
+    foregroundTransitionAsset
+  ].filter(Boolean));
 
   function containsMechanismReference(asset) {
     if (html.includes(asset)) return true;
@@ -164,6 +196,34 @@ async function main() {
       name: 'unselected mechanism resources omitted',
       pass: omittedMechanismUrls.every((asset) => !containsMechanismReference(asset)),
       detail: `${omittedMechanismUrls.length} resources omitted`
+    },
+    {
+      name: 'foreground video follows display selection',
+      pass: selectedForegroundVideoDataUri
+        ? html.includes(
+            `globalThis.__BUS_LOOP_FOREGROUND_VIDEO_ASSET__=${JSON.stringify(selectedForegroundVideoDataUri)}`
+          )
+        : importedForegroundVideoDataUris.every((dataUri) => !html.includes(dataUri)),
+      detail: selectedForegroundVideoDataUri ? SCENE_TUNING.foregroundVideo.selected : 'disabled'
+    },
+    {
+      name: 'foreground transition follows display selection',
+      pass: selectedForegroundTransitionDataUri
+        ? html.includes(
+            `globalThis.__BUS_LOOP_FOREGROUND_TRANSITION_ASSET__=${JSON.stringify(selectedForegroundTransitionDataUri)}`
+          )
+        : !/globalThis\.__BUS_LOOP_FOREGROUND_TRANSITION_ASSET__\s*=/u.test(html),
+      detail: selectedForegroundTransitionDataUri
+        ? SCENE_TUNING.foregroundVideo.transitionSelected
+        : 'disabled or unselected'
+    },
+    {
+      name: 'unselected foreground videos omitted',
+      pass: importedForegroundVideos.every((item, index) => (
+        selectedForegroundAssetUrls.has(item.assetUrl)
+        || !html.includes(importedForegroundVideoDataUris[index])
+      )),
+      detail: `${Math.max(0, importedForegroundVideos.length - selectedForegroundAssetUrls.size)} videos omitted`
     },
     {
       name: 'iOS App Store direct scheme present',
