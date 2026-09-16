@@ -1,6 +1,6 @@
 export const SCENE_TUNING = {
   "level": {
-    "selected": "level42"
+    "selected": "level33"
   },
   "preview": {
     "enabled": 0,
@@ -104,7 +104,7 @@ export const SCENE_TUNING = {
     "groundY": 0.025
   },
   "conveyorLayout": {
-    "selected": "dualQueue3"
+    "selected": "dualQueue2"
   },
   "spatialConveyor": {
     "capacity": 128,
@@ -419,10 +419,10 @@ export const SCENE_TUNING = {
     "turnInController": 0.1,
     "turnOutController": 0.25,
     "parkingBounds": {
-      "minX": -2.1,
-      "maxX": 2.2,
-      "minZ": -3.02,
-      "maxZ": 2.12
+      "minX": -2.34,
+      "maxX": 2.34,
+      "minZ": -2.67,
+      "maxZ": 2.62
     }
   },
   "vehicleDeparturePath": {
@@ -491,8 +491,8 @@ export const SCENE_TUNING = {
     "opacity": 1
   },
   "firstClickGuide": {
-    "enabled": 0,
-    "levelKey": "level35",
+    "enabled": 1,
+    "levelKey": "level33",
     "vehicleId": 89,
     "durationSeconds": 3,
     "maskOpacity": 0.8,
@@ -501,7 +501,7 @@ export const SCENE_TUNING = {
     "holeScaleY": 0.62
   },
   "entryBanner": {
-    "enabled": 1,
+    "enabled": 0,
     "style": "superhard",
     "positionX": 540,
     "positionY": 1080,
@@ -510,58 +510,58 @@ export const SCENE_TUNING = {
     "maskEnabled": true,
     "maskOpacity": 0.62,
     "components": {
-        "banner": {
-          "position": {
-            "x": 0,
-            "y": 0,
-            "z": 0
-          },
-          "scale": {
-            "x": 1.9,
-            "y": 1.9,
-            "z": 1
-          },
-          "rotation": {
-            "x": 0,
-            "y": 0,
-            "z": 0
-          }
+      "banner": {
+        "position": {
+          "x": 0,
+          "y": 0,
+          "z": 0
         },
-        "arrows": {
-          "position": {
-            "x": 0,
-            "y": -20,
-            "z": 0
-          },
-          "scale": {
-            "x": 2,
-            "y": 2,
-            "z": 1
-          },
-          "rotation": {
-            "x": 0,
-            "y": 0,
-            "z": 0
-          }
+        "scale": {
+          "x": 1.9,
+          "y": 1.9,
+          "z": 1
         },
-        "label": {
-          "position": {
-            "x": 0,
-            "y": 0,
-            "z": 0
-          },
-          "scale": {
-            "x": 0.8,
-            "y": 0.8,
-            "z": 1
-          },
-          "rotation": {
-            "x": 0,
-            "y": 0,
-            "z": 0
-          }
+        "rotation": {
+          "x": 0,
+          "y": 0,
+          "z": 0
+        }
+      },
+      "arrows": {
+        "position": {
+          "x": 0,
+          "y": -20,
+          "z": 0
+        },
+        "scale": {
+          "x": 2,
+          "y": 2,
+          "z": 1
+        },
+        "rotation": {
+          "x": 0,
+          "y": 0,
+          "z": 0
+        }
+      },
+      "label": {
+        "position": {
+          "x": 0,
+          "y": 0,
+          "z": 0
+        },
+        "scale": {
+          "x": 0.8,
+          "y": 0.8,
+          "z": 1
+        },
+        "rotation": {
+          "x": 0,
+          "y": 0,
+          "z": 0
         }
       }
+    }
   },
   "passengers": {
     "modelHeight": 0.48,
@@ -574,6 +574,37 @@ export const SCENE_TUNING = {
     "boardingTargetOffsetX": 0,
     "boardingTargetOffsetY": 0,
     "boardingTargetOffsetZ": 0
+  },
+  "foregroundVideo": {
+    "selected": "police.mp4",
+    "enabled": 1,
+    "fadeOutSeconds": 0.85,
+    "transitionSelected": "transition-20260915.mp4",
+    "transitionEnabled": 0,
+    "transitionDelaySeconds": 0.15
+  },
+  "passengerEmoji": {
+    "enabled": 1,
+    "x": 791,
+    "y": 332,
+    "width": 220,
+    "height": 200,
+    "animationDurationSeconds": 5.7,
+    "animationDelaySeconds": 1.5,
+    "opacity": 1,
+    "locked": 1,
+    "autoHideOnVehicleEnabled": 1,
+    "autoHideOnVehicleLevelKey": "level33",
+    "autoHideOnVehicleId": 89
+  },
+  "randomPlayableAudio": {
+    "enabled": 1,
+    "minIntervalSeconds": 8.7,
+    "maxIntervalSeconds": 11.7,
+    "masterVolume": 1,
+    "policeRingVolume": 1,
+    "moveVolume": 1,
+    "heyMoveItVolume": 1
   },
   "passengerMaterial": {
     "mode": "unityTexture",
@@ -704,10 +735,10 @@ export const SCENE_TUNING = {
       "speedEnd": 0.72
     },
     "hit": {
-      "sizeScale": 3.3,
-      "particleHit2SizeScale": 2,
-      "particleHit1SizeScale": 2.15,
-      "particleHitSizeScale": 4.7
+      "sizeScale": 2,
+      "particleHit2SizeScale": 1,
+      "particleHit1SizeScale": 1,
+      "particleHitSizeScale": 1
     }
   },
   "shadows": {

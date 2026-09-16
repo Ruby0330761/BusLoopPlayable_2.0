@@ -160,6 +160,35 @@ const FIELD_GROUPS = [
     ]
   },
   {
+    title: '\u751f\u6c14\u8868\u60c5 Emoji\u8c03\u6574',
+    fields: [
+      ['\u663e\u793a', 'passengerEmoji.enabled', 0, 1, 1, null, 'toggle'],
+      ['\u9501\u5b9a', 'passengerEmoji.locked', 0, 1, 1, null, 'toggle'],
+      ['X \u4f4d\u7f6e', 'passengerEmoji.x', 0, 4320, 1],
+      ['Y \u4f4d\u7f6e', 'passengerEmoji.y', 0, 4320, 1],
+      ['\u5bbd\u5ea6', 'passengerEmoji.width', 16, 2160, 1],
+      ['\u9ad8\u5ea6', 'passengerEmoji.height', 16, 2160, 1],
+      ['\u5faa\u73af\u65f6\u957f', 'passengerEmoji.animationDurationSeconds', 0.2, 8, 0.01],
+      ['\u5f00\u59cb\u540e\u5ef6\u8fdf\u64ad\u653e', 'passengerEmoji.animationDelaySeconds', 0, 60, 0.1],
+      ['\u900f\u660e\u5ea6', 'passengerEmoji.opacity', 0, 1, 0.01],
+      ['\u81ea\u52a8\u9690\u85cf', 'passengerEmoji.autoHideOnVehicleEnabled', 0, 1, 1, null, 'toggle'],
+      ['\u81ea\u52a8\u9690\u85cf\u5173\u5361', 'passengerEmoji.autoHideOnVehicleLevelKey', 0, 0, 1, LEVEL_OPTIONS],
+      ['\u81ea\u52a8\u9690\u85cf\u8f66 ID', 'passengerEmoji.autoHideOnVehicleId', 1, 200, 1]
+    ]
+  },
+  {
+    title: '\u53ef\u73a9\u7d20\u6750\u968f\u673a\u97f3\u9891',
+    fields: [
+      ['\u542f\u7528', 'randomPlayableAudio.enabled', 0, 1, 1, null, 'toggle'],
+      ['\u6700\u5c0f\u95f4\u9694', 'randomPlayableAudio.minIntervalSeconds', 5, 30, 0.1],
+      ['\u6700\u5927\u95f4\u9694', 'randomPlayableAudio.maxIntervalSeconds', 5, 30, 0.1],
+      ['\u6574\u4f53\u97f3\u91cf', 'randomPlayableAudio.masterVolume', 0, 1, 0.01],
+      ['police ring \u97f3\u91cf', 'randomPlayableAudio.policeRingVolume', 0, 1, 0.01],
+      ['move \u97f3\u91cf', 'randomPlayableAudio.moveVolume', 0, 1, 0.01],
+      ['hey move it \u97f3\u91cf', 'randomPlayableAudio.heyMoveItVolume', 0, 1, 0.01]
+    ]
+  },
+  {
     title: 'CTA',
     fields: [
       ['Enabled', 'cta.enabled', 0, 1, 1],
@@ -878,6 +907,305 @@ export function createSceneEditor(root, {
     }
   });
 
+  const foregroundVideoSection = document.createElement('section');
+  foregroundVideoSection.className = 'editor-section editor-foreground-video';
+  foregroundVideoSection.innerHTML = `
+    <h3>可玩素材 - 前贴片动画</h3>
+    <label class="editor-field editor-field-select editor-foreground-video-select-row">
+      <span>前贴片</span>
+      <select class="editor-select editor-foreground-video-select" aria-label="前贴片动画">
+        <option value="">未选择</option>
+      </select>
+    </label>
+    <label class="editor-field editor-field-select editor-foreground-transition-select-row">
+      <span>转场特效</span>
+      <select class="editor-select editor-foreground-transition-select" aria-label="前贴片转场特效">
+        <option value="">未选择</option>
+      </select>
+    </label>
+    <label class="editor-field editor-field-toggle editor-foreground-transition-enabled-row">
+      <span>使用转场特效</span>
+      <input class="editor-checkbox editor-foreground-transition-enabled" type="checkbox" role="switch" aria-label="使用前贴片转场特效">
+    </label>
+    <div class="editor-foreground-video-actions">
+      <button class="editor-foreground-video-import" type="button">导入前贴片视频</button>
+      <button class="editor-foreground-transition-import" type="button">导入转场特效</button>
+    </div>
+    <button class="editor-foreground-video-open-folder" type="button">打开存储文件夹</button>
+    <button class="editor-foreground-video-refresh" type="button">刷新列表</button>
+    <label class="editor-field editor-field-toggle editor-foreground-video-enabled-row">
+      <span>显示</span>
+      <input class="editor-checkbox editor-foreground-video-enabled" type="checkbox" role="switch" aria-label="显示前贴片动画">
+    </label>
+    <label class="editor-field editor-foreground-video-fade-row">
+      <span>结束淡出秒数</span>
+      <input class="editor-range editor-foreground-video-fade" type="range" min="0" max="3" step="0.05" aria-label="前贴片结束淡出秒数">
+      <input class="editor-number editor-foreground-video-fade-number" type="number" min="0" max="3" step="0.05" aria-label="前贴片结束淡出秒数">
+    </label>
+    <label class="editor-field editor-foreground-transition-delay-row">
+      <span>转场触发延迟</span>
+      <input class="editor-range editor-foreground-transition-delay" type="range" min="0" max="3" step="0.05" aria-label="前贴片淡出开始后的转场触发延迟秒数">
+      <input class="editor-number editor-foreground-transition-delay-number" type="number" min="0" max="3" step="0.05" aria-label="前贴片淡出开始后的转场触发延迟秒数">
+    </label>
+    <input class="editor-foreground-video-file" type="file" accept=".mp4,.webm,video/mp4,video/webm" hidden>
+    <input class="editor-foreground-transition-file" type="file" accept=".mp4,.webm,video/mp4,video/webm" hidden>
+    <p class="editor-foreground-video-status" aria-live="polite">正在读取...</p>
+  `;
+  const passengerEmojiSection = inputs.get('passengerEmoji.enabled')?.row.closest('.editor-section');
+  passengerEmojiSection?.before(foregroundVideoSection);
+
+  const foregroundVideoSelect = foregroundVideoSection.querySelector('.editor-foreground-video-select');
+  const foregroundTransitionSelect = foregroundVideoSection.querySelector('.editor-foreground-transition-select');
+  const foregroundVideoImportButton = foregroundVideoSection.querySelector('.editor-foreground-video-import');
+  const foregroundTransitionImportButton = foregroundVideoSection.querySelector('.editor-foreground-transition-import');
+  const foregroundVideoOpenFolderButton = foregroundVideoSection.querySelector('.editor-foreground-video-open-folder');
+  const foregroundVideoRefreshButton = foregroundVideoSection.querySelector('.editor-foreground-video-refresh');
+  const foregroundVideoEnabled = foregroundVideoSection.querySelector('.editor-foreground-video-enabled');
+  const foregroundTransitionEnabled = foregroundVideoSection.querySelector('.editor-foreground-transition-enabled');
+  const foregroundVideoFade = foregroundVideoSection.querySelector('.editor-foreground-video-fade');
+  const foregroundVideoFadeNumber = foregroundVideoSection.querySelector('.editor-foreground-video-fade-number');
+  const foregroundTransitionDelay = foregroundVideoSection.querySelector('.editor-foreground-transition-delay');
+  const foregroundTransitionDelayNumber = foregroundVideoSection.querySelector('.editor-foreground-transition-delay-number');
+  const foregroundVideoFileInput = foregroundVideoSection.querySelector('.editor-foreground-video-file');
+  const foregroundTransitionFileInput = foregroundVideoSection.querySelector('.editor-foreground-transition-file');
+  const foregroundVideoStatus = foregroundVideoSection.querySelector('.editor-foreground-video-status');
+  inputs.set('foregroundVideo.selected', {
+    row: foregroundVideoSection.querySelector('.editor-foreground-video-select-row'),
+    select: foregroundVideoSelect,
+    step: 1
+  });
+  inputs.set('foregroundVideo.enabled', {
+    row: foregroundVideoSection.querySelector('.editor-foreground-video-enabled-row'),
+    checkbox: foregroundVideoEnabled,
+    step: 1
+  });
+  inputs.set('foregroundVideo.fadeOutSeconds', {
+    row: foregroundVideoSection.querySelector('.editor-foreground-video-fade-row'),
+    range: foregroundVideoFade,
+    number: foregroundVideoFadeNumber,
+    step: 0.05
+  });
+  inputs.set('foregroundVideo.transitionSelected', {
+    row: foregroundVideoSection.querySelector('.editor-foreground-transition-select-row'),
+    select: foregroundTransitionSelect,
+    step: 1
+  });
+  inputs.set('foregroundVideo.transitionEnabled', {
+    row: foregroundVideoSection.querySelector('.editor-foreground-transition-enabled-row'),
+    checkbox: foregroundTransitionEnabled,
+    step: 1
+  });
+  inputs.set('foregroundVideo.transitionDelaySeconds', {
+    row: foregroundVideoSection.querySelector('.editor-foreground-transition-delay-row'),
+    range: foregroundTransitionDelay,
+    number: foregroundTransitionDelayNumber,
+    step: 0.05
+  });
+
+  const commitForegroundVideoTiming = (key, rawValue, range, number) => {
+    const value = Math.min(3, Math.max(0, Number(rawValue)));
+    if (!Number.isFinite(value)) return;
+    const next = structuredClone(getTuning());
+    next.foregroundVideo ??= {};
+    next.foregroundVideo[key] = value;
+    setTuning(next, { path: `foregroundVideo.${key}` });
+    range.value = String(value);
+    number.value = formatValue(value, 0.05);
+  };
+  foregroundVideoFade.addEventListener('input', () => (
+    commitForegroundVideoTiming('fadeOutSeconds', foregroundVideoFade.value, foregroundVideoFade, foregroundVideoFadeNumber)
+  ));
+  foregroundVideoFadeNumber.addEventListener('input', () => (
+    commitForegroundVideoTiming('fadeOutSeconds', foregroundVideoFadeNumber.value, foregroundVideoFade, foregroundVideoFadeNumber)
+  ));
+  foregroundTransitionDelay.addEventListener('input', () => (
+    commitForegroundVideoTiming(
+      'transitionDelaySeconds',
+      foregroundTransitionDelay.value,
+      foregroundTransitionDelay,
+      foregroundTransitionDelayNumber
+    )
+  ));
+  foregroundTransitionDelayNumber.addEventListener('input', () => (
+    commitForegroundVideoTiming(
+      'transitionDelaySeconds',
+      foregroundTransitionDelayNumber.value,
+      foregroundTransitionDelay,
+      foregroundTransitionDelayNumber
+    )
+  ));
+
+  function setForegroundVideoBusy(busy) {
+    foregroundVideoSelect.disabled = busy;
+    foregroundTransitionSelect.disabled = busy;
+    foregroundVideoImportButton.disabled = busy;
+    foregroundTransitionImportButton.disabled = busy;
+    foregroundVideoOpenFolderButton.disabled = busy;
+    foregroundVideoRefreshButton.disabled = busy;
+    foregroundVideoEnabled.disabled = busy;
+    foregroundTransitionEnabled.disabled = busy;
+  }
+
+  function updateForegroundVideoTuning(selected, enabled = getTuning().foregroundVideo?.enabled) {
+    const next = structuredClone(getTuning());
+    next.foregroundVideo ??= {};
+    next.foregroundVideo.selected = selected;
+    next.foregroundVideo.enabled = selected ? (enabled ? 1 : 0) : 0;
+    setTuning(next, { path: 'foregroundVideo.selection' });
+    sync();
+  }
+
+  function updateForegroundTransitionTuning(selected) {
+    const next = structuredClone(getTuning());
+    next.foregroundVideo ??= {};
+    next.foregroundVideo.transitionSelected = selected;
+    setTuning(next, { path: 'foregroundVideo.transitionSelected' });
+    sync();
+  }
+
+  async function refreshForegroundVideoOptions() {
+    const response = await fetch('/__foreground-videos', { cache: 'no-store' });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(payload.error || `HTTP ${response.status}`);
+    const items = payload.items ?? [];
+    foregroundVideoSelect.replaceChildren(new Option('未选择', ''));
+    foregroundTransitionSelect.replaceChildren(new Option('未选择', ''));
+    for (const item of items) {
+      const option = new Option(`${item.label} (${item.filename.split('.').pop().toUpperCase()})`, item.filename);
+      option.dataset.foregroundVideo = 'true';
+      foregroundVideoSelect.append(option);
+      foregroundTransitionSelect.append(option.cloneNode(true));
+    }
+
+    const selected = getTuning().foregroundVideo?.selected ?? '';
+    const transitionSelected = getTuning().foregroundVideo?.transitionSelected ?? '';
+    const selectedStillExists = items.some((item) => item.filename === selected);
+    const transitionStillExists = items.some((item) => item.filename === transitionSelected);
+    if (selected && !selectedStillExists) {
+      updateForegroundVideoTuning('', 0);
+      foregroundVideoStatus.textContent = `原选择 ${selected} 已不存在，已从编辑器移除`;
+    } else {
+      foregroundVideoSelect.value = selectedStillExists ? selected : '';
+      foregroundVideoStatus.textContent = `已读取 ${items.length} 个视频资源`;
+    }
+    if (transitionSelected && !transitionStillExists) {
+      updateForegroundTransitionTuning('');
+      foregroundVideoStatus.textContent = `原转场特效 ${transitionSelected} 已不存在，已从编辑器移除`;
+    } else {
+      foregroundTransitionSelect.value = transitionStillExists ? transitionSelected : '';
+    }
+    return items;
+  }
+
+  async function importForegroundVideoFile(file, target = 'foreground') {
+    if (!/\.(mp4|webm)$/i.test(file?.name ?? '')) {
+      throw new Error('请选择 .mp4 或 .webm 文件');
+    }
+    const response = await fetch('/__foreground-videos/import', {
+      method: 'POST',
+      headers: {
+        'Content-Type': file.type || 'application/octet-stream',
+        'X-Foreground-Video-Filename': encodeURIComponent(file.name)
+      },
+      body: await file.arrayBuffer()
+    });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(payload.error || `HTTP ${response.status}`);
+    await refreshForegroundVideoOptions();
+    if (target === 'transition') updateForegroundTransitionTuning(payload.item.filename);
+    else updateForegroundVideoTuning(payload.item.filename);
+    foregroundVideoStatus.textContent = `${payload.replaced ? '已更新' : '已导入'} ${payload.item.filename}`;
+  }
+
+  foregroundVideoSelect.addEventListener('change', () => {
+    updateForegroundVideoTuning(foregroundVideoSelect.value);
+    foregroundVideoStatus.textContent = foregroundVideoSelect.value
+      ? `已选择 ${foregroundVideoSelect.value}`
+      : '未选择前贴片视频';
+  });
+  foregroundTransitionSelect.addEventListener('change', () => {
+    updateForegroundTransitionTuning(foregroundTransitionSelect.value);
+    foregroundVideoStatus.textContent = foregroundTransitionSelect.value
+      ? `已选择转场特效 ${foregroundTransitionSelect.value}，播放时使用滤色混合`
+      : '未选择转场特效';
+  });
+  foregroundVideoEnabled.addEventListener('change', () => {
+    const selected = getTuning().foregroundVideo?.selected ?? '';
+    if (foregroundVideoEnabled.checked && !selected) {
+      foregroundVideoEnabled.checked = false;
+      foregroundVideoStatus.textContent = '请先选择前贴片视频';
+      return;
+    }
+    updateForegroundVideoTuning(selected, foregroundVideoEnabled.checked);
+    foregroundVideoStatus.textContent = foregroundVideoEnabled.checked
+      ? '已设为显示，重新加载预览时播放并在打包时包含所选视频'
+      : '已设为不显示，打包时将排除视频';
+  });
+  foregroundTransitionEnabled.addEventListener('change', () => {
+    const next = structuredClone(getTuning());
+    next.foregroundVideo ??= {};
+    next.foregroundVideo.transitionEnabled = foregroundTransitionEnabled.checked ? 1 : 0;
+    setTuning(next, { path: 'foregroundVideo.transitionEnabled' });
+    foregroundVideoStatus.textContent = foregroundTransitionEnabled.checked
+      ? '已启用转场特效'
+      : '已关闭转场特效，产包时将排除转场视频';
+  });
+  foregroundVideoImportButton.addEventListener('click', () => foregroundVideoFileInput.click());
+  foregroundTransitionImportButton.addEventListener('click', () => foregroundTransitionFileInput.click());
+  foregroundVideoFileInput.addEventListener('change', async () => {
+    const [file] = foregroundVideoFileInput.files ?? [];
+    if (!file) return;
+    setForegroundVideoBusy(true);
+    foregroundVideoStatus.textContent = `正在导入 ${file.name}...`;
+    try {
+      await importForegroundVideoFile(file);
+    } catch (error) {
+      foregroundVideoStatus.textContent = `导入失败：${error.message}`;
+    } finally {
+      foregroundVideoFileInput.value = '';
+      setForegroundVideoBusy(false);
+    }
+  });
+  foregroundTransitionFileInput.addEventListener('change', async () => {
+    const [file] = foregroundTransitionFileInput.files ?? [];
+    if (!file) return;
+    setForegroundVideoBusy(true);
+    foregroundVideoStatus.textContent = `正在导入转场特效 ${file.name}...`;
+    try {
+      await importForegroundVideoFile(file, 'transition');
+    } catch (error) {
+      foregroundVideoStatus.textContent = `导入失败：${error.message}`;
+    } finally {
+      foregroundTransitionFileInput.value = '';
+      setForegroundVideoBusy(false);
+    }
+  });
+  foregroundVideoOpenFolderButton.addEventListener('click', async () => {
+    setForegroundVideoBusy(true);
+    foregroundVideoStatus.textContent = '正在打开存储文件夹...';
+    try {
+      const response = await fetch('/__foreground-videos/open-folder', { method: 'POST' });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(payload.error || `HTTP ${response.status}`);
+      foregroundVideoStatus.textContent = `已打开 ${payload.path}`;
+    } catch (error) {
+      foregroundVideoStatus.textContent = `打开失败：${error.message}`;
+    } finally {
+      setForegroundVideoBusy(false);
+    }
+  });
+  foregroundVideoRefreshButton.addEventListener('click', async () => {
+    setForegroundVideoBusy(true);
+    foregroundVideoStatus.textContent = '正在刷新...';
+    try {
+      await refreshForegroundVideoOptions();
+    } catch (error) {
+      foregroundVideoStatus.textContent = `刷新失败：${error.message}`;
+    } finally {
+      setForegroundVideoBusy(false);
+    }
+  });
+
   function updatePassengerMaterialVisibility(tuning) {
     const mode = tuning.passengerMaterial?.mode ?? 'unityTexture';
     for (const [path, controls] of inputs) {
@@ -952,5 +1280,14 @@ export function createSceneEditor(root, {
   refreshWebLevelOptions().catch((error) => {
     levelStatus.textContent = `\u7f51\u9875\u5173\u5361\u5217\u8868\u4e0d\u53ef\u7528\uff1a${error.message}`;
   });
-  return { sync, setCollapsed, refreshSpatialConveyorOptions, refreshWebLevelOptions };
+  refreshForegroundVideoOptions().catch((error) => {
+    foregroundVideoStatus.textContent = `列表不可用：${error.message}`;
+  });
+  return {
+    sync,
+    setCollapsed,
+    refreshSpatialConveyorOptions,
+    refreshWebLevelOptions,
+    refreshForegroundVideoOptions
+  };
 }

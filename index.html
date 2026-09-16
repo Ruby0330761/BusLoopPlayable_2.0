@@ -14,7 +14,51 @@
           <img id="branding-icon" class="branding-item" alt="Bus Fever icon" draggable="false" />
           <img id="branding-logo" class="branding-item" src="/assets/main-loading-icon-small.png" alt="Bus Fever logo" draggable="false" />
           <div id="branding-text" class="branding-item branding-text">Bus Fever-Car Jam Escape</div>
+          <div id="passenger-emoji" class="branding-item passenger-emoji" aria-label="Angry passenger emoji"></div>
         </div>
+        <div id="firetruck-hud" class="firetruck-hud" hidden>
+          <div class="firetruck-screen-effect" aria-hidden="true">
+            <img class="firetruck-screen-effect__warning firetruck-screen-effect__warning--primary" alt="" />
+            <img class="firetruck-screen-effect__warning firetruck-screen-effect__warning--strong" alt="" />
+            <div class="firetruck-screen-effect__flames">
+              <i class="firetruck-screen-effect__flame firetruck-screen-effect__flame--top-left"></i>
+              <i class="firetruck-screen-effect__flame firetruck-screen-effect__flame--top-right"></i>
+              <i class="firetruck-screen-effect__flame firetruck-screen-effect__flame--bottom-left"></i>
+              <i class="firetruck-screen-effect__flame firetruck-screen-effect__flame--bottom-right"></i>
+            </div>
+          </div>
+          <div class="firetruck-timer" role="timer" aria-live="polite" aria-label="Fire truck countdown">
+            <img class="firetruck-timer__frame" alt="" aria-hidden="true" />
+            <img class="firetruck-timer__vehicle" alt="" aria-hidden="true" />
+            <div class="firetruck-timer__readout">
+              <img class="firetruck-timer__readout-bg" alt="" aria-hidden="true" />
+              <img class="firetruck-timer__clock" alt="" aria-hidden="true" />
+              <div id="firetruck-countdown" class="firetruck-timer__countdown">0s</div>
+            </div>
+          </div>
+        </div>
+        <div id="foreground-video-overlay" class="foreground-video-overlay" hidden>
+          <canvas id="foreground-video-backdrop" class="foreground-video-backdrop" aria-hidden="true"></canvas>
+          <video
+            id="foreground-video"
+            class="foreground-video"
+            muted
+            playsinline
+            webkit-playsinline
+            preload="auto"
+            aria-label="Foreground intro animation"
+          ></video>
+        </div>
+        <video
+          id="foreground-transition-video"
+          class="foreground-transition-video"
+          muted
+          playsinline
+          webkit-playsinline
+          preload="auto"
+          aria-label="Foreground transition effect"
+          hidden
+        ></video>
         <div id="loading-screen" class="loading-screen" role="status" aria-live="polite">
           <img src="/assets/applovin/icon_q75.jpg" alt="Bus Fever - Car Jam Escape icon" />
           <h1>Bus Fever - Car Jam Escape</h1>
@@ -29,7 +73,7 @@
         </div>
         <div id="game-over-overlay" class="game-over-overlay" hidden>
           <div id="game-over-title" class="game-over-title">Game Over</div>
-          <img id="game-over-logo" class="game-over-logo" src="/assets/main-loading-icon-small.png" alt="Bus Fever logo" />
+          <img id="game-over-logo" class="game-over-logo" alt="Bus Fever logo" />
           <button id="cta-button" class="cta-button" type="button" aria-label="Play Now" hidden>Play Now</button>
         </div>
       </main>

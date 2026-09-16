@@ -6,9 +6,11 @@ import {
   calculatePerspectiveDistance,
   clampCenteredRectX,
   evaluateDreamteckClosedBSpline,
+  projectCenteredDesignPoint,
   resolveCameraFit,
   resolveResponsiveCropFit,
-  transformCurveCoordinates
+  transformCurveCoordinates,
+  unprojectCenteredDesignPoint
 } from '../src/scene-layout.js';
 
 const BACKGROUND = Object.freeze({
@@ -43,6 +45,38 @@ test('centered rectangles stay fully inside horizontal bounds', () => {
 test('oversized centered rectangles use the available background midpoint', () => {
   assert.equal(clampCenteredRectX({ centerX: 200, width: 700, left: 326, right: 954 }), 640);
   assert.equal(clampCenteredRectX({ centerX: 200, width: 100, left: undefined, right: 954 }), 200);
+});
+
+test('centered design overlays keep their horizontal offset stable when the viewport widens', () => {
+  const narrow = projectCenteredDesignPoint({
+    x: 300,
+    y: 1060,
+    designWidth: 1080,
+    designHeight: 2160,
+    stageWidth: 390,
+    stageHeight: 844,
+    scale: 0.3907407407
+  });
+  const wide = projectCenteredDesignPoint({
+    x: 300,
+    y: 1060,
+    designWidth: 1080,
+    designHeight: 2160,
+    stageWidth: 1200,
+    stageHeight: 844,
+    scale: 0.3907407407
+  });
+  assertClose(wide.x - 600, narrow.x - 195);
+  assertClose(wide.y, narrow.y);
+  assert.deepEqual(unprojectCenteredDesignPoint({
+    x: narrow.x,
+    y: narrow.y,
+    designWidth: 1080,
+    designHeight: 2160,
+    stageWidth: 390,
+    stageHeight: 844,
+    scale: 0.3907407407
+  }), { x: 300, y: 1060 });
 });
 
 test('orthographic fit keeps both configured width and height visible', () => {

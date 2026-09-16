@@ -50,6 +50,46 @@ export function clampCenteredRectX({ centerX, width, left, right }) {
   return clamp(safeCenterX, safeLeft + safeWidth / 2, safeRight - safeWidth / 2);
 }
 
+export function projectCenteredDesignPoint({
+  x,
+  y,
+  designWidth,
+  designHeight,
+  stageWidth,
+  stageHeight,
+  scale
+}) {
+  const safeDesignWidth = Math.max(1, Number(designWidth) || 1);
+  const safeDesignHeight = Math.max(1, Number(designHeight) || 1);
+  const safeStageWidth = Math.max(0, Number(stageWidth) || 0);
+  const safeStageHeight = Math.max(0, Number(stageHeight) || 0);
+  const safeScale = Math.max(0.01, Number(scale) || 1);
+  return {
+    x: safeStageWidth / 2 + ((Number(x) || 0) - safeDesignWidth / 2) * safeScale,
+    y: safeStageHeight / 2 + ((Number(y) || 0) - safeDesignHeight / 2) * safeScale
+  };
+}
+
+export function unprojectCenteredDesignPoint({
+  x,
+  y,
+  designWidth,
+  designHeight,
+  stageWidth,
+  stageHeight,
+  scale
+}) {
+  const safeDesignWidth = Math.max(1, Number(designWidth) || 1);
+  const safeDesignHeight = Math.max(1, Number(designHeight) || 1);
+  const safeStageWidth = Math.max(0, Number(stageWidth) || 0);
+  const safeStageHeight = Math.max(0, Number(stageHeight) || 0);
+  const safeScale = Math.max(0.01, Number(scale) || 1);
+  return {
+    x: safeDesignWidth / 2 + ((Number(x) || 0) - safeStageWidth / 2) / safeScale,
+    y: safeDesignHeight / 2 + ((Number(y) || 0) - safeStageHeight / 2) / safeScale
+  };
+}
+
 function clampCropOffset(offset, cropSize, sourceSize) {
   if (cropSize >= sourceSize) return 0;
   const maxOffset = (sourceSize - cropSize) / 2;
