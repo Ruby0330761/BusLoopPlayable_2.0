@@ -33,6 +33,7 @@ import {
 } from '../src/vehicle-motion.js';
 
 const sceneViewSource = readFileSync(join('src', 'scene-view.js'), 'utf8');
+const sceneEditorSource = readFileSync(join('src', 'scene-editor.js'), 'utf8');
 const gameModelSource = readFileSync(join('src', 'game-model.js'), 'utf8');
 
 const advance = (game, seconds, step = .05) => {
@@ -248,6 +249,19 @@ test('bus full audio plays each distinct event once without dropping pending eve
   await Promise.resolve();
   assert.equal(sources.length, 2);
   assert.equal(sources.every((source) => source.stopped === false), true);
+});
+
+test('police siren plays once with the normal full-vehicle sound', () => {
+  const played = [];
+  const audio = new GameAudioController({
+    bus_full: { clips: ['full'] },
+    police_siren: { clips: ['siren'] }
+  });
+  audio.play = (name) => played.push(name);
+  const event = { type: 'vehicle-full', vehicleId: 12, policeVehicle: true };
+  audio.handleGameEvent(event, 2);
+  audio.handleGameEvent(event, 2.5);
+  assert.deepEqual(played, ['bus_full', 'police_siren']);
 });
 
 test('turn vehicle audio is deduplicated per completion event, not per vehicle', () => {
@@ -841,6 +855,31 @@ test('ambulance countdown audio stays below the delivery size budget', () => {
   assert.equal(audio.readUInt16LE(22), 1);
   assert.equal(audio.readUInt32LE(24), 22050);
   assert.equal(audio.readUInt16LE(34), 16);
+});
+
+test('fire-truck warning stages follow the Unity 30s and 20s thresholds', () => {
+  const game = new BusLoopGame(structuredClone(LEVEL_CATALOG.level29));
+  const fireTruck = game.fireTruckState;
+  assert.equal(fireTruck.enabled, true);
+  fireTruck.started = true;
+
+  fireTruck.remainingSeconds = 30.01;
+  fireTruck.warningStage = 0;
+  game.updateFireTruckCountdown(0);
+  assert.equal(fireTruck.warningStage, 0);
+
+  fireTruck.remainingSeconds = 30;
+  game.updateFireTruckCountdown(0);
+  assert.equal(fireTruck.warningStage, 1);
+
+  fireTruck.remainingSeconds = 20;
+  game.updateFireTruckCountdown(0);
+  assert.equal(fireTruck.warningStage, 2);
+
+  fireTruck.remainingSeconds = 0.01;
+  game.updateFireTruckCountdown(0.02);
+  assert.equal(game.status, 'lost');
+  assert.equal(game.lastEvent.reason, 'firetruck-timeout');
 });
 
 test('blocked vehicle clicks do not consume ambulance moves', () => {
@@ -1508,6 +1547,47 @@ test('scene view keeps luxury vehicles and passengers on their dedicated visual 
   assert.match(sceneViewSource, /applyLuxuryPassengerBrightness\(visual\.userData\.material/);
 });
 
+test('scene view keeps police vehicles, passengers, lamp state, and picking separate', () => {
+  assert.match(sceneViewSource, /POLICE_COLOR_INDEX = 11/);
+  assert.match(sceneViewSource, /MECHANISM_ASSETS\.policeCar/);
+  assert.match(sceneViewSource, /loadPackedFbx\(POLICE_ASSETS\.vehicleModel/);
+  assert.match(sceneViewSource, /loadVatGeometry\(POLICE_ASSETS\.passengerVatMesh/);
+  assert.match(sceneViewSource, /mirrorX: true/);
+  assert.match(sceneViewSource, /POLICE_PASSENGER_YAW_OFFSET_DEGREES = 90/);
+  assert.match(sceneViewSource, /createPoliceWarningLamp/);
+  assert.match(sceneViewSource, /vehicle\.state === 'departing'/);
+  assert.match(sceneViewSource, /view\.userData\.pickMeshes = vehicle\.isHidden \? hiddenBodyMeshes : bodyMeshes/);
+  assert.match(sceneViewSource, /isPolicePassenger/);
+  assert.match(sceneViewSource, /POLICE_ASSETS\.passengerTexture/);
+  assert.match(sceneViewSource, /POLICE_PASSENGER_FIXED_ROTATION_DEGREES = Object\.freeze\(\{[\s\S]*x: 0,[\s\S]*y: 90,[\s\S]*z: 0/);
+  assert.match(sceneViewSource, /POLICE_PASSENGER_FIXED_POSITION = Object\.freeze\(\{[\s\S]*x: -0\.01,[\s\S]*y: 0,[\s\S]*z: -0\.4/);
+  assert.match(sceneViewSource, /policeTransformPivot\.rotation\.set\(\s*deg\(POLICE_PASSENGER_FIXED_ROTATION_DEGREES\.x/);
+  assert.match(sceneViewSource, /policeTransformPivot\.position\.set\(\s*POLICE_PASSENGER_FIXED_POSITION\.x/);
+  assert.match(sceneViewSource, /policeTransformPivot\.add\(personClone\)/);
+  assert.doesNotMatch(sceneViewSource, /policePassengerDebug|policeDebugPivot/);
+  assert.doesNotMatch(sceneEditorSource, /policePassengerDebug|警察乘客临时调试/);
+});
+
+test('scene view keeps fire-truck passenger texture and finalized tuning isolated', () => {
+  assert.match(sceneViewSource, /FIRE_TRUCK_COLOR_INDEX = 12/);
+  assert.match(sceneViewSource, /FIRE_TRUCK_ASSETS = MECHANISM_ASSETS\.fireTruck/);
+  assert.match(sceneViewSource, /FIRE_TRUCK_ASSETS\.passengerTexture/);
+  assert.match(sceneViewSource, /applyFireTruckPassengerMaterial/);
+  assert.match(sceneViewSource, /material\.specularIntensity = 0\.35/);
+  assert.match(sceneViewSource, /diffuseContrast: 1\.8/);
+  assert.match(sceneViewSource, /diffuseStrength: 0\.42/);
+  assert.match(sceneViewSource, /diffuseWrap: 0\.12/);
+  assert.match(sceneViewSource, /FIRE_TRUCK_PASSENGER_FIXED_ROTATION_DEGREES = Object\.freeze\(\{[\s\S]*y: 180/);
+  assert.match(sceneViewSource, /FIRE_TRUCK_PASSENGER_FIXED_POSITION = Object\.freeze\(\{[\s\S]*x: -0\.34/);
+  assert.match(sceneViewSource, /FIRE_TRUCK_PASSENGER_BRIGHTNESS = 1/);
+  assert.match(sceneViewSource, /fireTruckTransformPivot\.rotation\.set/);
+  assert.match(sceneViewSource, /fireTruckTransformPivot\.position\.set/);
+  assert.doesNotMatch(sceneViewSource, /fireTruckPassengerDebug|updateFireTruckPassengerTuning/);
+  assert.match(sceneViewSource, /isFireTruckPassengerMaterial/);
+  assert.doesNotMatch(sceneEditorSource, /fireTruckPassengerDebug|消防车乘客临时调试/);
+  assert.equal(SCENE_TUNING.fireTruckPassengerDebug, undefined);
+});
+
 test('luxury passenger animation payload preserves both Unity clips', () => {
   const animations = JSON.parse(readFileSync(join(
     'public', 'assets', 'unity', 'mechanisms', 'luxury-vehicle', 'animations', 'wealthy-passenger.json'
@@ -1981,6 +2061,7 @@ test('main thread saves and restores scene tuning from localStorage', () => {
   assert.doesNotMatch(mainSource, /LUXURY_MATERIAL_DEBUG_TUNING_PREFIX|isLuxuryMaterialDebugTuningPath|luxuryMaterialDebugOnly/);
   assert.match(mainSource, /mode: materialOnly \? 'passengerMaterial' : 'full', colorIndex/);
   assert.match(mainSource, /delete savedTuning\.luxuryMaterialDebug/);
+  assert.match(mainSource, /delete savedTuning\.policePassengerDebug/);
   assert.match(mainSource, /savedLuxuryMaterial\.vehicleBrightness !== SCENE_TUNING\.luxuryMaterial\.vehicleBrightness/);
   assert.match(mainSource, /setTimeout\(flushTuningSave, 150\)/);
   assert.match(mainSource, /beforeunload', flushTuningSave/);

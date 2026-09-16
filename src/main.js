@@ -5,10 +5,19 @@ import { ACTIVE_SPATIAL_CONVEYOR_PACKAGE } from './generated-active-spatial-conv
 import { LEVEL_1, setActiveLevel } from './level-data.js';
 import { createLevelSession } from './level-session.js';
 import { SceneView } from './scene-view.js';
-import { clampCenteredRectX } from './scene-layout.js';
+import {
+  clampCenteredRectX,
+  projectCenteredDesignPoint,
+  unprojectCenteredDesignPoint
+} from './scene-layout.js';
 import { SCENE_TUNING } from './scene-tuning.js';
 import { createGameAudioController } from './audio-controller.js';
-import { MECHANISM_ASSETS } from './mechanism-resources.js';
+import {
+  MECHANISM_ASSETS,
+  MECHANISM_TYPES,
+  getMechanismTypesForLevels
+} from './mechanism-resources.js';
+import { RandomPlayableAudioScheduler } from './random-playable-audio.js';
 import {
   getSpatialConveyorId,
   isSpatialConveyorSelection,
@@ -48,7 +57,22 @@ const loadingScreen = $('#loading-screen');
 const loadingProgress = loadingScreen?.querySelector('.loading-progress');
 const loadingProgressBar = $('#loading-progress-bar');
 const loadingProgressValue = $('#loading-progress-value');
+const foregroundVideoOverlay = $('#foreground-video-overlay');
+const foregroundVideoBackdrop = $('#foreground-video-backdrop');
+const foregroundVideo = $('#foreground-video');
+const foregroundTransitionVideo = $('#foreground-transition-video');
+const fireTruckHud = $('#firetruck-hud');
+const fireTruckCountdown = $('#firetruck-countdown');
+const fireTruckHudImages = {
+  warningPrimary: fireTruckHud?.querySelector('.firetruck-screen-effect__warning--primary'),
+  warningStrong: fireTruckHud?.querySelector('.firetruck-screen-effect__warning--strong'),
+  timerFrame: fireTruckHud?.querySelector('.firetruck-timer__frame'),
+  timerVehicle: fireTruckHud?.querySelector('.firetruck-timer__vehicle'),
+  timerReadout: fireTruckHud?.querySelector('.firetruck-timer__readout-bg'),
+  timerClock: fireTruckHud?.querySelector('.firetruck-timer__clock')
+};
 const gameOverOverlay = $('#game-over-overlay');
+const gameOverLogo = $('#game-over-logo');
 const gameOverTitle = $('#game-over-title');
 const ctaButton = $('#cta-button');
 const brandingItems = {
@@ -56,12 +80,26 @@ const brandingItems = {
   logo: $('#branding-logo'),
   text: $('#branding-text')
 };
+if (gameOverLogo && brandingItems.logo?.src) gameOverLogo.src = brandingItems.logo.src;
+const passengerEmoji = $('#passenger-emoji');
 const sceneEditorRoot = EDITOR_ENABLED ? $('#scene-editor') : null;
+const PASSENGER_EMOJI_COLUMNS = 8;
+const PASSENGER_EMOJI_ROWS = 8;
+const PASSENGER_EMOJI_FRAME_COUNT = PASSENGER_EMOJI_COLUMNS * PASSENGER_EMOJI_ROWS;
+const PASSENGER_EMOJI_DEFAULT_DURATION_SECONDS = 2.067;
+const PASSENGER_EMOJI_HIDE_STATES = new Set(['at-spot', 'boarding-final', 'departing', 'done']);
+let passengerEmojiHiddenByVehicle = false;
+let passengerEmojiAnimationStartedAt = null;
+let randomPlayableAudioScheduler = null;
 const PASSENGER_MATERIAL_TUNING_PREFIX = 'passengerMaterial.';
 const PASSENGER_MATERIAL_COLOR_INDEX_PATTERN = /^passengerMaterial\.(?:solidColors|colors)\.(\d+)(?:\.|$)/;
 const AMBULANCE_AUDIO_CONFIG = Object.freeze({
   clips: [MECHANISM_ASSETS.ambulance.audio],
   volume: 0.72
+});
+const POLICE_CAR_AUDIO_CONFIG = Object.freeze({
+  clips: [MECHANISM_ASSETS.policeCar.audio],
+  volume: 0.73829204
 });
 const TURN_VEHICLE_AUDIO_CONFIG = Object.freeze({
   clips: [MECHANISM_ASSETS.turnVehicle.audio],
@@ -71,6 +109,14 @@ const HIDDEN_VEHICLE_AUDIO_CONFIG = Object.freeze({
   clips: [MECHANISM_ASSETS.hiddenVehicle.audio],
   volume: 0.7933884
 });
+const FIRE_TRUCK_START_AUDIO_CONFIG = Object.freeze({
+  clips: [MECHANISM_ASSETS.fireTruck.startAudio],
+  volume: 0.82
+});
+const FIRE_TRUCK_FAIL_AUDIO_CONFIG = Object.freeze({
+  clips: [MECHANISM_ASSETS.fireTruck.failAudio],
+  volume: 0.8
+});
 const GARAGE_OUT_AUDIO_CONFIG = Object.freeze({
   clips: [MECHANISM_ASSETS.garage.outAudio],
   volume: 0.7979798
@@ -78,6 +124,20 @@ const GARAGE_OUT_AUDIO_CONFIG = Object.freeze({
 const GARAGE_CLEAR_AUDIO_CONFIG = Object.freeze({
   clips: [MECHANISM_ASSETS.garage.clearAudio],
   volume: 1
+});
+const RANDOM_PLAYABLE_AUDIO_CONFIGS = Object.freeze({
+  random_playable_audio_police_ring: Object.freeze({
+    clips: [MECHANISM_ASSETS.randomPlayableAudio.policeRing],
+    volume: 1
+  }),
+  random_playable_audio_move: Object.freeze({
+    clips: [MECHANISM_ASSETS.randomPlayableAudio.move],
+    volume: 1
+  }),
+  random_playable_audio_hey_move_it: Object.freeze({
+    clips: [MECHANISM_ASSETS.randomPlayableAudio.heyMoveIt],
+    volume: 1
+  })
 });
 const isPassengerMaterialTuningPath = (path) => path?.startsWith(PASSENGER_MATERIAL_TUNING_PREFIX);
 const getPassengerMaterialColorIndex = (path) => {
@@ -222,6 +282,41 @@ function migrateSpatialSpeedTuning(source) {
   return changed;
 }
 
+function migratePassengerEmojiTuning(source) {
+  const emoji = source?.passengerEmoji;
+  if (!emoji) return false;
+  let changed = false;
+  if (Number(emoji.animationDurationSeconds) === 1.333) {
+    emoji.animationDurationSeconds = PASSENGER_EMOJI_DEFAULT_DURATION_SECONDS;
+    changed = true;
+  }
+  if (emoji.autoHideOnVehicleLevelKey === 'level42') {
+    emoji.autoHideOnVehicleLevelKey = 'level29';
+    changed = true;
+  }
+  return changed;
+}
+
+function migrateRandomPlayableAudioTuning(source) {
+  const audioTuning = source?.randomPlayableAudio;
+  if (!audioTuning) return false;
+  let changed = false;
+  const clamp = (key, fallback) => {
+    const value = Number(audioTuning[key]);
+    const next = Number.isFinite(value) ? Math.max(5, Math.min(30, value)) : fallback;
+    if (audioTuning[key] === next) return;
+    audioTuning[key] = next;
+    changed = true;
+  };
+  clamp('minIntervalSeconds', 5);
+  clamp('maxIntervalSeconds', 30);
+  if (Number(audioTuning.maxIntervalSeconds) < Number(audioTuning.minIntervalSeconds)) {
+    audioTuning.maxIntervalSeconds = audioTuning.minIntervalSeconds;
+    changed = true;
+  }
+  return changed;
+}
+
 function waitForMraidReady(onReady) {
   const mraid = window.mraid;
   if (!mraid?.getState || !mraid?.addEventListener) {
@@ -276,9 +371,12 @@ function loadSavedTuning() {
       const savedTuning = JSON.parse(saved);
       const guideHandMotionMigrated = migrateGuideHandMotionTuning(savedTuning);
       const spatialSpeedMigrated = migrateSpatialSpeedTuning(savedTuning);
+      const passengerEmojiMigrated = migratePassengerEmojiTuning(savedTuning);
+      const randomPlayableAudioMigrated = migrateRandomPlayableAudioTuning(savedTuning);
       const luxuryPassengerRotationRemoved = delete savedTuning.luxuryPassengerRotation;
       const luxuryPassengerOffsetRemoved = delete savedTuning.luxuryPassengerOffset;
       const luxuryMaterialDebugRemoved = delete savedTuning.luxuryMaterialDebug;
+      const policePassengerDebugRemoved = delete savedTuning.policePassengerDebug;
       const conveyorVisualRemoved = delete savedTuning.conveyorVisual;
       const savedLuxuryMaterial = savedTuning.luxuryMaterial;
       const luxuryMaterialNeedsReset = !savedLuxuryMaterial
@@ -291,9 +389,12 @@ function loadSavedTuning() {
       if (
         guideHandMotionMigrated
         || spatialSpeedMigrated
+        || passengerEmojiMigrated
+        || randomPlayableAudioMigrated
         || luxuryPassengerRotationRemoved
         || luxuryPassengerOffsetRemoved
         || luxuryMaterialDebugRemoved
+        || policePassengerDebugRemoved
         || conveyorVisualRemoved
         || luxuryMaterialNeedsReset
       ) {
@@ -307,6 +408,8 @@ function loadSavedTuning() {
     const legacy = JSON.parse(legacySaved);
     migrateGuideHandMotionTuning(legacy);
     migrateSpatialSpeedTuning(legacy);
+    migratePassengerEmojiTuning(legacy);
+    migrateRandomPlayableAudioTuning(legacy);
     migrateLegacyPackageTuning(legacy);
     delete legacy.luxuryMaterialDebug;
     delete legacy.luxuryMaterial;
@@ -427,6 +530,9 @@ function applyBrandingTuning(backgroundBounds = null) {
 
 function bindBrandingDrag(element, key, onPositionChange) {
   if (!element || !EDITOR_ENABLED) return;
+  const getConfig = () => key === 'passengerEmoji'
+    ? SCENE_TUNING.passengerEmoji
+    : SCENE_TUNING.branding?.[key];
   let activePointerId = null;
   const finish = (event) => {
     if (activePointerId == null) return;
@@ -436,7 +542,7 @@ function bindBrandingDrag(element, key, onPositionChange) {
     if (element.hasPointerCapture?.(pointerId)) element.releasePointerCapture(pointerId);
   };
   element.addEventListener('pointerdown', (event) => {
-    const config = SCENE_TUNING.branding?.[key];
+    const config = getConfig();
     if (!config || !config.enabled || config.locked) return;
     event.preventDefault();
     event.stopPropagation();
@@ -446,7 +552,7 @@ function bindBrandingDrag(element, key, onPositionChange) {
   });
   element.addEventListener('pointermove', (event) => {
     if (activePointerId == null) return;
-    const config = SCENE_TUNING.branding?.[key];
+    const config = getConfig();
     if (!config?.enabled || config.locked) {
       activePointerId = null;
       element.classList.remove('is-dragging');
@@ -455,11 +561,23 @@ function bindBrandingDrag(element, key, onPositionChange) {
     const metrics = getBrandingStageMetrics();
     const localX = event.clientX - metrics.screenLeft;
     const localY = event.clientY - metrics.screenTop;
-    const x = localX / metrics.positionScaleX;
-    const y = localY / metrics.positionScaleY;
+    const designPoint = key === 'passengerEmoji'
+      ? unprojectCenteredDesignPoint({
+        x: localX,
+        y: localY,
+        designWidth: metrics.designWidth,
+        designHeight: metrics.designHeight,
+        stageWidth: metrics.stageWidth,
+        stageHeight: metrics.stageHeight,
+        scale: metrics.uiScale
+      })
+      : {
+        x: localX / metrics.positionScaleX,
+        y: localY / metrics.positionScaleY
+      };
     onPositionChange(
-      Math.max(0, Math.min(metrics.designWidth, x)),
-      Math.max(0, Math.min(metrics.designHeight, y))
+      Math.max(0, Math.min(metrics.designWidth, designPoint.x)),
+      Math.max(0, Math.min(metrics.designHeight, designPoint.y))
     );
   });
   element.addEventListener('pointerup', finish);
@@ -483,6 +601,132 @@ function durationFromSpeed(value, fallbackSpeed) {
 
 function durationCss(value, fallbackSpeed) {
   return `${durationFromSpeed(value, fallbackSpeed)}s`;
+}
+
+function applyPassengerEmojiTuning() {
+  if (!passengerEmoji) return;
+  const metrics = getBrandingStageMetrics();
+  const config = SCENE_TUNING.passengerEmoji ?? {};
+  const enabled = Boolean(config.enabled ?? 0);
+  const locked = Boolean(config.locked ?? 0);
+  const autoHidden = Boolean(config.autoHideOnVehicleEnabled) && passengerEmojiHiddenByVehicle;
+  const width = Math.max(1, Number(config.width) || 180);
+  const height = Math.max(1, Number(config.height) || width);
+  const x = Number.isFinite(Number(config.x)) ? Number(config.x) : metrics.designWidth / 2;
+  const y = Number.isFinite(Number(config.y)) ? Number(config.y) : metrics.designHeight / 2;
+  const position = projectCenteredDesignPoint({
+    x,
+    y,
+    designWidth: metrics.designWidth,
+    designHeight: metrics.designHeight,
+    stageWidth: metrics.stageWidth,
+    stageHeight: metrics.stageHeight,
+    scale: metrics.uiScale
+  });
+  passengerEmoji.hidden = !enabled || autoHidden;
+  passengerEmoji.classList.toggle('is-draggable', EDITOR_ENABLED && enabled && !locked);
+  passengerEmoji.classList.toggle('is-locked', locked);
+  passengerEmoji.style.left = `${position.x}px`;
+  passengerEmoji.style.top = `${position.y}px`;
+  passengerEmoji.style.width = `${width * metrics.uiScale}px`;
+  passengerEmoji.style.height = `${height * metrics.uiScale}px`;
+  passengerEmoji.style.setProperty('--passenger-emoji-opacity', String(Math.max(0, Math.min(1, Number(config.opacity) || 0))));
+  passengerEmoji.style.setProperty('--passenger-emoji-duration', `${Math.max(0.2, Number(config.animationDurationSeconds) || PASSENGER_EMOJI_DEFAULT_DURATION_SECONDS)}s`);
+  passengerEmoji.style.backgroundImage = `url("${MECHANISM_ASSETS.passengerEmoji.angrySheet}")`;
+}
+
+function updatePassengerEmojiAutoHide(snapshot, activeLevelKey) {
+  const config = SCENE_TUNING.passengerEmoji ?? {};
+  const configuredLevelKey = String(config.autoHideOnVehicleLevelKey ?? '').trim();
+  const levelMatches = !configuredLevelKey || configuredLevelKey === activeLevelKey;
+  const targetId = Math.round(Number(config.autoHideOnVehicleId) || 0);
+  const target = snapshot?.vehicles?.find((vehicle) => Number(vehicle.id) === targetId);
+  const targetReached = Boolean(
+    config.autoHideOnVehicleEnabled
+    && levelMatches
+    && target
+    && PASSENGER_EMOJI_HIDE_STATES.has(target.state)
+  );
+  if (targetReached) {
+    passengerEmojiHiddenByVehicle = true;
+  } else if (
+    !config.autoHideOnVehicleEnabled
+    || !levelMatches
+    || !target
+    || !PASSENGER_EMOJI_HIDE_STATES.has(target.state)
+  ) {
+    passengerEmojiHiddenByVehicle = false;
+  }
+  applyPassengerEmojiTuning();
+}
+
+function updatePassengerEmojiFrame(now) {
+  if (!passengerEmoji || passengerEmoji.hidden) return;
+  if (passengerEmojiAnimationStartedAt == null) {
+    passengerEmoji.style.backgroundPosition = '0% 0%';
+    return;
+  }
+  const delay = Math.max(
+    0,
+    Number(SCENE_TUNING.passengerEmoji?.animationDelaySeconds) || 0
+  );
+  const elapsed = (now - passengerEmojiAnimationStartedAt) / 1000 - delay;
+  if (elapsed < 0) {
+    passengerEmoji.style.backgroundPosition = '0% 0%';
+    return;
+  }
+  const duration = Math.max(
+    0.2,
+    Number(SCENE_TUNING.passengerEmoji?.animationDurationSeconds) || PASSENGER_EMOJI_DEFAULT_DURATION_SECONDS
+  );
+  const frame = Math.floor(elapsed / duration * PASSENGER_EMOJI_FRAME_COUNT) % PASSENGER_EMOJI_FRAME_COUNT;
+  const column = frame % PASSENGER_EMOJI_COLUMNS;
+  const row = Math.floor(frame / PASSENGER_EMOJI_COLUMNS);
+  passengerEmoji.style.backgroundPosition = `${column * 100 / (PASSENGER_EMOJI_COLUMNS - 1)}% ${row * 100 / (PASSENGER_EMOJI_ROWS - 1)}%`;
+}
+
+function startPassengerEmojiAnimation(now = performance.now()) {
+  passengerEmojiAnimationStartedAt = now;
+  updatePassengerEmojiFrame(now);
+}
+
+function syncFireTruckHudBounds(view = null) {
+  if (!fireTruckHud || !stage || !canvas) return;
+  const stageRect = stage.getBoundingClientRect();
+  const canvasRect = canvas.getBoundingClientRect();
+  const playable = view?.getBackgroundCanvasBounds?.() ?? {
+    left: 0,
+    top: 0,
+    width: canvasRect.width,
+    height: canvasRect.height
+  };
+  const left = canvasRect.left - stageRect.left + playable.left;
+  const top = canvasRect.top - stageRect.top + playable.top;
+  fireTruckHud.style.left = `${Math.max(0, left)}px`;
+  fireTruckHud.style.top = `${Math.max(0, top)}px`;
+  fireTruckHud.style.width = `${Math.max(0, playable.width)}px`;
+  fireTruckHud.style.height = `${Math.max(0, playable.height)}px`;
+}
+
+function updateFireTruckHud(state, view = null) {
+  if (!fireTruckHud || !fireTruckCountdown) return;
+  syncFireTruckHudBounds(view);
+  const visible = Boolean(state?.enabled && state.started && !state.completed);
+  fireTruckHud.hidden = !visible;
+  if (!visible) return;
+  const assets = MECHANISM_ASSETS.fireTruck;
+  fireTruckHudImages.warningPrimary.src = assets.warningTexture;
+  fireTruckHudImages.warningStrong.src = assets.warningTextureStrong;
+  fireTruckHudImages.timerFrame.src = assets.timerFrameTexture;
+  fireTruckHudImages.timerVehicle.src = assets.timerVehicleTexture;
+  fireTruckHudImages.timerReadout.src = assets.timerReadoutTexture;
+  fireTruckHudImages.timerClock.src = assets.timerClockTexture;
+  fireTruckHud.style.setProperty('--firetruck-fire-texture', `url("${assets.fireTexture}")`);
+  const remaining = Math.max(0, Number(state.remainingSeconds) || 0);
+  fireTruckCountdown.textContent = `${Math.ceil(remaining)}s`;
+  fireTruckCountdown.setAttribute('aria-label', `${Math.ceil(remaining)} seconds remaining`);
+  fireTruckHud.dataset.stage = String(state.warningStage ?? 0);
+  fireTruckHud.dataset.paused = state.paused ? '1' : '0';
 }
 
 let audio = null;
@@ -595,6 +839,7 @@ function openStore() {
 }
 
 function InstallFullGame() {
+  randomPlayableAudioScheduler?.stop();
   audio?.unlock();
   openStore();
 }
@@ -685,15 +930,46 @@ async function startRuntime() {
   applyPreviewFrame();
 
   let game = new BusLoopGame(levelSession.currentLevel());
+  const sessionMechanismTypes = new Set(getMechanismTypesForLevels(sessionLevels, {
+    entryBannerEnabled: Boolean(SCENE_TUNING.entryBanner?.enabled),
+    passengerEmojiEnabled: Boolean(SCENE_TUNING.passengerEmoji?.enabled),
+    randomPlayableAudioEnabled: Boolean(SCENE_TUNING.randomPlayableAudio?.enabled)
+  }));
   audio = createGameAudioController({
     ...LEVEL_1.assets.audio,
-    ambulance_countdown: AMBULANCE_AUDIO_CONFIG,
-    turn_vehicle_complete: TURN_VEHICLE_AUDIO_CONFIG,
-    hidden_vehicle_reveal: HIDDEN_VEHICLE_AUDIO_CONFIG,
-    garage_out: GARAGE_OUT_AUDIO_CONFIG,
-    garage_clear: GARAGE_CLEAR_AUDIO_CONFIG
+    ...(sessionMechanismTypes.has(MECHANISM_TYPES.ambulance)
+      ? { ambulance_countdown: AMBULANCE_AUDIO_CONFIG }
+      : {}),
+    ...(sessionMechanismTypes.has(MECHANISM_TYPES.policeCar)
+      ? { police_siren: POLICE_CAR_AUDIO_CONFIG }
+      : {}),
+    ...(sessionMechanismTypes.has(MECHANISM_TYPES.turnVehicle)
+      ? { turn_vehicle_complete: TURN_VEHICLE_AUDIO_CONFIG }
+      : {}),
+    ...(sessionMechanismTypes.has(MECHANISM_TYPES.hiddenVehicle)
+      ? { hidden_vehicle_reveal: HIDDEN_VEHICLE_AUDIO_CONFIG }
+      : {}),
+    ...(sessionMechanismTypes.has(MECHANISM_TYPES.fireTruck)
+      ? {
+        firetruck_start: FIRE_TRUCK_START_AUDIO_CONFIG,
+        firetruck_fail: FIRE_TRUCK_FAIL_AUDIO_CONFIG
+      }
+      : {}),
+    ...(sessionMechanismTypes.has(MECHANISM_TYPES.garage)
+      ? {
+        garage_out: GARAGE_OUT_AUDIO_CONFIG,
+        garage_clear: GARAGE_CLEAR_AUDIO_CONFIG
+      }
+      : {}),
+    ...(sessionMechanismTypes.has(MECHANISM_TYPES.randomPlayableAudio)
+      ? RANDOM_PLAYABLE_AUDIO_CONFIGS
+      : {})
   });
   audio.resetEventHistory();
+  randomPlayableAudioScheduler = new RandomPlayableAudioScheduler({
+    getConfig: () => SCENE_TUNING.randomPlayableAudio ?? {},
+    play: (clip, volume) => audio.play(clip.audioName, null, volume)
+  });
   const endPanel = $('#end-panel');
   let pressTimer = 0;
   let pressed = false;
@@ -704,6 +980,26 @@ async function startRuntime() {
   let unsubscribeGame = () => {};
   const gameOverTimers = new Set();
   const INSTALL_GATE_VEHICLE_STATES = new Set(['at-spot', 'boarding-final', 'departing', 'done']);
+  const configuredForegroundVideo = SCENE_TUNING.foregroundVideo ?? {};
+  const packagedForegroundVideoSource = globalThis.__BUS_LOOP_FOREGROUND_VIDEO_ASSET__;
+  const foregroundVideoSource = configuredForegroundVideo.enabled && configuredForegroundVideo.selected
+    ? (typeof packagedForegroundVideoSource === 'string' && packagedForegroundVideoSource
+        ? packagedForegroundVideoSource
+        : (import.meta.env.DEV
+            ? `/assets/playable/foreground-videos/${encodeURIComponent(configuredForegroundVideo.selected)}`
+            : ''))
+    : '';
+  const packagedForegroundTransitionSource = globalThis.__BUS_LOOP_FOREGROUND_TRANSITION_ASSET__;
+  const foregroundTransitionSource = foregroundVideoSource
+    && configuredForegroundVideo.transitionEnabled !== 0
+    && configuredForegroundVideo.transitionSelected
+    ? (typeof packagedForegroundTransitionSource === 'string' && packagedForegroundTransitionSource
+        ? packagedForegroundTransitionSource
+        : (import.meta.env.DEV
+            ? `/assets/playable/foreground-videos/${encodeURIComponent(configuredForegroundVideo.transitionSelected)}`
+            : ''))
+    : '';
+  let foregroundVideoBlocking = Boolean(foregroundVideoSource);
 
   function updateLoadingProgress(progress) {
     const percent = Math.max(0, Math.min(100, Math.round((Number(progress) || 0) * 100)));
@@ -718,8 +1014,12 @@ async function startRuntime() {
   };
 
   const handleVehicleClick = (vehicleId) => {
+    if (foregroundVideoBlocking) return { ok: false, reason: 'foreground-video-playing' };
     const result = game.clickVehicle(vehicleId);
-    if (result?.ok && markInstallVehicle(vehicleId)) InstallFullGame();
+    if (result?.ok) {
+      randomPlayableAudioScheduler?.activate();
+      if (markInstallVehicle(vehicleId)) InstallFullGame();
+    }
     return result;
   };
 
@@ -733,25 +1033,283 @@ async function startRuntime() {
   );
   const updateCtaPosition = () => {
     view.resize();
+    drawForegroundVideoBackdrop();
+    syncFireTruckHudBounds(view);
     applyGameOverTuning();
     applyCtaTuning(view);
     applyBrandingTuning(view.getBackgroundCanvasBounds());
+    applyPassengerEmojiTuning();
   };
   updateCtaPosition();
   document.fonts?.load?.('700 16px "Poppins Branding"')
-    .then(() => applyBrandingTuning(view.getBackgroundCanvasBounds()))
+    .then(() => {
+      applyBrandingTuning(view.getBackgroundCanvasBounds());
+      applyPassengerEmojiTuning();
+    })
     .catch(() => {});
   if ('ResizeObserver' in window && stage) {
     new ResizeObserver(updateCtaPosition).observe(stage);
   } else {
     window.addEventListener('resize', updateCtaPosition);
   }
-  view.ready?.finally(() => {
-    updateLoadingProgress(1);
+  let loadingScreenDismissed = false;
+  function dismissLoadingScreen() {
+    if (loadingScreenDismissed) return;
+    loadingScreenDismissed = true;
     loadingScreen?.classList.add('is-hidden');
-    view.showEntryBanner?.();
     window.setTimeout(() => loadingScreen?.remove(), 360);
-  });
+  }
+
+  function resetForegroundVideoElement() {
+    if (!foregroundVideo) return;
+    foregroundVideo.pause();
+    foregroundVideo.removeAttribute('src');
+    foregroundVideo.load();
+    if (foregroundVideoBackdrop) {
+      const context = foregroundVideoBackdrop.getContext('2d');
+      context?.clearRect(0, 0, foregroundVideoBackdrop.width, foregroundVideoBackdrop.height);
+      foregroundVideoBackdrop.width = 1;
+      foregroundVideoBackdrop.height = 1;
+    }
+    if (foregroundVideoOverlay) {
+      foregroundVideoOverlay.hidden = true;
+      foregroundVideoOverlay.classList.remove('is-ending');
+    }
+  }
+
+  function resetForegroundTransitionElement() {
+    if (!foregroundTransitionVideo) return;
+    foregroundTransitionVideo.pause();
+    foregroundTransitionVideo.removeAttribute('src');
+    foregroundTransitionVideo.load();
+    foregroundTransitionVideo.hidden = true;
+  }
+
+  function drawForegroundVideoBackdrop() {
+    if (
+      !foregroundVideo
+      || !foregroundVideoBackdrop
+      || foregroundVideo.readyState < HTMLMediaElement.HAVE_CURRENT_DATA
+      || !foregroundVideo.videoWidth
+      || !foregroundVideo.videoHeight
+    ) {
+      return;
+    }
+    const bounds = foregroundVideoOverlay?.getBoundingClientRect();
+    const cssWidth = Math.max(1, bounds?.width ?? foregroundVideo.clientWidth);
+    const cssHeight = Math.max(1, bounds?.height ?? foregroundVideo.clientHeight);
+    const resolutionScale = Math.min(
+      window.devicePixelRatio || 1,
+      1280 / Math.max(cssWidth, cssHeight)
+    );
+    const width = Math.max(1, Math.round(cssWidth * resolutionScale));
+    const height = Math.max(1, Math.round(cssHeight * resolutionScale));
+    if (foregroundVideoBackdrop.width !== width) foregroundVideoBackdrop.width = width;
+    if (foregroundVideoBackdrop.height !== height) foregroundVideoBackdrop.height = height;
+
+    const sourceWidth = foregroundVideo.videoWidth;
+    const sourceHeight = foregroundVideo.videoHeight;
+    const targetAspect = width / height;
+    const sourceAspect = sourceWidth / sourceHeight;
+    let cropX = 0;
+    let cropY = 0;
+    let cropWidth = sourceWidth;
+    let cropHeight = sourceHeight;
+    if (sourceAspect > targetAspect) {
+      cropWidth = sourceHeight * targetAspect;
+      cropX = (sourceWidth - cropWidth) / 2;
+    } else {
+      cropHeight = sourceWidth / targetAspect;
+      cropY = (sourceHeight - cropHeight) / 2;
+    }
+    const context = foregroundVideoBackdrop.getContext('2d', { alpha: false });
+    if (!context) return;
+    context.drawImage(
+      foregroundVideo,
+      cropX,
+      cropY,
+      cropWidth,
+      cropHeight,
+      0,
+      0,
+      width,
+      height
+    );
+  }
+
+  function waitForForegroundVideoReady(source) {
+    return new Promise((resolve) => {
+      if (!foregroundVideo || !foregroundVideoOverlay || !source) {
+        resolve(false);
+        return;
+      }
+      let settled = false;
+      const finish = (ready) => {
+        if (settled) return;
+        settled = true;
+        window.clearTimeout(timeout);
+        foregroundVideo.removeEventListener('loadeddata', handleReady);
+        foregroundVideo.removeEventListener('error', handleError);
+        resolve(ready);
+      };
+      const handleReady = () => finish(true);
+      const handleError = () => finish(false);
+      const timeout = window.setTimeout(() => finish(false), 8000);
+      foregroundVideo.defaultMuted = true;
+      foregroundVideo.muted = true;
+      foregroundVideo.volume = 0;
+      foregroundVideo.playsInline = true;
+      foregroundVideo.addEventListener('loadeddata', handleReady, { once: true });
+      foregroundVideo.addEventListener('error', handleError, { once: true });
+      foregroundVideo.src = source;
+      foregroundVideo.load();
+    });
+  }
+
+  function waitForForegroundTransitionReady(source) {
+    return new Promise((resolve) => {
+      if (!foregroundTransitionVideo || !source) {
+        resolve(false);
+        return;
+      }
+      let settled = false;
+      const finish = (ready) => {
+        if (settled) return;
+        settled = true;
+        window.clearTimeout(timeout);
+        foregroundTransitionVideo.removeEventListener('loadeddata', handleReady);
+        foregroundTransitionVideo.removeEventListener('error', handleError);
+        resolve(ready);
+      };
+      const handleReady = () => finish(true);
+      const handleError = () => finish(false);
+      const timeout = window.setTimeout(() => finish(false), 5000);
+      foregroundTransitionVideo.defaultMuted = true;
+      foregroundTransitionVideo.muted = true;
+      foregroundTransitionVideo.volume = 0;
+      foregroundTransitionVideo.playsInline = true;
+      foregroundTransitionVideo.addEventListener('loadeddata', handleReady, { once: true });
+      foregroundTransitionVideo.addEventListener('error', handleError, { once: true });
+      foregroundTransitionVideo.src = source;
+      foregroundTransitionVideo.load();
+    });
+  }
+
+  async function playForegroundTransition(readyPromise) {
+    const ready = await readyPromise;
+    if (!ready || !foregroundTransitionVideo) {
+      resetForegroundTransitionElement();
+      return false;
+    }
+
+    foregroundTransitionVideo.hidden = false;
+    foregroundTransitionVideo.currentTime = 0;
+    let finishPlayback;
+    const playbackFinished = new Promise((resolve) => { finishPlayback = resolve; });
+    const handleFinished = () => finishPlayback();
+    foregroundTransitionVideo.addEventListener('ended', handleFinished, { once: true });
+    foregroundTransitionVideo.addEventListener('error', handleFinished, { once: true });
+    try {
+      foregroundTransitionVideo.defaultMuted = true;
+      foregroundTransitionVideo.muted = true;
+      foregroundTransitionVideo.volume = 0;
+      await foregroundTransitionVideo.play();
+      const durationMs = Number.isFinite(foregroundTransitionVideo.duration)
+        ? Math.min(15000, Math.max(3000, (foregroundTransitionVideo.duration + 1) * 1000))
+        : 15000;
+      await Promise.race([
+        playbackFinished,
+        new Promise((resolve) => window.setTimeout(resolve, durationMs))
+      ]);
+    } catch (error) {
+      console.warn('Muted foreground transition could not autoplay; continuing to gameplay.', error);
+    } finally {
+      foregroundTransitionVideo.removeEventListener('ended', handleFinished);
+      foregroundTransitionVideo.removeEventListener('error', handleFinished);
+      resetForegroundTransitionElement();
+    }
+    return true;
+  }
+
+  async function playForegroundVideoIntro(source, transitionSource, sceneReady) {
+    const transitionReady = waitForForegroundTransitionReady(transitionSource);
+    const ready = await waitForForegroundVideoReady(source);
+    if (!ready || !foregroundVideo || !foregroundVideoOverlay) {
+      resetForegroundVideoElement();
+      resetForegroundTransitionElement();
+      await sceneReady;
+      dismissLoadingScreen();
+      return false;
+    }
+
+    foregroundVideoOverlay.hidden = false;
+    foregroundVideoOverlay.classList.remove('is-ending');
+    const fadeOutSeconds = Math.min(
+      3,
+      Math.max(0, Number(SCENE_TUNING.foregroundVideo?.fadeOutSeconds) || 0)
+    );
+    foregroundVideoOverlay.style.setProperty('--foreground-video-fade-duration', `${fadeOutSeconds}s`);
+    drawForegroundVideoBackdrop();
+    dismissLoadingScreen();
+    await new Promise((resolve) => window.setTimeout(resolve, 340));
+
+    let finishPlayback;
+    const playbackFinished = new Promise((resolve) => { finishPlayback = resolve; });
+    const handleFinished = () => finishPlayback();
+    foregroundVideo.addEventListener('ended', handleFinished, { once: true });
+    foregroundVideo.addEventListener('error', handleFinished, { once: true });
+    try {
+      foregroundVideo.defaultMuted = true;
+      foregroundVideo.muted = true;
+      foregroundVideo.volume = 0;
+      await foregroundVideo.play();
+      const durationMs = Number.isFinite(foregroundVideo.duration)
+        ? Math.min(65000, Math.max(5000, (foregroundVideo.duration + 2) * 1000))
+        : 65000;
+      await Promise.race([
+        playbackFinished,
+        new Promise((resolve) => window.setTimeout(resolve, durationMs))
+      ]);
+    } catch (error) {
+      console.warn('Muted foreground video could not autoplay; continuing to gameplay.', error);
+    } finally {
+      foregroundVideo.removeEventListener('ended', handleFinished);
+      foregroundVideo.removeEventListener('error', handleFinished);
+    }
+
+    // Keep the last video frame covering the stage if scene assets take longer
+    // than the intro, so the fully initialized level is revealed in one step.
+    await sceneReady;
+    foregroundVideoOverlay.classList.add('is-ending');
+    const transitionDelaySeconds = Math.min(
+      3,
+      Math.max(0, Number(SCENE_TUNING.foregroundVideo?.transitionDelaySeconds) || 0)
+    );
+    const transitionPlayback = transitionSource
+      ? (async () => {
+          await new Promise((resolve) => window.setTimeout(resolve, transitionDelaySeconds * 1000));
+          return playForegroundTransition(transitionReady);
+        })()
+      : Promise.resolve(false);
+    await new Promise((resolve) => window.setTimeout(resolve, fadeOutSeconds * 1000));
+    resetForegroundVideoElement();
+    await transitionPlayback;
+    return true;
+  }
+
+  const sceneReady = (view.ready ?? Promise.resolve()).catch(() => {});
+  void sceneReady.then(() => updateLoadingProgress(1));
+  void (async () => {
+    if (foregroundVideoSource) {
+      await playForegroundVideoIntro(foregroundVideoSource, foregroundTransitionSource, sceneReady);
+    } else {
+      await sceneReady;
+      dismissLoadingScreen();
+    }
+    foregroundVideoBlocking = false;
+    startPassengerEmojiAnimation();
+    view.showEntryBanner?.();
+  })();
   function initializeGameQueues({ resetSlots = false } = {}) {
     game.initializeQueues(
       view.getQueueCapacities(),
@@ -901,6 +1459,31 @@ async function startRuntime() {
       if (syncEditor) editor.sync();
       return SCENE_TUNING;
     }
+    if (path?.startsWith('passengerEmoji.')) {
+      deepMerge(SCENE_TUNING, next);
+      updatePassengerEmojiAutoHide(view.lastSnapshot, levelSession.state().levelKey);
+      applyPassengerEmojiTuning();
+      saveTuning(SCENE_TUNING);
+      if (syncEditor) editor.sync();
+      return SCENE_TUNING;
+    }
+    if (path?.startsWith('foregroundVideo.')) {
+      const wasForegroundVideoActive = Boolean(
+        SCENE_TUNING.foregroundVideo?.enabled && SCENE_TUNING.foregroundVideo?.selected
+      );
+      deepMerge(SCENE_TUNING, next);
+      const isForegroundVideoActive = Boolean(
+        SCENE_TUNING.foregroundVideo?.enabled && SCENE_TUNING.foregroundVideo?.selected
+      );
+      if (wasForegroundVideoActive !== isForegroundVideoActive || path === 'foregroundVideo.selection') {
+        game.reset();
+        initializeGameQueues({ resetSlots: true });
+        applyIdleSpeedMultiplier();
+      }
+      saveTuning(SCENE_TUNING);
+      if (syncEditor) editor.sync();
+      return SCENE_TUNING;
+    }
     const materialOnly = isPassengerMaterialTuningPath(path);
     const conveyorStructureChanged = !materialOnly && (
       path === 'conveyorLayout.selected'
@@ -932,6 +1515,12 @@ async function startRuntime() {
       applyTuningPatch(next, { path: `branding.${key}.position`, syncEditor: true });
     });
   }
+  bindBrandingDrag(passengerEmoji, 'passengerEmoji', (x, y) => {
+    const next = structuredClone(SCENE_TUNING);
+    next.passengerEmoji.x = Math.round(x);
+    next.passengerEmoji.y = Math.round(y);
+    applyTuningPatch(next, { path: 'passengerEmoji.position', syncEditor: true });
+  });
 
   if (EDITOR_ENABLED && sceneEditorRoot) {
     import('./scene-editor.js').then(({ createSceneEditor }) => {
@@ -952,10 +1541,16 @@ async function startRuntime() {
 
   function syncHud(state) {
     audio.handleGameEvent(state.lastEvent, state.time);
+    updatePassengerEmojiAutoHide(state, levelSession.state().levelKey);
+    updateFireTruckHud(state.mechanicState?.fireTruck, view);
     updateInstallGate(state);
     if (state.status === 'lost') {
       endPanel.hidden = true;
-      showResultOverlay(state.lastEvent.reason === 'ambulance-exceed-step' ? 'Ambulance Failed' : 'Game Over');
+        showResultOverlay(
+          state.lastEvent.reason === 'ambulance-exceed-step' || state.lastEvent.reason === 'firetruck-timeout'
+            ? 'Vehicle Failed'
+            : 'Game Over'
+        );
       return;
     }
     if (state.status === 'won') {
@@ -965,6 +1560,8 @@ async function startRuntime() {
         unsubscribeGame();
         setActiveLevel(nextLevel);
         game = new BusLoopGame(nextLevel);
+        startPassengerEmojiAnimation();
+        randomPlayableAudioScheduler?.reset();
         audio.resetEventHistory();
         view.replaceActiveLevel({ animate: true });
         initializeGameQueues({ resetSlots: true });
@@ -1041,6 +1638,8 @@ async function startRuntime() {
     const initialLevel = levelSession.reset();
     setActiveLevel(initialLevel);
     game = new BusLoopGame(initialLevel);
+    startPassengerEmojiAnimation();
+    randomPlayableAudioScheduler?.reset();
     audio.resetEventHistory();
     view.replaceActiveLevel();
     initializeGameQueues({ resetSlots: true });
@@ -1054,6 +1653,10 @@ async function startRuntime() {
     InstallFullGame();
   });
   canvas.addEventListener('pointerdown', (event) => {
+    if (foregroundVideoBlocking) {
+      event.stopImmediatePropagation();
+      return;
+    }
     if (spatialEditorActive) return;
     if (levelSession.shouldOpenStore()) {
       event.stopImmediatePropagation();
@@ -1062,7 +1665,7 @@ async function startRuntime() {
     }
   }, { capture: true });
   canvas.addEventListener('pointerdown', () => {
-    if (spatialEditorActive) return;
+    if (spatialEditorActive || foregroundVideoBlocking) return;
     audio.unlock();
     pressed = true;
     clearTimeout(pressTimer);
@@ -1083,20 +1686,29 @@ async function startRuntime() {
     applyIdleSpeedMultiplier();
   };
   window.addEventListener('pointerup', release);
-  window.addEventListener('pointercancel', release);
-  window.addEventListener('blur', release);
+    window.addEventListener('pointercancel', release);
+    window.addEventListener('blur', () => {
+      release();
+      game.setApplicationFocus(false);
+    });
+    window.addEventListener('focus', () => game.setApplicationFocus(true));
+    document.addEventListener('visibilitychange', () => {
+      game.setApplicationFocus(document.visibilityState === 'visible');
+    });
   window.addEventListener('beforeunload', flushTuningSave);
 
   let previous = performance.now();
   function frame(now) {
     const delta = (now - previous) / 1000;
     previous = now;
-    if (!spatialEditorActive) game.update(delta);
+    if (!spatialEditorActive && !foregroundVideoBlocking) game.update(delta);
     const renderState = isSpatialOptimizationEnabled('liveRenderState')
       ? game.renderState()
       : game.snapshot();
     view.update(renderState, game);
     view.render();
+    updatePassengerEmojiFrame(now);
+    randomPlayableAudioScheduler?.update(now);
     requestAnimationFrame(frame);
   }
   requestAnimationFrame(frame);

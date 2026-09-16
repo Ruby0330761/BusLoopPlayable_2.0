@@ -27,6 +27,8 @@ const PASSENGER_READY_DISTANCE_THRESHOLD = 0.02;
 const HIDDEN_VEHICLE_REVEAL_DURATION = 0.5;
 const GARAGE_CONTAINER_TYPE = 2;
 const CONVEYOR_BELT_CONTAINER_TYPE = 3;
+const POLICE_COLOR_INDEX = 11;
+const FIRE_TRUCK_COLOR_INDEX = 12;
 // CONVEYOR_RIGHT_VISIBILITY_SCALE = 0.93
 const CONVEYOR_RIGHT_VISIBILITY_SCALE = CONVEYOR_MECHANISM_TUNING.rightVehicleVisibilityScale;
 
@@ -205,9 +207,11 @@ export class BusLoopGame {
     this.turnVehicleEventId = 0;
     this.boardingEvents = [];
     this.nextPassengerId = 1;
+    this.queuesInitialized = false;
     this.initialFillActive = true;
     this.initialFilledSlotIndices = new Set();
     this.failureConditionStartedAt = null;
+    this.applicationFocused = true;
     this.conveyorPathLength = Math.max(0.0001, this.level.conveyorPathLength ?? 1);
     const authoredQueues = this.level.passengerQueues ?? [this.level.passengerSequence];
     this.conveyorCapacity = Math.max(1, Math.floor(this.conveyorCapacity ?? this.level.conveyorCapacity));
@@ -260,6 +264,12 @@ export class BusLoopGame {
       const conveyorConfig = conveyor ? getConveyorMechanicConfig(this.level, conveyor) : null;
       return {
         ...vehicle,
+        isPolice: Boolean(vehicle.isPolice || vehicle.colorIndex === POLICE_COLOR_INDEX),
+        isFireTruck: Boolean(
+          vehicle.isFireTruck
+          || vehicle.colorIndex === FIRE_TRUCK_COLOR_INDEX
+          || Number.isInteger(vehicle.firetruckTimeLimit)
+        ),
         ...(garage ? { x: garage.x, z: garage.z, yaw: garage.yaw } : {}),
         ...(conveyor ? { x: conveyor.x, z: conveyor.z, yaw: conveyor.yaw } : {}),
         state: garage ? 'in-garage' : 'parked',
@@ -331,6 +341,19 @@ export class BusLoopGame {
         };
       })
     };
+    const fireTruckVehicles = this.vehicles.filter((vehicle) => vehicle.isFireTruck);
+    const fireTruckLimits = fireTruckVehicles
+      .map((vehicle) => Number(vehicle.firetruckTimeLimit))
+      .filter((value) => Number.isFinite(value) && value > 0);
+    this.fireTruckState = {
+      enabled: fireTruckVehicles.length > 0,
+      started: false,
+      paused: false,
+      completed: false,
+      remainingSeconds: fireTruckLimits.length > 0 ? Math.max(...fireTruckLimits) / 1000 : 0,
+      totalSeconds: fireTruckLimits.length > 0 ? Math.max(...fireTruckLimits) / 1000 : 0,
+      warningStage: 0
+    };
     this.garageRefreshPending = this.mechanicState.garages.length > 0;
     const spotCount = SCENE_TUNING.parkingSpots.count ?? this.level.spotCount;
     this.spots = Array.from({ length: spotCount }, (_, index) => ({
@@ -401,7 +424,10 @@ export class BusLoopGame {
     this.sourceQueues = remainingQueues.map((queue, index) => (
       queue.slice(this.queues[index]?.length ?? 0)
     ));
-    if (conveyorCapacityChanged || conveyorConfig.resetSlots) {
+    const shouldResetSlots = conveyorCapacityChanged
+      || Boolean(conveyorConfig.resetSlots)
+      || (Boolean(conveyorConfig.initiallyFull) && !this.queuesInitialized);
+    if (shouldResetSlots) {
       this.initialFillActive = true;
       this.initialFilledSlotIndices.clear();
       this.slots = Array.from({ length: this.conveyorCapacity }, (_, index) => ({
@@ -412,18 +438,58 @@ export class BusLoopGame {
         entryIndex: null,
         entryMotion: null
       }));
-      if (directEntrance && conveyorConfig.initiallyFull) {
+      if (conveyorConfig.initiallyFull) {
         this.initialFillActive = false;
-        for (let index = this.slots.length - 1; index >= 0; index -= 1) {
-          const slot = this.slots[index];
-          const passenger = this.dequeuePassenger(0, true);
-          if (!passenger) break;
-          slot.colorIndex = passenger.colorIndex;
-          slot.entryIndex = 0;
-          this.initialFilledSlotIndices.add(slot.index);
+        if (directEntrance) {
+          // Spatial belts have one authored entrance and retain their existing
+          // Unity-facing direction when the slots are populated immediately.
+          for (let index = this.slots.length - 1; index >= 0; index -= 1) {
+            const slot = this.slots[index];
+            const passenger = this.dequeuePassenger(0, true, { ignoreReadiness: true });
+            if (!passenger) break;
+            slot.colorIndex = passenger.colorIndex;
+            slot.entryIndex = 0;
+            this.initialFilledSlotIndices.add(slot.index);
+          }
+        } else {
+          // Ordinary belts have two side queues. Assign passengers in belt
+          // order, selecting the next entrance each slot will cross, instead
+          // of alternating queues and scrambling the authored sequence.
+          const queueCount = Math.max(1, authoredQueues.length);
+          const entryPercents = this.entryPercents.length > 0
+            ? this.entryPercents
+            : Array.from({ length: queueCount }, () => 0);
+          const orderedSlots = [...this.slots].sort((a, b) => a.progress - b.progress);
+          for (const slot of orderedSlots) {
+            let entryIndex = 0;
+            let nearestDistance = Infinity;
+            for (let candidate = 0; candidate < queueCount; candidate += 1) {
+              const entryPercent = Number(entryPercents[candidate] ?? 0);
+              const distance = (entryPercent - slot.progress + 1) % 1;
+              if (distance < nearestDistance) {
+                nearestDistance = distance;
+                entryIndex = candidate;
+              }
+            }
+            const passenger = this.dequeuePassenger(entryIndex, true, { ignoreReadiness: true });
+            if (!passenger) continue;
+            slot.colorIndex = passenger.colorIndex;
+            slot.entryIndex = entryIndex;
+            this.initialFilledSlotIndices.add(slot.index);
+          }
+          // Removing several passengers atomically must not leave a visual gap
+          // at either side entrance. Rebase the remaining queue items to their
+          // normal waiting positions before the first frame is revealed.
+          for (let queueIndex = 0; queueIndex < this.queues.length; queueIndex += 1) {
+            const availableLength = this.queueAvailableLengths[queueIndex] ?? 0;
+            this.queues[queueIndex].forEach((item, itemIndex) => {
+              item.distanceFromHead = Math.min(itemIndex * this.queueSpacing, availableLength);
+            });
+          }
         }
       }
     }
+    this.queuesInitialized = true;
     this.failureConditionStartedAt = null;
     this.lastEvent = { type: 'queues-initialized' };
     this.emit();
@@ -445,6 +511,7 @@ export class BusLoopGame {
       time: this.time,
       resetVersion: this.resetVersion,
       status: this.status,
+      applicationFocused: this.applicationFocused,
       speedMultiplier: this.speedMultiplier,
       initialFillActive: this.initialFillActive,
       sourceRemaining: this.sourceQueues.reduce((sum, queue) => sum + queue.length, 0),
@@ -467,7 +534,8 @@ export class BusLoopGame {
           ...conveyor,
           position: { ...conveyor.position },
           vehicleIds: [...conveyor.vehicleIds]
-        }))
+        })),
+        fireTruck: { ...this.fireTruckState }
       },
       spots: this.spots.map((spot) => ({ ...spot })),
       slots: this.slots.map((slot) => ({
@@ -506,6 +574,61 @@ export class BusLoopGame {
     this.speedMultiplier = next;
     this.lastEvent = { type: 'speed', multiplier: next };
     this.emit();
+  }
+
+  setApplicationFocus(focused) {
+    const next = Boolean(focused);
+    if (next === this.applicationFocused) return;
+    this.applicationFocused = next;
+    if (this.fireTruckState) this.fireTruckState.paused = !next;
+    this.lastEvent = { type: 'application-focus', focused: next };
+    this.emit();
+  }
+
+  startFireTruckCountdown() {
+    if (!this.fireTruckState?.enabled || this.fireTruckState.started || this.fireTruckState.completed) return false;
+    if (this.fireTruckState.totalSeconds <= 0) return false;
+    this.fireTruckState.started = true;
+    this.fireTruckState.paused = !this.applicationFocused;
+    this.lastEvent = {
+      type: 'firetruck-countdown-started',
+      remainingSeconds: this.fireTruckState.remainingSeconds
+    };
+    return true;
+  }
+
+  updateFireTruckCountdown(delta) {
+    const state = this.fireTruckState;
+    if (!state?.started || state.completed || state.paused || !this.applicationFocused) return false;
+    const previousRemaining = state.remainingSeconds;
+    state.remainingSeconds = Math.max(0, previousRemaining - Math.max(0, delta));
+    const nextStage = state.remainingSeconds <= 20 ? 2
+      : (state.remainingSeconds <= 30 ? 1 : 0);
+    let changed = state.remainingSeconds !== previousRemaining || nextStage !== state.warningStage;
+    if (nextStage !== state.warningStage) {
+      state.warningStage = nextStage;
+      this.lastEvent = { type: 'firetruck-warning-stage', stage: nextStage };
+    }
+    if (state.remainingSeconds <= 0) {
+      this.status = 'lost';
+      this.lastEvent = { type: 'lose', reason: 'firetruck-timeout' };
+      changed = true;
+    }
+    return changed;
+  }
+
+  checkFireTruckCompletion() {
+    const state = this.fireTruckState;
+    if (!state?.enabled || state.completed) return false;
+    if (!this.vehicles.filter((vehicle) => vehicle.isFireTruck).every((vehicle) => vehicle.boardedGroups >= vehicle.seats)) {
+      return false;
+    }
+    state.completed = true;
+    state.started = false;
+    state.paused = false;
+    state.remainingSeconds = 0;
+    this.lastEvent = { type: 'firetruck-completed' };
+    return true;
   }
 
   getVehicle(id) {
@@ -805,6 +928,11 @@ export class BusLoopGame {
     const delta = Math.max(0, Math.min(deltaSeconds, 0.1));
     this.time += delta;
     let changed = false;
+    changed = this.updateFireTruckCountdown(delta) || changed;
+    if (this.status !== 'playing') {
+      this.emit();
+      return;
+    }
     const completedTurnVehicleIds = [];
     const garageEvents = {
       changed: false,
@@ -902,6 +1030,13 @@ export class BusLoopGame {
         if (vehicle.motion >= 1) {
           Object.assign(vehicle, { state: 'at-spot', motion: 0, motionData: null });
           this.lastEvent = { type: 'vehicle-arrived', vehicleId: vehicle.id, spotIndex: vehicle.spotIndex };
+          if (this.fireTruckState?.enabled && this.startFireTruckCountdown()) {
+            this.lastEvent = {
+              type: 'firetruck-countdown-started',
+              vehicleId: vehicle.id,
+              remainingSeconds: this.fireTruckState.remainingSeconds
+            };
+          }
           changed = true;
         }
       } else if (vehicle.state === 'colliding') {
@@ -966,7 +1101,11 @@ export class BusLoopGame {
               forwardDuration: forwardPath.length / Math.max(0.001, departure.forwardSpeed ?? 10)
             }
           });
-          this.lastEvent = { type: 'vehicle-full', vehicleId: vehicle.id };
+          this.lastEvent = {
+            type: 'vehicle-full',
+            vehicleId: vehicle.id,
+            ...(vehicle.isPolice ? { policeVehicle: true } : {})
+          };
           changed = true;
         }
       } else if (vehicle.state === 'departing') {
@@ -1066,6 +1205,8 @@ export class BusLoopGame {
       }
     }
 
+    changed = this.checkFireTruckCompletion() || changed;
+
     const previousStatus = this.status;
     this.checkEndState();
     if (completedTurnVehicleIds.length > 0) {
@@ -1146,7 +1287,7 @@ export class BusLoopGame {
     };
   }
 
-  dequeuePassenger(queueIndex, includeDetails = false) {
+  dequeuePassenger(queueIndex, includeDetails = false, { ignoreReadiness = false } = {}) {
     const queue = this.queues[queueIndex];
     if (this.directEntrance && !queue?.length) {
       const source = this.sourceQueues[queueIndex];
@@ -1160,7 +1301,7 @@ export class BusLoopGame {
       return includeDetails ? passenger : passenger.colorIndex;
     }
     if (!queue?.length) return null;
-    if (queue[0].distanceFromHead > PASSENGER_READY_DISTANCE_THRESHOLD) return null;
+    if (!ignoreReadiness && queue[0].distanceFromHead > PASSENGER_READY_DISTANCE_THRESHOLD) return null;
     const passenger = queue.shift();
     const source = this.sourceQueues[queueIndex];
     if (source?.length) {

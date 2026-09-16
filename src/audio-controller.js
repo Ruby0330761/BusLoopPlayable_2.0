@@ -1,3 +1,13 @@
+import { gunzipSync } from 'three/addons/libs/fflate.module.js';
+
+function decodeOptionalGzip(buffer) {
+  const bytes = buffer instanceof Uint8Array
+    ? buffer
+    : new Uint8Array(buffer);
+  if (bytes[0] !== 0x1f || bytes[1] !== 0x8b) return bytes;
+  return gunzipSync(bytes);
+}
+
 function chooseClip(clips) {
   if (!clips?.length) return null;
   return clips.length === 1 ? clips[0] : clips[Math.floor(Math.random() * clips.length)];
@@ -14,9 +24,18 @@ function getEventKeys(event, time = '') {
     // lastEvent remains visible while the vehicle is driving away. The event
     // identity must therefore be independent of the frame time.
     keys.push({ name: 'bus_full', key: `${event.type}:${event.vehicleId}` });
+    if (event.policeVehicle) {
+      keys.push({ name: 'police_siren', key: `${event.type}:${event.vehicleId}` });
+    }
   }
   if (event.type === 'hidden-vehicle-revealed') {
     keys.push({ name: 'hidden_vehicle_reveal', key: `${event.type}:${event.vehicleId}` });
+  }
+  if (event.type === 'firetruck-countdown-started') {
+    keys.push({ name: 'firetruck_start', key: event.type });
+  }
+  if (event.type === 'lose' && event.reason === 'firetruck-timeout') {
+    keys.push({ name: 'firetruck_fail', key: event.type });
   }
   if (event.ambulanceUpdates?.some((entry) => entry.remainingSteps <= 5)) {
     for (const entry of event.ambulanceUpdates) {
@@ -94,38 +113,41 @@ export class GameAudioController {
         if (!response.ok) throw new Error(`Audio request failed: ${response.status}`);
         return response.arrayBuffer();
       })
-      .then((data) => context.decodeAudioData(data));
+      .then((data) => {
+        const bytes = decodeOptionalGzip(data);
+        return context.decodeAudioData(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength));
+      });
     this.buffers.set(url, bufferPromise);
     return bufferPromise;
   }
 
-  play(name, clipOverride = null) {
+  play(name, clipOverride = null, volumeOverride = null) {
     const data = this.audioConfig[name];
     const clip = clipOverride ?? chooseClip(data?.clips);
     const context = this.getContext();
     if (!clip || !data) return;
     if (!context || context.state !== 'running') {
-      this.queuedPlays.push({ name, clip });
+      this.queuedPlays.push({ name, clip, volumeOverride });
       if (context?.state === 'suspended') void context.resume().then(() => this.flushQueuedPlays());
       return;
     }
-    this.startPlayback(name, clip, data, context);
+    this.startPlayback(name, clip, data, context, volumeOverride);
   }
 
   flushQueuedPlays() {
     if (!this.queuedPlays.length) return;
     const pending = this.queuedPlays.splice(0);
-    for (const { name, clip } of pending) this.play(name, clip);
+    for (const { name, clip, volumeOverride } of pending) this.play(name, clip, volumeOverride);
   }
 
-  startPlayback(name, clip, data, context) {
+  startPlayback(name, clip, data, context, volumeOverride = null) {
     void this.loadClip(clip)
       .then((buffer) => {
         if (!buffer || context.state !== 'running') return;
         const source = context.createBufferSource();
         const gain = context.createGain();
         source.buffer = buffer;
-        gain.gain.value = data.volume ?? 1;
+        gain.gain.value = volumeOverride ?? data.volume ?? 1;
         source.connect(gain).connect(context.destination);
         this.activeSources.add(source);
         source.onended = () => this.activeSources.delete(source);

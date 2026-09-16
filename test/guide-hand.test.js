@@ -12,6 +12,7 @@ test('guide hand targets Level12 vehicle 34 only with the first-step mask disabl
   const editorSource = await readFile(new URL('../src/scene-editor.js', import.meta.url), 'utf8');
   const stylesSource = await readFile(new URL('../src/styles.css', import.meta.url), 'utf8');
   const viewSource = await readFile(new URL('../src/scene-view.js', import.meta.url), 'utf8');
+  const emoji = SCENE_TUNING.passengerEmoji;
 
   assert.equal(tuning.levelKey, 'level12');
   assert.equal(tuning.vehicleId, 34);
@@ -27,6 +28,10 @@ test('guide hand targets Level12 vehicle 34 only with the first-step mask disabl
   assert.equal(firstClickGuide.holePadding, 15);
   assert.equal(firstClickGuide.holeScaleX, 0.62);
   assert.equal(firstClickGuide.holeScaleY, 0.62);
+  assert.equal(emoji.autoHideOnVehicleEnabled, 0);
+  assert.equal(emoji.autoHideOnVehicleLevelKey, 'level29');
+  assert.equal(emoji.autoHideOnVehicleId, 1);
+  assert.equal(emoji.animationDelaySeconds, 0);
   assert.equal(isGuideLevelActive(tuning, 'level12'), true);
   assert.equal(isGuideLevelActive(tuning, 'level10'), false);
   assert.equal(isGuideLevelActive(firstClickGuide, 'level12'), true);
@@ -52,6 +57,13 @@ test('guide hand targets Level12 vehicle 34 only with the first-step mask disabl
   assert.match(mainSource, /Number\(guideHand\.vehicleId\) === 1/);
   assert.match(mainSource, /Number\(guideHand\.offsetX\) === -0\.38/);
   assert.match(mainSource, /Number\(guideHand\.approachOffsetX\) === -0\.62/);
+  assert.match(mainSource, /PASSENGER_EMOJI_HIDE_STATES/);
+  assert.match(mainSource, /updatePassengerEmojiAutoHide/);
+  assert.match(mainSource, /passengerEmojiAnimationStartedAt/);
+  assert.match(mainSource, /animationDelaySeconds/);
+  assert.match(mainSource, /startPassengerEmojiAnimation/);
+  assert.match(mainSource, /autoHideOnVehicleLevelKey/);
+  assert.match(mainSource, /autoHideOnVehicleId/);
   assert.match(mainSource, /guide\.levelKey = 'level12'/);
   assert.match(mainSource, /guide\.vehicleId = 34/);
   assert.match(stylesSource, /\.first-click-guide-hand/);
@@ -64,4 +76,8 @@ test('guide hand targets Level12 vehicle 34 only with the first-step mask disabl
   assert.match(editorSource, /firstClickGuide\.maskOpacity/);
   assert.match(editorSource, /firstClickGuide\.holeScaleX/);
   assert.match(editorSource, /firstClickGuide\.holeScaleY/);
+  assert.match(editorSource, /passengerEmoji\.autoHideOnVehicleEnabled/);
+  assert.match(editorSource, /passengerEmoji\.autoHideOnVehicleLevelKey/);
+  assert.match(editorSource, /passengerEmoji\.autoHideOnVehicleId/);
+  assert.match(editorSource, /passengerEmoji\.animationDelaySeconds/);
 });
