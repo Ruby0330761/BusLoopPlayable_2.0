@@ -71,7 +71,15 @@ test('random playable audio resources stay isolated and are selected only when e
     'ordinaryConveyor', 'randomPlayableAudio'
   ]);
   assert.equal(MECHANISM_ASSETS.randomPlayableAudio.policeRing, audioAssets[0]);
-  assert.equal(readFileSync(`public${audioAssets[0]}`).subarray(0, 2).toString('hex'), '1f8b');
+  const packedPoliceRing = readFileSync(`public${audioAssets[0]}`);
+  assert.equal(packedPoliceRing.subarray(0, 2).toString('hex'), '1f8b');
+  const policeRingWav = gunzipSync(packedPoliceRing);
+  assert.equal(policeRingWav.subarray(0, 4).toString('ascii'), 'RIFF');
+  assert.equal(policeRingWav.subarray(8, 12).toString('ascii'), 'WAVE');
+  assert.equal(policeRingWav.readUInt16LE(22), 1);
+  assert.equal(policeRingWav.readUInt32LE(24), 16000);
+  assert.equal(policeRingWav.readUInt16LE(34), 16);
+  assert.ok(packedPoliceRing.length < 160_000);
   assert.equal(readFileSync(`public${audioAssets[1]}`).subarray(0, 3).toString('ascii'), 'ID3');
   assert.equal(readFileSync(`public${audioAssets[2]}`).subarray(0, 3).toString('ascii'), 'ID3');
 });
