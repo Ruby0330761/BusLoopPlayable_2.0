@@ -143,6 +143,30 @@ export const SCENE_TUNING = {
     }
   },
   "conveyorLayouts": {
+    "singleQueue1": {
+      "art": {
+        "x": 0.5,
+        "y": -0.045,
+        "z": -3.95,
+        "width": 13.55,
+        "depth": 7.95,
+        "opacity": 1
+      },
+      "curve": {
+        "offsetX": 0,
+        "offsetZ": 0.6,
+        "scaleX": 0.75,
+        "scaleZ": 0.7
+      },
+      "queueCurves": [
+        {
+          "offsetX": -0.75,
+          "offsetZ": 1.05,
+          "scaleX": 0.8,
+          "scaleZ": 0.8
+        }
+      ]
+    },
     "dualQueue2": {
       "art": {
         "x": 0,

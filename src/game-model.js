@@ -383,7 +383,9 @@ export class BusLoopGame {
   ) {
     const sourceQueues = this.level.passengerQueues ?? [this.level.passengerSequence];
     const directEntrance = Boolean(conveyorConfig.directEntrance);
-    const authoredQueues = directEntrance ? [sourceQueues.flat()] : sourceQueues;
+    const authoredQueues = directEntrance || conveyorConfig.queueMode === 'single'
+      ? [sourceQueues.flat()]
+      : sourceQueues;
     const canPreserveQueues = !conveyorConfig.resetSlots && this.directEntrance === directEntrance;
     const remainingQueues = authoredQueues.map((queue, index) => {
       if (!canPreserveQueues || !this.queues?.[index] || !this.sourceQueues?.[index]) {

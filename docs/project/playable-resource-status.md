@@ -31,6 +31,7 @@ On 2026-09-08, 62 byte-unique TinyPNG results replaced 112 existing paths across
 
 | Resource | Status | Notes |
 | --- | --- | --- |
+| `public/assets/unity/conveyors/Loop_01_q88.webp` | wired | `ConveyorBelt1.prefab` / `singleQueue1`; transparent 2100x1300 WebP, compressed from the 995,101-byte imported PNG to 53,694 bytes with identical alpha and 44.64 dB opaque-pixel RGB PSNR. Included only when this layout is selected. |
 | `public/assets/unity/conveyors/Loop_02_q80.webp` | wired | `GameSceneDualQueue2.prefab`; default editor/runtime layout. |
 | `public/assets/unity/conveyors/Loop_03_q80.webp` | wired | `GameSceneDualQueue3.prefab`; paired with its authored closed/queue splines. |
 | `public/assets/unity/conveyors/Loop_06_q80.webp` | wired | `GameSceneDualQueue5.prefab` via nested `ConveyorBelt6.prefab`; paired with merged authored splines. |

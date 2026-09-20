@@ -234,6 +234,14 @@ const layout2 = extractDirectLayout(readScene('GameSceneDualQueue2'), {
   textureFile: 'Loop_02.png',
   spriteRect: { x: 0, y: 57, width: 2100, height: 1243, imageWidth: 2100, imageHeight: 1300 }
 });
+const layout1 = extractDirectLayout(readPrefab(path.join(prefabRoot, 'ConveyorBelts', 'ConveyorBelt1.prefab')), {
+  id: 'singleQueue1',
+  label: 'ConveyorBelt1',
+  sourcePrefab: 'ConveyorBelt1.prefab',
+  textureFile: 'Loop_01.png',
+  spriteRect: { x: 0, y: 0, width: 2100, height: 1300, imageWidth: 2100, imageHeight: 1300 },
+  queueMode: 'single'
+});
 const layout3 = extractDirectLayout(readScene('GameSceneDualQueue3'), {
   id: 'dualQueue3',
   label: 'GameSceneDualQueue3',
@@ -260,7 +268,7 @@ const layout10 = extractDirectLayout(readScene('GameSceneDualQueue10'), {
   spriteRect: { x: 0, y: 57, width: 2100, height: 1243, imageWidth: 2100, imageHeight: 1300 }
 });
 
-const layouts = [layout2, layout3, layout5, layout10];
+const layouts = [layout1, layout2, layout3, layout5, layout10];
 const outputPath = getArgument('--output');
 const moduleOutputPath = getArgument('--module-output');
 const json = `${JSON.stringify(layouts, null, 2)}\n`;
@@ -271,7 +279,7 @@ if (moduleOutputPath) {
   const layoutMap = Object.fromEntries(layouts.map((layout) => [layout.id, {
     ...layout,
     assets: {
-      loopScene: `/assets/unity/conveyors/${layout.textureFile.replace(/\.png$/i, '_q80.webp')}`,
+      loopScene: `/assets/unity/conveyors/${layout.textureFile.replace(/\.png$/i, layout.id === 'singleQueue1' ? '_q88.webp' : '_q80.webp')}`,
       loopSpriteRect: layout.spriteRect
     }
   }]));

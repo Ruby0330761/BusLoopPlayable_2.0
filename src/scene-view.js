@@ -4737,6 +4737,7 @@ export class SceneView {
       layoutId: layout.id,
       capacity: layout.conveyorCapacity,
       queueCapacities: [...layout.queueCapacities],
+      queueMode: layout.queueMode,
       entryPercents: [...(this.entryPercents ?? [])],
       exitStart: layout.exitStart,
       exitEnd: layout.exitEnd,

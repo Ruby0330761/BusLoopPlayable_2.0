@@ -1,3 +1,5 @@
+import { CONVEYOR_LAYOUTS } from './conveyor-layouts.js';
+
 const MECHANISM_ROOT = '/assets/unity/mechanisms';
 
 export const MECHANISM_TYPES = Object.freeze({
@@ -34,6 +36,7 @@ export const MECHANISM_TYPE_ORDER = Object.freeze([
 
 export const MECHANISM_RESOURCE_MANIFEST = /* @__PURE__ */ Object.freeze({
   [MECHANISM_TYPES.ordinaryConveyor]: /* @__PURE__ */ Object.freeze([
+    '/assets/unity/conveyors/Loop_01_q88.webp',
     '/assets/unity/conveyors/Loop_02_q80.webp',
     '/assets/unity/conveyors/Loop_03_q80.webp',
     '/assets/unity/conveyors/Loop_04_q80.webp',
@@ -314,6 +317,19 @@ export function getMechanismTypesForLevels(
   return MECHANISM_TYPE_ORDER.filter((type) => types.includes(type));
 }
 
-export function getMechanismResourcePaths(types = []) {
-  return [...new Set(types.flatMap((type) => MECHANISM_RESOURCE_MANIFEST[type] ?? []))];
+export function getOrdinaryConveyorResourcePath(selection) {
+  const asset = CONVEYOR_LAYOUTS[selection]?.assets?.loopScene;
+  return typeof asset === 'string' && asset ? asset : null;
+}
+
+export function getMechanismResourcePaths(
+  types = [],
+  { conveyorSelection = null } = {}
+) {
+  const selectedConveyorAsset = getOrdinaryConveyorResourcePath(conveyorSelection);
+  return [...new Set(types.flatMap((type) => (
+    type === MECHANISM_TYPES.ordinaryConveyor && selectedConveyorAsset
+      ? [selectedConveyorAsset]
+      : (MECHANISM_RESOURCE_MANIFEST[type] ?? [])
+  )))];
 }

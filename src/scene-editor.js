@@ -5,6 +5,7 @@ import {
 } from './spatial-conveyor-runtime.js';
 
 const CONVEYOR_LAYOUT_OPTIONS = [
+  ['singleQueue1', 'ConveyorBelt1（单边）'],
   ['dualQueue2', 'GameSceneDualQueue2'],
   ['dualQueue3', 'GameSceneDualQueue3'],
   ['dualQueue5', 'GameSceneDualQueue5'],

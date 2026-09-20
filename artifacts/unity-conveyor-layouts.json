@@ -1,5 +1,200 @@
 [
   {
+    "id": "singleQueue1",
+    "label": "ConveyorBelt1",
+    "sourcePrefab": "ConveyorBelt1.prefab",
+    "textureFile": "Loop_01.png",
+    "spriteRect": {
+      "x": 0,
+      "y": 0,
+      "width": 2100,
+      "height": 1300,
+      "imageWidth": 2100,
+      "imageHeight": 1300
+    },
+    "queueMode": "single",
+    "conveyorCapacity": 39,
+    "queueCapacities": [
+      18
+    ],
+    "exitStart": 0.6449999809265137,
+    "exitEnd": 0.7699999809265137,
+    "splineType": "bSpline",
+    "splinePoints": [
+      [
+        -1.1367189,
+        15.795298
+      ],
+      [
+        -0.88272613,
+        16.000776
+      ],
+      [
+        -0.5779353,
+        16.117617
+      ],
+      [
+        -0.25621134,
+        16.157906
+      ],
+      [
+        0.08668726,
+        16.157906
+      ],
+      [
+        0.39993596,
+        16.13776
+      ],
+      [
+        0.71742654,
+        16.077326
+      ],
+      [
+        0.9968183,
+        15.94437
+      ],
+      [
+        1.2127122,
+        15.658314
+      ],
+      [
+        1.2084788,
+        15.267502
+      ],
+      [
+        1.0603166,
+        15.03785
+      ],
+      [
+        0.78092474,
+        14.876691
+      ],
+      [
+        0.48460016,
+        14.804172
+      ],
+      [
+        0.15864311,
+        14.779996
+      ],
+      [
+        -0.18001355,
+        14.775967
+      ],
+      [
+        -0.5059707,
+        14.808199
+      ],
+      [
+        -0.84039426,
+        14.896837
+      ],
+      [
+        -1.1240191,
+        15.110372
+      ],
+      [
+        -1.2383158,
+        15.460893
+      ]
+    ],
+    "queuePaths": [
+      [
+        [
+          1.4559131,
+          16.003365
+        ],
+        [
+          1.6129932,
+          16.1125
+        ],
+        [
+          1.753921,
+          16.267216
+        ],
+        [
+          1.8521147,
+          16.432766
+        ],
+        [
+          1.9225472,
+          16.643724
+        ],
+        [
+          1.9699305,
+          16.842907
+        ],
+        [
+          2.0023973,
+          17.003696
+        ],
+        [
+          2.0302079,
+          17.217865
+        ],
+        [
+          2.0653083,
+          17.462677
+        ],
+        [
+          2.1052897,
+          17.638845
+        ],
+        [
+          2.1484666,
+          17.860868
+        ],
+        [
+          2.196243,
+          18.033333
+        ],
+        [
+          2.259161,
+          18.228916
+        ],
+        [
+          2.3294811,
+          18.447512
+        ],
+        [
+          2.412309,
+          18.605207
+        ],
+        [
+          2.5338323,
+          18.763458
+        ],
+        [
+          2.686706,
+          18.895437
+        ],
+        [
+          2.8671162,
+          18.99727
+        ],
+        [
+          2.3091,
+          18.563267
+        ],
+        [
+          2.4596,
+          18.631124
+        ]
+      ]
+    ],
+    "assets": {
+      "loopScene": "/assets/unity/conveyors/Loop_01_q88.webp",
+      "loopSpriteRect": {
+        "x": 0,
+        "y": 0,
+        "width": 2100,
+        "height": 1300,
+        "imageWidth": 2100,
+        "imageHeight": 1300
+      }
+    }
+  },
+  {
     "id": "dualQueue2",
     "label": "GameSceneDualQueue2",
     "sourcePrefab": "GameSceneDualQueue2.prefab",
@@ -263,7 +458,18 @@
           18.631124
         ]
       ]
-    ]
+    ],
+    "assets": {
+      "loopScene": "/assets/unity/conveyors/Loop_02_q80.webp",
+      "loopSpriteRect": {
+        "x": 0,
+        "y": 57,
+        "width": 2100,
+        "height": 1243,
+        "imageWidth": 2100,
+        "imageHeight": 1300
+      }
+    }
   },
   {
     "id": "dualQueue3",
@@ -529,7 +735,18 @@
           18.499977
         ]
       ]
-    ]
+    ],
+    "assets": {
+      "loopScene": "/assets/unity/conveyors/Loop_03_q80.webp",
+      "loopSpriteRect": {
+        "x": 0,
+        "y": 56,
+        "width": 2100,
+        "height": 1244,
+        "imageWidth": 2100,
+        "imageHeight": 1300
+      }
+    }
   },
   {
     "id": "dualQueue5",
@@ -795,7 +1012,18 @@
           19.511578
         ]
       ]
-    ]
+    ],
+    "assets": {
+      "loopScene": "/assets/unity/conveyors/Loop_06_q80.webp",
+      "loopSpriteRect": {
+        "x": 0,
+        "y": 58,
+        "width": 2100,
+        "height": 1242,
+        "imageWidth": 2100,
+        "imageHeight": 1300
+      }
+    }
   },
   {
     "id": "dualQueue10",
@@ -1061,6 +1289,17 @@
           19.64524
         ]
       ]
-    ]
+    ],
+    "assets": {
+      "loopScene": "/assets/unity/conveyors/Loop_04_q80.webp",
+      "loopSpriteRect": {
+        "x": 0,
+        "y": 57,
+        "width": 2100,
+        "height": 1243,
+        "imageWidth": 2100,
+        "imageHeight": 1300
+      }
+    }
   }
 ]

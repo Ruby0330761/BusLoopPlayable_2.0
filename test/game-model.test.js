@@ -435,8 +435,8 @@ test('level12 initializes Unity-authored layout and counts', () => {
 });
 
 test('Unity conveyor layout catalog includes all requested prefab shapes and assets', () => {
-  assert.deepEqual(CONVEYOR_LAYOUT_IDS, ['dualQueue2', 'dualQueue3', 'dualQueue5', 'dualQueue10']);
-  assert.equal(MAX_CONVEYOR_CAPACITY, 38);
+  assert.deepEqual(CONVEYOR_LAYOUT_IDS, ['singleQueue1', 'dualQueue2', 'dualQueue3', 'dualQueue5', 'dualQueue10']);
+  assert.equal(MAX_CONVEYOR_CAPACITY, 39);
   assert.equal(MAX_QUEUE_CAPACITY, 26);
   assert.deepEqual(
     Object.fromEntries(CONVEYOR_LAYOUT_IDS.map((id) => [id, {
@@ -444,6 +444,7 @@ test('Unity conveyor layout catalog includes all requested prefab shapes and ass
       queues: CONVEYOR_LAYOUTS[id].queueCapacities
     }])),
     {
+      singleQueue1: { conveyor: 39, queues: [18] },
       dualQueue2: { conveyor: 32, queues: [24, 24] },
       dualQueue3: { conveyor: 36, queues: [22, 22] },
       dualQueue5: { conveyor: 31, queues: [26, 26] },
@@ -453,7 +454,10 @@ test('Unity conveyor layout catalog includes all requested prefab shapes and ass
   for (const layout of Object.values(CONVEYOR_LAYOUTS)) {
     assert.equal(layout.splineType, 'bSpline');
     assert.equal(layout.splinePoints.length, 19);
-    assert.deepEqual(layout.queuePaths.map((path) => path.length), [20, 20]);
+    assert.deepEqual(
+      layout.queuePaths.map((path) => path.length),
+      layout.queueMode === 'single' ? [20] : [20, 20]
+    );
     assert.ok(publicAssetExists(layout.assets.loopScene), layout.assets.loopScene);
   }
   assert.deepEqual(CONVEYOR_LAYOUTS.dualQueue2.splinePoints, LEVEL_1.splinePoints);
