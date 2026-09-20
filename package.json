@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite --host 127.0.0.1",
-    "prebuild": "node scripts/generate-active-level.mjs && node scripts/generate-active-spatial-conveyor.mjs",
+    "prebuild": "node scripts/generate-active-level.mjs && node scripts/generate-active-spatial-conveyor.mjs && node scripts/generate-playable-build-config.mjs",
     "build": "vite build",
     "levels:extract": "node scripts/extract-unity-levels.mjs",
     "level:generate": "node scripts/generate-active-level.mjs",
@@ -13,7 +13,9 @@
     "luxury:animation:extract": "node scripts/extract-unity-passenger-animation.mjs",
     "apply:tuning": "node scripts/apply-scene-tuning.mjs",
     "check:applovin": "node scripts/check-applovin-package.mjs",
-    "package:applovin": "node scripts/package-applovin-single-html.mjs",
+    "package:applovin:raw": "node scripts/package-applovin-single-html.mjs",
+    "package:applovin": "npm run package:applovin:verified",
+    "package:applovin:verified": "npm run apply:tuning && npm run build && npm run package:applovin:raw && npm run check:applovin",
     "preview": "vite preview --host 127.0.0.1",
     "test": "node --test"
   },

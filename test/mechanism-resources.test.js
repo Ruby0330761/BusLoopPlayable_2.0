@@ -7,6 +7,8 @@ import {
   MECHANISM_ASSETS,
   MECHANISM_RESOURCE_MANIFEST,
   deriveLevelMechanics,
+  getMechanismResourcePaths,
+  getOrdinaryConveyorResourcePath,
   getMechanismTypesForLevels
 } from '../src/mechanism-resources.js';
 import { COLORS } from '../src/level-data.js';
@@ -16,6 +18,32 @@ test('mechanism resource manifest keeps every mechanism family under its owned d
   for (const paths of Object.values(MECHANISM_RESOURCE_MANIFEST)) {
     for (const asset of paths) assert.equal(existsSync(`public${asset}`), true, asset);
   }
+});
+
+test('ordinary conveyor packaging keeps only the selected layout artwork', () => {
+  assert.equal(
+    getOrdinaryConveyorResourcePath('singleQueue1'),
+    '/assets/unity/conveyors/Loop_01_q88.webp'
+  );
+  assert.deepEqual(
+    getMechanismResourcePaths(['ordinaryConveyor'], { conveyorSelection: 'singleQueue1' }),
+    ['/assets/unity/conveyors/Loop_01_q88.webp']
+  );
+  assert.deepEqual(
+    getMechanismResourcePaths(['ordinaryConveyor'], { conveyorSelection: 'dualQueue2' }),
+    ['/assets/unity/conveyors/Loop_02_q80.webp']
+  );
+  assert.deepEqual(
+    getMechanismResourcePaths(['ordinaryConveyor']),
+    MECHANISM_RESOURCE_MANIFEST.ordinaryConveyor
+  );
+
+  const packager = readFileSync('scripts/package-applovin-single-html.mjs', 'utf8');
+  const checker = readFileSync('scripts/check-applovin-package.mjs', 'utf8');
+  assert.match(packager, /conveyorSelection: spatialSelection/);
+  assert.match(checker, /selected ordinary conveyor layout inlined/);
+  assert.match(checker, /retry controls and transition included/);
+  assert.match(checker, /retry and install-gate runtime included/);
 });
 
 test('entry banner resources stay isolated and are selected only when enabled', () => {

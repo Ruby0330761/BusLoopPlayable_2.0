@@ -1,6 +1,12 @@
 import { mkdir, readFile, readdir, stat, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { getForegroundVideoAssetUrl } from './foreground-video-importer.mjs';
+import {
+  createPlayableBuildConfig,
+  createPlayableBuildSignature,
+  createPlayablePackageMetadata,
+  injectPlayablePackageMetadata
+} from './playable-build-config.mjs';
 
 const ROOT = process.cwd();
 const DIST_DIR = path.join(ROOT, 'dist');
@@ -209,13 +215,38 @@ function injectForegroundVideoAssets(html, foregroundAssetUrl, transitionAssetUr
 async function main() {
   const [{ PLAYABLE_LEVEL_SEQUENCE }, { SCENE_TUNING }, {
     BASE_RUNTIME_ASSET_PATHS,
+    MECHANISM_RESOURCE_MANIFEST,
+    getOrdinaryConveyorResourcePath,
     getMechanismResourcePaths,
     getMechanismTypesForLevels
+  }, {
+    PLAYABLE_BUILD_CONFIG,
+    PLAYABLE_BUILD_SIGNATURE
   }] = await Promise.all([
     import('../src/generated-active-level.js'),
     import('../src/scene-tuning.js'),
-    import('../src/mechanism-resources.js')
+    import('../src/mechanism-resources.js'),
+    import('../src/generated-playable-build-config.js')
   ]);
+  const expectedBuildConfig = createPlayableBuildConfig(SCENE_TUNING);
+  const expectedBuildSignature = createPlayableBuildSignature(expectedBuildConfig);
+  if (
+    JSON.stringify(PLAYABLE_BUILD_CONFIG) !== JSON.stringify(expectedBuildConfig)
+    || PLAYABLE_BUILD_SIGNATURE !== expectedBuildSignature
+  ) {
+    throw new Error(
+      'Generated playable build config does not match scene tuning. '
+      + 'Run npm run build before packaging.'
+    );
+  }
+  const configuredLevelKey = String(SCENE_TUNING.level?.selected ?? '');
+  const generatedLevelKey = String(PLAYABLE_LEVEL_SEQUENCE[0]?.key ?? '');
+  if (configuredLevelKey && generatedLevelKey !== configuredLevelKey) {
+    throw new Error(
+      `Production level mismatch: tuning selects ${configuredLevelKey}, generated payload contains ${generatedLevelKey || 'none'}. `
+      + 'Run npm run apply:tuning and npm run build before packaging.'
+    );
+  }
   const htmlPath = path.join(DIST_DIR, 'index.html');
   const html = stripEditorMount(await readFile(htmlPath, 'utf8'));
   const jsPath = html.match(/src="(\/assets\/[^"]+\.js)"/u)?.[1];
@@ -228,6 +259,12 @@ async function main() {
     readFile(path.join(DIST_DIR, jsPath), 'utf8'),
     readFile(path.join(DIST_DIR, cssPath), 'utf8')
   ]);
+  if (!jsSource.includes(expectedBuildSignature)) {
+    throw new Error(
+      'The dist JavaScript was built with a different store-redirect/retry configuration. '
+      + 'Run npm run build before packaging.'
+    );
+  }
   const spatialSelection = SCENE_TUNING.conveyorLayout?.selected;
   const mechanismTypes = getMechanismTypesForLevels(PLAYABLE_LEVEL_SEQUENCE, {
     spatialSelection,
@@ -245,7 +282,13 @@ async function main() {
     && SCENE_TUNING.foregroundVideo?.transitionSelected
     ? getForegroundVideoAssetUrl(SCENE_TUNING.foregroundVideo.transitionSelected)
     : null;
-  for (const level of PLAYABLE_LEVEL_SEQUENCE) collectAssetUrls(level, realAssetUrls);
+  const levelConveyorAssetUrls = new Set();
+  for (const level of PLAYABLE_LEVEL_SEQUENCE) {
+    collectAssetUrls(level, realAssetUrls);
+    if (typeof level?.assets?.loopScene === 'string') {
+      levelConveyorAssetUrls.add(level.assets.loopScene);
+    }
+  }
   collectAssetUrls(html, realAssetUrls);
   collectAssetUrls(cssSource, realAssetUrls);
   collectAssetUrls({
@@ -253,7 +296,16 @@ async function main() {
     icon: SCENE_TUNING.branding?.icon?.asset,
     logo: SCENE_TUNING.branding?.logo?.asset
   }, realAssetUrls);
-  for (const assetUrl of getMechanismResourcePaths(mechanismTypes)) realAssetUrls.add(assetUrl);
+  const selectedOrdinaryConveyorAsset = getOrdinaryConveyorResourcePath(spatialSelection);
+  if (selectedOrdinaryConveyorAsset) {
+    for (const assetUrl of levelConveyorAssetUrls) realAssetUrls.delete(assetUrl);
+    for (const assetUrl of MECHANISM_RESOURCE_MANIFEST.ordinaryConveyor) {
+      if (assetUrl !== selectedOrdinaryConveyorAsset) realAssetUrls.delete(assetUrl);
+    }
+  }
+  for (const assetUrl of getMechanismResourcePaths(mechanismTypes, {
+    conveyorSelection: spatialSelection
+  })) realAssetUrls.add(assetUrl);
   if (foregroundVideoAssetUrl) realAssetUrls.add(foregroundVideoAssetUrl);
   if (foregroundTransitionAssetUrl) realAssetUrls.add(foregroundTransitionAssetUrl);
   realAssetUrls.delete(jsPath);
@@ -276,6 +328,10 @@ async function main() {
   );
   output = inlineModule(output, js, jsPath);
   output = replaceAssetUrls(output, assetMap);
+  output = injectPlayablePackageMetadata(
+    output,
+    createPlayablePackageMetadata(expectedBuildConfig, expectedBuildSignature)
+  );
 
   await mkdir(OUTPUT_DIR, { recursive: true });
   await writeFile(OUTPUT_FILE, normalizeLineEndings(output), 'utf8');

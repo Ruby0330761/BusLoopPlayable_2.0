@@ -97,19 +97,23 @@ AppLovin 还要求 CTA、音频等敏感行为发生在真实用户交互上下�
 
 ### 5.2 构建并生成 AppLovin 单 HTML
 
-参数落盘并核对后依次执行：
+参数落盘并核对后执行：
 
 ```powershell
-npm run build
 npm run package:applovin
-npm run check:applovin
+```
+
+`package:applovin` 现在默认使用完整验证流程。下面的旧命令仍是等价别名：
+
+```powershell
+npm run package:applovin:verified
 ```
 
 说明：
 
-- `npm run build` 会先生成当前选中关卡和当前选中立体轨道的窄生产数据，再执行 Vite 构建；若选中的立体轨道 JSON 不存在，构建会直接失败而不是回退普通轨道。
-- `npm run package:applovin` 会把脚本、样式和资源内联为单个 HTML。
-- `npm run check:applovin` 会检查单文件、包体、外部资源、MRAID CTA 等静态要求。
+- `npm run package:applovin` 会应用 `artifacts/scene-tuning.json`，重新生成当前关卡、立体轨道和跳转/重试签名，执行 Vite 构建，再内联并检查最终单 HTML。
+- 打包器会逐项核对当前配置、生成快照、`dist` 运行代码和成品 HTML 元数据；任何一处仍是旧跳转策略都会直接失败。
+- `npm run package:applovin:raw` 只供脚本内部和故障排查使用，不应作为正式交付入口。
 - 最终默认产物是 `artifacts/applovin/index.html`。
 - 每次重新打包都会覆盖 `index.html`。需要保留多个版本时，必须先复制为带关卡、背景或日期的明确文件名。
 

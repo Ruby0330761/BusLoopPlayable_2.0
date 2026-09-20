@@ -30,7 +30,7 @@ Use this file before code changes. Pick the closest change area, then read only 
 | Visual CSS, HUD, branding overlay, editor panel, phone preview, responsive behavior | `src/styles.css` | `index.html`, `src/scene-editor.js` |
 | Build/test scripts or dependency changes | `package.json` | Lockfile if dependency versions change |
 | Vite development server and durable editor level selection | `vite.config.js` | `artifacts/selected-level.txt`, `src/main.js`, `scripts/generate-active-level.mjs` |
-| AppLovin single-HTML packaging | `scripts/package-applovin-single-html.mjs` | `scripts/check-applovin-package.mjs`, `package.json`, `docs/platforms/applovin-playable-audit.md` |
+| AppLovin single-HTML packaging and baked redirect/retry verification | `scripts/package-applovin-single-html.mjs` | `scripts/playable-build-config.mjs`, `scripts/generate-playable-build-config.mjs`, `src/generated-playable-build-config.js`, `scripts/check-applovin-package.mjs`, `test/playable-build-config.test.js`, `package.json`, `docs/platforms/applovin-playable-audit.md` |
 | Editor-imported foreground video catalog and conditional packaging | `scripts/foreground-video-importer.mjs` | `vite.config.js`, `src/scene-editor.js`, `src/scene-tuning.js`, `scripts/package-applovin-single-html.mjs`, `scripts/check-applovin-package.mjs`, `test/foreground-video-assets.test.js` |
 | Unity VAT extraction utility | `scripts/extract-unity-vat.mjs` | `scripts/extract-unity-passenger-animation.mjs`, `tools/unity-vat-export/Packages/manifest.json` |
 | Police passenger VAT repair utility | `scripts/rebuild-police-vat.mjs` | `src/scene-view.js`, `public/assets/unity/mechanisms/police-car/models/` |
@@ -46,6 +46,8 @@ Use this file before code changes. Pick the closest change area, then read only 
 - `index.html`: DOM shell for the playable. Owns `#app`, `#stage`, `#game-canvas`, branding image/text overlay, message overlay, end panel, reset button, and `#scene-editor` mount.
 - `package.json`: npm metadata, Vite scripts, `node --test` test script, and dependency list.
 - `scripts/package-applovin-single-html.mjs`: AppLovin packaging utility. Reads Vite `dist`, inlines built JS/CSS and `/assets/...` files as data URIs, and writes `artifacts/applovin/index.html`.
+- `scripts/playable-build-config.mjs`: Normalizes redirect/retry settings, creates the build signature, and reads/writes final-package metadata used to reject stale builds.
+- `scripts/generate-playable-build-config.mjs`: Generates the redirect/retry config snapshot imported by the runtime before each production build.
 - `scripts/check-applovin-package.mjs`: AppLovin static upload precheck for `artifacts/applovin/index.html`, including size, single-file, inline-resource, WAV, remote URL, and MRAID CTA checks.
 - `scripts/apply-scene-tuning.mjs`: Applies exported editor tuning JSON from `artifacts/scene-tuning.json` (or `--input`) into `src/scene-tuning.js` and synchronizes `artifacts/selected-level.txt` before production packaging.
 - `scripts/foreground-video-importer.mjs`: Validates, stores, and lists editor-imported MP4/WebM foreground animation files under `public/assets/playable/foreground-videos/`; the folder contents are the editor catalog source.
@@ -67,6 +69,7 @@ Use this file before code changes. Pick the closest change area, then read only 
 - `src/level-catalog.js`: Generated development-only catalog for the six imported Unity levels plus the legacy baseline used as extraction/template data.
 - `src/generated-active-level.js`: Generated narrow production payload containing the selected active level and any explicit in-session follow-up level.
 - `src/generated-active-spatial-conveyor.js`: Generated narrow production payload containing the selected imported spatial conveyor, or `null` for an ordinary conveyor selection.
+- `src/generated-playable-build-config.js`: Generated redirect/retry snapshot and signature that tie the built runtime bundle to the active scene tuning.
 - `src/scene-view.js`: Main Three.js renderer. Owns scene construction, camera/background fit, texture/model/VAT loading, path curves, parking spots, vehicle/passenger visuals, shadows, arrows, seat boards, effects integration, picking, snapshot rendering, resize, and per-frame render.
 - `src/conveyor-mechanism-config.js`: Non-editor, baked conveyor mechanism values. Owns the confirmed 1.375 visual root scale, asymmetric door spacing, right-edge visibility boundary, and explicit imported-component transform baseline so reset/localStorage cannot change them.
 - `src/scene-tuning.js`: Single mutable tuning object. Owns editor-facing values for preview/crop, branding image/text visibility/lock/content/geometry, camera, facing, path transforms, background, conveyor art, parking spots, seat boards, vehicle paths, vehicle area mapping, passengers, shadows, arrows, and effects.
@@ -101,6 +104,7 @@ Use this file before code changes. Pick the closest change area, then read only 
 - `test/mechanism-resources.test.js`: Mechanism resource ownership, imported level mechanism metadata, and mechanism type derivation.
 - `test/level-editor-model.test.js`: Full-level document normalization, editing commands, snapping/alignment, depth rebuild, parity validation, runtime conversion, and export regressions.
 - `test/level-layout-editor.test.js`: Full-level workspace entry, responsive styling, and revisioned development save-service wiring regressions.
+- `test/playable-build-config.test.js`: Redirect strategy signature separation, package metadata round-trip, and stale-build packaging contract regressions.
 
 ### Conveyor layout subsystem
 

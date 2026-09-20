@@ -2,6 +2,7 @@
 import { BusLoopGame } from './game-model.js';
 import { PLAYABLE_LEVEL_SEQUENCE } from './generated-active-level.js';
 import { ACTIVE_SPATIAL_CONVEYOR_PACKAGE } from './generated-active-spatial-conveyor.js';
+import { PLAYABLE_BUILD_SIGNATURE } from './generated-playable-build-config.js';
 import { LEVEL_1, setActiveLevel } from './level-data.js';
 import {
   createLevelSession,
@@ -30,6 +31,8 @@ import {
 } from './spatial-conveyor-runtime.js';
 
 const DEFAULT_SCENE_TUNING = structuredClone(SCENE_TUNING);
+globalThis.__BUS_LOOP_BUILD_SIGNATURE__ = PLAYABLE_BUILD_SIGNATURE;
+document.documentElement.dataset.busLoopBuildSignature = PLAYABLE_BUILD_SIGNATURE;
 
 if (ACTIVE_SPATIAL_CONVEYOR_PACKAGE) {
   registerSpatialConveyorPackage(ACTIVE_SPATIAL_CONVEYOR_PACKAGE);

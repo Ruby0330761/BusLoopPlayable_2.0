@@ -5,9 +5,18 @@ import {
   getForegroundVideoAssetUrl,
   listForegroundVideos
 } from './foreground-video-importer.mjs';
+import {
+  createPlayableBuildConfig,
+  createPlayableBuildSignature,
+  createPlayablePackageMetadata,
+  parsePlayablePackageMetadata
+} from './playable-build-config.mjs';
 
 const ROOT = process.cwd();
-const PACKAGE_FILE = path.join(ROOT, 'artifacts', 'applovin', 'index.html');
+const inputFlag = process.argv.findIndex((arg) => arg === '--input');
+const PACKAGE_FILE = inputFlag >= 0
+  ? path.resolve(process.argv[inputFlag + 1])
+  : path.join(ROOT, 'artifacts', 'applovin', 'index.html');
 const TUNING_FILE = path.join(ROOT, 'src', 'scene-tuning.js');
 const SPATIAL_PACKAGE_ROOT = path.join(ROOT, 'artifacts', 'spatial-conveyors');
 const MAX_BYTES = 5_000_000;
@@ -69,14 +78,25 @@ async function assetDataUri(asset) {
 async function main() {
   const [{ PLAYABLE_LEVEL_SEQUENCE }, {
     MECHANISM_RESOURCE_MANIFEST,
+    getOrdinaryConveyorResourcePath,
     getMechanismResourcePaths,
     getMechanismTypesForLevels
+  }, {
+    PLAYABLE_BUILD_CONFIG,
+    PLAYABLE_BUILD_SIGNATURE
   }] = await Promise.all([
     import('../src/generated-active-level.js'),
-    import('../src/mechanism-resources.js')
+    import('../src/mechanism-resources.js'),
+    import('../src/generated-playable-build-config.js')
   ]);
   const tuningUrl = `${pathToFileURL(TUNING_FILE).href}?t=${Date.now()}`;
   const { SCENE_TUNING } = await import(tuningUrl);
+  const expectedBuildConfig = createPlayableBuildConfig(SCENE_TUNING);
+  const expectedBuildSignature = createPlayableBuildSignature(expectedBuildConfig);
+  const expectedPackageMetadata = createPlayablePackageMetadata(
+    expectedBuildConfig,
+    expectedBuildSignature
+  );
   const selectedIconAsset = SCENE_TUNING.branding?.icon?.asset;
   if (!BRANDING_ICON_ASSETS.includes(selectedIconAsset)) {
     throw new Error(`Unsupported branding Icon asset: ${selectedIconAsset}`);
@@ -95,12 +115,17 @@ async function main() {
     passengerEmojiEnabled: Boolean(SCENE_TUNING.passengerEmoji?.enabled),
     randomPlayableAudioEnabled: Boolean(SCENE_TUNING.randomPlayableAudio?.enabled)
   });
-  const selectedMechanismUrls = getMechanismResourcePaths(mechanismTypes);
+  const selectedMechanismUrls = getMechanismResourcePaths(mechanismTypes, {
+    conveyorSelection: selectedConveyor
+  });
   const allMechanismUrls = getMechanismResourcePaths(Object.keys(MECHANISM_RESOURCE_MANIFEST));
   const selectedMechanismDataUris = await Promise.all(
     selectedMechanismUrls.map((asset) => assetDataUri(asset))
   );
   const omittedMechanismUrls = allMechanismUrls.filter((asset) => !selectedMechanismUrls.includes(asset));
+  const omittedMechanismDataUris = await Promise.all(
+    omittedMechanismUrls.map((asset) => assetDataUri(asset))
+  );
   const foregroundVideoAsset = SCENE_TUNING.foregroundVideo?.enabled
     && SCENE_TUNING.foregroundVideo?.selected
     ? getForegroundVideoAssetUrl(SCENE_TUNING.foregroundVideo.selected)
@@ -124,6 +149,12 @@ async function main() {
     foregroundVideoAsset,
     foregroundTransitionAsset
   ].filter(Boolean));
+  const selectedOrdinaryConveyorAsset = getOrdinaryConveyorResourcePath(selectedConveyor);
+  const selectedOrdinaryConveyorDataUri = selectedOrdinaryConveyorAsset
+    ? await assetDataUri(selectedOrdinaryConveyorAsset)
+    : null;
+  const configuredLevelKey = String(SCENE_TUNING.level?.selected ?? '');
+  const generatedLevelKey = String(PLAYABLE_LEVEL_SEQUENCE[0]?.key ?? '');
 
   function containsMechanismReference(asset) {
     if (html.includes(asset)) return true;
@@ -140,8 +171,44 @@ async function main() {
     assetDataUri('/assets/main-loading-icon-small.png'),
     assetDataUri('/assets/main-loading-icon.png')
   ]);
+  let packageMetadata = null;
+  let packageMetadataError = '';
+  try {
+    packageMetadata = parsePlayablePackageMetadata(html);
+  } catch (error) {
+    packageMetadataError = error instanceof Error ? error.message : String(error);
+  }
+  const generatedBuildConfigMatches = (
+    JSON.stringify(PLAYABLE_BUILD_CONFIG) === JSON.stringify(expectedBuildConfig)
+    && PLAYABLE_BUILD_SIGNATURE === expectedBuildSignature
+  );
+  const packageMetadataMatches = (
+    JSON.stringify(packageMetadata) === JSON.stringify(expectedPackageMetadata)
+  );
+  const runtimeSignatureMatches = getInlineModuleScripts(html)
+    .some((script) => script.includes(expectedBuildSignature));
 
   const checks = [
+    {
+      name: 'generated level matches scene tuning',
+      pass: !configuredLevelKey || generatedLevelKey === configuredLevelKey,
+      detail: `${generatedLevelKey || 'none'} / ${configuredLevelKey || 'unset'}`
+    },
+    {
+      name: 'generated redirect/retry snapshot matches scene tuning',
+      pass: generatedBuildConfigMatches,
+      detail: expectedBuildSignature
+    },
+    {
+      name: 'package metadata exactly matches redirect/retry settings',
+      pass: packageMetadataMatches,
+      detail: packageMetadataError || JSON.stringify(packageMetadata?.installGate ?? 'missing')
+    },
+    {
+      name: 'runtime bundle signature matches package metadata',
+      pass: runtimeSignatureMatches,
+      detail: expectedBuildSignature
+    },
     {
       name: 'single HTML size <= 5,000,000 bytes',
       pass: size <= MAX_BYTES,
@@ -193,8 +260,17 @@ async function main() {
       detail: mechanismTypes.join(', ')
     },
     {
+      name: 'selected ordinary conveyor layout inlined',
+      pass: !selectedOrdinaryConveyorDataUri || (
+        html.includes(selectedOrdinaryConveyorDataUri)
+        && html.includes(selectedConveyor)
+      ),
+      detail: selectedOrdinaryConveyorAsset ?? 'spatial or unset'
+    },
+    {
       name: 'unselected mechanism resources omitted',
-      pass: omittedMechanismUrls.every((asset) => !containsMechanismReference(asset)),
+      pass: omittedMechanismUrls.every((asset) => !containsMechanismReference(asset))
+        && omittedMechanismDataUris.every((dataUri) => !html.includes(dataUri)),
       detail: `${omittedMechanismUrls.length} resources omitted`
     },
     {
@@ -254,6 +330,29 @@ async function main() {
       name: 'branding overlay markup present',
       pass: /id=["']branding-overlay["']/iu.test(html) &&
         /id=["']branding-text["']/iu.test(html)
+    },
+    {
+      name: 'retry controls and transition included',
+      pass: /id=["']retry-button["']/iu.test(html)
+        && /id=["']game-over-retry-button["']/iu.test(html)
+        && /id=["']retry-transition["']/iu.test(html)
+        && /\.retry-button\{/u.test(html)
+        && /\.game-over-retry-button\{/u.test(html)
+        && /\.retry-transition\{/u.test(html)
+    },
+    {
+      name: 'retry and install-gate runtime included',
+      pass: [
+        'restartCurrentLevel',
+        'successfulOperationThreshold',
+        'continueAfterStoreOpen',
+        'vehicleExitGateEnabled',
+        'vehicleExitLevelKey',
+        'vehicleExitIds',
+        'recordVehicleExit',
+        'isVehicleExitGateReady',
+        'retryEnabled'
+      ].every((token) => html.includes(token))
     },
     {
       name: 'selected branding Icon and small Logo images inlined',
