@@ -750,11 +750,45 @@ button:hover { transform: translateY(-1px); background: #fff; }
 .editor-toggle { min-width: 42px; height: 42px; padding: 0 12px; box-shadow: none; }
 .editor-body { min-height: 0; padding: 14px 16px 22px; overflow-y: auto; scrollbar-width: thin; }
 .editor-help { margin: 0 0 12px; color: #62788c; font-size: 11px; line-height: 1.5; }
+.editor-category-home[hidden],
+.editor-category-view[hidden],
+.editor-section-content[hidden] { display: none; }
+.editor-category-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 9px; }
+.editor-category-button {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  min-width: 0; min-height: 54px; padding: 10px 12px; border-radius: 10px;
+  box-shadow: none; color: #173451; background: rgba(255,255,255,.84); text-align: left;
+}
+.editor-category-button > span:first-child {
+  min-width: 0; overflow-wrap: anywhere; font-size: 12px; line-height: 1.25;
+}
+.editor-category-chevron { flex: none; color: #287fa8; font-size: 22px; line-height: 1; }
+.editor-category-toolbar {
+  display: grid; grid-template-columns: 34px minmax(0, 1fr) 34px; align-items: center;
+  gap: 8px; margin: 0 0 12px;
+}
+.editor-category-back {
+  width: 34px; min-width: 34px; height: 34px; padding: 0; border-radius: 9px;
+  box-shadow: none; font-size: 18px;
+}
+.editor-category-title {
+  grid-column: 2; min-width: 0; margin: 0; color: #173451;
+  overflow-wrap: anywhere; text-align: center; font-size: 15px; line-height: 1.2;
+}
 .editor-section {
   margin: 0 0 12px; padding: 12px; border: 1px solid rgba(16,35,61,.09);
   border-radius: 14px; background: rgba(255,255,255,.72);
 }
-.editor-section h3 { margin: 0 0 9px; color: #21445f; font-size: 12px; }
+.editor-section-header { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.editor-section-title {
+  min-width: 0; margin: 0; color: #21445f; overflow-wrap: anywhere;
+  font-size: 12px; line-height: 1.35;
+}
+.editor-section-toggle {
+  flex: 0 0 30px; width: 30px; min-width: 30px; height: 30px; padding: 0;
+  border-radius: 8px; box-shadow: none; font-size: 18px; line-height: 1;
+}
+.editor-section-content { margin-top: 10px; }
 .editor-field {
   display: grid; grid-template-columns: 64px minmax(70px, 1fr) 64px;
   align-items: center; gap: 8px; min-height: 34px; color: #5a7085; font-size: 11px;
@@ -806,7 +840,7 @@ button:hover { transform: translateY(-1px); background: #fff; }
 .editor-spatial-status {
   margin: 8px 0 0; overflow-wrap: anywhere; color: #62788c; font-size: 10px; line-height: 1.4;
 }
-.editor-reset { width: 100%; border-radius: 12px; box-shadow: none; }
+.editor-reset { width: 100%; margin-top: 2px; border-radius: 12px; box-shadow: none; }
 .scene-editor.is-collapsed { flex-basis: 76px; width: 76px; }
 .scene-editor.is-spatial-point-editing { display: none; }
 .scene-editor.is-collapsed .editor-header { justify-content: center; padding: 12px; }

@@ -22,7 +22,7 @@ Use this file before code changes. Pick the closest change area, then read only 
 | Full-level web authoring, validation, transforms, inspectors, export, persistence, and playable preview | `src/level-layout-editor.js` | `src/level-editor-model.js`, `src/level-layout-editor.css`, `src/scene-editor.js`, `src/main.js`, `vite.config.js`, `test/level-editor-model.test.js`, `test/level-layout-editor.test.js` |
 | Three.js scene rendering, camera, picking, assets, vehicles, passengers, shadows | `src/scene-view.js` | `src/scene-tuning.js`, `src/scene-layout.js`, `test/game-model.test.js`, `test/guide-hand.test.js` |
 | Scene/editor tuning values | `src/scene-tuning.js` | `src/scene-editor.js`, `src/scene-view.js`, `scripts/apply-scene-tuning.mjs`, relevant tests |
-| Editor UI controls, toggle/text fields, Icon/Logo/text adjustment, and control grouping | `src/scene-editor.js` | `src/scene-tuning.js`, `src/styles.css` |
+| Editor UI controls, category navigation, collapsible field groups, toggle/text fields, and Icon/Logo/text adjustment | `src/scene-editor.js` | `src/scene-tuning.js`, `src/styles.css`, `test/scene-editor-menu.test.js` |
 | Responsive layout math, curve transforms, camera fit helpers | `src/scene-layout.js` | `test/scene-layout.test.js` |
 | Vehicle routes, click-to-station paths, station departure, collision distance, hit clips | `src/vehicle-motion.js` | `src/game-model.js`, `test/game-model.test.js` |
 | Vehicle departure ribbons/smoke, boarding smoke, particle motion | `src/vehicle-effects.js` | `test/vehicle-effects.test.js`, `src/scene-tuning.js`, `src/scene-view.js` |
@@ -73,7 +73,7 @@ Use this file before code changes. Pick the closest change area, then read only 
 - `src/scene-view.js`: Main Three.js renderer. Owns scene construction, camera/background fit, texture/model/VAT loading, path curves, parking spots, vehicle/passenger visuals, shadows, arrows, seat boards, effects integration, picking, snapshot rendering, resize, and per-frame render.
 - `src/conveyor-mechanism-config.js`: Non-editor, baked conveyor mechanism values. Owns the confirmed 1.375 visual root scale, asymmetric door spacing, right-edge visibility boundary, and explicit imported-component transform baseline so reset/localStorage cannot change them.
 - `src/scene-tuning.js`: Single mutable tuning object. Owns editor-facing values for preview/crop, branding image/text visibility/lock/content/geometry, camera, facing, path transforms, background, conveyor art, parking spots, seat boards, vehicle paths, vehicle area mapping, passengers, shadows, arrows, and effects.
-- `src/scene-editor.js`: Generated editor panel. Owns `FIELD_GROUPS`, input/range/select/toggle/text bindings, Icon/Logo/text adjustment controls, nested tuning path get/set helpers, collapsed UI behavior, reset-to-default hook, and editor labels.
+- `src/scene-editor.js`: Generated editor panel. Owns category navigation, collapsible `FIELD_GROUPS`, input/range/select/toggle/text bindings, Icon/Logo/text adjustment controls, nested tuning path get/set helpers, panel collapse behavior, reset-to-default hook, and editor labels.
 - `src/spatial-conveyor-runtime.js`: Shared spatial package registry plus Unity transform application and Dreamteck repeated-mesh geometry generation. Development packages come from Vite endpoints; production registers the generated active package before scene creation.
 - `src/spatial-conveyor-edit-model.js`: Pure spatial-point editing state. Owns stable imported pivots, selection, curve-sampled insertion, prepend/append/delete, and bounded undo/redo history.
 - `src/spatial-conveyor-editor.js`: Development-only on-demand spatial point editor. Owns Three.js point handles, TransformControls, box/range/multi-selection, numeric point editing, live preview, explicit save/save-as, and unsaved-change handling.
@@ -101,6 +101,7 @@ Use this file before code changes. Pick the closest change area, then read only 
 - `test/guide-hand.test.js`: Focused guide target, active-level scope, timed mask, editor wiring, and horizontal art/motion mirroring regressions.
 - `test/spatial-conveyor-importer.test.js`: Spatial prefab array-size trimming, 3D point overrides, embedded visual support, output naming, input rejection, and editor/dev-service wiring.
 - `test/spatial-conveyor-editor.test.js`: Spatial point insertion/history, stable pivot, minimum point count, forward/inverse coordinate mapping, and on-demand editor/save wiring regressions.
+- `test/scene-editor-menu.test.js`: Scene-editor category ownership, ordered top-level navigation, collapsed sections, conditional visibility, and reset placement regressions.
 - `test/mechanism-resources.test.js`: Mechanism resource ownership, imported level mechanism metadata, and mechanism type derivation.
 - `test/level-editor-model.test.js`: Full-level document normalization, editing commands, snapping/alignment, depth rebuild, parity validation, runtime conversion, and export regressions.
 - `test/level-layout-editor.test.js`: Full-level workspace entry, responsive styling, and revisioned development save-service wiring regressions.

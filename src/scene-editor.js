@@ -25,11 +25,23 @@ const BRANDING_ICON_OPTIONS = [
   ['/assets/icon-ios.png', 'iOS']
 ];
 
+export const EDITOR_CATEGORIES = Object.freeze([
+  { id: 'level', label: '\u5173\u5361' },
+  { id: 'passenger', label: '\u4e58\u5ba2' },
+  { id: 'vehicle', label: '\u8f66\u8f86' },
+  { id: 'parking', label: '\u8f66\u4f4d' },
+  { id: 'ui', label: 'UI\u53ca\u6750\u8d28' },
+  { id: 'store', label: '\u5546\u5e97' },
+  { id: 'conveyor', label: '\u4f20\u9001\u5e26' },
+  { id: 'extras', label: '\u9644\u52a0\u9879' }
+]);
+
 function makeConveyorLayoutGroups(layoutId, label) {
   const root = `conveyorLayouts.${layoutId}`;
   return [
     {
       title: `${label} - \u56fe\u7247`,
+      category: 'conveyor',
       conveyorLayout: layoutId,
       fields: [
         ['X \u5750\u6807', `${root}.art.x`, -10, 10, 0.05],
@@ -40,6 +52,7 @@ function makeConveyorLayoutGroups(layoutId, label) {
     },
     {
       title: `${label} - \u4e58\u5ba2\u8f68\u8ff9`,
+      category: 'conveyor',
       conveyorLayout: layoutId,
       fields: [
         ['\u95ed\u73af X', `${root}.curve.offsetX`, -6, 6, 0.05],
@@ -74,15 +87,17 @@ function makeEntryBannerComponentFields(label, component) {
   ];
 }
 
-const FIELD_GROUPS = [
+export const FIELD_GROUPS = [
   {
     title: '\u5173\u5361',
+    category: 'level',
     fields: [
       ['\u5f53\u524d\u5173\u5361', 'level.selected', 0, 0, 1, LEVEL_OPTIONS]
     ]
   },
   {
     title: 'Icon/Logo\u8c03\u6574',
+    category: 'ui',
     fields: [
       ['\u9884\u89c8\u542f\u7528', 'preview.enabled', 0, 1, 1, null, 'toggle'],
       ['\u6a21\u62df\u5bbd\u5ea6', 'preview.width', 320, 2160, 1],
@@ -111,6 +126,7 @@ const FIELD_GROUPS = [
   },
   {
     title: '\u76f8\u673a',
+    category: 'ui',
     fields: [
       ['\u4fef\u89d2', 'camera.elevationDegrees', 25, 80, 1],
       ['\u900f\u89c6 FOV', 'camera.fovDegrees', 1, 40, 0.1],
@@ -122,6 +138,7 @@ const FIELD_GROUPS = [
   },
   {
     title: '\u65b9\u5411\u5149',
+    category: 'ui',
     fields: [
       ['\u542f\u7528', 'lighting.directional.enabled', 0, 1, 1],
       ['\u989c\u8272 Hex', 'lighting.directional.color', 0, 16777215, 1],
@@ -136,6 +153,7 @@ const FIELD_GROUPS = [
   },
   {
     title: '\u6e90\u56fe\u88c1\u5207',
+    category: 'ui',
     fields: [
       ['\u542f\u7528', 'sourceCrop.enabled', 0, 1, 1],
       ['\u7a97\u53e3\u5bbd', 'sourceCrop.width', 320, 2100, 1],
@@ -146,6 +164,7 @@ const FIELD_GROUPS = [
   },
   {
     title: '\u80cc\u666f',
+    category: 'level',
     fields: [
       ['\u56fe\u7247', 'background.asset', 0, 0, 1, BACKGROUND_OPTIONS],
       ['X \u5750\u6807', 'background.offsetX', -10, 10, 0.05],
@@ -155,6 +174,7 @@ const FIELD_GROUPS = [
   },
   {
     title: '\u5c0f\u4eba\u6a21\u578b',
+    category: 'passenger',
     fields: [
       ['\u7edf\u4e00\u5927\u5c0f', 'passengers.modelScale', 0.2, 2, 0.01],
       ['\u540c\u6392\u95f4\u8ddd', 'passengers.groupSpacing', 0.03, 0.5, 0.01]
@@ -162,6 +182,7 @@ const FIELD_GROUPS = [
   },
   {
     title: '\u751f\u6c14\u8868\u60c5 Emoji\u8c03\u6574',
+    category: 'extras',
     fields: [
       ['\u663e\u793a', 'passengerEmoji.enabled', 0, 1, 1, null, 'toggle'],
       ['\u9501\u5b9a', 'passengerEmoji.locked', 0, 1, 1, null, 'toggle'],
@@ -179,6 +200,7 @@ const FIELD_GROUPS = [
   },
   {
     title: '\u53ef\u73a9\u7d20\u6750\u968f\u673a\u97f3\u9891',
+    category: 'extras',
     fields: [
       ['\u542f\u7528', 'randomPlayableAudio.enabled', 0, 1, 1, null, 'toggle'],
       ['\u6700\u5c0f\u95f4\u9694', 'randomPlayableAudio.minIntervalSeconds', 5, 30, 0.1],
@@ -191,6 +213,7 @@ const FIELD_GROUPS = [
   },
   {
     title: 'CTA',
+    category: 'store',
     fields: [
       ['Enabled', 'cta.enabled', 0, 1, 1],
       ['X', 'cta.x', 0, 1080, 1],
@@ -211,6 +234,7 @@ const FIELD_GROUPS = [
   },
   {
     title: '\u5546\u5e97\u8df3\u8f6c',
+    category: 'store',
     fields: [
       ['\u6210\u529f\u64cd\u4f5c\u6b21\u6570', 'installGate.successfulOperationThreshold', 1, 200, 1],
       ['\u8df3\u8f6c\u540e\u5141\u8bb8\u7ee7\u7eed\u64cd\u4f5c/\u52a0\u901f', 'installGate.continueAfterStoreOpen', 0, 1, 1, null, 'toggle'],
@@ -221,6 +245,7 @@ const FIELD_GROUPS = [
   },
   {
     title: 'Game Over',
+    category: 'ui',
     fields: [
       ['Fail Delay', 'gameOver.failureDelaySeconds', 0, 8, 0.1],
       ['Mask Opacity', 'gameOver.maskOpacity', 0, 1, 0.01],
@@ -238,6 +263,7 @@ const FIELD_GROUPS = [
   },
   {
     title: 'Passenger Material',
+    category: 'ui',
     fields: [
       ['Mode', 'passengerMaterial.mode', 0, 0, 1, [
         ['unityTexture', 'Unity Texture'],
@@ -285,6 +311,7 @@ const FIELD_GROUPS = [
   },
   {
     title: '\u4f20\u9001\u5e26\u9009\u62e9',
+    category: 'conveyor',
     spatialImportAnchor: true,
     fields: [
       ['Prefab', 'conveyorLayout.selected', 0, 0, 1, CONVEYOR_LAYOUT_OPTIONS]
@@ -292,6 +319,7 @@ const FIELD_GROUPS = [
   },
   {
     title: '\u7acb\u4f53\u8f68\u9053\u4f4d\u7f6e\u4e0e\u7f29\u653e',
+    category: 'conveyor',
     spatialOnly: true,
     fields: [
       ['X \u4f4d\u7f6e', 'spatialConveyor.positionX', -6, 6, 0.05],
@@ -313,6 +341,7 @@ const FIELD_GROUPS = [
   },
   {
     title: '\u7acb\u4f53\u8f68\u9053\u961f\u5217',
+    category: 'conveyor',
     spatialOnly: true,
     fields: [
       ['\u7acb\u4f53\u8f68\u9053\u5bb9\u91cf', 'spatialConveyor.capacity', 1, 600, 1],
@@ -323,6 +352,7 @@ const FIELD_GROUPS = [
   },
   {
     title: '\u7acb\u4f53\u8f68\u9053\u6027\u80fd\u4f18\u5316',
+    category: 'conveyor',
     spatialOnly: true,
     fields: [
       ['\u542f\u7528\u6027\u80fd\u4f18\u5316', 'spatialConveyor.optimizations.enabled', 0, 1, 1, null, 'toggle'],
@@ -343,6 +373,7 @@ const FIELD_GROUPS = [
   ...CONVEYOR_LAYOUT_FIELD_GROUPS,
   {
     title: '\u4e2d\u95f4\u5c0f\u4eba\u5f71\u5b50',
+    category: 'passenger',
     fields: [
       ['X \u5750\u6807', 'passengerShadows.conveyor.offsetX', -1.5, 1.5, 0.01],
       ['Z \u5750\u6807', 'passengerShadows.conveyor.offsetZ', -1.5, 1.5, 0.01],
@@ -352,6 +383,7 @@ const FIELD_GROUPS = [
   },
   {
     title: '\u5de6\u4fa7\u961f\u5217\u66f2\u7ebf',
+    category: 'passenger',
     fields: [
       ['X \u5750\u6807', 'queueCurves.0.offsetX', -6, 6, 0.05],
       ['Z \u5750\u6807', 'queueCurves.0.offsetZ', -6, 6, 0.05],
@@ -361,6 +393,7 @@ const FIELD_GROUPS = [
   },
   {
     title: '\u5de6\u961f\u5217\u5c0f\u4eba\u5f71\u5b50',
+    category: 'passenger',
     fields: [
       ['X \u5750\u6807', 'passengerShadows.leftQueue.offsetX', -1.5, 1.5, 0.01],
       ['Z \u5750\u6807', 'passengerShadows.leftQueue.offsetZ', -1.5, 1.5, 0.01],
@@ -370,6 +403,7 @@ const FIELD_GROUPS = [
   },
   {
     title: '\u53f3\u4fa7\u961f\u5217\u66f2\u7ebf',
+    category: 'passenger',
     fields: [
       ['X \u5750\u6807', 'queueCurves.1.offsetX', -6, 6, 0.05],
       ['Z \u5750\u6807', 'queueCurves.1.offsetZ', -6, 6, 0.05],
@@ -379,6 +413,7 @@ const FIELD_GROUPS = [
   },
   {
     title: '\u53f3\u961f\u5217\u5c0f\u4eba\u5f71\u5b50',
+    category: 'passenger',
     fields: [
       ['X \u5750\u6807', 'passengerShadows.rightQueue.offsetX', -1.5, 1.5, 0.01],
       ['Z \u5750\u6807', 'passengerShadows.rightQueue.offsetZ', -1.5, 1.5, 0.01],
@@ -388,6 +423,7 @@ const FIELD_GROUPS = [
   },
   {
     title: '\u8f66\u4f4d',
+    category: 'parking',
     fields: [
       ['\u8f66\u4f4d\u6570', 'parkingSpots.count', 1, 8, 1],
       ['\u8d77\u70b9 X', 'parkingSpots.startX', -8, 2, 0.05],
@@ -405,12 +441,14 @@ const FIELD_GROUPS = [
   },
   {
     title: '\u5355\u8f66\u4f4d\u7d27\u5f20\u7ea2\u5149',
+    category: 'parking',
     fields: [
       ['\u542f\u7528', 'parkingSpotDanger.enabled', 0, 1, 1, null, 'toggle']
     ]
   },
   {
     title: '\u5f15\u5bfc\u5c0f\u624b\uff08\u957f\u6309\u52a0\u901f\uff09',
+    category: 'extras',
     fields: [
       ['\u542f\u7528', 'guideHandHint.enabled', 0, 1, 1, null, 'toggle'],
       ['X \u4f4d\u7f6e', 'guideHandHint.x', 0, 1080, 1],
@@ -419,6 +457,7 @@ const FIELD_GROUPS = [
   },
   {
     title: '\u91cd\u8bd5\u6309\u94ae',
+    category: 'ui',
     fields: [
       ['\u663e\u793a', 'retryButton.enabled', 0, 1, 1, null, 'toggle'],
       ['X \u4f4d\u7f6e', 'retryButton.x', 0, 1080, 1],
@@ -428,6 +467,7 @@ const FIELD_GROUPS = [
   },
   {
     title: '\u8f66\u8f86\u884c\u9a76\u8def\u5f84',
+    category: 'vehicle',
     fields: [
       ['\u663e\u793a\u8def\u5f84', 'vehiclePath.enabled', 0, 1, 1],
       ['\u663e\u793a\u88ab\u6321\u8f66', 'vehiclePath.showBlocked', 0, 1, 1],
@@ -445,6 +485,7 @@ const FIELD_GROUPS = [
   },
   {
     title: '\u8f66\u8f86\u5f00\u51fa\u8f66\u4f4d\u8def\u5f84',
+    category: 'vehicle',
     fields: [
       ['\u663e\u793a\u8def\u5f84', 'vehicleDeparturePath.enabled', 0, 1, 1],
       ['\u6ee1\u8f7d\u505c\u987f', 'vehicleDeparturePath.fullLoadDelay', 0, 4, 0.05],
@@ -464,6 +505,7 @@ const FIELD_GROUPS = [
   },
   {
     title: '\u8f66\u8f86',
+    category: 'vehicle',
     fields: [
       ['Map Scale', 'vehicleArea.positionUnitScale', 0.6, 2.2, 0.01],
       ['\u6a21\u578b\u5927\u5c0f', 'vehicleArea.modelScale', 0.3, 2.5, 0.05],
@@ -503,6 +545,7 @@ const FIELD_GROUPS = [
 ,
   {
     title: '\u5165\u573a\u6a2a\u5e45 EntryBanner',
+    category: 'extras',
     fields: [
       ['\u542f\u7528', 'entryBanner.enabled', 0, 1, 1, null, 'toggle'],
       ['\u96be\u5ea6\u6837\u5f0f', 'entryBanner.style', 0, 0, 1, [
@@ -522,6 +565,7 @@ const FIELD_GROUPS = [
   },
   {
     title: 'Effect_Hit \u7c92\u5b50',
+    category: 'extras',
     fields: [
       ['\u6574\u4f53\u5927\u5c0f', 'effects.hit.sizeScale', 0.1, 5, 0.01],
       ['ParticleHit_2 \u5927\u5c0f', 'effects.hit.particleHit2SizeScale', 0.1, 5, 0.01],
@@ -531,6 +575,7 @@ const FIELD_GROUPS = [
   },
   {
     title: '\u79bb\u573a\u5f69\u5e26\u7c92\u5b50',
+    category: 'extras',
     fields: [
       ['\u79fb\u52a8\u8303\u56f4', 'effects.ribbon.moveRange', 0.1, 6, 0.05],
       ['\u901f\u5ea6\u8d77\u70b9', 'effects.ribbon.speedStart', 0, 3, 0.01],
@@ -541,6 +586,7 @@ const FIELD_GROUPS = [
   },
   {
     title: '\u79bb\u573a\u70df\u96fe\u7c92\u5b50',
+    category: 'extras',
     fields: [
       ['\u79fb\u52a8\u8303\u56f4', 'effects.ribbonSmoke.moveRange', 0.1, 6, 0.05],
       ['\u901f\u5ea6\u8d77\u70b9', 'effects.ribbonSmoke.speedStart', 0, 3, 0.01],
@@ -590,18 +636,40 @@ export function createSceneEditor(root, {
       <button class="editor-toggle" type="button" aria-label="\u6536\u8d77\u573a\u666f\u7f16\u8f91\u5668" aria-expanded="true">\u00d7</button>
     </header>
     <div class="editor-body">
-      <p class="editor-help">\u56fe\u7247\u4e0e\u884c\u8d70\u66f2\u7ebf\u53ef\u5206\u522b\u8c03\u8282\u3002\u6bcf\u6b21\u8c03\u6574\u4f1a\u81ea\u52a8\u4fdd\u5b58\u3002</p>
-      <div class="editor-fields"></div>
-      <button class="editor-reset" type="button">\u6062\u590d\u9ed8\u8ba4\u53c2\u6570</button>
+      <div class="editor-category-home">
+        <p class="editor-help">\u9009\u62e9\u8981\u7ba1\u7406\u7684\u7c7b\u522b\u3002\u6bcf\u6b21\u8c03\u6574\u4f1a\u81ea\u52a8\u4fdd\u5b58\u3002</p>
+        <div class="editor-category-grid">
+          ${EDITOR_CATEGORIES.map(({ id, label }) => `
+            <button class="editor-category-button" type="button" data-editor-category-choice="${id}">
+              <span>${label}</span>
+              <span class="editor-category-chevron" aria-hidden="true">\u203a</span>
+            </button>
+          `).join('')}
+        </div>
+      </div>
+      <div class="editor-category-view" hidden>
+        <div class="editor-category-toolbar">
+          <button class="editor-category-back" type="button" aria-label="\u8fd4\u56de\u5206\u7c7b" title="\u8fd4\u56de\u5206\u7c7b">\u2190</button>
+          <h3 class="editor-category-title"></h3>
+        </div>
+        <div class="editor-fields"></div>
+        <button class="editor-reset" type="button">\u6062\u590d\u9ed8\u8ba4\u53c2\u6570</button>
+      </div>
     </div>
   `;
 
+  const editorBody = root.querySelector('.editor-body');
+  const categoryHome = root.querySelector('.editor-category-home');
+  const categoryView = root.querySelector('.editor-category-view');
+  const categoryTitle = root.querySelector('.editor-category-title');
   const fieldsRoot = root.querySelector('.editor-fields');
   const inputs = new Map();
+  let activeCategory = null;
 
   for (const group of FIELD_GROUPS) {
     const section = document.createElement('section');
     section.className = 'editor-section';
+    section.dataset.editorCategory = group.category;
     if (group.conveyorLayout) section.dataset.conveyorLayout = group.conveyorLayout;
     if (group.spatialOnly) section.dataset.spatialOnly = 'true';
     if (group.spatialImportAnchor) section.dataset.spatialImportAnchor = 'true';
@@ -808,6 +876,7 @@ export function createSceneEditor(root, {
 
   const spatialSection = document.createElement('section');
   spatialSection.className = 'editor-section editor-spatial-conveyor';
+  spatialSection.dataset.editorCategory = 'conveyor';
   spatialSection.innerHTML = `
     <h3>\u7acb\u4f53\u8f68\u9053\u7f16\u8f91</h3>
     <div class="editor-spatial-actions">
@@ -938,6 +1007,7 @@ export function createSceneEditor(root, {
 
   const foregroundVideoSection = document.createElement('section');
   foregroundVideoSection.className = 'editor-section editor-foreground-video';
+  foregroundVideoSection.dataset.editorCategory = 'extras';
   foregroundVideoSection.innerHTML = `
     <h3>可玩素材 - 前贴片动画</h3>
     <label class="editor-field editor-field-select editor-foreground-video-select-row">
@@ -1248,17 +1318,90 @@ export function createSceneEditor(root, {
     }
   }
 
-  function updateConveyorLayoutVisibility(tuning) {
-    const selected = tuning.conveyorLayout?.selected ?? 'dualQueue2';
-    for (const section of fieldsRoot.querySelectorAll('[data-conveyor-layout]')) {
-      section.hidden = section.dataset.conveyorLayout !== selected;
+  function setSectionExpanded(section, expanded) {
+    const content = Array.from(section.children)
+      .find((child) => child.classList.contains('editor-section-content'));
+    const button = section.querySelector('.editor-section-toggle');
+    if (!content || !button) return;
+    content.hidden = !expanded;
+    section.classList.toggle('is-expanded', expanded);
+    button.textContent = expanded ? '\u2212' : '+';
+    button.setAttribute('aria-expanded', String(expanded));
+    const title = section.querySelector('.editor-section-title')?.textContent?.trim() ?? '';
+    button.setAttribute('aria-label', `${expanded ? '\u6536\u8d77' : '\u5c55\u5f00'}${title}`);
+  }
+
+  function initializeCollapsibleSections() {
+    for (const section of fieldsRoot.querySelectorAll('.editor-section')) {
+      const title = Array.from(section.children).find((child) => child.tagName === 'H3');
+      if (!title) continue;
+      title.classList.add('editor-section-title');
+
+      const header = document.createElement('div');
+      header.className = 'editor-section-header';
+      const button = document.createElement('button');
+      button.className = 'editor-section-toggle';
+      button.type = 'button';
+      button.title = '\u5c55\u5f00/\u6536\u8d77';
+      header.append(title, button);
+      section.prepend(header);
+
+      const content = document.createElement('div');
+      content.className = 'editor-section-content';
+      for (const child of Array.from(section.children)) {
+        if (child !== header) content.append(child);
+      }
+      section.append(content);
+      button.addEventListener('click', () => {
+        setSectionExpanded(section, button.getAttribute('aria-expanded') !== 'true');
+      });
+      setSectionExpanded(section, false);
     }
-    for (const section of fieldsRoot.querySelectorAll('[data-spatial-only]')) {
-      section.hidden = !isSpatialConveyorSelection(selected);
+  }
+
+  function updateSectionVisibility(tuning) {
+    const selected = tuning.conveyorLayout?.selected ?? 'dualQueue2';
+    for (const section of fieldsRoot.querySelectorAll('.editor-section')) {
+      const categoryMatches = Boolean(activeCategory)
+        && section.dataset.editorCategory === activeCategory;
+      const conveyorLayoutMatches = !section.dataset.conveyorLayout
+        || section.dataset.conveyorLayout === selected;
+      const spatialSelectionMatches = !section.dataset.spatialOnly
+        || isSpatialConveyorSelection(selected);
+      section.hidden = !(categoryMatches && conveyorLayoutMatches && spatialSelectionMatches);
     }
     spatialEditPointsButton.hidden = !isSpatialConveyorSelection(selected);
     spatialEditPointsButton.disabled = !isSpatialConveyorSelection(selected);
   }
+
+  function showCategory(categoryId) {
+    const category = EDITOR_CATEGORIES.find(({ id }) => id === categoryId);
+    if (!category) return;
+    activeCategory = category.id;
+    categoryTitle.textContent = category.label;
+    categoryHome.hidden = true;
+    categoryView.hidden = false;
+    for (const section of fieldsRoot.querySelectorAll(`[data-editor-category="${category.id}"]`)) {
+      setSectionExpanded(section, false);
+    }
+    updateSectionVisibility(getTuning());
+    editorBody.scrollTop = 0;
+  }
+
+  function showCategoryMenu() {
+    activeCategory = null;
+    categoryHome.hidden = false;
+    categoryView.hidden = true;
+    categoryTitle.textContent = '';
+    updateSectionVisibility(getTuning());
+    editorBody.scrollTop = 0;
+  }
+
+  initializeCollapsibleSections();
+  for (const button of root.querySelectorAll('[data-editor-category-choice]')) {
+    button.addEventListener('click', () => showCategory(button.dataset.editorCategoryChoice));
+  }
+  root.querySelector('.editor-category-back').addEventListener('click', showCategoryMenu);
 
   function sync() {
     const tuning = getTuning();
@@ -1281,7 +1424,7 @@ export function createSceneEditor(root, {
       if (controls.color) controls.color.value = formatColor(value);
     }
     updatePassengerMaterialVisibility(tuning);
-    updateConveyorLayoutVisibility(tuning);
+    updateSectionVisibility(tuning);
   }
 
   const toggle = root.querySelector('.editor-toggle');
@@ -1302,6 +1445,7 @@ export function createSceneEditor(root, {
   });
 
   if (matchMedia('(max-width: 760px)').matches) setCollapsed(true);
+  showCategoryMenu();
   sync();
   refreshSpatialConveyorOptions().catch((error) => {
     spatialStatus.textContent = `\u5217\u8868\u4e0d\u53ef\u7528\uff1a${error.message}`;
@@ -1315,6 +1459,8 @@ export function createSceneEditor(root, {
   return {
     sync,
     setCollapsed,
+    showCategory,
+    showCategoryMenu,
     refreshSpatialConveyorOptions,
     refreshWebLevelOptions,
     refreshForegroundVideoOptions

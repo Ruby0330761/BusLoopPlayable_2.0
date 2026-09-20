@@ -1474,3 +1474,9 @@ Full 2026-07-07 progress log was archived to:
 - When a foreground video is enabled and selected, both ordinary and spatial conveyors can initialize with passengers already on the belt; ordinary belts assign passengers by belt progress and immediately rebase both side queues to full waiting positions so authored order is preserved.
 - Added an editor-controlled foreground-video end fade duration (default `0.2s`), applied only to the video overlay.
 - Verification: foreground-video tests, production build, AppLovin packaging/checks, browser preview interaction, and error-level console check passed.
+
+## Completed On 2026-09-20 - Scene editor category navigation
+
+- Organized the existing editor submenus under eight top-level categories without changing their fields, order, defaults, or persistence behavior.
+- Added a category home/detail flow and right-side expand/collapse controls; every submenu starts collapsed, while reset remains at the bottom of every category detail view.
+- Verification: focused menu tests and direct Vite build pass; desktop and narrow-screen browser checks cover all eight categories. The full suite still contains out-of-scope failures from existing user-owned working-tree differences, including tuning and generated files.

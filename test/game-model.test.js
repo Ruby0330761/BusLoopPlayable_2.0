@@ -504,7 +504,7 @@ test('multi-conveyor editor, renderer, and main-thread handoff stay wired', () =
   assert.match(editorSource, /dualQueue5/);
   assert.match(editorSource, /dualQueue10/);
   assert.match(editorSource, /conveyorLayouts\.\$\{layoutId\}/);
-  assert.match(editorSource, /updateConveyorLayoutVisibility/);
+  assert.match(editorSource, /updateSectionVisibility/);
 
   const viewSource = readFileSync(join('src', 'scene-view.js'), 'utf8');
   assert.match(viewSource, /getSelectedConveyorLayout/);
@@ -1404,7 +1404,7 @@ test('editor sizing, source background ratio, and passenger shadow anchor stay w
   assert.match(editorSource, /dualQueue5/);
   assert.match(editorSource, /dualQueue10/);
   assert.match(editorSource, /conveyorLayouts\.\$\{layoutId\}/);
-  assert.match(editorSource, /updateConveyorLayoutVisibility/);
+  assert.match(editorSource, /updateSectionVisibility/);
   assert.match(editorSource, /passengerShadows\.conveyor\.scaleX/);
   assert.match(editorSource, /passengerShadows\.leftQueue\.offsetX/);
   assert.match(editorSource, /passengerShadows\.rightQueue\.offsetZ/);

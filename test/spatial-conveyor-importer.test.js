@@ -498,7 +498,8 @@ test('HTML editor, renderer, Vite service, and production build expose selectabl
   assert.match(editorSource, /spatialImportAnchor\.before\(spatialSection\)/);
   assert.match(editorSource, /section\.dataset\.spatialImportAnchor = 'true'/);
   assert.match(editorSource, /section\.dataset\.spatialOnly = 'true'/);
-  assert.match(editorSource, /section\.hidden = !isSpatialConveyorSelection\(selected\)/);
+  assert.match(editorSource, /const spatialSelectionMatches = !section\.dataset\.spatialOnly/);
+  assert.match(editorSource, /categoryMatches && conveyorLayoutMatches && spatialSelectionMatches/);
   const passengerMaterialIndex = editorSource.indexOf("title: 'Passenger Material'");
   const conveyorSelectionIndex = editorSource.indexOf("title: '\\u4f20\\u9001\\u5e26\\u9009\\u62e9'");
   const spatialTransformIndex = editorSource.indexOf(
