@@ -74,9 +74,9 @@ test('angry passenger Emoji resources stay isolated and are selected only when e
   const sheet = readFileSync(`public${emojiAssets[0]}`);
   assert.equal(sheet.subarray(0, 4).toString('ascii'), 'RIFF');
   assert.equal(sheet.subarray(8, 12).toString('ascii'), 'WEBP');
-  assert.equal(sheet.subarray(12, 16).toString('ascii'), 'VP8L');
-  const width = 1 + ((sheet[21] | (sheet[22] << 8)) & 0x3fff);
-  const height = 1 + (((sheet[22] >> 6) | (sheet[23] << 2) | (sheet[24] << 10)) & 0x3fff);
+  assert.equal(sheet.subarray(12, 16).toString('ascii'), 'VP8X');
+  const width = 1 + sheet.readUIntLE(24, 3);
+  const height = 1 + sheet.readUIntLE(27, 3);
   assert.equal(width, 1024);
   assert.equal(height, 1024);
   const main = readFileSync('src/main.js', 'utf8');
@@ -142,7 +142,7 @@ test('fire-truck passenger uses the Unity firefighter texture atlas', () => {
     .update(readFileSync(`public${asset}`))
     .digest('hex')
     .toUpperCase();
-  assert.equal(hash, '18F965039B0F91422FBFCC39C4A0E1FEF672286265D6A7E0FB7E413115C69C48');
+  assert.equal(hash, 'EE8F14E8FB44433C1C53FE890E895DF3C5DCFEF0DECA9AD42D2AA4D2A6A72EA4');
   assert.match(readFileSync('src/mechanism-resources.js', 'utf8'), /fire-truck\/textures\/Idle_boy_firefighter\.png/);
 });
 
