@@ -55,6 +55,21 @@ const TURN_ARROW_SCALE = 0.8;
 const TURN_ARROW_FORWARD_OFFSET = 0.18;
 const VEHICLE_ARROW_HIDDEN_STATES = new Set(['at-spot', 'boarding-final', 'departing', 'done']);
 export const shouldHideVehicleArrow = (state) => VEHICLE_ARROW_HIDDEN_STATES.has(state);
+const PARKING_SPOT_DANGER_COLOR = 0xfa3838;
+const PARKING_SPOT_DANGER_PULSE_SECONDS = 1.35;
+const PARKING_SPOT_DANGER_MIN_INTENSITY = 0.12;
+const PARKING_SPOT_DANGER_CORNER_RADIUS = 0.12;
+export function getParkingSpotDangerIndex(tuning, spots = []) {
+  if (!Boolean(tuning?.parkingSpotDanger?.enabled)) return -1;
+  const available = spots.reduce((indexes, spot, index) => {
+    if (spot?.vehicleId == null) indexes.push(index);
+    return indexes;
+  }, []);
+  return available.length === 1 ? available[0] : -1;
+}
+export function shouldShowParkingSpotDanger(tuning, spots = []) {
+  return getParkingSpotDangerIndex(tuning, spots) >= 0;
+}
 const HIDDEN_QUESTION_MARK_FORWARD_FACTOR = 0.45;
 const HIDDEN_VEHICLE_BODY_COLOR = 0x2a2a2a;
 const HIDDEN_VEHICLE_ASSETS = MECHANISM_ASSETS.hiddenVehicle;
@@ -553,6 +568,91 @@ function createWhiteAlphaTexture(source) {
   }
   context.putImageData(pixels, 0, 0);
   return configureColorTexture(new THREE.CanvasTexture(canvas));
+}
+
+function createParkingSpotDangerGlow() {
+  const width = 0.82;
+  const depth = 1.42;
+  const pixelsPerUnit = 337;
+  const canvasWidth = 464;
+  const canvasHeight = 666;
+  const canvas = document.createElement('canvas');
+  canvas.width = canvasWidth;
+  canvas.height = canvasHeight;
+  const context = canvas.getContext('2d');
+  const borderWidth = width * pixelsPerUnit;
+  const borderDepth = depth * pixelsPerUnit;
+  const radius = PARKING_SPOT_DANGER_CORNER_RADIUS * pixelsPerUnit;
+
+  if (context) {
+    const imageData = context.createImageData(canvasWidth, canvasHeight);
+    const halfWidth = borderWidth * 0.5;
+    const halfDepth = borderDepth * 0.5;
+    const coreInner = 2;
+    const coreOuter = 4;
+    const haloSigma = 30;
+    const haloStrength = 0.45;
+    const smoothstep = (edge0, edge1, value) => {
+      const t = THREE.MathUtils.clamp((value - edge0) / (edge1 - edge0), 0, 1);
+      return t * t * (3 - 2 * t);
+    };
+    for (let y = 0; y < canvasHeight; y += 1) {
+      const pointY = y + 0.5 - canvasHeight * 0.5;
+      for (let x = 0; x < canvasWidth; x += 1) {
+        const pointX = x + 0.5 - canvasWidth * 0.5;
+        const distanceX = Math.abs(pointX) - halfWidth + radius;
+        const distanceY = Math.abs(pointY) - halfDepth + radius;
+        const outsideDistance = Math.hypot(
+          Math.max(distanceX, 0),
+          Math.max(distanceY, 0)
+        );
+        const insideDistance = Math.min(Math.max(distanceX, distanceY), 0);
+        const borderDistance = Math.abs(outsideDistance + insideDistance - radius);
+        const coreAlpha = 1 - smoothstep(coreInner, coreOuter, borderDistance);
+        const haloAlpha = haloStrength * Math.exp(
+          -(borderDistance * borderDistance) / (2 * haloSigma * haloSigma)
+        );
+        const alpha = Math.max(coreAlpha, haloAlpha);
+        if (alpha <= 0.002) continue;
+        const offset = (y * canvasWidth + x) * 4;
+        imageData.data[offset] = 255;
+        imageData.data[offset + 1] = 255;
+        imageData.data[offset + 2] = 255;
+        imageData.data[offset + 3] = Math.round(alpha * 255);
+      }
+    }
+    context.putImageData(imageData, 0, 0);
+  }
+
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  texture.minFilter = THREE.LinearFilter;
+  texture.magFilter = THREE.LinearFilter;
+  texture.generateMipmaps = false;
+  texture.needsUpdate = true;
+  const material = new THREE.MeshBasicMaterial({
+    map: texture,
+    color: PARKING_SPOT_DANGER_COLOR,
+    transparent: true,
+    opacity: 1,
+    blending: THREE.NormalBlending,
+    depthTest: false,
+    depthWrite: false,
+    toneMapped: false,
+    side: THREE.DoubleSide
+  });
+  const border = new THREE.Mesh(
+    new THREE.PlaneGeometry(canvasWidth / pixelsPerUnit, canvasHeight / pixelsPerUnit),
+    material
+  );
+  border.name = 'Parking Spot Danger Border';
+  border.rotation.x = -Math.PI / 2;
+  border.position.y = 0.045;
+  border.renderOrder = 3;
+  border.raycast = () => {};
+  border.userData.texture = texture;
+  border.userData.pulseMaterials = [{ material, baseOpacity: 1 }];
+  return border;
 }
 
 async function loadPackedVatTexture(url, loadingManager) {
@@ -1151,6 +1251,7 @@ export class SceneView {
     this.passengerViews = [];
     this.queuePassengerViews = [[], []];
     this.spotRoots = [];
+    this.spotDangerGlows = [];
     this.spotPositions = [];
     this.seatCountBoards = [];
     this.passengerMaterials = [];
@@ -2391,9 +2492,11 @@ export class SceneView {
         new THREE.BoxGeometry(0.82, 0.04, 1.42),
         new THREE.MeshStandardMaterial({ color: 0xb6a9cb, roughness: 0.76 })
       );
+      const dangerGlow = createParkingSpotDangerGlow();
       fallback.position.y = 0.02;
-      root.add(fallback, board);
+      root.add(fallback, dangerGlow, board);
       this.spotRoots.push(root);
+      this.spotDangerGlows.push(dangerGlow);
       this.spotPositions.push(new THREE.Vector3());
       this.seatCountBoards.push(board);
       this.layoutRoot.add(root);
@@ -2498,6 +2601,24 @@ export class SceneView {
     }
     baseMaterial.dispose();
   }
+
+  updateParkingSpotDanger(snapshot = this.lastSnapshot) {
+    const activeIndex = getParkingSpotDangerIndex(SCENE_TUNING, snapshot?.spots ?? []);
+    const now = (typeof performance !== 'undefined' ? performance.now() : 0) / 1000;
+    const pulse = 0.5 + 0.5 * Math.sin(
+      (now / PARKING_SPOT_DANGER_PULSE_SECONDS) * Math.PI * 2 - Math.PI / 2
+    );
+    const intensity = PARKING_SPOT_DANGER_MIN_INTENSITY
+      + (1 - PARKING_SPOT_DANGER_MIN_INTENSITY) * pulse;
+    for (let index = 0; index < this.spotDangerGlows.length; index += 1) {
+      const glow = this.spotDangerGlows[index];
+      glow.visible = index === activeIndex;
+      for (const entry of glow.userData.pulseMaterials ?? []) {
+        entry.material.opacity = entry.baseOpacity * intensity;
+      }
+    }
+  }
+
   createSeatCountBoard() {
     const group = new THREE.Group();
     const boardMaterial = new THREE.MeshBasicMaterial({
@@ -3943,8 +4064,9 @@ export class SceneView {
     for (let index = 0; index < this.spotRoots.length; index += 1) {
       const root = this.spotRoots[index];
       const board = this.seatCountBoards[index];
+      const dangerGlow = this.spotDangerGlows[index];
       root.clear();
-      root.add(this.parkingTemplate.clone(true), board);
+      root.add(this.parkingTemplate.clone(true), dangerGlow, board);
       board.userData.boardMesh.material.map = this.seatCountBoardTexture;
       board.userData.boardMesh.material.needsUpdate = true;
     }
@@ -4146,6 +4268,7 @@ export class SceneView {
         board.userData.textSprite.scale.set(0.42 * boardTuning.textScale, 0.26 * boardTuning.textScale, 1);
       }
     }
+    this.updateParkingSpotDanger();
     this.updateVehiclePathPreview();
     this.resize();
   }
@@ -4542,6 +4665,7 @@ export class SceneView {
     this.updateLuxuryPassengerAnimations(snapshot.time);
     this.vehicleEffects?.update(snapshot);
     this.updateVehiclePathPreview(snapshot, game);
+    this.updateParkingSpotDanger(snapshot);
     this.updateGuideHand(snapshot.time, snapshot);
     this.updateEntryBanner();
     this.updateFirstClickGuideMask(snapshot);

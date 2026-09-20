@@ -19,7 +19,9 @@ import { GameAudioController } from '../src/audio-controller.js';
 import {
   DreamteckClosedBSplineCurve3,
   makeClosedConveyorCurve,
-  shouldHideVehicleArrow
+  getParkingSpotDangerIndex,
+  shouldHideVehicleArrow,
+  shouldShowParkingSpotDanger
 } from '../src/scene-view.js';
 import {
   buildOutStationPoints,
@@ -1110,6 +1112,50 @@ test('vehicle arrows hide after entering a parking spot', () => {
     assert.equal(shouldHideVehicleArrow(state), true, state);
   }
   assert.match(sceneViewSource, /view\.userData\.arrowRoot\.visible = !hideArrowAtSpot/);
+});
+
+test('single-side ConveyorBelt1 merges authored passenger queues into one entrance', () => {
+  const game = new BusLoopGame();
+  const layout = CONVEYOR_LAYOUTS.singleQueue1;
+  game.initializeQueues([18], 0.17, [3.23], 6.4, {
+    capacity: layout.conveyorCapacity,
+    queueCapacities: layout.queueCapacities,
+    queueMode: layout.queueMode,
+    entryPercents: [0.125],
+    exitStart: layout.exitStart,
+    exitEnd: layout.exitEnd,
+    resetSlots: true
+  });
+  assert.equal(game.queues.length, 1);
+  assert.equal(game.queueCapacities.length, 1);
+  assert.equal(game.snapshot().slots.length, 39);
+  assert.equal(game.snapshot().queueRemaining[0], 18);
+});
+
+test('single parking spot danger glow follows enable and occupancy state', () => {
+  const tuning = {
+    parkingSpotDanger: { enabled: 1 },
+    parkingSpots: { count: 5 }
+  };
+  const occupiedSpots = [{ vehicleId: 42 }, { vehicleId: 17 }, { vehicleId: null }];
+  assert.equal(getParkingSpotDangerIndex(tuning, occupiedSpots), 2);
+  assert.equal(shouldShowParkingSpotDanger(tuning, occupiedSpots), true);
+  assert.equal(shouldShowParkingSpotDanger(tuning, [{ vehicleId: 42 }, { vehicleId: null }]), true);
+  assert.equal(shouldShowParkingSpotDanger(tuning, [{ vehicleId: 42 }, { vehicleId: null }, { vehicleId: null }]), false);
+  assert.equal(shouldShowParkingSpotDanger(tuning, [{ vehicleId: 42 }, { vehicleId: 17 }]), false);
+  assert.equal(shouldShowParkingSpotDanger({ ...tuning, parkingSpotDanger: { enabled: 0 } }, occupiedSpots), false);
+  assert.match(sceneViewSource, /PARKING_SPOT_DANGER_PULSE_SECONDS = 1\.35/);
+  assert.match(sceneViewSource, /PARKING_SPOT_DANGER_MIN_INTENSITY = 0\.12/);
+  assert.match(sceneViewSource, /Parking Spot Danger Border/);
+  assert.match(sceneViewSource, /PARKING_SPOT_DANGER_CORNER_RADIUS/);
+  assert.match(sceneViewSource, /PARKING_SPOT_DANGER_COLOR = 0xfa3838/);
+  assert.match(sceneViewSource, /new THREE\.CanvasTexture\(canvas\)/);
+  assert.match(sceneViewSource, /const haloSigma = 30/);
+  assert.match(sceneViewSource, /const haloStrength = 0\.45/);
+  assert.match(sceneViewSource, /THREE\.NormalBlending/);
+  assert.match(sceneViewSource, /toneMapped: false/);
+  assert.match(sceneViewSource, /border\.raycast = \(\) => \{\}/);
+  assert.match(sceneViewSource, /userData\.pulseMaterials/);
 });
 
 test('background asset selection remains editor-switchable with optimized variants', () => {

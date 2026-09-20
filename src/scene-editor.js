@@ -399,6 +399,12 @@ const FIELD_GROUPS = [
     ]
   },
   {
+    title: '\u5355\u8f66\u4f4d\u7d27\u5f20\u7ea2\u5149',
+    fields: [
+      ['\u542f\u7528', 'parkingSpotDanger.enabled', 0, 1, 1, null, 'toggle']
+    ]
+  },
+  {
     title: '\u8f66\u8f86\u884c\u9a76\u8def\u5f84',
     fields: [
       ['\u663e\u793a\u8def\u5f84', 'vehiclePath.enabled', 0, 1, 1],
