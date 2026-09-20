@@ -205,15 +205,22 @@ test('hidden vehicle source wiring keeps the question marker out of picking', ()
   assert.match(sceneSource, /isHiddenQuestionMark: true/);
   assert.match(sceneSource, /hiddenQuestionOffset/);
   assert.match(sceneSource, /HIDDEN_REVEAL_MARKER_FADE_END/);
+  assert.match(sceneSource, /HIDDEN_REVEAL_DURATION = 1/);
+  assert.match(sceneSource, /HIDDEN_REVEAL_MARKER_FADE_START = 0\.5/);
+  assert.match(sceneSource, /HIDDEN_REVEAL_MARKER_FADE_END = 1/);
   assert.match(sceneSource, /HIDDEN_REVEAL_ROOT_CURVES/);
   assert.match(sceneSource, /sampleRevealTrack\(position\.y, progress\) \* size\.y/);
   assert.match(sceneSource, /hiddenRevealRoot\.rotation\.set/);
-  assert.match(sceneSource, /hiddenArrow\.position\.x -= size\.x \* 1\.15/);
-  assert.match(sceneSource, /normalRoot\.visible = normalAlpha > 0\.001/);
+  assert.match(sceneSource, /hiddenArrow\.position\.copy\(basePosition\)/);
+  assert.doesNotMatch(sceneSource, /hiddenArrow\.position\.x -= size\.x/);
+  assert.match(sceneSource, /normalRoot\.visible = normalBodyAlpha > 0\.001 \|\| normalArrowAlpha > 0\.001/);
+  assert.match(sceneSource, /normalRoot\.position\.set\(0, 0, 0\)/);
+  assert.match(sceneSource, /normalRoot\.scale\.set\(1, 1, 1\)/);
   assert.match(sceneSource, /toneMapped: false/);
   assert.match(sceneSource, /child\.userData\.isArrowOutline\s*\? \(child\.isLineSegments \? 31 : 29\)\s*:\s*30/);
   assert.match(sceneSource, /view\.userData\.hiddenRevealRoot = hiddenRevealRoot/);
-  assert.match(sceneSource, /setObjectOpacity\(view\.userData\.hiddenRoot, hiddenAlpha\)/);
+  assert.match(sceneSource, /setObjectOpacity\(view\.userData\.hiddenRoot, hiddenArrowAlpha\)/);
+  assert.match(sceneSource, /setObjectOpacity\(view\.userData\.hiddenModelRoot, hiddenModelAlpha\)/);
   assert.doesNotMatch(sceneSource, /modelRoot\.scale\.setScalar/);
 });
 
@@ -296,14 +303,14 @@ test('hidden vehicle remains an obstacle until unblocked, then reveals before di
   assert.deepEqual(game.clickVehicle(hidden.id), { ok: false, reason: 'blocked', blockers: [2] });
   assert.equal(hidden.state, 'colliding');
 
-  advance(game, 0.7);
+  advance(game, 0.9);
   assert.equal(game.clickVehicle(2).ok, true);
   game.update(0.01);
   assert.ok(hidden.hiddenReveal);
-  assert.equal(hidden.hiddenReveal.duration, 0.5);
+  assert.equal(hidden.hiddenReveal.duration, 1);
   assert.deepEqual(game.clickVehicle(hidden.id), { ok: false, reason: 'unavailable' });
 
-  advance(game, 0.7);
+  advance(game, 1.1);
   assert.equal(hidden.hiddenReveal, null);
   assert.equal(hidden.hiddenRevealed, true);
   assert.equal(game.lastEvent.type, 'hidden-vehicle-revealed');
@@ -321,11 +328,11 @@ test('unrevealed hidden vehicle can be clicked to reveal, then dispatched normal
 
   assert.deepEqual(game.clickVehicle(hidden.id), { ok: true, reason: 'hidden-reveal' });
   assert.equal(hidden.state, 'parked');
-  assert.equal(hidden.hiddenReveal.duration, 0.5);
+  assert.equal(hidden.hiddenReveal.duration, 1);
   assert.equal(game.spots[0].vehicleId, null);
   assert.deepEqual(game.clickVehicle(hidden.id), { ok: false, reason: 'unavailable' });
 
-  advance(game, 0.6);
+  advance(game, 1.1);
   assert.equal(hidden.hiddenRevealed, true);
   assert.equal(hidden.hiddenReveal, null);
   assert.equal(game.clickVehicle(hidden.id).ok, true);

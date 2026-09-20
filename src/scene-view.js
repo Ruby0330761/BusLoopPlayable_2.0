@@ -73,10 +73,13 @@ export function shouldShowParkingSpotDanger(tuning, spots = []) {
 const HIDDEN_QUESTION_MARK_FORWARD_FACTOR = 0.45;
 const HIDDEN_VEHICLE_BODY_COLOR = 0x606060;
 const HIDDEN_VEHICLE_ASSETS = MECHANISM_ASSETS.hiddenVehicle;
-const HIDDEN_REVEAL_DURATION = 0.5;
-const HIDDEN_REVEAL_MARKER_FADE_END = 0.18;
-const HIDDEN_REVEAL_NORMAL_FADE_START = 0.08;
-const HIDDEN_REVEAL_NORMAL_FADE_END = 0.36;
+const HIDDEN_REVEAL_DURATION = 1;
+const HIDDEN_REVEAL_MARKER_FADE_START = 0.5;
+const HIDDEN_REVEAL_MARKER_FADE_END = 1;
+const HIDDEN_REVEAL_NORMAL_BODY_FADE_START = 0.58;
+const HIDDEN_REVEAL_NORMAL_BODY_FADE_END = 0.78;
+const HIDDEN_REVEAL_NORMAL_ARROW_FADE_START = 0.5;
+const HIDDEN_REVEAL_NORMAL_ARROW_FADE_END = 0.65;
 const HIDDEN_REVEAL_ARROW_FADE_END = 0.1 / HIDDEN_REVEAL_DURATION;
 // Unity's Bus_Out_C_4 animation moves the hidden bus upward and forward while
 // compressing and twisting it. These values are normalized to the fitted web
@@ -84,9 +87,9 @@ const HIDDEN_REVEAL_ARROW_FADE_END = 0.1 / HIDDEN_REVEAL_DURATION;
 // scale, which is not present after the FBX is normalized for Three.js.
 const HIDDEN_REVEAL_ROOT_CURVES = Object.freeze({
   position: Object.freeze({
-    x: Object.freeze([[0, 0], [0.5, 0], [1, 0]]),
-    y: Object.freeze([[0, 0], [0.5, 0.12], [1, 0.82]]),
-    z: Object.freeze([[0, 0], [0.5, 0], [1, -0.82]])
+    x: Object.freeze([[0, 0], [0.2, 0], [0.5, 0], [1, 0]]),
+    y: Object.freeze([[0, 0], [0.2, 0], [0.5, 0.14], [1, 0.96]]),
+    z: Object.freeze([[0, 0], [0.2, 0], [0.5, 0], [1, -0.96]])
   }),
   scale: Object.freeze({
     x: Object.freeze([[0, 1], [0.5, 1], [1, 1.2]]),
@@ -4107,10 +4110,20 @@ export class SceneView {
       const t = THREE.MathUtils.clamp(value, 0, 1);
       return t * t * (3 - 2 * t);
     };
-    const hiddenAlpha = 1 - smoothstep(progress / HIDDEN_REVEAL_MARKER_FADE_END);
-    const normalAlpha = smoothstep(
-      (progress - HIDDEN_REVEAL_NORMAL_FADE_START)
-        / (HIDDEN_REVEAL_NORMAL_FADE_END - HIDDEN_REVEAL_NORMAL_FADE_START)
+    // Unity's Bus_Out_C_4 keeps the hidden body opaque through its hold pose,
+    // then fades it while the root completes the upward/forward cloth motion.
+    const hiddenModelAlpha = 1 - smoothstep(
+      (progress - HIDDEN_REVEAL_MARKER_FADE_START)
+        / (HIDDEN_REVEAL_MARKER_FADE_END - HIDDEN_REVEAL_MARKER_FADE_START)
+    );
+    const hiddenArrowAlpha = 1 - smoothstep(progress / HIDDEN_REVEAL_ARROW_FADE_END);
+    const normalBodyAlpha = smoothstep(
+      (progress - HIDDEN_REVEAL_NORMAL_BODY_FADE_START)
+        / (HIDDEN_REVEAL_NORMAL_BODY_FADE_END - HIDDEN_REVEAL_NORMAL_BODY_FADE_START)
+    );
+    const normalArrowAlpha = smoothstep(
+      (progress - HIDDEN_REVEAL_NORMAL_ARROW_FADE_START)
+        / (HIDDEN_REVEAL_NORMAL_ARROW_FADE_END - HIDDEN_REVEAL_NORMAL_ARROW_FADE_START)
     );
     const hiddenRevealRoot = view.userData.hiddenRevealRoot;
     const normalRoot = view.userData.normalRoot;
@@ -4136,34 +4149,32 @@ export class SceneView {
       );
     }
     const hiddenArrow = view.userData.hiddenArrowRoot;
-    if (hiddenArrow && size) {
+    if (hiddenArrow) {
       const basePosition = hiddenArrow.userData.revealBasePosition;
       if (basePosition) {
+        // Unity animates Arrow_01 as part of the hidden vehicle root. Keep the
+        // marker at its authored local position; an extra screen-space offset
+        // makes it fly away from the vehicle after the basis conversion.
         hiddenArrow.position.copy(basePosition);
-        const markerProgress = THREE.MathUtils.clamp(
-          progress / HIDDEN_REVEAL_ARROW_FADE_END,
-          0,
-          1
-        );
-        hiddenArrow.position.x -= size.x * 1.15 * smoothstep(markerProgress);
       }
     }
-    // The normal vehicle starts from the same parked pose and is revealed
-    // while the hidden shell performs its upward, forward "cloth" motion.
+    // Bus_ArrowIn only animates the normal marker in Unity. Keep the normal
+    // vehicle at its authored parked pose while the hidden shell performs the
+    // visible upward, forward, compressed and twisted reveal.
     if (normalRoot) {
-      normalRoot.visible = normalAlpha > 0.001;
-      normalRoot.position.set(0, 0, size ? size.z * 0.08 * (1 - normalAlpha) : 0);
-      normalRoot.rotation.set(0, 0, deg(6 * (1 - normalAlpha)));
-      normalRoot.scale.setScalar(THREE.MathUtils.lerp(0.92, 1, normalAlpha));
+      normalRoot.visible = normalBodyAlpha > 0.001 || normalArrowAlpha > 0.001;
+      normalRoot.position.set(0, 0, 0);
+      normalRoot.rotation.set(0, 0, 0);
+      normalRoot.scale.set(1, 1, 1);
     }
-    view.userData.modelRoot.visible = normalAlpha > 0.001;
-    view.userData.arrowRoot.visible = normalAlpha > 0.001;
-    view.userData.hiddenRoot.visible = hiddenAlpha > 0.001;
-    if (view.userData.hiddenModelRoot) view.userData.hiddenModelRoot.visible = hiddenAlpha > 0.001;
-    setObjectOpacity(view.userData.modelRoot, normalAlpha);
-    setObjectOpacity(view.userData.arrowRoot, normalAlpha);
-    setObjectOpacity(view.userData.hiddenRoot, hiddenAlpha);
-    setObjectOpacity(view.userData.hiddenModelRoot, hiddenAlpha);
+    view.userData.modelRoot.visible = normalBodyAlpha > 0.001;
+    view.userData.arrowRoot.visible = normalArrowAlpha > 0.001;
+    view.userData.hiddenRoot.visible = hiddenArrowAlpha > 0.001;
+    if (view.userData.hiddenModelRoot) view.userData.hiddenModelRoot.visible = hiddenModelAlpha > 0.001;
+    setObjectOpacity(view.userData.modelRoot, normalBodyAlpha);
+    setObjectOpacity(view.userData.arrowRoot, normalArrowAlpha);
+    setObjectOpacity(view.userData.hiddenRoot, hiddenArrowAlpha);
+    setObjectOpacity(view.userData.hiddenModelRoot, hiddenModelAlpha);
     view.userData.pickMeshes = vehicle.hiddenRevealed ? view.userData.bodyMeshes : view.userData.hiddenBodyMeshes;
   }
 

@@ -24,7 +24,7 @@ const wrap01 = (value) => ((value % 1) + 1) % 1;
 const clampNumber = (value, min, max) => Math.max(min, Math.min(max, value));
 const INITIAL_ENTRY_OFFSET_PERCENT = 0.0001;
 const PASSENGER_READY_DISTANCE_THRESHOLD = 0.02;
-const HIDDEN_VEHICLE_REVEAL_DURATION = 0.5;
+const HIDDEN_VEHICLE_REVEAL_DURATION = 1;
 const GARAGE_CONTAINER_TYPE = 2;
 const CONVEYOR_BELT_CONTAINER_TYPE = 3;
 const POLICE_COLOR_INDEX = 11;
