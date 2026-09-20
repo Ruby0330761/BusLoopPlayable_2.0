@@ -1,5 +1,11 @@
 # Findings
 
+## 2026-09-18 Redirect strategy build identity
+
+- Resource selection reads live source tuning during single-HTML packaging, but gameplay tuning is already baked into the Vite JavaScript. Reusing `dist` can therefore combine newly selected resources with an older redirect strategy unless the built bundle is tied to the tuning.
+- Production builds now generate a signed redirect/Retry snapshot. The packager compares source tuning, generated snapshot, and the signature embedded in `dist`; the final checker then compares readable package metadata and the inline runtime signature exactly.
+- Historical named HTML files without `bus-loop-package-metadata` predate this contract and cannot be treated as verified packages for current redirect behavior.
+
 ## 2026-09-15 Fire-truck UI and mechanism-package contract
 
 - Unity's `Effect_Firetruck_Fire` is a full-stretch Canvas effect with warning images covering the stage and particle emitters anchored around its edges; it must not be represented as content inside the top countdown panel. The countdown card is a separate `FireTruckCD_Empty` UI element.

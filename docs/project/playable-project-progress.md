@@ -1,5 +1,57 @@
 # Playable Project Progress
 
+## Corrected On 2026-09-18 - Exact redirect strategy packaging
+
+- The public `npm run package:applovin` command now always applies the exported tuning, rebuilds the runtime, packages the single HTML, and runs final checks. The raw inliner is retained only as `package:applovin:raw` for internal diagnostics.
+- Each build now carries a SHA-256 signature of the selected level, install-gate strategy, continuation option, vehicle gate values, and both Retry switches. Packaging aborts if the current tuning, generated snapshot, or `dist` bundle differs; the final HTML includes readable `bus-loop-package-metadata`, and the checker compares every value exactly.
+- Historical `level10-sakura`, `level10-winter`, and `level12-sakura` packages were confirmed to share the old threshold-only strategy (`successfulOperationThreshold: 10`) and contain none of the new gate/Retry fields. They were old reused bundles, not valid evidence of distinct editor settings.
+- Verification: stale-`dist` rejection passed, build-config regressions passed 3/3, and the full AppLovin pipeline passed all 33 final checks for `level43 + singleQueue1`. The regenerated package is `2,900,074` bytes and carries threshold `8`, continuation enabled, vehicle gate enabled, level `level43`, IDs `50,69,70`, and matching runtime/package signatures. Browser QA confirmed the rendered canvas, exact DOM/package signature match, Retry transition, and zero console errors.
+
+## Completed On 2026-09-18 - Packaging coverage for recent runtime features
+
+- Added the verified AppLovin pipeline `npm run package:applovin:verified`, which applies exported tuning, rebuilds the selected production level, packages the single HTML, and runs final checks in one command. Packaging now rejects generated-level/tuning mismatches instead of combining stale payloads.
+- Ordinary conveyor artwork is pruned by selected layout: `singleQueue1` includes the transparent `Loop_01_q88.webp` (`995,101 -> 53,694` bytes from the imported PNG), while other ordinary layouts omit it and include only their own artwork. Final checks verify both selected asset bytes and omission of every unselected mechanism Data URI, including stale level-level `loopScene` references.
+- Added final-package assertions for the floating Retry button, Game Over Retry button, black transition, retry accumulation, post-store continuation, and vehicle-exit gate runtime fields. Updated the stale fire-truck foreground selection to the existing compressed `firetruck.mp4`.
+- Verification: focused conveyor/retry tests pass. The real `level34 + singleQueue1` package passes all 30 static checks at `4,680,348` bytes and renders the single-side artwork without console errors; the restored final `level34 + dualQueue2` package passes at `4,666,474` bytes. In-app browser QA also exercised Retry with a complete black transition and no error-level console logs.
+
+## Completed On 2026-09-17 - Failure-screen Retry CTA
+
+- Added an optional yellow `Retry` CTA below `Play Now` on the failure overlay. It shares the PlayNow responsive sizing and appearance timing, and is controlled by `gameOver.retryEnabled`.
+- Before the store threshold it retries only the current level; after the store threshold it opens the store instead. The existing floating retry button remains separate.
+- Verification: source syntax checks, `git diff --check`, focused regression test, and production Vite build passed.
+- The Retry CTA keeps the same wide rounded layout as PlayNow while using a yellow skin; its store decision reads the preserved level-session operation count at click time.
+
+## Completed On 2026-09-17 - Current-level retry button
+
+- Added an enabled-by-default circular retry-arrow button with editor controls for visibility, design-coordinate X/Y position, and size.
+- Retrying rebuilds only the current `BusLoopGame` and its visual/queue state. The level session is preserved, so successful-operation/install progress and other cross-level data are not cleared.
+- Verification: source syntax checks, `git diff --check`, the focused danger-glow regression, and the production Vite build passed. The build retains the existing large-chunk warning.
+- Retry now preserves the current guide-hand dismissal state, and its reset is wrapped in a short black fade transition.
+
+## Completed On 2026-09-17 - Hold-to-speed-up guide hand hint
+
+- Added the optional `guideHandHint` editor section below the single-parking-spot danger glow. It uses the bundled guide-hand image and Poppins font, supports design-coordinate X/Y placement, and stays responsive with the existing branding stage scale.
+- The hint appears after the first successful vehicle click, hides after the two-second long-press timer activates, resets on level reset/advance, and is pointer-transparent so it cannot interfere with vehicle picking.
+- Verification: `node --check src/main.js`, production Vite build, and `git diff --check` passed. The existing guide-hand test remains blocked by its pre-existing expectation of stale `vehicleGuideHand` values.
+
+## Completed On 2026-09-17 - Single parking spot danger glow
+
+- Added the optional `parkingSpotDanger.enabled` editor control. When enabled and the active level has exactly one remaining empty parking spot, a thin rounded bright-red border light is shown around that spot and pulses every 1.35 seconds. Its runtime-generated high-resolution distance-field texture keeps the core line narrow while producing a wide continuous feathered halo with a 30-pixel decay radius and sufficient transparent padding; the color uses approximately 5% lower saturation and 10 percentage points higher HSL lightness, while the 12%-to-100% intensity range keeps the slower pulse clear without fully disappearing. It is hidden when there are zero or multiple empty spots.
+- The border follows the parking spot's transform, is generated at runtime with pointer-transparent materials, and adds no mechanism asset to the package or vehicle-picking interference.
+- Verification: focused danger-glow test, source syntax checks, and Vite production build passed. The full suite still contains unrelated pre-existing failures in level/resource/generated-state assertions.
+
+## Completed On 2026-09-17 - Firetruck media image compression
+
+- Re-encoded the fire-truck `Fire_01`, `Warning_01`, `Warning_02`, and passenger Emoji WebP assets at their authored dimensions with RGBA preserved; originals are retained under `artifacts/backups/firetruck-media-before-compression-20260917/`.
+- Image payloads decreased from `731,372` to `631,796` bytes. The firefighter foreground video was re-encoded from `1440x2560`, `4,771,235` bytes with AAC audio to a full-duration, audio-free `540x960`, 24 fps H.264 clip at `520,353` bytes; the source is retained in the same backup folder.
+- Verification: key-frame visual comparison, video stream inspection, Vite build, AppLovin package generation, image dimension/format checks, and static package checks completed. The regenerated Firetruck package is `5,427,160` bytes; all checks pass except the 5,000,000-byte size ceiling.
+
+## Completed On 2026-09-16 - level34 firetruck media package
+
+- Applied the supplied `level34` export with first-click guide enabled (`level34` / vehicle `89`), foreground video `消防车被困参考运镜.mp4` enabled, transition disabled, passenger Emoji and random playable audio enabled, and EntryBanner disabled.
+- Generated the 83-vehicle production session and inlined `fireTruck`, `passengerEmoji`, and `randomPlayableAudio` resources with the selected foreground video.
+- Verification: tuning files match and `artifacts/selected-level.txt` is `level34`; all static checks pass except size. Package is `11,226,275` bytes, exceeding the 5,000,000-byte limit by `6,226,275` bytes.
+
 ## Completed On 2026-09-16 - Rebuilt level33 package with police foreground video
 
 - Applied the latest `level33` export with `police.mp4` enabled, first-click guide enabled for `level33`, passenger Emoji and random playable audio enabled, and transition video disabled by its runtime toggle.
@@ -1261,6 +1313,19 @@ The project moved from the original 6-vehicle level1 prototype to the imported l
 - Added Effect_Hit and Effect_SmokeTrail parity, then kept authored fake shadows as the active shadow solution after removing the heavier real-time shadow-map path.
 - Added directional-light/editor controls, passenger material controls, vehicle arrow outline controls, and Map Scale editor naming.
 - Restored bus/van fake shadow sizing and removed the bottom operation toast while preserving gameplay events/audio/end panel.
+
+## Completed On 2026-09-18 - ConveyorBelt1 single-side conveyor import
+
+- Added Unity `ConveyorBelt1` as the selectable `singleQueue1` layout with its authored 39-slot conveyor path, 18-slot single passenger queue, and `Loop_01.png` artwork.
+- Runtime merges authored passenger queues into the single entrance when this layout is selected; the ordinary conveyor mechanism manifest includes the asset for packaging.
+- Verification: focused conveyor catalog/runtime/editor tests, touched-file syntax checks, and production Vite build pass. Default selection remains unchanged.
+
+## Completed On 2026-09-18 - Configurable store redirect gates
+
+- Expanded the store redirect editor group with post-redirect gameplay continuation, an optional level-specific multi-vehicle gate, and comma-separated vehicle IDs while keeping successful-operation counting as the default gate.
+- The special gate arms only after every configured vehicle reaches a parking spot, then redirects on the next operation. Retry preserves the cumulative operation count and vehicle-gate progress while clearing only the current attempt's vehicle-ID de-duplication, so repeated IDs count again after retry; a full session reset clears everything.
+- Default-mode Game Over Retry now opens the store directly. In special-gate mode it restarts only while neither the operation threshold nor vehicle gate is ready; Play Now always opens the store.
+- Verification: focused gate/session tests, source contract test, syntax checks, production Vite build, and in-app browser editor interaction passed with no error-level console logs.
 
 ## Current Verification State
 
