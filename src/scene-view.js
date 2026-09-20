@@ -56,9 +56,34 @@ const TURN_ARROW_FORWARD_OFFSET = 0.18;
 const VEHICLE_ARROW_HIDDEN_STATES = new Set(['at-spot', 'boarding-final', 'departing', 'done']);
 export const shouldHideVehicleArrow = (state) => VEHICLE_ARROW_HIDDEN_STATES.has(state);
 const HIDDEN_QUESTION_MARK_FORWARD_FACTOR = 0.45;
-const HIDDEN_VEHICLE_BODY_COLOR = 0x2a2a2a;
+const HIDDEN_VEHICLE_BODY_COLOR = 0x606060;
 const HIDDEN_VEHICLE_ASSETS = MECHANISM_ASSETS.hiddenVehicle;
 const HIDDEN_REVEAL_DURATION = 0.5;
+const HIDDEN_REVEAL_MARKER_FADE_END = 0.18;
+const HIDDEN_REVEAL_NORMAL_FADE_START = 0.08;
+const HIDDEN_REVEAL_NORMAL_FADE_END = 0.36;
+const HIDDEN_REVEAL_ARROW_FADE_END = 0.1 / HIDDEN_REVEAL_DURATION;
+// Unity's Bus_Out_C_4 animation moves the hidden bus upward and forward while
+// compressing and twisting it. These values are normalized to the fitted web
+// vehicle dimensions because the source clip runs under Unity's vehicle root
+// scale, which is not present after the FBX is normalized for Three.js.
+const HIDDEN_REVEAL_ROOT_CURVES = Object.freeze({
+  position: Object.freeze({
+    x: Object.freeze([[0, 0], [0.5, 0], [1, 0]]),
+    y: Object.freeze([[0, 0], [0.5, 0.12], [1, 0.82]]),
+    z: Object.freeze([[0, 0], [0.5, 0], [1, -0.82]])
+  }),
+  scale: Object.freeze({
+    x: Object.freeze([[0, 1], [0.5, 1], [1, 1.2]]),
+    y: Object.freeze([[0, 1], [0.5, 1], [1, 0.5]]),
+    z: Object.freeze([[0, 1], [0.5, 1], [1, 0.7]])
+  }),
+  rotation: Object.freeze({
+    x: Object.freeze([[0, 0], [0.5, 0], [1, -12.963]]),
+    y: Object.freeze([[0, 0], [0.5, 0], [1, 10.367]]),
+    z: Object.freeze([[0, 0], [0.5, 0], [1, -28]])
+  })
+});
 const GARAGE_ASSETS = MECHANISM_ASSETS.garage;
 const GARAGE_MODEL_TARGET = Object.freeze({ width: 1.00850928, depth: 1.33755 });
 const GARAGE_MODEL_YAW_OFFSET = Math.PI;
@@ -478,7 +503,9 @@ function createWhiteAlphaTexture(source) {
     pixels.data[index + 2] = 255;
   }
   context.putImageData(pixels, 0, 0);
-  return configureColorTexture(new THREE.CanvasTexture(canvas));
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.premultiplyAlpha = false;
+  return configureColorTexture(texture);
 }
 
 async function loadPackedVatTexture(url, loadingManager) {
@@ -591,6 +618,19 @@ function setMaterial(root, material, meshFilter = null) {
     meshes.push(child);
   });
   return meshes;
+}
+
+function setObjectOpacity(root, opacity) {
+  const value = THREE.MathUtils.clamp(Number(opacity) || 0, 0, 1);
+  root?.traverse?.((child) => {
+    if (!child.isMesh && !child.isLineSegments) return;
+    forEachMaterial(child.material, (material) => {
+      material.transparent = value < 0.999;
+      material.opacity = value;
+      material.depthWrite = value >= 0.999;
+      material.needsUpdate = true;
+    });
+  });
 }
 
 function findFirstMaterialMap(root) {
@@ -826,10 +866,32 @@ function normalizeObject(root, targets) {
 
 function makeCenteredArrow(template) {
   const visual = template.clone(true);
+  visual.traverse((child) => {
+    if (!child.isMesh && !child.isLineSegments) return;
+    if (Array.isArray(child.material)) child.material = child.material.map((material) => material?.clone?.() ?? material);
+    else child.material = child.material?.clone?.() ?? child.material;
+  });
   const root = new THREE.Group();
   root.userData.fittedSize = visual.userData.fittedSize?.clone?.() ?? visual.userData.fittedSize;
   root.add(visual);
   return root;
+}
+
+function sampleRevealTrack(keys, progress) {
+  if (!keys?.length) return 0;
+  if (progress <= keys[0][0]) return keys[0][1];
+  for (let index = 1; index < keys.length; index += 1) {
+    const next = keys[index];
+    if (progress > next[0]) continue;
+    const previous = keys[index - 1];
+    const amount = THREE.MathUtils.clamp(
+      (progress - previous[0]) / Math.max(0.000001, next[0] - previous[0]),
+      0,
+      1
+    );
+    return THREE.MathUtils.lerp(previous[1], next[1], amount);
+  }
+  return keys.at(-1)[1];
 }
 
 function sampleQuaternionCurve(keys, time, duration, target) {
@@ -2673,15 +2735,18 @@ export class SceneView {
       }
       if (questionMarkFbx) {
         this.questionMarkTemplate = normalizeObject(toStaticMeshGroup(questionMarkFbx), { depth: 0.56 });
-        setMaterial(this.questionMarkTemplate, new THREE.MeshBasicMaterial({
+        const questionMarkMaterial = new THREE.MeshBasicMaterial({
           map: this.questionMarkTexture,
           color: 0xffffff,
           side: THREE.DoubleSide,
           transparent: true,
           alphaTest: 0.02,
           depthTest: false,
-          depthWrite: false
-        }));
+          depthWrite: false,
+          toneMapped: false
+        });
+        questionMarkMaterial.userData.isQuestionMarkMaterial = true;
+        setMaterial(this.questionMarkTemplate, questionMarkMaterial);
         addArrowOutline(this.questionMarkTemplate, {
           color: SCENE_TUNING.vehicleArrow.outlineColor,
           scale: SCENE_TUNING.vehicleArrow.outlineScale,
@@ -3305,7 +3370,9 @@ export class SceneView {
         ? setMaterial(hiddenCollisionModel, new THREE.MeshStandardMaterial({
           color: HIDDEN_VEHICLE_BODY_COLOR,
           roughness: 0.58,
-          metalness: 0
+          metalness: 0,
+          transparent: true,
+          opacity: 1
         }))
         : [];
       if (hiddenCollisionModel) {
@@ -3325,6 +3392,8 @@ export class SceneView {
       this.applyVehicleArrowTuning(arrow, size, { isTurnVehicle: vehicle.isTurnVehicle });
       arrow.rotation.y = deg(vehicle.isTurnVehicle ? 0 : SCENE_TUNING.facing.arrowYawDegrees);
       if (vehicle.isTurnVehicle) arrow.scale.multiplyScalar(TURN_ARROW_SCALE);
+      const normalRoot = new THREE.Group();
+      normalRoot.add(model, arrow);
       const hiddenRoot = new THREE.Group();
       const hiddenArrow = vehicle.isHidden && this.questionMarkTemplate
         ? makeCenteredArrow(this.questionMarkTemplate)
@@ -3334,8 +3403,13 @@ export class SceneView {
         hiddenArrow.rotation.y = deg(SCENE_TUNING.facing.arrowYawDegrees);
         hiddenArrow.renderOrder = 30;
         hiddenArrow.traverse((child) => {
-          if (!child.isMesh) return;
-          child.renderOrder = 30;
+          if (!child.isMesh && !child.isLineSegments) return;
+          // Keep the outline behind the white question glyph. The generic
+          // arrow outline is intentionally black, so equal render orders make
+          // it cover the glyph when depth testing is disabled.
+          child.renderOrder = child.userData.isArrowOutline
+            ? (child.isLineSegments ? 31 : 29)
+            : 30;
           const materials = Array.isArray(child.material) ? child.material : [child.material];
           for (const material of materials) {
             if (!material) continue;
@@ -3343,14 +3417,18 @@ export class SceneView {
             material.depthWrite = false;
           }
         });
+        hiddenArrow.userData.revealBasePosition = hiddenArrow.position.clone();
         hiddenRoot.add(hiddenArrow);
       }
+      const hiddenRevealRoot = new THREE.Group();
       model.visible = !vehicle.isHidden;
       arrow.visible = !vehicle.isHidden;
+      normalRoot.visible = !vehicle.isHidden;
       hiddenRoot.visible = Boolean(vehicle.isHidden);
       if (hiddenCollisionModel) hiddenCollisionModel.visible = Boolean(vehicle.isHidden);
-      hitRoot.add(model, arrow, hiddenRoot);
-      if (hiddenCollisionModel) hitRoot.add(hiddenCollisionModel);
+      hiddenRevealRoot.add(hiddenRoot);
+      if (hiddenCollisionModel) hiddenRevealRoot.add(hiddenCollisionModel);
+      hitRoot.add(normalRoot, hiddenRevealRoot);
       for (const child of [hitRoot, shadow]) {
         child.traverse((object) => { object.userData.vehicleId = vehicle.id; });
       }
@@ -3367,9 +3445,11 @@ export class SceneView {
       view.userData.hiddenBodyMeshes = hiddenBodyMeshes;
       view.userData.hitMeshes = [hitRoot];
       view.userData.pickMeshes = vehicle.isHidden ? hiddenBodyMeshes : bodyMeshes;
+      view.userData.normalRoot = normalRoot;
       view.userData.modelRoot = model;
       view.userData.arrowRoot = arrow;
       view.userData.hiddenRoot = hiddenRoot;
+      view.userData.hiddenRevealRoot = hiddenRevealRoot;
       view.userData.hiddenModelRoot = hiddenCollisionModel;
       view.userData.hiddenArrowRoot = hiddenArrow;
       view.userData.templateSize = size;
@@ -3529,13 +3609,68 @@ export class SceneView {
     const progress = reveal
       ? THREE.MathUtils.clamp(reveal.elapsed / Math.max(0.001, reveal.duration || HIDDEN_REVEAL_DURATION), 0, 1)
       : (vehicle.hiddenRevealed ? 1 : 0);
-    const showingNormal = progress >= 0.55;
-    view.userData.modelRoot.visible = showingNormal;
-    view.userData.arrowRoot.visible = showingNormal;
-    view.userData.hiddenRoot.visible = !showingNormal;
-    if (view.userData.hiddenModelRoot) view.userData.hiddenModelRoot.visible = !showingNormal;
+    const smoothstep = (value) => {
+      const t = THREE.MathUtils.clamp(value, 0, 1);
+      return t * t * (3 - 2 * t);
+    };
+    const hiddenAlpha = 1 - smoothstep(progress / HIDDEN_REVEAL_MARKER_FADE_END);
+    const normalAlpha = smoothstep(
+      (progress - HIDDEN_REVEAL_NORMAL_FADE_START)
+        / (HIDDEN_REVEAL_NORMAL_FADE_END - HIDDEN_REVEAL_NORMAL_FADE_START)
+    );
+    const hiddenRevealRoot = view.userData.hiddenRevealRoot;
+    const normalRoot = view.userData.normalRoot;
+    const size = view.userData.templateSize;
+    if (hiddenRevealRoot && size) {
+      const position = HIDDEN_REVEAL_ROOT_CURVES.position;
+      const scale = HIDDEN_REVEAL_ROOT_CURVES.scale;
+      const rotation = HIDDEN_REVEAL_ROOT_CURVES.rotation;
+      hiddenRevealRoot.position.set(
+        sampleRevealTrack(position.x, progress) * size.x,
+        sampleRevealTrack(position.y, progress) * size.y,
+        sampleRevealTrack(position.z, progress) * size.z
+      );
+      hiddenRevealRoot.scale.set(
+        sampleRevealTrack(scale.x, progress),
+        sampleRevealTrack(scale.y, progress),
+        sampleRevealTrack(scale.z, progress)
+      );
+      hiddenRevealRoot.rotation.set(
+        deg(sampleRevealTrack(rotation.x, progress)),
+        deg(sampleRevealTrack(rotation.y, progress)),
+        deg(sampleRevealTrack(rotation.z, progress))
+      );
+    }
+    const hiddenArrow = view.userData.hiddenArrowRoot;
+    if (hiddenArrow && size) {
+      const basePosition = hiddenArrow.userData.revealBasePosition;
+      if (basePosition) {
+        hiddenArrow.position.copy(basePosition);
+        const markerProgress = THREE.MathUtils.clamp(
+          progress / HIDDEN_REVEAL_ARROW_FADE_END,
+          0,
+          1
+        );
+        hiddenArrow.position.x -= size.x * 1.15 * smoothstep(markerProgress);
+      }
+    }
+    // The normal vehicle starts from the same parked pose and is revealed
+    // while the hidden shell performs its upward, forward "cloth" motion.
+    if (normalRoot) {
+      normalRoot.visible = normalAlpha > 0.001;
+      normalRoot.position.set(0, 0, size ? size.z * 0.08 * (1 - normalAlpha) : 0);
+      normalRoot.rotation.set(0, 0, deg(6 * (1 - normalAlpha)));
+      normalRoot.scale.setScalar(THREE.MathUtils.lerp(0.92, 1, normalAlpha));
+    }
+    view.userData.modelRoot.visible = normalAlpha > 0.001;
+    view.userData.arrowRoot.visible = normalAlpha > 0.001;
+    view.userData.hiddenRoot.visible = hiddenAlpha > 0.001;
+    if (view.userData.hiddenModelRoot) view.userData.hiddenModelRoot.visible = hiddenAlpha > 0.001;
+    setObjectOpacity(view.userData.modelRoot, normalAlpha);
+    setObjectOpacity(view.userData.arrowRoot, normalAlpha);
+    setObjectOpacity(view.userData.hiddenRoot, hiddenAlpha);
+    setObjectOpacity(view.userData.hiddenModelRoot, hiddenAlpha);
     view.userData.pickMeshes = vehicle.hiddenRevealed ? view.userData.bodyMeshes : view.userData.hiddenBodyMeshes;
-    view.userData.hiddenRoot.scale.setScalar(1);
   }
 
   makeVehicleShadow(seats) {

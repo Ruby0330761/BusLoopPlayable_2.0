@@ -190,7 +190,7 @@ test('hidden vehicle source wiring keeps the question marker out of picking', ()
   const sceneSource = readFileSync(join('src', 'scene-view.js'), 'utf8');
   assert.match(sceneSource, /MECHANISM_ASSETS\.hiddenVehicle/);
   assert.match(sceneSource, /Unity's bus_hidden material is intentionally untextured black/);
-  assert.match(sceneSource, /HIDDEN_VEHICLE_BODY_COLOR = 0x2a2a2a/);
+  assert.match(sceneSource, /HIDDEN_VEHICLE_BODY_COLOR = 0x606060/);
   assert.match(sceneSource, /setMaterial\(hiddenCollisionModel, new THREE\.MeshStandardMaterial/);
   assert.match(sceneSource, /hiddenCollisionModel\.scale\.multiply\(new THREE\.Vector3\(/);
   assert.match(sceneSource, /createWhiteAlphaTexture/);
@@ -201,7 +201,16 @@ test('hidden vehicle source wiring keeps the question marker out of picking', ()
   assert.match(sceneSource, /HIDDEN_QUESTION_MARK_FORWARD_FACTOR = 0\.45/);
   assert.match(sceneSource, /isHiddenQuestionMark: true/);
   assert.match(sceneSource, /hiddenQuestionOffset/);
-  assert.doesNotMatch(sceneSource, /hiddenRoot\.scale\.setScalar\(1 - progress/);
+  assert.match(sceneSource, /HIDDEN_REVEAL_MARKER_FADE_END/);
+  assert.match(sceneSource, /HIDDEN_REVEAL_ROOT_CURVES/);
+  assert.match(sceneSource, /sampleRevealTrack\(position\.y, progress\) \* size\.y/);
+  assert.match(sceneSource, /hiddenRevealRoot\.rotation\.set/);
+  assert.match(sceneSource, /hiddenArrow\.position\.x -= size\.x \* 1\.15/);
+  assert.match(sceneSource, /normalRoot\.visible = normalAlpha > 0\.001/);
+  assert.match(sceneSource, /toneMapped: false/);
+  assert.match(sceneSource, /child\.userData\.isArrowOutline\s*\? \(child\.isLineSegments \? 31 : 29\)\s*:\s*30/);
+  assert.match(sceneSource, /view\.userData\.hiddenRevealRoot = hiddenRevealRoot/);
+  assert.match(sceneSource, /setObjectOpacity\(view\.userData\.hiddenRoot, hiddenAlpha\)/);
   assert.doesNotMatch(sceneSource, /modelRoot\.scale\.setScalar/);
 });
 
@@ -211,11 +220,11 @@ test('hidden vehicle reveal audio is deduplicated per vehicle', () => {
     hidden_vehicle_reveal: { clips: ['hidden-reveal'] }
   });
   audio.play = (name) => played.push(name);
-  audio.handleGameEvent({ type: 'hidden-vehicle-revealed', vehicleId: 67 }, 1.25);
+  audio.handleGameEvent({ type: 'hidden-vehicle-reveal-started', vehicleId: 67 }, 1.25);
   audio.handleGameEvent({ type: 'hidden-vehicle-revealed', vehicleId: 67 }, 1.25);
   audio.handleGameEvent({ type: 'vehicle-full', vehicleId: 2 }, 1.26);
   audio.handleGameEvent({ type: 'hidden-vehicle-revealed', vehicleId: 67 }, 1.27);
-  audio.handleGameEvent({ type: 'hidden-vehicle-revealed', vehicleId: 68 }, 1.25);
+  audio.handleGameEvent({ type: 'hidden-vehicle-reveal-started', vehicleId: 68 }, 1.25);
   assert.deepEqual(played, ['hidden_vehicle_reveal', 'bus_full', 'hidden_vehicle_reveal']);
 });
 
