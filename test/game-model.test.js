@@ -1280,7 +1280,11 @@ test('editor sizing, source background ratio, and passenger shadow anchor stay w
     appearSpeed: 1.45
   });
   assert.deepEqual(SCENE_TUNING.installGate, {
-    successfulOperationThreshold: 20
+    successfulOperationThreshold: 20,
+    continueAfterStoreOpen: 0,
+    vehicleExitGateEnabled: 0,
+    vehicleExitLevelKey: 'level34',
+    vehicleExitIds: ''
   });
   assert.deepEqual(SCENE_TUNING.gameOver, {
     failureDelaySeconds: 2,
@@ -2177,7 +2181,7 @@ test('main thread saves and restores scene tuning from localStorage', () => {
   assert.match(mainSource, /levelSession\.recordSuccessfulVehicle\(vehicleId, getSuccessfulOperationThreshold\(\)\)/);
   assert.match(mainSource, /const handleVehicleClick = \(vehicleId\) => \{/);
   assert.match(mainSource, /const result = game\.clickVehicle\(vehicleId\)/);
-  assert.match(mainSource, /^\s*if \(result\?\.ok && markInstallVehicle\(vehicleId\)\) InstallFullGame\(\);/m);
+  assert.match(mainSource, /if \(markInstallVehicle\(vehicleId\)\) InstallFullGame\(\);/);
   assert.match(mainSource, /function updateInstallGate\(state\)/);
   assert.match(mainSource, /for \(const vehicle of state\.vehicles \?\? \[\]\)/);
   assert.match(mainSource, /levelSession\.hasCountedVehicle\(vehicle\.id\)/);
@@ -2316,9 +2320,22 @@ test('successful operation store redirect uses the baked threshold and remains e
   const editorSource = readFileSync(join('src', 'scene-editor.js'), 'utf8');
 
   assert.equal(SCENE_TUNING.installGate.successfulOperationThreshold, 20);
+  assert.equal(SCENE_TUNING.installGate.continueAfterStoreOpen, 0);
+  assert.equal(SCENE_TUNING.installGate.vehicleExitGateEnabled, 0);
+  assert.equal(SCENE_TUNING.installGate.vehicleExitLevelKey, 'level34');
+  assert.equal(SCENE_TUNING.installGate.vehicleExitIds, '');
   assert.match(editorSource, /installGate\.successfulOperationThreshold/);
+  assert.match(editorSource, /installGate\.continueAfterStoreOpen/);
+  assert.match(editorSource, /installGate\.vehicleExitGateEnabled/);
+  assert.match(editorSource, /installGate\.vehicleExitLevelKey/);
+  assert.match(editorSource, /installGate\.vehicleExitIds/);
   assert.match(mainSource, /SCENE_TUNING\.installGate\?\.successfulOperationThreshold/);
-  assert.match(mainSource, /^\s*if \(result\?\.ok && markInstallVehicle\(vehicleId\)\) InstallFullGame\(\);/m);
+  assert.match(mainSource, /getVehicleExitGateConfig/);
+  assert.match(mainSource, /shouldBlockGameplayForStore/);
+  assert.match(mainSource, /shouldGameOverRetryOpenStore/);
+  assert.match(mainSource, /storeRedirectTriggered/);
+  assert.match(mainSource, /levelSession\.recordVehicleExit/);
+  assert.match(mainSource, /if \(markInstallVehicle\(vehicleId\)\) InstallFullGame\(\);/);
   assert.match(mainSource, /levelSession\.recordSuccessfulVehicle\(vehicleId, getSuccessfulOperationThreshold\(\)\)/);
   assert.doesNotMatch(mainSource, /INSTALL_GATE_AFTER_SUCCESSFUL_OPERATIONS_ENABLED/);
 });

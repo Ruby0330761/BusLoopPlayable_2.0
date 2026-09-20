@@ -71,7 +71,11 @@ export const SCENE_TUNING = {
     "bottom": 46
   },
   "installGate": {
-    "successfulOperationThreshold": 20
+    "successfulOperationThreshold": 20,
+    "continueAfterStoreOpen": 0,
+    "vehicleExitGateEnabled": 0,
+    "vehicleExitLevelKey": "level34",
+    "vehicleExitIds": ""
   },
   "gameOver": {
     "failureDelaySeconds": 2,
@@ -85,7 +89,8 @@ export const SCENE_TUNING = {
     "logoHeight": 587,
     "logoRadius": 30,
     "logoAppearSpeed": 1.45,
-    "titleFont": "rounded"
+    "titleFont": "rounded",
+    "retryEnabled": 1
   },
   "facing": {
     "passengerYawDegrees": 180,
@@ -424,6 +429,20 @@ export const SCENE_TUNING = {
     "modelDepth": 1.46,
     "scaleX": 0.7,
     "scaleZ": 0.65
+  },
+  "parkingSpotDanger": {
+    "enabled": 0
+  },
+  "guideHandHint": {
+    "enabled": 0,
+    "x": 540,
+    "y": 1580
+  },
+  "retryButton": {
+    "enabled": 1,
+    "x": 960,
+    "y": 180,
+    "size": 76
   },
   "seatCountBoard": {
     "x": -0.17,

@@ -3,7 +3,11 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { ACTIVE_LEVEL, PLAYABLE_LEVEL_SEQUENCE } from '../src/generated-active-level.js';
 import { BusLoopGame } from '../src/game-model.js';
-import { createLevelSession } from '../src/level-session.js';
+import {
+  createLevelSession,
+  shouldBlockGameplayForStore,
+  shouldGameOverRetryOpenStore
+} from '../src/level-session.js';
 
 test('production session starts on Level9 and follows with Level7', () => {
   assert.equal(ACTIVE_LEVEL.key, 'level9');
@@ -49,6 +53,98 @@ test('an early CTA threshold does not block Level9 before the Level7 handoff', (
   assert.equal(session.shouldOpenStore(), false);
   session.advanceAfterWin();
   assert.equal(session.shouldOpenStore(), true);
+});
+
+test('retry preserves the operation total while allowing current-level vehicle ids to count again', () => {
+  const session = createLevelSession([{ key: 'levelA' }]);
+  const vehicleExitConfig = {
+    enabled: true,
+    levelKey: 'levelA',
+    vehicleIds: '2'
+  };
+
+  assert.equal(session.recordSuccessfulVehicle(1, 3), false);
+  assert.equal(session.recordSuccessfulVehicle(2, 3), false);
+  assert.equal(session.recordVehicleExit(2, vehicleExitConfig), true);
+  assert.equal(session.state().successfulOperationCount, 2);
+
+  assert.equal(session.restartCurrentLevel().key, 'levelA');
+  assert.equal(session.hasCountedVehicle(1), false);
+  assert.equal(session.isVehicleExitGateReady(vehicleExitConfig), true);
+
+  assert.equal(session.recordSuccessfulVehicle(1, 3), true);
+  assert.equal(session.state().successfulOperationCount, 3);
+  assert.equal(session.state().installReady, true);
+  assert.equal(session.recordSuccessfulVehicle(1, 3), false);
+  assert.equal(session.state().successfulOperationCount, 3);
+
+  const mainSource = readFileSync('src/main.js', 'utf8');
+  assert.match(mainSource, /levelSession\.restartCurrentLevel\(\);\s*game\.reset\(\);/);
+});
+
+test('vehicle-exit install gate requires every configured id from the selected level', () => {
+  const session = createLevelSession([
+    { key: 'levelA' },
+    { key: 'levelB' }
+  ]);
+  const config = {
+    enabled: true,
+    levelKey: 'levelA',
+    vehicleIds: '2, 5，8 8 invalid'
+  };
+
+  assert.equal(session.recordVehicleExit(2, config), false);
+  assert.equal(session.recordVehicleExit(5, config), false);
+  assert.equal(session.recordVehicleExit(7, config), false);
+  assert.equal(session.isVehicleExitGateReady(config), false);
+  assert.equal(session.recordVehicleExit(8, config), true);
+  assert.equal(session.isVehicleExitGateReady(config), true);
+
+  session.advanceAfterWin();
+  assert.equal(session.isVehicleExitGateReady(config), true);
+  session.reset();
+  assert.equal(session.isVehicleExitGateReady(config), false);
+});
+
+test('vehicle-exit install gate stays inactive when disabled or on another level', () => {
+  const session = createLevelSession([{ key: 'levelA' }]);
+  assert.equal(session.recordVehicleExit(3, {
+    enabled: false,
+    levelKey: 'levelA',
+    vehicleIds: '3'
+  }), false);
+  assert.equal(session.recordVehicleExit(3, {
+    enabled: true,
+    levelKey: 'levelB',
+    vehicleIds: '3'
+  }), false);
+});
+
+test('game-over Retry follows default and special install-gate rules', () => {
+  assert.equal(shouldGameOverRetryOpenStore(), true);
+  assert.equal(shouldGameOverRetryOpenStore({ vehicleExitGateEnabled: true }), false);
+  assert.equal(shouldGameOverRetryOpenStore({
+    vehicleExitGateEnabled: true,
+    operationGateReady: true
+  }), true);
+  assert.equal(shouldGameOverRetryOpenStore({
+    vehicleExitGateEnabled: true,
+    vehicleExitGateReady: true
+  }), true);
+});
+
+test('store-ready gameplay unblocks only after a redirect when continuation is enabled', () => {
+  assert.equal(shouldBlockGameplayForStore({ storeReady: false }), false);
+  assert.equal(shouldBlockGameplayForStore({ storeReady: true }), true);
+  assert.equal(shouldBlockGameplayForStore({
+    storeReady: true,
+    storeRedirectTriggered: true
+  }), true);
+  assert.equal(shouldBlockGameplayForStore({
+    storeReady: true,
+    storeRedirectTriggered: true,
+    continueAfterStoreOpen: true
+  }), false);
 });
 
 test('fresh Level7 queues restart passenger entry from both sides', () => {

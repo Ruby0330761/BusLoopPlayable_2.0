@@ -3,7 +3,11 @@ import { BusLoopGame } from './game-model.js';
 import { PLAYABLE_LEVEL_SEQUENCE } from './generated-active-level.js';
 import { ACTIVE_SPATIAL_CONVEYOR_PACKAGE } from './generated-active-spatial-conveyor.js';
 import { LEVEL_1, setActiveLevel } from './level-data.js';
-import { createLevelSession } from './level-session.js';
+import {
+  createLevelSession,
+  shouldBlockGameplayForStore,
+  shouldGameOverRetryOpenStore
+} from './level-session.js';
 import { SceneView } from './scene-view.js';
 import {
   clampCenteredRectX,
@@ -75,6 +79,7 @@ const gameOverOverlay = $('#game-over-overlay');
 const gameOverLogo = $('#game-over-logo');
 const gameOverTitle = $('#game-over-title');
 const ctaButton = $('#cta-button');
+const gameOverRetryButton = $('#game-over-retry-button');
 const brandingItems = {
   icon: $('#branding-icon'),
   logo: $('#branding-logo'),
@@ -82,6 +87,9 @@ const brandingItems = {
 };
 if (gameOverLogo && brandingItems.logo?.src) gameOverLogo.src = brandingItems.logo.src;
 const passengerEmoji = $('#passenger-emoji');
+const guideHandHint = $('#guide-hand-hint');
+const retryButton = $('#retry-button');
+const retryTransition = $('#retry-transition');
 const sceneEditorRoot = EDITOR_ENABLED ? $('#scene-editor') : null;
 const PASSENGER_EMOJI_COLUMNS = 8;
 const PASSENGER_EMOJI_ROWS = 8;
@@ -90,6 +98,9 @@ const PASSENGER_EMOJI_DEFAULT_DURATION_SECONDS = 2.067;
 const PASSENGER_EMOJI_HIDE_STATES = new Set(['at-spot', 'boarding-final', 'departing', 'done']);
 let passengerEmojiHiddenByVehicle = false;
 let passengerEmojiAnimationStartedAt = null;
+let guideHandHintShown = false;
+let guideHandHintDismissed = false;
+const GUIDE_HAND_HINT_LONG_PRESS_MS = 2000;
 let randomPlayableAudioScheduler = null;
 const PASSENGER_MATERIAL_TUNING_PREFIX = 'passengerMaterial.';
 const PASSENGER_MATERIAL_COLOR_INDEX_PATTERN = /^passengerMaterial\.(?:solidColors|colors)\.(\d+)(?:\.|$)/;
@@ -635,6 +646,72 @@ function applyPassengerEmojiTuning() {
   passengerEmoji.style.backgroundImage = `url("${MECHANISM_ASSETS.passengerEmoji.angrySheet}")`;
 }
 
+function applyGuideHandHintTuning() {
+  if (!guideHandHint) return;
+  const metrics = getBrandingStageMetrics();
+  const config = SCENE_TUNING.guideHandHint ?? {};
+  const x = Number.isFinite(Number(config.x)) ? Number(config.x) : metrics.designWidth / 2;
+  const y = Number.isFinite(Number(config.y)) ? Number(config.y) : metrics.designHeight / 2;
+  const position = projectCenteredDesignPoint({
+    x,
+    y,
+    designWidth: metrics.designWidth,
+    designHeight: metrics.designHeight,
+    stageWidth: metrics.stageWidth,
+    stageHeight: metrics.stageHeight,
+    scale: metrics.uiScale
+  });
+  guideHandHint.hidden = !config.enabled || !guideHandHintShown || guideHandHintDismissed;
+  guideHandHint.style.left = `${position.x}px`;
+  guideHandHint.style.top = `${position.y}px`;
+  guideHandHint.style.width = `${240 * metrics.uiScale}px`;
+  guideHandHint.style.height = `${190 * metrics.uiScale}px`;
+  const hand = guideHandHint.querySelector('.guide-hand-hint__hand');
+  const label = guideHandHint.querySelector('.guide-hand-hint__label');
+  if (hand) {
+    hand.style.width = `${141 * metrics.uiScale}px`;
+    hand.style.height = `${141 * metrics.uiScale}px`;
+  }
+  if (label) label.style.fontSize = `${Math.max(10, 31 * metrics.uiScale)}px`;
+}
+
+function showGuideHandHintAfterVehicleClick() {
+  if (guideHandHintShown || guideHandHintDismissed) return;
+  guideHandHintShown = true;
+  applyGuideHandHintTuning();
+}
+
+function dismissGuideHandHint() {
+  if (guideHandHintDismissed) return;
+  guideHandHintDismissed = true;
+  applyGuideHandHintTuning();
+}
+
+function applyRetryButtonTuning() {
+  if (!retryButton) return;
+  const metrics = getBrandingStageMetrics();
+  const config = SCENE_TUNING.retryButton ?? {};
+  const x = Number.isFinite(Number(config.x)) ? Number(config.x) : metrics.designWidth / 2;
+  const y = Number.isFinite(Number(config.y)) ? Number(config.y) : metrics.designHeight / 2;
+  const size = Math.max(32, Number(config.size) || 76) * metrics.uiScale;
+  const position = projectCenteredDesignPoint({
+    x,
+    y,
+    designWidth: metrics.designWidth,
+    designHeight: metrics.designHeight,
+    stageWidth: metrics.stageWidth,
+    stageHeight: metrics.stageHeight,
+    scale: metrics.uiScale
+  });
+  retryButton.hidden = !config.enabled;
+  retryButton.style.left = `${position.x}px`;
+  retryButton.style.top = `${position.y}px`;
+  retryButton.style.width = `${size}px`;
+  retryButton.style.height = `${size}px`;
+  retryButton.style.fontSize = `${Math.max(18, size * 0.55)}px`;
+  retryButton.style.borderWidth = `${Math.max(1, size * 0.04)}px`;
+}
+
 function updatePassengerEmojiAutoHide(snapshot, activeLevelKey) {
   const config = SCENE_TUNING.passengerEmoji ?? {};
   const configuredLevelKey = String(config.autoHideOnVehicleLevelKey ?? '').trim();
@@ -732,6 +809,7 @@ function updateFireTruckHud(state, view = null) {
 let audio = null;
 let lastStoreOpenAt = 0;
 let storeOpenAttempts = 0;
+let storeRedirectTriggered = false;
 
 function applyCtaTuning(view = null) {
   if (!ctaButton) return;
@@ -775,6 +853,20 @@ function applyCtaTuning(view = null) {
   ctaButton.style.setProperty('--game-over-cta-appear-duration', durationCss(cta.appearSpeed, 1.45));
   ctaButton.style.left = `${worldPosition?.x ?? stageWidth / 2 + (centerX - designWidth / 2) * uiScale}px`;
   ctaButton.style.top = `${worldPosition?.y ?? stageHeight / 2 + (centerY - designHeight / 2) * uiScale}px`;
+  if (gameOverRetryButton) {
+    const retrySize = height * uiScale;
+    const retryGap = Math.max(12, height * 0.28) * uiScale;
+    const ctaTop = worldPosition?.y ?? stageHeight / 2 + (centerY - designHeight / 2) * uiScale;
+    gameOverRetryButton.hidden = !(isGameOverVisible && Boolean(cta.enabled ?? 1) && Boolean(SCENE_TUNING.gameOver?.retryEnabled ?? 1));
+    gameOverRetryButton.style.setProperty('--cta-width', scaledPx(width, uiScale));
+    gameOverRetryButton.style.setProperty('--cta-height', scaledPx(height, uiScale));
+    gameOverRetryButton.style.setProperty('--cta-padding-x', scaledPx(24, uiScale));
+    gameOverRetryButton.style.setProperty('--cta-font-size', scaledPx(fontSize, uiScale));
+    gameOverRetryButton.style.setProperty('--cta-font-height', scaledPx(fontHeight, uiScale));
+    gameOverRetryButton.style.setProperty('--game-over-cta-appear-duration', durationCss(cta.appearSpeed, 1.45));
+    gameOverRetryButton.style.left = ctaButton.style.left;
+    gameOverRetryButton.style.top = `${ctaTop + retrySize + retryGap}px`;
+  }
 }
 
 function applyGameOverTuning() {
@@ -839,6 +931,7 @@ function openStore() {
 }
 
 function InstallFullGame() {
+  storeRedirectTriggered = true;
   randomPlayableAudioScheduler?.stop();
   audio?.unlock();
   openStore();
@@ -847,6 +940,19 @@ function InstallFullGame() {
 function getSuccessfulOperationThreshold() {
   const configuredThreshold = Number(SCENE_TUNING.installGate?.successfulOperationThreshold);
   return Number.isFinite(configuredThreshold) ? Math.max(1, Math.floor(configuredThreshold)) : 40;
+}
+
+function getVehicleExitGateConfig() {
+  const installGate = SCENE_TUNING.installGate ?? {};
+  return {
+    enabled: Boolean(installGate.vehicleExitGateEnabled),
+    levelKey: String(installGate.vehicleExitLevelKey ?? ''),
+    vehicleIds: installGate.vehicleExitIds ?? ''
+  };
+}
+
+function isContinueAfterStoreOpenEnabled() {
+  return Boolean(SCENE_TUNING.installGate?.continueAfterStoreOpen);
 }
 
 function flushTuningSave() {
@@ -972,6 +1078,8 @@ async function startRuntime() {
   });
   const endPanel = $('#end-panel');
   let pressTimer = 0;
+  let guideHandHintDismissTimer = 0;
+  let retryTransitionTimer = 0;
   let pressed = false;
   let gameOverActive = false;
   let spatialEditorActive = false;
@@ -1012,11 +1120,25 @@ async function startRuntime() {
   const markInstallVehicle = (vehicleId) => {
     return levelSession.recordSuccessfulVehicle(vehicleId, getSuccessfulOperationThreshold());
   };
+  const isVehicleExitGateEnabled = () => getVehicleExitGateConfig().enabled;
+  const isVehicleExitGateReady = () => (
+    isVehicleExitGateEnabled()
+    && levelSession.isVehicleExitGateReady(getVehicleExitGateConfig())
+  );
+  const shouldOpenStoreFromGameplay = () => (
+    levelSession.shouldOpenStore() || isVehicleExitGateReady()
+  );
+  const shouldRetryOpenStore = () => shouldGameOverRetryOpenStore({
+    vehicleExitGateEnabled: isVehicleExitGateEnabled(),
+    operationGateReady: levelSession.state().installReady,
+    vehicleExitGateReady: isVehicleExitGateReady()
+  });
 
   const handleVehicleClick = (vehicleId) => {
     if (foregroundVideoBlocking) return { ok: false, reason: 'foreground-video-playing' };
     const result = game.clickVehicle(vehicleId);
     if (result?.ok) {
+      showGuideHandHintAfterVehicleClick();
       randomPlayableAudioScheduler?.activate();
       if (markInstallVehicle(vehicleId)) InstallFullGame();
     }
@@ -1039,12 +1161,16 @@ async function startRuntime() {
     applyCtaTuning(view);
     applyBrandingTuning(view.getBackgroundCanvasBounds());
     applyPassengerEmojiTuning();
+    applyGuideHandHintTuning();
+    applyRetryButtonTuning();
   };
   updateCtaPosition();
   document.fonts?.load?.('700 16px "Poppins Branding"')
     .then(() => {
       applyBrandingTuning(view.getBackgroundCanvasBounds());
       applyPassengerEmojiTuning();
+      applyGuideHandHintTuning();
+      applyRetryButtonTuning();
     })
     .catch(() => {});
   if ('ResizeObserver' in window && stage) {
@@ -1467,6 +1593,20 @@ async function startRuntime() {
       if (syncEditor) editor.sync();
       return SCENE_TUNING;
     }
+    if (path?.startsWith('guideHandHint.')) {
+      deepMerge(SCENE_TUNING, next);
+      applyGuideHandHintTuning();
+      saveTuning(SCENE_TUNING);
+      if (syncEditor) editor.sync();
+      return SCENE_TUNING;
+    }
+    if (path?.startsWith('retryButton.')) {
+      deepMerge(SCENE_TUNING, next);
+      applyRetryButtonTuning();
+      saveTuning(SCENE_TUNING);
+      if (syncEditor) editor.sync();
+      return SCENE_TUNING;
+    }
     if (path?.startsWith('foregroundVideo.')) {
       const wasForegroundVideoActive = Boolean(
         SCENE_TUNING.foregroundVideo?.enabled && SCENE_TUNING.foregroundVideo?.selected
@@ -1560,6 +1700,9 @@ async function startRuntime() {
         unsubscribeGame();
         setActiveLevel(nextLevel);
         game = new BusLoopGame(nextLevel);
+        guideHandHintShown = false;
+        guideHandHintDismissed = false;
+        applyGuideHandHintTuning();
         startPassengerEmojiAnimation();
         randomPlayableAudioScheduler?.reset();
         audio.resetEventHistory();
@@ -1577,12 +1720,12 @@ async function startRuntime() {
     for (const vehicle of state.vehicles ?? []) {
       if (
         vehicle.spotIndex == null ||
-        !INSTALL_GATE_VEHICLE_STATES.has(vehicle.state) ||
-        levelSession.hasCountedVehicle(vehicle.id)
+        !INSTALL_GATE_VEHICLE_STATES.has(vehicle.state)
       ) {
         continue;
       }
-      markInstallVehicle(vehicle.id);
+      levelSession.recordVehicleExit(vehicle.id, getVehicleExitGateConfig());
+      if (!levelSession.hasCountedVehicle(vehicle.id)) markInstallVehicle(vehicle.id);
     }
   }
 
@@ -1602,6 +1745,10 @@ async function startRuntime() {
   function showResultOverlay(title = 'Game Over') {
     if (!gameOverOverlay || gameOverActive) return;
     gameOverActive = true;
+    if (retryButton) {
+      retryButton.disabled = true;
+      retryButton.setAttribute('aria-disabled', 'true');
+    }
     clearGameOverTimers();
     applyGameOverTuning();
     if (gameOverTitle) gameOverTitle.textContent = title;
@@ -1628,16 +1775,59 @@ async function startRuntime() {
       ctaButton.dataset.gameOverVisible = '0';
       applyCtaTuning(view);
     }
+    if (retryButton) {
+      retryButton.disabled = false;
+      retryButton.removeAttribute('aria-disabled');
+    }
+  }
+
+  function retryCurrentLevel() {
+    endPanel.hidden = true;
+    hideGameOver();
+    pressed = false;
+    clearTimeout(pressTimer);
+    clearTimeout(guideHandHintDismissTimer);
+    levelSession.restartCurrentLevel();
+    game.reset();
+    randomPlayableAudioScheduler?.reset();
+    audio.resetEventHistory();
+    startPassengerEmojiAnimation();
+    view.replaceActiveLevel();
+    initializeGameQueues({ resetSlots: true });
+    applyIdleSpeedMultiplier();
+    applyGuideHandHintTuning();
+  }
+
+  function retryWithTransition() {
+    if (!retryTransition || retryTransition.classList.contains('is-visible')) return;
+    clearTimeout(retryTransitionTimer);
+    retryTransition.hidden = false;
+    requestAnimationFrame(() => retryTransition.classList.add('is-visible'));
+    retryTransitionTimer = setTimeout(() => {
+      retryCurrentLevel();
+      retryTransition.classList.remove('is-visible');
+      retryTransitionTimer = setTimeout(() => {
+        retryTransition.hidden = true;
+      }, 320);
+    }, 320);
   }
 
   unsubscribeGame = game.subscribe(syncHud);
   function reset() {
+    clearTimeout(retryTransitionTimer);
+    retryTransition?.classList.remove('is-visible');
+    if (retryTransition) retryTransition.hidden = true;
     endPanel.hidden = true;
     hideGameOver();
     unsubscribeGame();
     const initialLevel = levelSession.reset();
+    storeRedirectTriggered = false;
     setActiveLevel(initialLevel);
     game = new BusLoopGame(initialLevel);
+    guideHandHintShown = false;
+    guideHandHintDismissed = false;
+    clearTimeout(guideHandHintDismissTimer);
+    applyGuideHandHintTuning();
     startPassengerEmojiAnimation();
     randomPlayableAudioScheduler?.reset();
     audio.resetEventHistory();
@@ -1648,9 +1838,18 @@ async function startRuntime() {
   }
   $('#reset-button')?.addEventListener('click', reset);
   $('#end-reset-button').addEventListener('click', reset);
+  retryButton?.addEventListener('click', (event) => {
+    event.stopPropagation();
+    retryWithTransition();
+  });
   ctaButton?.addEventListener('click', (event) => {
     event.stopPropagation();
     InstallFullGame();
+  });
+  gameOverRetryButton?.addEventListener('click', (event) => {
+    event.stopPropagation();
+    if (shouldRetryOpenStore()) InstallFullGame();
+    else retryWithTransition();
   });
   canvas.addEventListener('pointerdown', (event) => {
     if (foregroundVideoBlocking) {
@@ -1658,7 +1857,11 @@ async function startRuntime() {
       return;
     }
     if (spatialEditorActive) return;
-    if (levelSession.shouldOpenStore()) {
+    if (shouldBlockGameplayForStore({
+      storeReady: shouldOpenStoreFromGameplay(),
+      storeRedirectTriggered,
+      continueAfterStoreOpen: isContinueAfterStoreOpenEnabled()
+    })) {
       event.stopImmediatePropagation();
       InstallFullGame();
       return;
@@ -1669,6 +1872,7 @@ async function startRuntime() {
     audio.unlock();
     pressed = true;
     clearTimeout(pressTimer);
+    clearTimeout(guideHandHintDismissTimer);
     pressTimer = setTimeout(() => {
       if (!pressed) return;
       const configuredSpatialMultiplier = Number(SCENE_TUNING.spatialConveyor?.longPressMultiplier);
@@ -1678,11 +1882,22 @@ async function startRuntime() {
             : LEVEL_1.longPressMultiplier)
         : LEVEL_1.longPressMultiplier;
       game.setSpeedMultiplier(multiplier);
+      if (
+        storeRedirectTriggered
+        && isContinueAfterStoreOpenEnabled()
+        && shouldOpenStoreFromGameplay()
+      ) InstallFullGame();
     }, LEVEL_1.longPressThreshold * 1000);
+    if (guideHandHintShown && !guideHandHintDismissed) {
+      guideHandHintDismissTimer = setTimeout(() => {
+        if (pressed) dismissGuideHandHint();
+      }, GUIDE_HAND_HINT_LONG_PRESS_MS);
+    }
   });
   const release = () => {
     pressed = false;
     clearTimeout(pressTimer);
+    clearTimeout(guideHandHintDismissTimer);
     applyIdleSpeedMultiplier();
   };
   window.addEventListener('pointerup', release);
@@ -1731,6 +1946,8 @@ async function startRuntime() {
       numberCountBus: levelSession.state().successfulOperationCount,
       maxNumberCountBus: getSuccessfulOperationThreshold(),
       isFinish: levelSession.state().installReady,
+      vehicleExitGateReady: isVehicleExitGateReady(),
+      storeRedirectTriggered,
       levelKey: levelSession.state().levelKey
     }),
     step: (seconds, increment = .05) => {

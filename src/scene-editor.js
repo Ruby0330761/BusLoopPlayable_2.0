@@ -212,7 +212,11 @@ const FIELD_GROUPS = [
   {
     title: '\u5546\u5e97\u8df3\u8f6c',
     fields: [
-      ['\u6210\u529f\u64cd\u4f5c\u6b21\u6570', 'installGate.successfulOperationThreshold', 1, 200, 1]
+      ['\u6210\u529f\u64cd\u4f5c\u6b21\u6570', 'installGate.successfulOperationThreshold', 1, 200, 1],
+      ['\u8df3\u8f6c\u540e\u5141\u8bb8\u7ee7\u7eed\u64cd\u4f5c/\u52a0\u901f', 'installGate.continueAfterStoreOpen', 0, 1, 1, null, 'toggle'],
+      ['\u542f\u7528\u6307\u5b9a\u8f66\u8f86\u6761\u4ef6', 'installGate.vehicleExitGateEnabled', 0, 1, 1, null, 'toggle'],
+      ['\u68c0\u6d4b\u5173\u5361', 'installGate.vehicleExitLevelKey', 0, 0, 1, LEVEL_OPTIONS],
+      ['\u8f66\u8f86 ID\uff08\u9017\u53f7\u5206\u9694\uff09', 'installGate.vehicleExitIds', 0, 0, 1, null, 'text']
     ]
   },
   {
@@ -228,7 +232,8 @@ const FIELD_GROUPS = [
       ['Logo Width', 'gameOver.logoWidth', 40, 720, 1],
       ['Logo Height', 'gameOver.logoHeight', 40, 720, 1],
       ['Logo Radius', 'gameOver.logoRadius', 0, 120, 1],
-      ['Logo Speed', 'gameOver.logoAppearSpeed', 0.1, 5, 0.01]
+      ['Logo Speed', 'gameOver.logoAppearSpeed', 0.1, 5, 0.01],
+      ['Retry CTA', 'gameOver.retryEnabled', 0, 1, 1, null, 'toggle']
     ]
   },
   {
@@ -402,6 +407,23 @@ const FIELD_GROUPS = [
     title: '\u5355\u8f66\u4f4d\u7d27\u5f20\u7ea2\u5149',
     fields: [
       ['\u542f\u7528', 'parkingSpotDanger.enabled', 0, 1, 1, null, 'toggle']
+    ]
+  },
+  {
+    title: '\u5f15\u5bfc\u5c0f\u624b\uff08\u957f\u6309\u52a0\u901f\uff09',
+    fields: [
+      ['\u542f\u7528', 'guideHandHint.enabled', 0, 1, 1, null, 'toggle'],
+      ['X \u4f4d\u7f6e', 'guideHandHint.x', 0, 1080, 1],
+      ['Y \u4f4d\u7f6e', 'guideHandHint.y', 0, 2160, 1]
+    ]
+  },
+  {
+    title: '\u91cd\u8bd5\u6309\u94ae',
+    fields: [
+      ['\u663e\u793a', 'retryButton.enabled', 0, 1, 1, null, 'toggle'],
+      ['X \u4f4d\u7f6e', 'retryButton.x', 0, 1080, 1],
+      ['Y \u4f4d\u7f6e', 'retryButton.y', 0, 2160, 1],
+      ['\u5927\u5c0f', 'retryButton.size', 32, 240, 1]
     ]
   },
   {

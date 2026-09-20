@@ -15,6 +15,10 @@
           <img id="branding-logo" class="branding-item" src="/assets/main-loading-icon-small.png" alt="Bus Fever logo" draggable="false" />
           <div id="branding-text" class="branding-item branding-text">Bus Fever-Car Jam Escape</div>
           <div id="passenger-emoji" class="branding-item passenger-emoji" aria-label="Angry passenger emoji"></div>
+          <div id="guide-hand-hint" class="guide-hand-hint" hidden aria-hidden="true">
+            <img class="guide-hand-hint__hand" src="/assets/applovin/main-guide-hand_q80.webp" alt="" draggable="false" />
+            <div class="guide-hand-hint__label">HOLD TO SPEED UP</div>
+          </div>
         </div>
         <div id="firetruck-hud" class="firetruck-hud" hidden>
           <div class="firetruck-screen-effect" aria-hidden="true">
@@ -75,7 +79,10 @@
           <div id="game-over-title" class="game-over-title">Game Over</div>
           <img id="game-over-logo" class="game-over-logo" alt="Bus Fever logo" />
           <button id="cta-button" class="cta-button" type="button" aria-label="Play Now" hidden>Play Now</button>
+          <button id="game-over-retry-button" class="cta-button game-over-retry-button" type="button" aria-label="Retry" hidden>Retry</button>
         </div>
+        <button id="retry-button" class="retry-button" type="button" aria-label="Retry level" title="Retry level">↻</button>
+        <div id="retry-transition" class="retry-transition" hidden aria-hidden="true"></div>
       </main>
       <aside id="scene-editor" class="scene-editor" aria-label="Scene editor"></aside>
     </div>
