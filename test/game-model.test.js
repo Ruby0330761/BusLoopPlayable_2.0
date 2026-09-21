@@ -206,6 +206,9 @@ test('hidden vehicle source wiring keeps the question marker out of picking', ()
   assert.match(sceneSource, /HIDDEN_REVEAL_MARKER_FADE_START = 0\.5/);
   assert.match(sceneSource, /HIDDEN_REVEAL_MARKER_FADE_END = 1/);
   assert.match(sceneSource, /HIDDEN_REVEAL_ROOT_CURVES/);
+  assert.match(sceneSource, /getHiddenRevealTuning/);
+  assert.match(sceneSource, /SCENE_TUNING\.hiddenVehicleReveal/);
+  assert.match(sceneSource, /revealTuning\.rootCurves\.position/);
   assert.match(sceneSource, /sampleRevealTrack\(position\.y, progress\) \* size\.y/);
   assert.match(sceneSource, /hiddenRevealRoot\.rotation\.set/);
   assert.match(sceneSource, /hiddenArrow\.position\.copy\(basePosition\)/);
@@ -336,7 +339,7 @@ test('hidden vehicle remains an obstacle until unblocked, then reveals before di
   assert.equal(game.clickVehicle(2).ok, true);
   game.update(0.01);
   assert.ok(hidden.hiddenReveal);
-  assert.equal(hidden.hiddenReveal.duration, 1);
+  assert.equal(hidden.hiddenReveal.duration, SCENE_TUNING.hiddenVehicleReveal.durationSeconds);
   assert.deepEqual(game.clickVehicle(hidden.id), { ok: false, reason: 'unavailable' });
 
   advance(game, 1.1);
@@ -357,7 +360,7 @@ test('unrevealed hidden vehicle can be clicked to reveal, then dispatched normal
 
   assert.deepEqual(game.clickVehicle(hidden.id), { ok: true, reason: 'hidden-reveal' });
   assert.equal(hidden.state, 'parked');
-  assert.equal(hidden.hiddenReveal.duration, 1);
+  assert.equal(hidden.hiddenReveal.duration, SCENE_TUNING.hiddenVehicleReveal.durationSeconds);
   assert.equal(game.spots[0].vehicleId, null);
   assert.deepEqual(game.clickVehicle(hidden.id), { ok: false, reason: 'unavailable' });
 

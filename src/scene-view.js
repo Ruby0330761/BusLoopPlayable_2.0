@@ -87,6 +87,32 @@ const HIDDEN_REVEAL_ROOT_CURVES = Object.freeze({
     z: Object.freeze([[0, 0], [0.5, 0], [1, -28]])
   })
 });
+function getHiddenRevealTuning() {
+  const config = SCENE_TUNING.hiddenVehicleReveal ?? {};
+  const root = config.root ?? {};
+  const readNumber = (value, fallback) => Number.isFinite(Number(value)) ? Number(value) : fallback;
+  const readTrack = (group, axis) => {
+    const fallback = HIDDEN_REVEAL_ROOT_CURVES[group][axis];
+    const values = root[group]?.[axis] ?? {};
+    const names = fallback.length === 4 ? ['start', 'hold', 'mid', 'end'] : ['start', 'mid', 'end'];
+    return fallback.map(([time, fallbackValue], index) => [time, readNumber(values[names[index]], fallbackValue)]);
+  };
+  return {
+    durationSeconds: Math.max(0.1, readNumber(config.durationSeconds, HIDDEN_REVEAL_DURATION)),
+    questionMarkFadeSeconds: Math.max(0, readNumber(config.questionMarkFadeSeconds, 0.1)),
+    hiddenModelFadeStart: THREE.MathUtils.clamp(readNumber(config.hiddenModelFadeStart, HIDDEN_REVEAL_MARKER_FADE_START), 0, 1),
+    hiddenModelFadeEnd: THREE.MathUtils.clamp(readNumber(config.hiddenModelFadeEnd, HIDDEN_REVEAL_MARKER_FADE_END), 0, 1),
+    normalBodyFadeStart: THREE.MathUtils.clamp(readNumber(config.normalBodyFadeStart, HIDDEN_REVEAL_NORMAL_BODY_FADE_START), 0, 1),
+    normalBodyFadeEnd: THREE.MathUtils.clamp(readNumber(config.normalBodyFadeEnd, HIDDEN_REVEAL_NORMAL_BODY_FADE_END), 0, 1),
+    normalArrowFadeStart: THREE.MathUtils.clamp(readNumber(config.normalArrowFadeStart, HIDDEN_REVEAL_NORMAL_ARROW_FADE_START), 0, 1),
+    normalArrowFadeEnd: THREE.MathUtils.clamp(readNumber(config.normalArrowFadeEnd, HIDDEN_REVEAL_NORMAL_ARROW_FADE_END), 0, 1),
+    rootCurves: {
+      position: Object.fromEntries(['x', 'y', 'z'].map((axis) => [axis, readTrack('position', axis)])),
+      scale: Object.fromEntries(['x', 'y', 'z'].map((axis) => [axis, readTrack('scale', axis)])),
+      rotation: Object.fromEntries(['x', 'y', 'z'].map((axis) => [axis, readTrack('rotation', axis)]))
+    }
+  };
+}
 const GARAGE_ASSETS = MECHANISM_ASSETS.garage;
 const GARAGE_MODEL_TARGET = Object.freeze({ width: 1.00850928, depth: 1.33755 });
 const GARAGE_MODEL_YAW_OFFSET = Math.PI;
@@ -3608,9 +3634,10 @@ export class SceneView {
 
   updateHiddenVehicleVisual(view, vehicle) {
     if (!view?.userData.hiddenRoot || !vehicle.isHidden) return;
+    const revealTuning = getHiddenRevealTuning();
     const reveal = vehicle.hiddenReveal;
     const progress = reveal
-      ? THREE.MathUtils.clamp(reveal.elapsed / Math.max(0.001, reveal.duration || HIDDEN_REVEAL_DURATION), 0, 1)
+      ? THREE.MathUtils.clamp(reveal.elapsed / Math.max(0.001, reveal.duration || revealTuning.durationSeconds), 0, 1)
       : (vehicle.hiddenRevealed ? 1 : 0);
     const smoothstep = (value) => {
       const t = THREE.MathUtils.clamp(value, 0, 1);
@@ -3619,25 +3646,27 @@ export class SceneView {
     // Unity's Bus_Out_C_4 keeps the hidden body opaque through its hold pose,
     // then fades it while the root completes the upward/forward cloth motion.
     const hiddenModelAlpha = 1 - smoothstep(
-      (progress - HIDDEN_REVEAL_MARKER_FADE_START)
-        / (HIDDEN_REVEAL_MARKER_FADE_END - HIDDEN_REVEAL_MARKER_FADE_START)
+      (progress - revealTuning.hiddenModelFadeStart)
+        / Math.max(0.0001, revealTuning.hiddenModelFadeEnd - revealTuning.hiddenModelFadeStart)
     );
-    const hiddenArrowAlpha = 1 - smoothstep(progress / HIDDEN_REVEAL_ARROW_FADE_END);
+    const hiddenArrowAlpha = 1 - smoothstep(
+      progress / Math.max(0.0001, revealTuning.questionMarkFadeSeconds / revealTuning.durationSeconds)
+    );
     const normalBodyAlpha = smoothstep(
-      (progress - HIDDEN_REVEAL_NORMAL_BODY_FADE_START)
-        / (HIDDEN_REVEAL_NORMAL_BODY_FADE_END - HIDDEN_REVEAL_NORMAL_BODY_FADE_START)
+      (progress - revealTuning.normalBodyFadeStart)
+        / Math.max(0.0001, revealTuning.normalBodyFadeEnd - revealTuning.normalBodyFadeStart)
     );
     const normalArrowAlpha = smoothstep(
-      (progress - HIDDEN_REVEAL_NORMAL_ARROW_FADE_START)
-        / (HIDDEN_REVEAL_NORMAL_ARROW_FADE_END - HIDDEN_REVEAL_NORMAL_ARROW_FADE_START)
+      (progress - revealTuning.normalArrowFadeStart)
+        / Math.max(0.0001, revealTuning.normalArrowFadeEnd - revealTuning.normalArrowFadeStart)
     );
     const hiddenRevealRoot = view.userData.hiddenRevealRoot;
     const normalRoot = view.userData.normalRoot;
     const size = view.userData.templateSize;
     if (hiddenRevealRoot && size) {
-      const position = HIDDEN_REVEAL_ROOT_CURVES.position;
-      const scale = HIDDEN_REVEAL_ROOT_CURVES.scale;
-      const rotation = HIDDEN_REVEAL_ROOT_CURVES.rotation;
+      const position = revealTuning.rootCurves.position;
+      const scale = revealTuning.rootCurves.scale;
+      const rotation = revealTuning.rootCurves.rotation;
       hiddenRevealRoot.position.set(
         sampleRevealTrack(position.x, progress) * size.x,
         sampleRevealTrack(position.y, progress) * size.y,

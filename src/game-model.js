@@ -25,6 +25,10 @@ const clampNumber = (value, min, max) => Math.max(min, Math.min(max, value));
 const INITIAL_ENTRY_OFFSET_PERCENT = 0.0001;
 const PASSENGER_READY_DISTANCE_THRESHOLD = 0.02;
 const HIDDEN_VEHICLE_REVEAL_DURATION = 1;
+const getHiddenVehicleRevealDuration = () => Math.max(
+  0.1,
+  Number(SCENE_TUNING.hiddenVehicleReveal?.durationSeconds) || HIDDEN_VEHICLE_REVEAL_DURATION
+);
 const GARAGE_CONTAINER_TYPE = 2;
 const CONVEYOR_BELT_CONTAINER_TYPE = 3;
 // CONVEYOR_RIGHT_VISIBILITY_SCALE = 0.93
@@ -634,7 +638,7 @@ export class BusLoopGame {
     if (!vehicle?.isHidden || vehicle.hiddenRevealed || vehicle.hiddenReveal) return false;
     vehicle.hiddenReveal = {
       elapsed: 0,
-      duration: HIDDEN_VEHICLE_REVEAL_DURATION
+      duration: getHiddenVehicleRevealDuration()
     };
     this.lastEvent = { type: 'hidden-vehicle-reveal-started', vehicleId: vehicle.id };
     return true;
