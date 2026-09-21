@@ -28,8 +28,8 @@ function getEventKeys(event, time = '') {
       keys.push({ name: 'police_siren', key: `${event.type}:${event.vehicleId}` });
     }
   }
-  if (event.type === 'hidden-vehicle-revealed') {
-    keys.push({ name: 'hidden_vehicle_reveal', key: `${event.type}:${event.vehicleId}` });
+  if (event.type === 'hidden-vehicle-reveal-started' || event.type === 'hidden-vehicle-revealed') {
+    keys.push({ name: 'hidden_vehicle_reveal', key: 'hidden-vehicle-reveal:' + event.vehicleId });
   }
   if (event.type === 'firetruck-countdown-started') {
     keys.push({ name: 'firetruck_start', key: event.type });
