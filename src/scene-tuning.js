@@ -543,6 +543,33 @@ export const SCENE_TUNING = {
     "holeScaleX": 0.62,
     "holeScaleY": 0.62
   },
+  "hiddenVehicleReveal": {
+    "durationSeconds": 0.45,
+    "questionMarkFadeSeconds": 0.1,
+    "hiddenModelFadeStart": 0.6,
+    "hiddenModelFadeEnd": 1,
+    "normalBodyFadeStart": 0.56,
+    "normalBodyFadeEnd": 0.78,
+    "normalArrowFadeStart": 0.6,
+    "normalArrowFadeEnd": 0.65,
+    "root": {
+      "position": {
+        "x": { "start": 0, "hold": 0, "mid": -0.03, "end": -0.05 },
+        "y": { "start": 0, "hold": 0, "mid": 0.14, "end": 0.96 },
+        "z": { "start": 0, "hold": 0, "mid": 0, "end": -0.96 }
+      },
+      "scale": {
+        "x": { "start": 1, "mid": 1, "end": 1.2 },
+        "y": { "start": 1, "mid": 1, "end": 0.5 },
+        "z": { "start": 1, "mid": 1, "end": 0.7 }
+      },
+      "rotation": {
+        "x": { "start": 0, "mid": -20, "end": -45 },
+        "y": { "start": 0, "mid": 5, "end": 15 },
+        "z": { "start": 0, "mid": -5, "end": -10 }
+      }
+    }
+  },
   "entryBanner": {
     "enabled": 0,
     "style": "superhard",
