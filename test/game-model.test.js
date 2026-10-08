@@ -2190,6 +2190,9 @@ test('main thread saves and restores scene tuning from localStorage', () => {
   assert.match(mainSource, /Math\.max\(1, Math\.floor\(configuredThreshold\)\)/);
   assert.doesNotMatch(mainSource, /INSTALL_GATE_AFTER_SUCCESSFUL_OPERATIONS_ENABLED/);
   assert.match(mainSource, /function applyCtaTuning/);
+  assert.match(mainSource, /const retryEnabled = Boolean\(\s*\(SCENE_TUNING\.retryButton\?\.enabled \?\? 1\)\s*&&\s*\(SCENE_TUNING\.gameOver\?\.retryEnabled \?\? 1\)\s*\)/);
+  assert.match(mainSource, /isGameOverVisible && Boolean\(cta\.enabled \?\? 1\) && retryEnabled/);
+  assert.match(mainSource, /if \(path\?\.startsWith\('retryButton\.'\)\)[\s\S]*?applyRetryButtonTuning\(\);[\s\S]*?applyCtaTuning\(view\);/);
   assert.match(mainSource, /showResultOverlay\(state\.lastEvent\.reason === 'ambulance-exceed-step' \? 'Ambulance Failed' : 'Game Over'\)/);
   assert.match(mainSource, /^\s*showResultOverlay\('You Win!'\);/m);
   assert.match(mainSource, /gameOverTitle\.textContent = title/);
@@ -2253,6 +2256,8 @@ test('main thread saves and restores scene tuning from localStorage', () => {
   assert.match(packageSource, /function normalizeLineEndings/);
 
   const checkSource = readFileSync(join('scripts', 'check-applovin-package.mjs'), 'utf8');
+  const styleSource = readFileSync(join('src', 'styles.css'), 'utf8');
+  assert.match(styleSource, /\.game-over-retry-button\[hidden\]\s*\{\s*display:\s*none;\s*\}/);
   assert.match(checkSource, /no browser window\.open fallback/);
   assert.match(checkSource, /data URL fetch compatibility layer present/);
   assert.match(checkSource, /inline binary data assets present/);

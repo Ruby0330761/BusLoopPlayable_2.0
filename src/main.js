@@ -929,7 +929,11 @@ function applyCtaTuning(view = null) {
     const retrySize = height * uiScale;
     const retryGap = Math.max(12, height * 0.28) * uiScale;
     const ctaTop = worldPosition?.y ?? stageHeight / 2 + (centerY - designHeight / 2) * uiScale;
-    gameOverRetryButton.hidden = !(isGameOverVisible && Boolean(cta.enabled ?? 1) && Boolean(SCENE_TUNING.gameOver?.retryEnabled ?? 1));
+    const retryEnabled = Boolean(
+      (SCENE_TUNING.retryButton?.enabled ?? 1)
+      && (SCENE_TUNING.gameOver?.retryEnabled ?? 1)
+    );
+    gameOverRetryButton.hidden = !(isGameOverVisible && Boolean(cta.enabled ?? 1) && retryEnabled);
     gameOverRetryButton.style.setProperty('--cta-width', scaledPx(width, uiScale));
     gameOverRetryButton.style.setProperty('--cta-height', scaledPx(height, uiScale));
     gameOverRetryButton.style.setProperty('--cta-padding-x', scaledPx(24, uiScale));
@@ -1689,6 +1693,7 @@ async function startRuntime() {
     if (path?.startsWith('retryButton.')) {
       deepMerge(SCENE_TUNING, next);
       applyRetryButtonTuning();
+      applyCtaTuning(view);
       saveTuning(SCENE_TUNING);
       if (syncEditor) editor.sync();
       return SCENE_TUNING;

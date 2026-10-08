@@ -751,6 +751,7 @@ button:hover { transform: translateY(-1px); background: #fff; }
   box-shadow: inset 0 3px 0 rgba(255, 255, 255, .24), inset 0 -5px 0 rgba(190, 119, 6, .2);
 }
 .game-over-retry-button:hover { background: linear-gradient(180deg, #ffec91 0%, #fac83b 100%); }
+.game-over-retry-button[hidden] { display: none; }
 .retry-button {
   position: absolute;
   z-index: 11;
