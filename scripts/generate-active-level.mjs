@@ -21,24 +21,24 @@ const selected = existsSync(selectionPath)
   : (SCENE_TUNING.level?.selected ?? 'level5');
 
 async function resolveProductionLevel(levelKey) {
-  if (LEVEL_CATALOG[levelKey]) return LEVEL_CATALOG[levelKey];
   if (!/^level[1-9]\d*$/u.test(levelKey)) {
     throw new Error(`Unknown SCENE_TUNING.level.selected value: ${levelKey}`);
   }
   const webLevelPath = path.join(root, 'artifacts', 'web-levels', `${levelKey}.json`);
-  if (!existsSync(webLevelPath)) {
-    throw new Error(`Unknown SCENE_TUNING.level.selected value: ${levelKey}`);
+  if (existsSync(webLevelPath)) {
+    const document = JSON.parse(await readFile(webLevelPath, 'utf8'));
+    if (document?.format !== 'bus-loop-web-level-v1' || document?.key !== levelKey) {
+      throw new Error(`Invalid saved web level document: ${levelKey}`);
+    }
+    const runtimeLevel = levelDocumentToRuntime(document, LEVEL_CATALOG.level5);
+    return {
+      ...runtimeLevel,
+      sourceFile: path.relative(root, webLevelPath).replaceAll(path.sep, '/'),
+      mechanics: deriveLevelMechanics(runtimeLevel)
+    };
   }
-  const document = JSON.parse(await readFile(webLevelPath, 'utf8'));
-  if (document?.format !== 'bus-loop-web-level-v1' || document?.key !== levelKey) {
-    throw new Error(`Invalid saved web level document: ${levelKey}`);
-  }
-  const runtimeLevel = levelDocumentToRuntime(document, LEVEL_CATALOG.level5);
-  return {
-    ...runtimeLevel,
-    sourceFile: path.relative(root, webLevelPath).replaceAll(path.sep, '/'),
-    mechanics: deriveLevelMechanics(runtimeLevel)
-  };
+  if (LEVEL_CATALOG[levelKey]) return LEVEL_CATALOG[levelKey];
+  throw new Error(`Unknown SCENE_TUNING.level.selected value: ${levelKey}`);
 }
 
 const level = await resolveProductionLevel(selected);

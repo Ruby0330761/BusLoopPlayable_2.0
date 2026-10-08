@@ -1016,7 +1016,7 @@ async function startRuntime() {
     const selectedKey = SCENE_TUNING.level?.selected;
     let selectedLevel = getLevelDefinition(selectedKey);
     let previewDocument = readLevelEditorPreviewDocument();
-    if (!previewDocument && selectedLevel.key !== selectedKey) {
+    if (!previewDocument && selectedKey) {
       previewDocument = await readSavedWebLevelDocument(selectedKey);
       if (previewDocument) {
         localStorage.setItem(LEVEL_EDITOR_PREVIEW_STORAGE_KEY, JSON.stringify(previewDocument));
@@ -1534,7 +1534,10 @@ async function startRuntime() {
         import('./level-catalog.js')
       ]);
       let baseLevel = getLevelDefinition(SCENE_TUNING.level?.selected);
-      const previewDocument = readLevelEditorPreviewDocument();
+      let previewDocument = readLevelEditorPreviewDocument();
+      if (!previewDocument && SCENE_TUNING.level?.selected) {
+        previewDocument = await readSavedWebLevelDocument(SCENE_TUNING.level.selected);
+      }
       if (previewDocument) {
         const { levelDocumentToRuntime } = await import('./level-editor-model.js');
         baseLevel = levelDocumentToRuntime(previewDocument, baseLevel);

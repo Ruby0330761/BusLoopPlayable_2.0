@@ -80,6 +80,8 @@ test('scene editor and main runtime expose the full level layout workspace', () 
 
 test('development service saves versioned level documents with backups', () => {
   const vite = readFileSync('vite.config.js', 'utf8');
+  const generator = readFileSync('scripts/generate-active-level.mjs', 'utf8');
+  const main = readFileSync('src/main.js', 'utf8');
   assert.match(vite, /__level-authoring/);
   assert.match(vite, /validateWebLevelDocument/);
   assert.match(vite, /WEB_LEVEL_BACKUP_ROOT/);
@@ -94,6 +96,9 @@ test('development service saves versioned level documents with backups', () => {
   assert.match(vite, /availability\.reason === 'name'/);
   assert.match(vite, /createOnly && currentSource/);
   assert.match(vite, /result\.created \? 201 : 200/);
+  assert.match(generator, /if \(existsSync\(webLevelPath\)\)[\s\S]*?if \(LEVEL_CATALOG\[levelKey\]\)/);
+  assert.match(main, /if \(!previewDocument && selectedKey\)/);
+  assert.match(main, /if \(!previewDocument && SCENE_TUNING\.level\?\.selected\)/);
 });
 
 test('workspace styles preserve stable desktop and narrow-screen columns', () => {
