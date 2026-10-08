@@ -1,5 +1,11 @@
 # Playable Resource Status
 
+## Foreground video
+
+| Resource | Status | Notes |
+| --- | --- | --- |
+| `public/assets/playable/foreground-videos/TP1325.mp4` | wired | Audio-free H.264 delivery copy at `540x960`, `24fps`, `3.00s`; compressed from `5,282,805` to `717,367` bytes and selected conditionally by the foreground-video tuning. |
+
 ## PNG compression pass
 
 On 2026-09-08, 62 byte-unique TinyPNG results replaced 112 existing paths across `public`, generated `dist`, spatial-import support, and the explicitly listed artifacts. Dimensions, transparent-pixel behavior, and replacement hashes were verified before the temporary compressed files and ZIPs were removed. Five PNGs rejected by TinyPNG were losslessly re-encoded with pixel equality verified before compression. The requested police textures `Idle_boy_police.png`, `WarningLamp.png`, and `Police_Car.png` were not present at their listed paths and were not replaced.

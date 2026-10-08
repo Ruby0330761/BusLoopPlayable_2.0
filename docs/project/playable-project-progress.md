@@ -1,5 +1,22 @@
 # Playable Project Progress
 
+## Completed On 2026-09-22 - Health life sticker mechanism
+
+- Added the optional `healthLife` extra: a responsive top-center white panel with the supplied heart artwork and remaining-life count. Its editor section controls enablement, blocked-departure limit, panel position/scale, and heart/number component geometry; the default limit is 5 and the feature is disabled by default.
+- A blocked vehicle departure attempt consumes one life. Repeated clicks on a vehicle that is no longer in a valid departure state do not consume additional lives. Reaching the configured limit immediately enters the existing failure overlay, and the sticker provides a heart pulse plus red panel flash on each loss.
+- The processed 384px transparent-heart asset is conditionally included by the AppLovin mechanism whitelist only when `healthLife.enabled` is on. Verification: focused health-life/model/resource tests passed; Vite build and AppLovin checks passed with the feature disabled and a 3,060,250-byte package.
+
+## Completed On 2026-09-21 - TP1325 foreground video compression
+
+- Re-encoded the supplied `TP1325.mp4` as audio-free H.264 MP4 at `540x960`, `24fps`, and `3.00s`, reducing `5,282,805` to `717,367` bytes. The active editor selection remains `TP1325.mp4`; the temporary WebM candidate was removed from the active catalog.
+- Verification: the AppLovin pipeline passed, the selected MP4 was inlined, unselected foreground videos were omitted, and the final single HTML is `3,443,749` bytes, below the `5,000,000`-byte limit. Originals are retained under `artifacts/backups/foreground-video-TP1325-before-compression-20260921/` and the unused WebM candidate under `artifacts/backups/foreground-video-TP1325-webm-before-mp4-20260921/`.
+
+## Fixed On 2026-09-21 - Saved web level layouts ignored during packaging
+
+- Production generation now gives `artifacts/web-levels/levelN.json` priority over the same-number Unity catalog level, so saved layout edits are included in the generated playable payload.
+- Development runtime and the level editor now restore the saved web document even when its key also exists in the Unity catalog, instead of relying only on the local preview cache.
+- Verification: level-layout regression tests `21/21`, source syntax checks, generated payload source-file inspection, and the complete AppLovin package checks passed.
+
 ## Corrected On 2026-09-18 - Exact redirect strategy packaging
 
 - The public `npm run package:applovin` command now always applies the exported tuning, rebuilds the runtime, packages the single HTML, and runs final checks. The raw inliner is retained only as `package:applovin:raw` for internal diagnostics.
@@ -1480,3 +1497,9 @@ Full 2026-07-07 progress log was archived to:
 - Organized the existing editor submenus under eight top-level categories without changing their fields, order, defaults, or persistence behavior.
 - Added a category home/detail flow and right-side expand/collapse controls; every submenu starts collapsed, while reset remains at the bottom of every category detail view.
 - Verification: focused menu tests and direct Vite build pass; desktop and narrow-screen browser checks cover all eight categories. The full suite still contains out-of-scope failures from existing user-owned working-tree differences, including tuning and generated files.
+
+## Completed On 2026-09-22 - Vehicle conveyor mechanism editor controls
+
+- Added an `附加项 -> 车辆传送带` submenu with per-component visibility, maximum displayed vehicle count, and independent position, XYZ scale, and XYZ rotation controls for the belt, arrow, two doors, and two side panels.
+- Vehicle display limits are resolved as one ordered per-conveyor display set before rendering, so they do not create interval gaps or alter conveyor capacity, queue ordering, collision rules, or spatial-conveyor tuning.
+- Verification: scene/conveyor focused tests, source syntax checks, and production Vite build pass.
