@@ -1650,8 +1650,8 @@ export class SceneView {
   buildGarageViews() {
     for (const container of (LEVEL_1.containers ?? []).filter((item) => isGarageType(item.type))) {
       const view = makeGaragePlaceholder(container);
-      const position = mapVehicleAreaPoint(container);
-      view.position.set(position.x, SCENE_TUNING.vehicleArea.y, position.y);
+      const position = mapMotionPoint(container);
+      view.position.copy(position);
       view.rotation.y = mapVehicleAreaYaw(container.yaw);
       view.scale.setScalar(SCENE_TUNING.vehicleArea.modelScale * GARAGE_SIZE_MULTIPLIER);
       this.garageViews.set(container.id, view);
@@ -1662,8 +1662,8 @@ export class SceneView {
   buildConveyorViews() {
     for (const container of (LEVEL_1.containers ?? []).filter((item) => isConveyorType(item.type))) {
       const view = makeConveyorPlaceholder(container);
-      const position = mapVehicleAreaPoint(container);
-      view.position.set(position.x, SCENE_TUNING.vehicleArea.y, position.y);
+      const position = mapMotionPoint(container);
+      view.position.copy(position);
       view.rotation.y = mapVehicleAreaYaw(container.yaw);
       view.renderOrder = -2;
       this.conveyorViews.set(container.id, view);
@@ -4593,13 +4593,8 @@ export class SceneView {
   getStaticVehicleTransform(vehicle) {
     let cached = this.staticVehicleTransforms.get(vehicle.id);
     if (cached) return cached;
-    const layoutStart = mapVehicleAreaPoint(vehicle);
     cached = {
-      position: new THREE.Vector3(
-        layoutStart.x,
-        SCENE_TUNING.vehicleArea.y,
-        layoutStart.y
-      ),
+      position: mapMotionPoint(vehicle),
       yaw: mapVehicleAreaYaw(vehicle.yaw) + deg(SCENE_TUNING.facing.vehicleYawOffsetDegrees)
     };
     this.staticVehicleTransforms.set(vehicle.id, cached);
