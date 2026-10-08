@@ -1,0 +1,44 @@
+{
+  "format": "bus-loop-web-level-v1",
+  "key": "level55",
+  "displayName": "level 55",
+  "unityId": 55,
+  "mapScale": 1,
+  "difficulty": "Normal",
+  "conveyorBeltName": "GameSceneDualQueue2",
+  "background": null,
+  "passengerMethod": "FixedSequence",
+  "vehicles": [],
+  "containers": [
+    {
+      "id": 0,
+      "type": 1,
+      "x": 0,
+      "z": 0,
+      "yaw": 0,
+      "width": 1.1,
+      "length": 0.8,
+      "conveyorWidth": 3.8,
+      "gateQueuePathShape": 0,
+      "gateQueueLocked": true,
+      "gateQueueGap": 0.1,
+      "gateQueueShowCurveHandles": false,
+      "gateQueueTangents": [],
+      "gateQueueTangentOverrides": [],
+      "gateQueuePathPoints": [],
+      "elevatorEditingLayer": 0
+    }
+  ],
+  "passengerQueues": [
+    [],
+    []
+  ],
+  "vehicleDepthes": {},
+  "editor": {
+    "gridGap": 0.27,
+    "gridRotation": 0,
+    "gridSnap": true,
+    "vehicleSnap": true,
+    "alignmentGuides": true
+  }
+}
