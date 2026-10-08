@@ -657,7 +657,7 @@ export function createSceneEditor(root, {
     </header>
     <div class="editor-body">
       <div class="editor-category-home">
-        <p class="editor-help">\u9009\u62e9\u8981\u7ba1\u7406\u7684\u7c7b\u522b\u3002\u6bcf\u6b21\u8c03\u6574\u4f1a\u81ea\u52a8\u4fdd\u5b58\u3002</p>
+        <p class="editor-help">\u9009\u62e9\u7c7b\u522b\u540e\u5728\u4e0b\u65b9\u8c03\u6574\u3002\u6bcf\u6b21\u8c03\u6574\u4f1a\u81ea\u52a8\u4fdd\u5b58\u3002</p>
         <div class="editor-category-grid">
           ${EDITOR_CATEGORIES.map(({ id, label }) => `
             <button class="editor-category-button" type="button" data-editor-category-choice="${id}">
@@ -667,21 +667,13 @@ export function createSceneEditor(root, {
           `).join('')}
         </div>
       </div>
-      <div class="editor-category-view" hidden>
-        <div class="editor-category-toolbar">
-          <button class="editor-category-back" type="button" aria-label="\u8fd4\u56de\u5206\u7c7b" title="\u8fd4\u56de\u5206\u7c7b">\u2190</button>
-          <h3 class="editor-category-title"></h3>
-        </div>
+      <div class="editor-category-view">
         <div class="editor-fields"></div>
         <button class="editor-reset" type="button">\u6062\u590d\u9ed8\u8ba4\u53c2\u6570</button>
       </div>
     </div>
   `;
 
-  const editorBody = root.querySelector('.editor-body');
-  const categoryHome = root.querySelector('.editor-category-home');
-  const categoryView = root.querySelector('.editor-category-view');
-  const categoryTitle = root.querySelector('.editor-category-title');
   const fieldsRoot = root.querySelector('.editor-fields');
   const inputs = new Map();
   let activeCategory = null;
@@ -1398,30 +1390,25 @@ export function createSceneEditor(root, {
     const category = EDITOR_CATEGORIES.find(({ id }) => id === categoryId);
     if (!category) return;
     activeCategory = category.id;
-    categoryTitle.textContent = category.label;
-    categoryHome.hidden = true;
-    categoryView.hidden = false;
-    for (const section of fieldsRoot.querySelectorAll(`[data-editor-category="${category.id}"]`)) {
-      setSectionExpanded(section, false);
+    for (const button of root.querySelectorAll('[data-editor-category-choice]')) {
+      const selected = button.dataset.editorCategoryChoice === category.id;
+      button.setAttribute('aria-pressed', String(selected));
     }
     updateSectionVisibility(getTuning());
-    editorBody.scrollTop = 0;
   }
 
   function showCategoryMenu() {
     activeCategory = null;
-    categoryHome.hidden = false;
-    categoryView.hidden = true;
-    categoryTitle.textContent = '';
+    for (const button of root.querySelectorAll('[data-editor-category-choice]')) {
+      button.setAttribute('aria-pressed', 'false');
+    }
     updateSectionVisibility(getTuning());
-    editorBody.scrollTop = 0;
   }
 
   initializeCollapsibleSections();
   for (const button of root.querySelectorAll('[data-editor-category-choice]')) {
     button.addEventListener('click', () => showCategory(button.dataset.editorCategoryChoice));
   }
-  root.querySelector('.editor-category-back').addEventListener('click', showCategoryMenu);
 
   function sync() {
     const tuning = getTuning();

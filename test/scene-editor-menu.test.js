@@ -40,8 +40,11 @@ test('category detail keeps reset last and initializes all sections as collapsed
   ]);
 
   assert.match(source, /class="editor-category-home"/);
-  assert.match(source, /class="editor-category-view" hidden[\s\S]*class="editor-fields"[\s\S]*class="editor-reset"/);
-  assert.match(source, /class="editor-category-back"/);
+  assert.match(source, /class="editor-category-view"[\s\S]*class="editor-fields"[\s\S]*class="editor-reset"/);
+  assert.match(source, /\\u751f\\u547d\\u503c\\u8d34\\u7247[\s\S]*healthLife\.enabled[\s\S]*healthLife\.maxMistakes/);
+  assert.doesNotMatch(source, /class="editor-category-back"/);
+  assert.match(source, /button\.setAttribute\('aria-pressed', String\(selected\)\)/);
+  assert.doesNotMatch(source, /showCategory[\s\S]*setSectionExpanded\(section, false\)/);
   assert.match(source, /initializeCollapsibleSections\(\)/);
   assert.match(source, /setSectionExpanded\(section, false\)/);
   assert.match(source, /button\.setAttribute\('aria-expanded', String\(expanded\)\)/);
@@ -50,4 +53,6 @@ test('category detail keeps reset last and initializes all sections as collapsed
   assert.match(source, /categoryMatches && conveyorLayoutMatches && spatialSelectionMatches/);
   assert.match(styles, /\.editor-section-content\[hidden\] \{ display: none; \}/);
   assert.match(styles, /\.editor-section-header \{ display: flex;/);
+  assert.match(styles, /\.editor-category-grid \{ display: grid; grid-template-columns: repeat\(4, minmax\(0, 1fr\)\)/);
+  assert.match(styles, /\.editor-category-button\[aria-pressed="true"\]/);
 });

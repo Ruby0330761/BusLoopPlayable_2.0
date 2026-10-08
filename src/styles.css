@@ -808,31 +808,18 @@ button:hover { transform: translateY(-1px); background: #fff; }
 .editor-toggle { min-width: 42px; height: 42px; padding: 0 12px; box-shadow: none; }
 .editor-body { min-height: 0; padding: 14px 16px 22px; overflow-y: auto; scrollbar-width: thin; }
 .editor-help { margin: 0 0 12px; color: #62788c; font-size: 11px; line-height: 1.5; }
-.editor-category-home[hidden],
-.editor-category-view[hidden],
 .editor-section-content[hidden] { display: none; }
-.editor-category-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 9px; }
+.editor-category-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; margin-bottom: 12px; }
 .editor-category-button {
-  display: flex; align-items: center; justify-content: space-between; gap: 8px;
-  min-width: 0; min-height: 54px; padding: 10px 12px; border-radius: 10px;
+  display: flex; align-items: center; justify-content: center; gap: 4px;
+  min-width: 0; min-height: 36px; padding: 6px 4px; border-radius: 8px;
   box-shadow: none; color: #173451; background: rgba(255,255,255,.84); text-align: left;
 }
 .editor-category-button > span:first-child {
-  min-width: 0; overflow-wrap: anywhere; font-size: 12px; line-height: 1.25;
+  min-width: 0; overflow-wrap: anywhere; font-size: 10px; line-height: 1.15; text-align: center;
 }
-.editor-category-chevron { flex: none; color: #287fa8; font-size: 22px; line-height: 1; }
-.editor-category-toolbar {
-  display: grid; grid-template-columns: 34px minmax(0, 1fr) 34px; align-items: center;
-  gap: 8px; margin: 0 0 12px;
-}
-.editor-category-back {
-  width: 34px; min-width: 34px; height: 34px; padding: 0; border-radius: 9px;
-  box-shadow: none; font-size: 18px;
-}
-.editor-category-title {
-  grid-column: 2; min-width: 0; margin: 0; color: #173451;
-  overflow-wrap: anywhere; text-align: center; font-size: 15px; line-height: 1.2;
-}
+.editor-category-chevron { display: none; }
+.editor-category-button[aria-pressed="true"] { color: #fff; background: #287fa8; border-color: #287fa8; }
 .editor-section {
   margin: 0 0 12px; padding: 12px; border: 1px solid rgba(16,35,61,.09);
   border-radius: 14px; background: rgba(255,255,255,.72);
