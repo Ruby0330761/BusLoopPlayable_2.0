@@ -68,7 +68,6 @@ export const MECHANISM_RESOURCE_MANIFEST = /* @__PURE__ */ Object.freeze({
   ]),
   [MECHANISM_TYPES.ambulance]: /* @__PURE__ */ Object.freeze([
     `${MECHANISM_ROOT}/ambulance/models/Ambulance_001.fbx`,
-    `${MECHANISM_ROOT}/ambulance/models/Idle_girl_rescuer.fbx`,
     `${MECHANISM_ROOT}/ambulance/models/Idle_girl_rescuer_vatmesh.bin`,
     `${MECHANISM_ROOT}/ambulance/models/Idle_girl_rescuer_anim_map.vatq`,
     `${MECHANISM_ROOT}/ambulance/textures/Ambulance.png`,
