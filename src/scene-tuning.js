@@ -147,6 +147,84 @@ export const SCENE_TUNING = {
       "highPerformanceRenderer": 1
     }
   },
+  "conveyorMechanism": {
+    "visible": 1,
+    "maxVehicles": 0,
+    "components": {
+      "belt": {
+        "visible": 1,
+        "positionX": 0,
+        "positionY": 0,
+        "positionZ": 0,
+        "scaleX": 1,
+        "scaleY": 1,
+        "scaleZ": 1.5,
+        "rotationXDegrees": 0,
+        "rotationYDegrees": 0,
+        "rotationZDegrees": 0
+      },
+      "arrow": {
+        "visible": 1,
+        "positionX": 0,
+        "positionY": 0,
+        "positionZ": 0,
+        "scaleX": 1.5,
+        "scaleY": 1,
+        "scaleZ": 1.05,
+        "rotationXDegrees": 0,
+        "rotationYDegrees": 0,
+        "rotationZDegrees": 0
+      },
+      "doorLeft": {
+        "visible": 1,
+        "positionX": 0.52,
+        "positionY": 0,
+        "positionZ": 0,
+        "scaleX": 1.1,
+        "scaleY": 1,
+        "scaleZ": 1.2,
+        "rotationXDegrees": 150,
+        "rotationYDegrees": 0,
+        "rotationZDegrees": 0
+      },
+      "doorRight": {
+        "visible": 1,
+        "positionX": -0.78,
+        "positionY": 0,
+        "positionZ": 0,
+        "scaleX": 1.1,
+        "scaleY": 1,
+        "scaleZ": 1.2,
+        "rotationXDegrees": 150,
+        "rotationYDegrees": 0,
+        "rotationZDegrees": 0
+      },
+      "sideLeft": {
+        "visible": 0,
+        "positionX": -4,
+        "positionY": 0,
+        "positionZ": 0,
+        "scaleX": 1,
+        "scaleY": 1,
+        "scaleZ": 1,
+        "rotationXDegrees": 0,
+        "rotationYDegrees": 0,
+        "rotationZDegrees": 0
+      },
+      "sideRight": {
+        "visible": 0,
+        "positionX": 4,
+        "positionY": 0,
+        "positionZ": 0,
+        "scaleX": 1,
+        "scaleY": 1,
+        "scaleZ": 1,
+        "rotationXDegrees": 0,
+        "rotationYDegrees": 0,
+        "rotationZDegrees": 0
+      }
+    }
+  },
   "conveyorLayouts": {
     "singleQueue1": {
       "art": {

@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import { CONVEYOR_MECHANISM_TUNING } from '../src/conveyor-mechanism-config.js';
 
-test('confirmed conveyor mechanism values are isolated from editor tuning', () => {
+test('confirmed conveyor mechanism values remain the editor override baseline', () => {
   assert.equal(CONVEYOR_MECHANISM_TUNING.visualRootScale, 1.375);
   assert.equal(CONVEYOR_MECHANISM_TUNING.leftDoorOutwardScale, 1.17);
   assert.equal(CONVEYOR_MECHANISM_TUNING.rightDoorOutwardScale, 1.2);
@@ -81,18 +81,21 @@ test('confirmed conveyor mechanism values are isolated from editor tuning', () =
   }
 });
 
-test('runtime keeps fixed mechanism values outside resettable editor tuning', () => {
+test('editor exposes resettable conveyor mechanism overrides over the fixed base', () => {
   const editorSource = readFileSync('src/scene-editor.js', 'utf8');
   const mainSource = readFileSync('src/main.js', 'utf8');
   const applySource = readFileSync('scripts/apply-scene-tuning.mjs', 'utf8');
   const viewSource = readFileSync('src/scene-view.js', 'utf8');
-  assert.doesNotMatch(editorSource, /CONVEYOR_COMPONENT_FIELD_GROUPS/);
-  assert.doesNotMatch(editorSource, /conveyorVisual\.components/);
+  assert.match(editorSource, /conveyorMechanism\.components/);
+  assert.match(editorSource, /conveyorMechanism\.maxVehicles/);
+  assert.match(editorSource, /conveyorMechanism\.visible/);
   assert.match(mainSource, /delete savedTuning\.conveyorVisual/);
   assert.match(mainSource, /delete legacy\.conveyorVisual/);
   assert.match(applySource, /delete patch\.conveyorVisual/);
   assert.match(applySource, /delete next\.conveyorVisual/);
   assert.match(viewSource, /CONVEYOR_MECHANISM_TUNING/);
-  assert.doesNotMatch(viewSource, /SCENE_TUNING\.conveyorVisual/);
-  assert.doesNotMatch(viewSource, /temporaryComponents\[key\]/);
+  assert.match(viewSource, /SCENE_TUNING\.conveyorMechanism/);
+  assert.match(viewSource, /conveyorComponentVisible/);
+  assert.match(viewSource, /conveyorDisplayVehicleIds/);
+  assert.match(viewSource, /const maxVehicles/);
 });

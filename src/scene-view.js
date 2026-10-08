@@ -1339,6 +1339,7 @@ export class SceneView {
     this.vehicleViews = new Map();
     this.garageViews = new Map();
     this.conveyorViews = new Map();
+    this.conveyorDisplayVehicleIds = new Set();
     this.passengerViews = [];
     this.queuePassengerViews = [[], []];
     this.spotRoots = [];
@@ -1673,6 +1674,7 @@ export class SceneView {
   clearConveyorViews() {
     for (const view of this.conveyorViews.values()) this.vehicleRoot.remove(view);
     this.conveyorViews.clear();
+    this.conveyorDisplayVehicleIds.clear();
   }
 
   upgradeConveyorViews() {
@@ -1755,6 +1757,9 @@ export class SceneView {
           { x: width * 0.5 - 0.12, y: 0, z: CONVEYOR_MODEL_DEPTH * 0.45 }
         )
       };
+      for (const [key, component] of Object.entries(components)) {
+        component.userData.conveyorComponentKey = key;
+      }
       view.clear();
       view.add(...Object.values(components));
       view.userData.components = components;
@@ -1767,12 +1772,20 @@ export class SceneView {
 
   updateConveyorViews(snapshot) {
     const states = new Map((snapshot.mechanicState?.conveyors ?? []).map((item) => [Number(item.id), item]));
+    const mechanismVisible = SCENE_TUNING.conveyorMechanism?.visible !== 0;
+    const maxVehicles = Math.floor(Number(SCENE_TUNING.conveyorMechanism?.maxVehicles) || 0);
+    this.conveyorDisplayVehicleIds.clear();
     for (const [id, view] of this.conveyorViews) {
       const state = states.get(Number(id));
+      const vehicleIds = state?.vehicleIds ?? [];
+      const visibleVehicleIds = maxVehicles > 0 ? vehicleIds.slice(0, maxVehicles) : vehicleIds;
+      for (const vehicleId of visibleVehicleIds) this.conveyorDisplayVehicleIds.add(Number(vehicleId));
       // A conveyor container owns all six imported visual components. Only
       // an explicitly hidden state (the empty conveyor state) removes them.
-      view.visible = state ? !state.hidden : true;
-      for (const part of view.userData.buildParts ?? []) part.visible = view.visible;
+      view.visible = mechanismVisible && (state ? !state.hidden : true);
+      for (const part of view.userData.buildParts ?? []) {
+        part.visible = view.visible && part.userData.conveyorComponentVisible !== false;
+      }
       if (!state) continue;
       const map = findFirstMaterialMap(view.userData.arrow);
       if (map) {
@@ -1785,11 +1798,12 @@ export class SceneView {
 
   applyConveyorVisualTuning() {
     const tuning = CONVEYOR_MECHANISM_TUNING;
+    const editorTuning = SCENE_TUNING.conveyorMechanism ?? {};
     const rootScale = Math.max(0.01, Number(tuning.visualRootScale) || 1);
     for (const view of this.conveyorViews.values()) {
       view.scale.setScalar(rootScale);
       for (const [key, component] of Object.entries(view.userData.components ?? {})) {
-        const config = tuning.components?.[key] ?? {};
+        const config = editorTuning.components?.[key] ?? tuning.components?.[key] ?? {};
         const basePosition = component.userData.basePosition ?? new THREE.Vector3();
         const baseScale = component.userData.baseScale ?? new THREE.Vector3(1, 1, 1);
         const baseRotation = component.userData.baseRotation ?? new THREE.Euler();
@@ -1809,7 +1823,10 @@ export class SceneView {
           baseRotation.y + deg(numberOr(config.rotationYDegrees, 0)),
           baseRotation.z + deg(numberOr(config.rotationZDegrees, 0))
         );
+        component.userData.conveyorComponentVisible = config.visible !== 0;
+        component.visible = component.userData.conveyorComponentVisible;
       }
+      view.visible = editorTuning.visible !== 0;
     }
   }
 
@@ -4625,8 +4642,16 @@ export class SceneView {
       const spot = this.spotPositions[vehicle.spotIndex ?? 0];
       const garageMotionVisible = vehicle.state !== 'leaving-garage'
         || (vehicle.motionData?.elapsed ?? 0) >= (vehicle.motionData?.delay ?? 0);
-      const conveyorVisible = !isConveyorType(vehicle.containerType) || vehicle.conveyorVisible !== false;
-      view.visible = !['done', 'in-garage'].includes(vehicle.state) && garageMotionVisible && conveyorVisible;
+      const conveyorType = isConveyorType(vehicle.containerType);
+      const conveyorWithinDisplayLimit = !conveyorType
+        || this.conveyorDisplayVehicleIds.size === 0
+        || this.conveyorDisplayVehicleIds.has(Number(vehicle.id))
+        || !['parked', 'colliding'].includes(vehicle.state);
+      const conveyorVisible = !conveyorType || vehicle.conveyorVisible !== false;
+      view.visible = !['done', 'in-garage'].includes(vehicle.state)
+        && garageMotionVisible
+        && conveyorVisible
+        && conveyorWithinDisplayLimit;
       const activeHit = Boolean(
         vehicle.hit
         && snapshot.time - vehicle.hit.startedAt < UNITY_VEHICLE_MOTION.hitDuration

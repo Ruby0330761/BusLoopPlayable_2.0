@@ -87,6 +87,31 @@ function makeEntryBannerComponentFields(label, component) {
   ];
 }
 
+function makeConveyorMechanismComponentFields(label, component) {
+  const root = `conveyorMechanism.components.${component}`;
+  return [
+    [`${label} 显示`, `${root}.visible`, 0, 1, 1, null, 'toggle'],
+    [`${label} X 位移`, `${root}.positionX`, -20, 20, 0.01],
+    [`${label} Y 位移`, `${root}.positionY`, -20, 20, 0.01],
+    [`${label} Z 位移`, `${root}.positionZ`, -20, 20, 0.01],
+    [`${label} X 缩放`, `${root}.scaleX`, 0.01, 5, 0.01],
+    [`${label} Y 缩放`, `${root}.scaleY`, 0.01, 5, 0.01],
+    [`${label} Z 缩放`, `${root}.scaleZ`, 0.01, 5, 0.01],
+    [`${label} X 旋转`, `${root}.rotationXDegrees`, -360, 360, 1],
+    [`${label} Y 旋转`, `${root}.rotationYDegrees`, -360, 360, 1],
+    [`${label} Z 旋转`, `${root}.rotationZDegrees`, -360, 360, 1]
+  ];
+}
+
+const CONVEYOR_MECHANISM_FIELD_GROUPS = [
+  ['传送带主体', 'belt'],
+  ['方向箭头', 'arrow'],
+  ['左侧出口门', 'doorLeft'],
+  ['右侧出口门', 'doorRight'],
+  ['左侧护栏', 'sideLeft'],
+  ['右侧护栏', 'sideRight']
+].flatMap(([label, component]) => makeConveyorMechanismComponentFields(label, component));
+
 export const FIELD_GROUPS = [
   {
     title: '\u5173\u5361',
@@ -196,6 +221,15 @@ export const FIELD_GROUPS = [
       ['\u81ea\u52a8\u9690\u85cf', 'passengerEmoji.autoHideOnVehicleEnabled', 0, 1, 1, null, 'toggle'],
       ['\u81ea\u52a8\u9690\u85cf\u5173\u5361', 'passengerEmoji.autoHideOnVehicleLevelKey', 0, 0, 1, LEVEL_OPTIONS],
       ['\u81ea\u52a8\u9690\u85cf\u8f66 ID', 'passengerEmoji.autoHideOnVehicleId', 1, 200, 1]
+    ]
+  },
+  {
+    title: '\u8f66\u8f86\u4f20\u9001\u5e26',
+    category: 'extras',
+    fields: [
+      ['\u663e\u793a', 'conveyorMechanism.visible', 0, 1, 1, null, 'toggle'],
+      ['\u6700\u591a\u663e\u793a\u8f66\u8f86\uff080=\u5168\u90e8\uff09', 'conveyorMechanism.maxVehicles', 0, 200, 1],
+      ...CONVEYOR_MECHANISM_FIELD_GROUPS
     ]
   },
   {
