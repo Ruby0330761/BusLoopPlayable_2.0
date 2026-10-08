@@ -112,6 +112,23 @@ test('random playable audio resources stay isolated and are selected only when e
   assert.equal(readFileSync(`public${audioAssets[2]}`).subarray(0, 3).toString('ascii'), 'ID3');
 });
 
+test('health life sticker resources stay isolated and are selected only when enabled', () => {
+  const healthAssets = MECHANISM_RESOURCE_MANIFEST.healthLife;
+  assert.deepEqual(healthAssets, [
+    '/assets/unity/mechanisms/health-life/health-heart.png'
+  ]);
+  assert.equal(existsSync(`public${healthAssets[0]}`), true);
+  assert.deepEqual(getMechanismTypesForLevels([{}]), ['ordinaryConveyor']);
+  assert.deepEqual(getMechanismTypesForLevels([{}], { healthLifeEnabled: true }), [
+    'ordinaryConveyor', 'healthLife'
+  ]);
+  assert.equal(MECHANISM_ASSETS.healthLife.heartIcon, healthAssets[0]);
+  const main = readFileSync('src/main.js', 'utf8');
+  assert.match(main, /healthLifeEnabled: Boolean\(SCENE_TUNING\.healthLife\?\.enabled\)/);
+  assert.match(readFileSync('scripts/package-applovin-single-html.mjs', 'utf8'), /healthLifeEnabled/);
+  assert.match(readFileSync('scripts/check-applovin-package.mjs', 'utf8'), /healthLifeEnabled/);
+});
+
 test('police-car resources are isolated and only selected for police vehicles', () => {
   const policeAssets = MECHANISM_RESOURCE_MANIFEST.policeCar;
   assert.deepEqual(policeAssets, [

@@ -920,6 +920,31 @@ test('blocked vehicle clicks do not consume ambulance moves', () => {
   assert.equal(game.status, 'playing');
 });
 
+test('health life counts blocked departure attempts and fails at the configured limit', () => {
+  const originalHealthLife = structuredClone(SCENE_TUNING.healthLife);
+  SCENE_TUNING.healthLife.enabled = 1;
+  SCENE_TUNING.healthLife.maxMistakes = 2;
+  try {
+    const game = new BusLoopGame(makeAmbulanceLevel([
+      { id: 1, seats: 6, colorIndex: 13, ambulanceStepLimit: 2, x: 0, z: 0, yaw: 0, containerType: 1, containerId: 0 },
+      { id: 2, seats: 4, colorIndex: 0, x: 2, z: 0, yaw: 0, containerType: 1, containerId: 0 },
+      { id: 3, seats: 4, colorIndex: 0, x: 2, z: 1, yaw: 0, containerType: 1, containerId: 0 },
+      { id: 4, seats: 4, colorIndex: 0, x: 4, z: 0, yaw: 0, containerType: 1, containerId: 0 },
+      { id: 5, seats: 4, colorIndex: 0, x: 4, z: 1, yaw: 0, containerType: 1, containerId: 0 }
+    ]));
+    assert.equal(game.clickVehicle(2).reason, 'blocked');
+    assert.equal(game.snapshot().mistakeCount, 1);
+    assert.equal(game.snapshot().remainingLives, 1);
+    assert.equal(game.clickVehicle(4).reason, 'blocked');
+    assert.equal(game.snapshot().mistakeCount, 2);
+    assert.equal(game.snapshot().remainingLives, 0);
+    assert.equal(game.status, 'lost');
+    assert.equal(game.lastEvent.reason, 'health-life-exhausted');
+  } finally {
+    SCENE_TUNING.healthLife = originalHealthLife;
+  }
+});
+
 test('an active ambulance reaching zero moves fails immediately', () => {
   const game = new BusLoopGame(makeAmbulanceLevel([
     { id: 1, seats: 6, colorIndex: 13, ambulanceStepLimit: 1, x: 0, z: 0, yaw: 0, containerType: 1, containerId: 0 },

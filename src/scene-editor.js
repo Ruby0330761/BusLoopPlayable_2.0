@@ -447,6 +447,26 @@ export const FIELD_GROUPS = [
     ]
   },
   {
+    title: '\u751f\u547d\u503c\u8d34\u7247',
+    category: 'extras',
+    fields: [
+      ['\u663e\u793a\uff08\u540c\u65f6\u542f\u7528\u529f\u80fd\uff09', 'healthLife.enabled', 0, 1, 1, null, 'toggle'],
+      ['\u5931\u8bef\u6b21\u6570\u9650\u5236', 'healthLife.maxMistakes', 1, 30, 1],
+      ['\u8d34\u7247 X \u4f4d\u7f6e', 'healthLife.x', 0, 1080, 1],
+      ['\u8d34\u7247 Y \u4f4d\u7f6e', 'healthLife.y', 0, 2160, 1],
+      ['\u8d34\u7247\u6574\u4f53\u7f29\u653e', 'healthLife.scale', 0.2, 3, 0.01],
+      ['\u767d\u5e95\u5bbd\u5ea6', 'healthLife.panel.width', 80, 600, 1],
+      ['\u767d\u5e95\u9ad8\u5ea6', 'healthLife.panel.height', 40, 240, 1],
+      ['\u767d\u5e95\u5706\u89d2', 'healthLife.panel.radius', 0, 120, 1],
+      ['\u7231\u5fc3 X \u504f\u79fb', 'healthLife.heart.x', -300, 300, 1],
+      ['\u7231\u5fc3 Y \u504f\u79fb', 'healthLife.heart.y', -150, 150, 1],
+      ['\u7231\u5fc3\u5927\u5c0f', 'healthLife.heart.size', 20, 220, 1],
+      ['\u6570\u5b57 X \u504f\u79fb', 'healthLife.number.x', -300, 300, 1],
+      ['\u6570\u5b57 Y \u504f\u79fb', 'healthLife.number.y', -150, 150, 1],
+      ['\u6570\u5b57\u5927\u5c0f', 'healthLife.number.fontSize', 14, 180, 1]
+    ]
+  },
+  {
     title: '\u5f15\u5bfc\u5c0f\u624b\uff08\u957f\u6309\u52a0\u901f\uff09',
     category: 'extras',
     fields: [

@@ -433,6 +433,28 @@ export const SCENE_TUNING = {
   "parkingSpotDanger": {
     "enabled": 0
   },
+  "healthLife": {
+    "enabled": 0,
+    "maxMistakes": 5,
+    "x": 540,
+    "y": 110,
+    "scale": 1.6,
+    "panel": {
+      "width": 228,
+      "height": 82,
+      "radius": 28
+    },
+    "heart": {
+      "x": -54,
+      "y": 0,
+      "size": 62
+    },
+    "number": {
+      "x": 48,
+      "y": 0,
+      "fontSize": 52
+    }
+  },
   "guideHandHint": {
     "enabled": 0,
     "x": 540,

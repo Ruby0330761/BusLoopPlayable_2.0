@@ -7,6 +7,7 @@ export const MECHANISM_TYPES = Object.freeze({
   entryBanner: 'entryBanner',
   passengerEmoji: 'passengerEmoji',
   randomPlayableAudio: 'randomPlayableAudio',
+  healthLife: 'healthLife',
   spatialConveyor: 'spatialConveyor',
   luxuryVehicle: 'luxuryVehicle',
   ambulance: 'ambulance',
@@ -23,6 +24,7 @@ export const MECHANISM_TYPE_ORDER = Object.freeze([
   MECHANISM_TYPES.entryBanner,
   MECHANISM_TYPES.passengerEmoji,
   MECHANISM_TYPES.randomPlayableAudio,
+  MECHANISM_TYPES.healthLife,
   MECHANISM_TYPES.spatialConveyor,
   MECHANISM_TYPES.luxuryVehicle,
   MECHANISM_TYPES.ambulance,
@@ -81,6 +83,9 @@ export const MECHANISM_RESOURCE_MANIFEST = /* @__PURE__ */ Object.freeze({
     `${MECHANISM_ROOT}/random-playable-audio/audio/police-ring.bin`,
     `${MECHANISM_ROOT}/random-playable-audio/audio/move.mp3`,
     `${MECHANISM_ROOT}/random-playable-audio/audio/hey-move-it.mp3`
+  ]),
+  [MECHANISM_TYPES.healthLife]: /* @__PURE__ */ Object.freeze([
+    `${MECHANISM_ROOT}/health-life/health-heart.png`
   ]),
   [MECHANISM_TYPES.fireTruck]: /* @__PURE__ */ Object.freeze([
     `${MECHANISM_ROOT}/fire-truck/models/Fire Engine.fbx`,
@@ -176,6 +181,9 @@ export const MECHANISM_ASSETS = /* @__PURE__ */ Object.freeze({
     policeRing: `${MECHANISM_ROOT}/random-playable-audio/audio/police-ring.bin`,
     move: `${MECHANISM_ROOT}/random-playable-audio/audio/move.mp3`,
     heyMoveIt: `${MECHANISM_ROOT}/random-playable-audio/audio/hey-move-it.mp3`
+  }),
+  healthLife: Object.freeze({
+    heartIcon: `${MECHANISM_ROOT}/health-life/health-heart.png`
   }),
   fireTruck: Object.freeze({
     vehicleModel: `${MECHANISM_ROOT}/fire-truck/models/Fire Engine.fbx`,
@@ -300,13 +308,15 @@ export function getMechanismTypesForLevels(
     spatialSelection = null,
     entryBannerEnabled = false,
     passengerEmojiEnabled = false,
-    randomPlayableAudioEnabled = false
+    randomPlayableAudioEnabled = false,
+    healthLifeEnabled = false
   } = {}
 ) {
   const types = [];
   if (entryBannerEnabled) addType(types, MECHANISM_TYPES.entryBanner);
   if (passengerEmojiEnabled) addType(types, MECHANISM_TYPES.passengerEmoji);
   if (randomPlayableAudioEnabled) addType(types, MECHANISM_TYPES.randomPlayableAudio);
+  if (healthLifeEnabled) addType(types, MECHANISM_TYPES.healthLife);
   for (const level of levels) {
     const metadata = level?.mechanics ?? deriveLevelMechanics(level);
     for (const type of metadata.types ?? []) addType(types, type);

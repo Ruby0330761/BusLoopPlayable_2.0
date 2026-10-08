@@ -113,7 +113,8 @@ async function main() {
     spatialSelection: selectedConveyor,
     entryBannerEnabled: Boolean(SCENE_TUNING.entryBanner?.enabled),
     passengerEmojiEnabled: Boolean(SCENE_TUNING.passengerEmoji?.enabled),
-    randomPlayableAudioEnabled: Boolean(SCENE_TUNING.randomPlayableAudio?.enabled)
+    randomPlayableAudioEnabled: Boolean(SCENE_TUNING.randomPlayableAudio?.enabled),
+    healthLifeEnabled: Boolean(SCENE_TUNING.healthLife?.enabled)
   });
   const selectedMechanismUrls = getMechanismResourcePaths(mechanismTypes, {
     conveyorSelection: selectedConveyor

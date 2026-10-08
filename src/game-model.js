@@ -215,6 +215,7 @@ export class BusLoopGame {
     this.initialFillActive = true;
     this.initialFilledSlotIndices = new Set();
     this.failureConditionStartedAt = null;
+    this.healthLifeMistakes = 0;
     this.applicationFocused = true;
     this.conveyorPathLength = Math.max(0.0001, this.level.conveyorPathLength ?? 1);
     const authoredQueues = this.level.passengerQueues ?? [this.level.passengerSequence];
@@ -517,6 +518,8 @@ export class BusLoopGame {
       time: this.time,
       resetVersion: this.resetVersion,
       status: this.status,
+      mistakeCount: this.healthLifeMistakes,
+      remainingLives: Math.max(0, this.getHealthLifeLimit() - this.healthLifeMistakes),
       applicationFocused: this.applicationFocused,
       speedMultiplier: this.speedMultiplier,
       initialFillActive: this.initialFillActive,
@@ -783,6 +786,34 @@ export class BusLoopGame {
     ));
   }
 
+  getHealthLifeLimit() {
+    const limit = Number(SCENE_TUNING.healthLife?.maxMistakes);
+    return Math.max(1, Number.isFinite(limit) ? Math.floor(limit) : 5);
+  }
+
+  recordBlockedVehicleAttempt(vehicleId, blockers) {
+    if (!SCENE_TUNING.healthLife?.enabled) return;
+    this.healthLifeMistakes += 1;
+    const limit = this.getHealthLifeLimit();
+    const event = {
+      ...this.lastEvent,
+      vehicleId,
+      blockers,
+      mistakeCount: this.healthLifeMistakes,
+      remainingLives: Math.max(0, limit - this.healthLifeMistakes)
+    };
+    if (SCENE_TUNING.healthLife?.enabled && this.healthLifeMistakes >= limit) {
+      this.status = 'lost';
+      this.lastEvent = {
+        type: 'lose',
+        reason: 'health-life-exhausted',
+        ...event
+      };
+    } else {
+      this.lastEvent = event;
+    }
+  }
+
   consumeAmbulanceStep(dispatchedVehicle) {
     if (dispatchedVehicle.ambulanceActive) dispatchedVehicle.ambulanceActive = false;
     const updates = [];
@@ -844,6 +875,7 @@ export class BusLoopGame {
       const contact = findCollisionContact(this.level, vehicle, candidates);
       if (!contact) {
         this.lastEvent = { type: 'blocked', vehicleId: id, blockers, targetId: null };
+        this.recordBlockedVehicleAttempt(id, blockers);
         this.emit();
         return { ok: false, reason: 'blocked', blockers };
       }
@@ -871,6 +903,7 @@ export class BusLoopGame {
         targetId: target?.id ?? null,
         targetContainerId: contact.candidate.type === 'container' ? contact.candidate.id : null
       };
+      this.recordBlockedVehicleAttempt(id, blockers);
       this.emit();
       return { ok: false, reason: 'blocked', blockers };
     }

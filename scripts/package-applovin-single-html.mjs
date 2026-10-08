@@ -270,7 +270,8 @@ async function main() {
     spatialSelection,
     entryBannerEnabled: Boolean(SCENE_TUNING.entryBanner?.enabled),
     passengerEmojiEnabled: Boolean(SCENE_TUNING.passengerEmoji?.enabled),
-    randomPlayableAudioEnabled: Boolean(SCENE_TUNING.randomPlayableAudio?.enabled)
+    randomPlayableAudioEnabled: Boolean(SCENE_TUNING.randomPlayableAudio?.enabled),
+    healthLifeEnabled: Boolean(SCENE_TUNING.healthLife?.enabled)
   });
   const realAssetUrls = new Set(BASE_RUNTIME_ASSET_PATHS);
   const foregroundVideoAssetUrl = SCENE_TUNING.foregroundVideo?.enabled

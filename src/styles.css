@@ -58,6 +58,63 @@ body { user-select: none; overscroll-behavior: none; }
   opacity: var(--passenger-emoji-opacity, 1);
 }
 .passenger-emoji[hidden] { display: none; }
+.health-life-hud {
+  position: absolute;
+  z-index: 7;
+  pointer-events: none;
+  user-select: none;
+  transform: translate(-50%, -50%);
+  transform-origin: center;
+}
+.health-life-hud[hidden] { display: none; }
+.health-life__panel {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  border: 3px solid rgba(231, 240, 247, .96);
+  border-radius: var(--health-life-radius, 28px);
+  background: #fff;
+  box-shadow:
+    0 5px 14px rgba(36, 75, 99, .2),
+    inset 0 2px 0 rgba(255, 255, 255, .95),
+    inset 0 -3px 0 rgba(188, 208, 220, .35);
+}
+.health-life__heart,
+.health-life__number {
+  position: absolute;
+  display: block;
+  transform: translate(-50%, -50%);
+}
+.health-life__heart {
+  object-fit: contain;
+  filter: drop-shadow(0 2px 3px rgba(130, 20, 28, .24));
+  transform-origin: center;
+}
+.health-life__number {
+  color: #ec2638;
+  font-family: 'Poppins Branding', system-ui, sans-serif;
+  font-weight: 900;
+  line-height: 1;
+  text-align: center;
+  text-shadow: 0 1px 0 #fff, 0 2px 2px rgba(141, 25, 35, .14);
+}
+.health-life-hud.is-hit .health-life__panel {
+  animation: health-life-panel-flash .56s ease-out both;
+}
+.health-life-hud.is-hit .health-life__heart {
+  animation: health-life-heart-hit .56s cubic-bezier(.2, 1.5, .35, 1) both;
+}
+@keyframes health-life-panel-flash {
+  0%, 100% { box-shadow: 0 5px 14px rgba(36, 75, 99, .2), inset 0 2px 0 rgba(255, 255, 255, .95), inset 0 -3px 0 rgba(188, 208, 220, .35); }
+  25% { box-shadow: 0 5px 20px rgba(240, 31, 48, .42), 0 0 0 5px rgba(255, 62, 70, .18), inset 0 2px 0 rgba(255, 255, 255, .95), inset 0 -3px 0 rgba(188, 208, 220, .35); }
+  58% { box-shadow: 0 5px 18px rgba(240, 31, 48, .28), 0 0 0 3px rgba(255, 62, 70, .1), inset 0 2px 0 rgba(255, 255, 255, .95), inset 0 -3px 0 rgba(188, 208, 220, .35); }
+}
+@keyframes health-life-heart-hit {
+  0%, 100% { transform: translate(-50%, -50%) scale(1); }
+  24% { transform: translate(-50%, -50%) scale(1.18); }
+  54% { transform: translate(-50%, -50%) scale(.94); }
+}
 .branding-item.is-draggable {
   pointer-events: auto;
   cursor: grab;

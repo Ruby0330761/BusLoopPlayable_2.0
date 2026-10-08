@@ -90,6 +90,9 @@ const brandingItems = {
 };
 if (gameOverLogo && brandingItems.logo?.src) gameOverLogo.src = brandingItems.logo.src;
 const passengerEmoji = $('#passenger-emoji');
+const healthLifeHud = $('#health-life-hud');
+const healthLifeHeart = healthLifeHud?.querySelector('.health-life__heart');
+const healthLifeNumber = healthLifeHud?.querySelector('.health-life__number');
 const guideHandHint = $('#guide-hand-hint');
 const retryButton = $('#retry-button');
 const retryTransition = $('#retry-transition');
@@ -101,6 +104,8 @@ const PASSENGER_EMOJI_DEFAULT_DURATION_SECONDS = 2.067;
 const PASSENGER_EMOJI_HIDE_STATES = new Set(['at-spot', 'boarding-final', 'departing', 'done']);
 let passengerEmojiHiddenByVehicle = false;
 let passengerEmojiAnimationStartedAt = null;
+let healthLifeLastMistakes = null;
+let healthLifeFeedbackTimer = 0;
 let guideHandHintShown = false;
 let guideHandHintDismissed = false;
 const GUIDE_HAND_HINT_LONG_PRESS_MS = 2000;
@@ -649,6 +654,70 @@ function applyPassengerEmojiTuning() {
   passengerEmoji.style.backgroundImage = `url("${MECHANISM_ASSETS.passengerEmoji.angrySheet}")`;
 }
 
+function applyHealthLifeTuning() {
+  if (!healthLifeHud) return;
+  const metrics = getBrandingStageMetrics();
+  const config = SCENE_TUNING.healthLife ?? {};
+  const panel = config.panel ?? {};
+  const heart = config.heart ?? {};
+  const number = config.number ?? {};
+  const enabled = Boolean(config.enabled ?? 0);
+  const scale = Math.max(0.2, Math.min(3, Number(config.scale) || 1)) * metrics.uiScale;
+  const panelWidth = Math.max(80, Number(panel.width) || 228);
+  const panelHeight = Math.max(40, Number(panel.height) || 82);
+  const x = Number.isFinite(Number(config.x)) ? Number(config.x) : metrics.designWidth / 2;
+  const y = Number.isFinite(Number(config.y)) ? Number(config.y) : 92;
+  const position = projectCenteredDesignPoint({
+    x,
+    y,
+    designWidth: metrics.designWidth,
+    designHeight: metrics.designHeight,
+    stageWidth: metrics.stageWidth,
+    stageHeight: metrics.stageHeight,
+    scale: metrics.uiScale
+  });
+  healthLifeHud.hidden = !enabled;
+  healthLifeHud.style.left = `${position.x}px`;
+  healthLifeHud.style.top = `${position.y}px`;
+  healthLifeHud.style.width = `${panelWidth * scale}px`;
+  healthLifeHud.style.height = `${panelHeight * scale}px`;
+  healthLifeHud.style.setProperty('--health-life-radius', `${Math.max(0, Number(panel.radius) || 28) * scale}px`);
+  if (healthLifeHeart) {
+    const heartSize = Math.max(20, Number(heart.size) || 62) * scale;
+    healthLifeHeart.src = enabled ? MECHANISM_ASSETS.healthLife.heartIcon : '';
+    healthLifeHeart.style.left = `${panelWidth * scale / 2 + (Number(heart.x) || 0) * scale}px`;
+    healthLifeHeart.style.top = `${panelHeight * scale / 2 + (Number(heart.y) || 0) * scale}px`;
+    healthLifeHeart.style.width = `${heartSize}px`;
+    healthLifeHeart.style.height = `${heartSize}px`;
+  }
+  if (healthLifeNumber) {
+    healthLifeNumber.style.left = `${panelWidth * scale / 2 + (Number(number.x) || 0) * scale}px`;
+    healthLifeNumber.style.top = `${panelHeight * scale / 2 + (Number(number.y) || 0) * scale}px`;
+    healthLifeNumber.style.fontSize = `${Math.max(14, Number(number.fontSize) || 52) * scale}px`;
+  }
+}
+
+function updateHealthLifeHud(state) {
+  if (!healthLifeHud || !healthLifeNumber) return;
+  const config = SCENE_TUNING.healthLife ?? {};
+  const enabled = Boolean(config.enabled ?? 0);
+  const mistakeCount = Math.max(0, Math.floor(Number(state?.mistakeCount) || 0));
+  const remainingLives = Math.max(
+    0,
+    Math.floor(Number(state?.remainingLives) || Math.max(0, (Number(config.maxMistakes) || 5) - mistakeCount))
+  );
+  if (enabled && healthLifeLastMistakes != null && mistakeCount > healthLifeLastMistakes) {
+    healthLifeHud.classList.remove('is-hit');
+    void healthLifeHud.offsetWidth;
+    healthLifeHud.classList.add('is-hit');
+    clearTimeout(healthLifeFeedbackTimer);
+    healthLifeFeedbackTimer = window.setTimeout(() => healthLifeHud.classList.remove('is-hit'), 560);
+  }
+  healthLifeLastMistakes = mistakeCount;
+  healthLifeNumber.textContent = String(remainingLives);
+  healthLifeHud.hidden = !enabled;
+}
+
 function applyGuideHandHintTuning() {
   if (!guideHandHint) return;
   const metrics = getBrandingStageMetrics();
@@ -1042,7 +1111,8 @@ async function startRuntime() {
   const sessionMechanismTypes = new Set(getMechanismTypesForLevels(sessionLevels, {
     entryBannerEnabled: Boolean(SCENE_TUNING.entryBanner?.enabled),
     passengerEmojiEnabled: Boolean(SCENE_TUNING.passengerEmoji?.enabled),
-    randomPlayableAudioEnabled: Boolean(SCENE_TUNING.randomPlayableAudio?.enabled)
+    randomPlayableAudioEnabled: Boolean(SCENE_TUNING.randomPlayableAudio?.enabled),
+    healthLifeEnabled: Boolean(SCENE_TUNING.healthLife?.enabled)
   }));
   audio = createGameAudioController({
     ...LEVEL_1.assets.audio,
@@ -1164,6 +1234,7 @@ async function startRuntime() {
     applyCtaTuning(view);
     applyBrandingTuning(view.getBackgroundCanvasBounds());
     applyPassengerEmojiTuning();
+    applyHealthLifeTuning();
     applyGuideHandHintTuning();
     applyRetryButtonTuning();
   };
@@ -1172,6 +1243,7 @@ async function startRuntime() {
     .then(() => {
       applyBrandingTuning(view.getBackgroundCanvasBounds());
       applyPassengerEmojiTuning();
+      applyHealthLifeTuning();
       applyGuideHandHintTuning();
       applyRetryButtonTuning();
     })
@@ -1599,6 +1671,14 @@ async function startRuntime() {
       if (syncEditor) editor.sync();
       return SCENE_TUNING;
     }
+    if (path?.startsWith('healthLife.')) {
+      deepMerge(SCENE_TUNING, next);
+      applyHealthLifeTuning();
+      updateHealthLifeHud(game.snapshot());
+      saveTuning(SCENE_TUNING);
+      if (syncEditor) editor.sync();
+      return SCENE_TUNING;
+    }
     if (path?.startsWith('guideHandHint.')) {
       deepMerge(SCENE_TUNING, next);
       applyGuideHandHintTuning();
@@ -1688,6 +1768,7 @@ async function startRuntime() {
   function syncHud(state) {
     audio.handleGameEvent(state.lastEvent, state.time);
     updatePassengerEmojiAutoHide(state, levelSession.state().levelKey);
+    updateHealthLifeHud(state);
     updateFireTruckHud(state.mechanicState?.fireTruck, view);
     updateInstallGate(state);
     if (state.status === 'lost') {
