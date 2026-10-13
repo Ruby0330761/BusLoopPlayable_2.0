@@ -1,5 +1,11 @@
 # Findings
 
+## 2026-10-13 旧产物批量修复：FBX 坏引用与 Mintegral CSS 可离线打补丁
+
+- 2026-10-13 之前导出的所有产物都带同一个 FBX 坏引用问题（`data:...base64,<gzip>/file.png` → `ERR_INVALID_URL`），Mintegral 产物还缺 CSS 内联。因为它们和现在的导出器只差两处可静态识别的代码形状，可以在产物内直接打补丁，不用重新导出：`loadingManager=new X,` 后面注入 `setURLModifier`，FBX 资源路径兜底 `e??t.slice(0,t.lastIndexOf("/")+1)` 改为 `e??"playable-fbx-internal:"`。
+- 补丁工具 `scripts/repair-legacy-playables.py` 幂等（已修复的包直接跳过），支持 `.html`（单 HTML 平台）与 `.zip`（多文件平台，Mintegral 会同时把 `style.css` 内联并对齐删除）。276 个本地产物全部可修，规则集全平台复检 PASS，CDP 探测坏请求归零。
+- NAS（`design/ua_video/BL/试玩`）上的同名产物与本地未修复版逐字节一致，因此可以直接用修复版覆盖；上传走 SMB 挂载，链路只有约 100–300 KB/s 且每个文件的元数据往返也慢（约 20–35 秒/文件），批量覆盖需要数小时，用可断点续传的上传脚本完成后台执行。
+
 ## 2026-10-13 Mindworks 检查器「素材依赖代码的存储要求」不允许单独加载 CSS
 
 - 该检查项（内部 prop `outer_chain`）由 Mindworks 注入页面的 `https://mmp-cdn.rayjump.com/pt-scripts/preview-util.js` 判定：加载 1 秒后扫描 `performance.getEntries()`，只放行**同域加载的 script** 与 HTML 文档本身；任何其他单独加载的文件（`link`/`img`/`fetch` 等）都被记为「外链资源」并判失败。检测器上传后把 ZIP 解到 `mmp-cdn.rayjump.com` 再以 iframe（`?preview=true&loading=0&review=1`）运行，console 会打印 `=======外链资源` 及被标记的条目。

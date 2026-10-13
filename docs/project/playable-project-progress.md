@@ -1,5 +1,10 @@
 # Playable Project Progress
 
+## Completed On 2026-10-13 - Legacy artifacts batch-repaired and NAS updated
+
+- 用 `scripts/repair-legacy-playables.py` 对 `试玩成品/BUS` 下 276 个旧产物（Q1V1–Q17V2 全部平台）就地修复：注入 LoadingManager URL 映射（FBX 坏引用）并对 Mintegral 包内联 CSS；修复前全量备份到 `试玩成品/.backup-before-fix-20261013`（547 MB）。
+- Verification: 修复后全量复扫 276/276 带修复标记、MT 包 0 个残留 `style.css`；Q17V2 七个平台规则集复检全 PASS；CDP 浏览器探测坏请求 0；NAS 覆盖上传（385 个文件）用可断点续传脚本后台执行，逐文件 MD5 校验。
+
 ## Completed On 2026-10-13 - Mintegral packages inline CSS, checker storage item passes
 
 - Mindworks「素材依赖代码的存储要求」的真实判定被离线复刻：检查器只放行同域 js 与 HTML，任何单独加载的 `style.css` 都被判为外链资源。Mintegral 打包分支现在把样式内联进 HTML，ZIP 只含同名 HTML 与 index.js。
