@@ -1,5 +1,11 @@
 # Playable Project Progress
 
+## Completed On 2026-10-13 - Mintegral checker failures fixed (FBX internal texture requests)
+
+- Mindworks 检测的「素材依赖代码的存储要求」与「代码报错」实测根因：Unity FBX 内部引用的相对贴图名被拼到模型 data URI 目录上，产生 `ERR_INVALID_URL` 请求。修复后 `AC_2607141_Q1V1` 同参数 14 个平台产物全部 PASS（35/37 本地检查，2 项官方人工门），浏览器探测 0 处坏请求。
+- Changed: `src/scene-view.js`（FBX 内部贴图引用改走内嵌占位图 + `setURLModifier`）、`src/platform-bridges/mintegral.js`（CTA 兼容 `window.install` 包装层）、`scripts/check-playable-runtime.mjs`（移除掩盖该问题的 `ERR_INVALID_URL` 白名单）。
+- Verification: `node --test` 292/292；`npm run export:playable -- --platform mintegral` 与 `--all` 均通过（14/14 PASS）；CDP 浏览器探测新包 `bad src assignments: 0`。
+
 ## Completed On 2026-10-13 - Test suite realigned to the current wiring, full suite green
 
 - `node --test` is now `292/292` (was `269/292`). All 23 old failures were stale expectations, not runtime regressions: level12 tuning values (parking `4`, camera 61°/1.9 intensity, arrow/shadow/guide-hand values), the level7 production selection (single-level `PLAYABLE_LEVEL_SEQUENCE`), the store-link fallback refactor (`DEFAULT_STORE_LINKS` is no longer frozen and refreshes through `refreshDefaultStoreLinks()`), and renamed internals (`openFolder`, `layoutRoot.add(loopPlane, spatialConveyorRoot)`, question-mark reveal roots, hidden-vehicle pick meshes).

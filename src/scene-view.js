@@ -59,6 +59,16 @@ const TURN_ARROW_FORWARD_OFFSET = 0.18;
 const VEHICLE_ARROW_HIDDEN_STATES = new Set(['at-spot', 'boarding-final', 'departing', 'done']);
 export const shouldHideVehicleArrow = (state) => VEHICLE_ARROW_HIDDEN_STATES.has(state);
 const HIDDEN_QUESTION_MARK_FORWARD_FACTOR = 0.45;
+// Unity FBX files keep relative texture references from their source project
+// (e.g. "..\\Textures\\Car_0307\\Car_P2.png"). Packaged playables embed each
+// model as a data: URI whose base64 payload contains "/", so letting FBXLoader
+// resolve those references against the model URL produced requests like
+// "data:application/octet-stream;base64,<gzip>/Car_P2.png". Chrome reports
+// them as ERR_INVALID_URL and Mintegral's Mindworks checker rejects the
+// creative for it. Every FBX material is replaced at runtime, so route the
+// internal references to an embedded placeholder instead of a broken URL.
+const FBX_INTERNAL_TEXTURE_ROOT = 'playable-fbx-internal:';
+const FBX_INTERNAL_TEXTURE_PLACEHOLDER = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=';
 const HIDDEN_VEHICLE_BODY_COLOR = 0x606060;
 const HIDDEN_VEHICLE_ASSETS = MECHANISM_ASSETS.hiddenVehicle;
 const HIDDEN_REVEAL_DURATION = 1;
@@ -781,7 +791,7 @@ async function loadPackedFbx(url, loader, loadingManager, resourcePath = null) {
     loadingManager?.itemEnd(url);
     return loader.parse(
       bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength),
-      resourcePath ?? url.slice(0, url.lastIndexOf('/') + 1)
+      resourcePath ?? FBX_INTERNAL_TEXTURE_ROOT
     );
   } catch (error) {
     loadingManager?.itemError(url);
@@ -1371,6 +1381,9 @@ export class SceneView {
     this.inputEnabled = true;
     this.pointer = new THREE.Vector2();
     this.loadingManager = new THREE.LoadingManager();
+    this.loadingManager.setURLModifier((url) => (
+      String(url).startsWith(FBX_INTERNAL_TEXTURE_ROOT) ? FBX_INTERNAL_TEXTURE_PLACEHOLDER : url
+    ));
     this.loadingManager.onProgress = (_url, loaded, total) => {
       this.hooks.onLoadingProgress?.(total > 0 ? loaded / total : 0);
     };

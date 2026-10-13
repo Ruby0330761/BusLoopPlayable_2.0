@@ -1132,17 +1132,15 @@ async function runBrowser({
       const entry = event.entry ?? {};
       if (entry.level !== 'error' || /\/favicon\.ico(?:[?#]|$)/i.test(String(entry.url ?? ''))) return;
       const entryUrl = String(entry.url ?? '');
-      if (entryUrl.startsWith('data:') && String(entry.text ?? '').includes('ERR_INVALID_URL')) return;
       consoleErrors.push({ type: 'browser-log', text: entry.text ?? '', url: entryUrl.slice(0, 512) });
     });
     client.on('Network.loadingFailed', (event) => {
       if (event.canceled || event.errorText === 'net::ERR_ABORTED') return;
       const url = requestUrls.get(event.requestId) ?? '';
       if (!url || url === 'about:blank') return;
-      // Three's FBXLoader probes embedded texture names by appending them to a
-      // data URL. Chrome reports those optional probes as ERR_INVALID_URL even
-      // when the project-supplied material textures render correctly.
-      if (url.startsWith('data:') && event.errorText === 'net::ERR_INVALID_URL') return;
+      // FBX-internal texture references must resolve to embedded data URIs.
+      // A data-URL request failure here means a packaged asset reference is
+      // broken (Mintegral's checker rejects the creative for it), so keep it.
       resourceFailures.push({ requestId: event.requestId, url: url.slice(0, 512), errorText: event.errorText, type: event.type });
     });
     client.on('Network.requestWillBeSent', (event) => {

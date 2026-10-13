@@ -1,5 +1,13 @@
 # Findings
 
+## 2026-10-13 Mintegral 检测失败来自 FBX 内部贴图引用与 data URI 目录拼接
+
+- Mindworks/PlayTurbo 的「素材依赖代码的存储要求」(`outer_chain`) 和「代码报错」(`code`) 在这批 Mintegral 包上同时失败，根因是**所有 Unity FBX 内部仍写着 Windows 相对贴图路径**（如 `..\Textures\Car_0307\Car_P2.png`、`Fire Engine.png`）。three 的 `FBXLoader.loadTexture` 会把这类引用归一成裸文件名，再拼接到「模型所在目录」。打包后模型 URL 是 `data:application/octet-stream;base64,<gzip>`，`loadPackedFbx` 原先用 `url.lastIndexOf('/')` 推导目录，斜杠落在 base64 数据里，于是拼出 `data:...base64,<数据>/Car_P2.png` 这种非法地址 → WebView 报 `net::ERR_INVALID_URL` → 检测器判「代码报错」；同一批「素材以非内嵌方式被代码引用」触发 `outer_chain`。
+- 复现证据：CDP 探测（`/tmp/cdp-probe.mjs`）在旧包抓到 7 处坏 URL（含 `Fire Engine.png`、`Car_firetruck_shadow.png`），新包 5 处；Mindworks 前端 chunk（`3e4eb0e.js`）确认两项的内部 prop 分别是 `outer_chain` 与 `code`。
+- 修复：`src/scene-view.js` 新增 `FBX_INTERNAL_TEXTURE_ROOT = 'playable-fbx-internal:'` 与 1x1 内嵌 PNG 占位图，`loadPackedFbx` 不再从模型 URL 推导目录，`loadingManager.setURLModifier` 把该前缀统一改写到占位图。所有 FBX 材质本来就在运行时替换，占位图不影响视觉；修复后同包浏览器探测为 0 处坏请求。
+- `scripts/check-playable-runtime.mjs` 原先在 console 与网络日志两处把 `data:` 开头且 `ERR_INVALID_URL` 的失败当作 Three「可选探测」白名单放行，掩盖了该问题；现已移除，运行时门禁会真实拦截这类引用。
+- 同一轮还修了 Mintegral CTA：`openStore` 增加 `window.install !== installFallback` 判断，兼容平台检查器对 `window.install` 的 getter/setter 包装（此前只认启动时快照的 host 函数，检查器环境下 CTA 会被静默跳过）。注意 Mintegral 静态规则 `MINTEGRAL-STA-002` 要求产物保持 `window.install = function ...` 文本，`installFallback` 必须用链式赋值 `const installFallback = window.install = function install(){...}`，否则压缩后正则匹配不到。
+
 ## 2026-09-29 Q9V2 线上编辑器导出污染了商店链接槽位
 
 - `/Users/von/wxj/试玩成品/BUS/bus-loop-all-platforms-Q9V2/` 的 14 个线上编辑器导出中，Android 变体把 Google Play URL 同时写入 `storeLinks.android` 与 `storeLinks.ios`，iOS 变体把 Apple App Store URL 同时写入两个槽位。目标设备可能暂时正常，但平台用相反 UA 预览时会触发 `Fallback android/ios store link must be ...`，异常发生在 CTA bridge 之前，所以检查显示为 JavaScript / 渲染错误。

@@ -16,7 +16,10 @@ export function createPlatformBridge({ onStart, onVisibilityChange = () => {}, o
   let ready = false;
   let ended = false;
 
-  window.install = function install() { return callHost('install'); };
+  // Chained on purpose: installFallback must reference the function we created
+  // even when a platform checker wraps window.install behind a getter, and the
+  // direct assignment keeps window.install visible to static packagers.
+  const installFallback = window.install = function install() { return callHost('install'); };
   window.gameReady = function gameReady() { return callHost('gameReady'); };
   window.gameStart = function gameStart() { return callHost('gameStart'); };
   window.gameEnd = function gameEnd() { return callHost('gameEnd'); };
@@ -59,7 +62,12 @@ export function createPlatformBridge({ onStart, onVisibilityChange = () => {}, o
     },
     retry() { ended = false; },
     openStore({ ios, android } = {}) {
-      if (typeof host.install === 'function') {
+      // Mintegral requires the CTA to call window.install() and never open the
+      // store itself. A host function captured at startup, or any other layer
+      // owning window.install (platform checker wrapping it), counts as a live
+      // install bridge. Only our own untouched fallback means a plain browser
+      // preview, where the store link is opened directly instead.
+      if (typeof host.install === 'function' || window.install !== installFallback) {
         window.install();
         return true;
       }
