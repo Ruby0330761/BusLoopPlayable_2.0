@@ -539,7 +539,7 @@ test('HTML editor, renderer, Vite service, and production build expose selectabl
   assert.match(viteSource, /readSpatialConveyorPackage/);
   assert.match(viteSource, /__spatial-conveyors\/import/);
   assert.match(viteSource, /importSpatialConveyorPrefab/);
-  assert.match(viteSource, /openSpatialConveyorFolder/);
+  assert.match(viteSource, /async function openFolder\(folderRoot\)/);
   assert.match(viteSource, /explorer\.exe/);
   assert.match(viteSource, /__spatial-conveyors\/open-folder/);
   assert.match(mainSource, /isSpatialConveyorSelection/);

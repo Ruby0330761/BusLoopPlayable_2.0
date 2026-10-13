@@ -15,7 +15,7 @@ function getEventKeys(event, time = '') {
     // identity must therefore be independent of the frame time.
     keys.push({ name: 'bus_full', key: `${event.type}:${event.vehicleId}` });
   }
-  if (event.type === 'hidden-vehicle-revealed') {
+  if (event.type === 'hidden-vehicle-reveal-started') {
     keys.push({ name: 'hidden_vehicle_reveal', key: `${event.type}:${event.vehicleId}` });
   }
   if (event.ambulanceUpdates?.some((entry) => entry.remainingSteps <= 5)) {

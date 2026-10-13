@@ -8,9 +8,9 @@ test('Unity vehicle effect assets and prefab parameters stay explicit', () => {
   assert.deepEqual(LEVEL_1.assets.textures.effects, {
     aboardSmoke: '/assets/unity/effects/Round_01.png',
     ribbon: '/assets/unity/effects/Ribbon_01.png',
-    ribbonSmoke: '/assets/unity/effects/Smoke_08.png',
+    ribbonSmoke: '/assets/applovin/effects/Smoke_08_q80.webp',
     hitCircle: '/assets/unity/effects/Circle_01.png',
-    hitRound2: '/assets/unity/effects/Round_02.png',
+    hitRound2: '/assets/applovin/effects/Round_02_q80.webp',
     hitRound1: '/assets/unity/effects/Round_01.png',
     smokeTrail: '/assets/unity/effects/Round_01.png'
   });

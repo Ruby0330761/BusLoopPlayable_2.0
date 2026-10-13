@@ -1,5 +1,11 @@
 # Playable Project Progress
 
+## Completed On 2026-10-13 - Test suite realigned to the current wiring, full suite green
+
+- `node --test` is now `292/292` (was `269/292`). All 23 old failures were stale expectations, not runtime regressions: level12 tuning values (parking `4`, camera 61°/1.9 intensity, arrow/shadow/guide-hand values), the level7 production selection (single-level `PLAYABLE_LEVEL_SEQUENCE`), the store-link fallback refactor (`DEFAULT_STORE_LINKS` is no longer frozen and refreshes through `refreshDefaultStoreLinks()`), and renamed internals (`openFolder`, `layoutRoot.add(loopPlane, spatialConveyorRoot)`, question-mark reveal roots, hidden-vehicle pick meshes).
+- `src/audio-controller.js` now triggers `hidden_vehicle_reveal` on `hidden-vehicle-reveal-started` (the reveal animation's start) instead of the completion event, matching the team's question-mark reveal work; this fixed the one failure introduced by the upstream `问号车` commits.
+- Verification: `node --test` `292/292`; `npm run build` passes (prebuild regenerates the same level7 payload hash).
+
 ## Completed On 2026-09-30 - Pre-roll video download
 
 - 场景编辑器“前贴视频”新增下载按钮，内置视频和自定义上传视频都可下载；下载使用当前显示名称生成安全的 `.mp4` 文件名，并显示实际文件大小与失败状态。

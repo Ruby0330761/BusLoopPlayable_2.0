@@ -183,7 +183,7 @@ test('spatial point editor is an on-demand overlay with validated explicit saves
   assert.match(editorSource, /setBoardingFromPoint/);
   assert.match(editorSource, /spatial-point-selection-box/);
   assert.match(editorSource, /method: 'PUT'/);
-  assert.match(mainSource, /if \(!spatialEditorActive\) game\.update/);
+  assert.match(mainSource, /if \(platformVisible && !spatialEditorActive && !preRollController\?\.isActive\(\)\) game\.update\(delta\)/);
   assert.match(viteSource, /validateSpatialPackageData/);
   assert.match(viteSource, /SPATIAL_BACKUP_ROOT/);
   assert.match(styles, /\.scene-editor\.is-spatial-point-editing \{ display: none; \}/);

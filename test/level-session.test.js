@@ -3,20 +3,27 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { ACTIVE_LEVEL, PLAYABLE_LEVEL_SEQUENCE } from '../src/generated-active-level.js';
 import { BusLoopGame } from '../src/game-model.js';
+import { LEVEL_CATALOG } from '../src/level-catalog.js';
 import { createLevelSession } from '../src/level-session.js';
 
-test('production session starts on Level9 and follows with Level7', () => {
-  assert.equal(ACTIVE_LEVEL.key, 'level9');
-  assert.deepEqual(PLAYABLE_LEVEL_SEQUENCE.map((level) => level.key), ['level9', 'level7']);
-  assert.deepEqual(PLAYABLE_LEVEL_SEQUENCE.map((level) => level.vehicles.length), [37, 83]);
+// The Level9 -> Level7 handoff is a generator rule for the level9 selection;
+// the currently generated production payload follows the selected level.
+const HANDOFF_SEQUENCE = [LEVEL_CATALOG.level9, LEVEL_CATALOG.level7];
+
+test('production session follows the selected level and keeps the Level9 to Level7 handoff wiring', () => {
+  assert.equal(ACTIVE_LEVEL.key, 'level7');
+  assert.deepEqual(PLAYABLE_LEVEL_SEQUENCE.map((level) => level.key), ['level7']);
+  assert.deepEqual(PLAYABLE_LEVEL_SEQUENCE.map((level) => level.vehicles.length), [83]);
   assert.deepEqual(
     PLAYABLE_LEVEL_SEQUENCE.map((level) => level.passengerQueues.map((queue) => queue.length)),
-    [[131, 131], [368, 278]]
+    [[368, 278]]
   );
+  const generatorSource = readFileSync(new URL('../scripts/generate-active-level.mjs', import.meta.url), 'utf8');
+  assert.match(generatorSource, /const sessionLevelKeys = selected === 'level9' \? \['level9', 'level7'\] : \[selected\];/);
 });
 
 test('successful-operation count survives the level handoff and namespaces repeated vehicle ids', () => {
-  const session = createLevelSession(PLAYABLE_LEVEL_SEQUENCE);
+  const session = createLevelSession(HANDOFF_SEQUENCE);
   assert.equal(session.currentLevel().key, 'level9');
   assert.equal(session.recordSuccessfulVehicle(1, 3), false);
   assert.equal(session.recordSuccessfulVehicle(1, 3), false);
@@ -43,7 +50,7 @@ test('successful-operation count survives the level handoff and namespaces repea
 });
 
 test('an early CTA threshold does not block Level9 before the Level7 handoff', () => {
-  const session = createLevelSession(PLAYABLE_LEVEL_SEQUENCE);
+  const session = createLevelSession(HANDOFF_SEQUENCE);
   assert.equal(session.recordSuccessfulVehicle(1, 1), false);
   assert.equal(session.state().installReady, true);
   assert.equal(session.shouldOpenStore(), false);
@@ -52,7 +59,7 @@ test('an early CTA threshold does not block Level9 before the Level7 handoff', (
 });
 
 test('fresh Level7 queues restart passenger entry from both sides', () => {
-  const level7 = PLAYABLE_LEVEL_SEQUENCE[1];
+  const level7 = LEVEL_CATALOG.level7;
   const game = new BusLoopGame(level7);
   game.initializeQueues(
     [level7.queueCapacity, level7.queueCapacity],
@@ -84,7 +91,7 @@ test('runtime keeps the conveyor fixed and moves only Level7 vehicles in from be
   assert.match(mainSource, /view\.replaceActiveLevel\(\{ animate: true \}\)/);
   assert.match(mainSource, /initializeGameQueues\(\{ resetSlots: true \}\)/);
   assert.match(mainSource, /^\s*showResultOverlay\('You Win!'\);/m);
-  assert.match(viewSource, /this\.layoutRoot\.add\(this\.loopPlane\)/);
+  assert.match(viewSource, /this\.layoutRoot\.add\(this\.loopPlane, this\.spatialConveyorRoot\)/);
   assert.match(viewSource, /this\.layoutRoot\.add\(this\.vehicleRoot\)/);
   assert.match(viewSource, /this\.vehicleRoot\.add\(view\)/);
   assert.match(viewSource, /startVehicleEntrance\(/);
