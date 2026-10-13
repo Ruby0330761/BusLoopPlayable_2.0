@@ -1,4 +1,4 @@
-﻿import { ACTIVE_LEVEL } from './generated-active-level.js';
+import { ACTIVE_LEVEL } from './generated-active-level.js';
 
 export const COLORS = Object.freeze({
   0: { name: 'Blue', hex: 0x0061e8, css: '#0061e8' },
@@ -12,8 +12,25 @@ export const COLORS = Object.freeze({
   8: { name: 'Brown', hex: 0x542c16, css: '#542c16' },
   9: { name: 'DarkGreen', hex: 0x206d53, css: '#206d53' },
   10: { name: 'DarkBlue', hex: 0x15209e, css: '#15209e' },
+  // Special vehicle indices still need a fallback colour while their FBX
+  // texture is loading. Without these entries an editor preview crashes
+  // before the police/firetruck model can be upgraded.
+  11: { name: 'PoliceCar', hex: 0x1b2638, css: '#1b2638' },
+  12: { name: 'FireTruck', hex: 0xb10f11, css: '#b10f11' },
   13: { name: 'Ambulance', hex: 0xffffff, css: '#ffffff' },
-  15: { name: 'Luxury', hex: 0xd7b477, css: '#d7b477' }
+  14: { name: 'Vip', hex: 0xffd8c8, css: '#ffd8c8' },
+  15: { name: 'Luxury', hex: 0xd7b477, css: '#d7b477' },
+  // Supplied colour supplement (Unity indices 17-25). Swatches match the
+  // derived delivery atlases in public/assets/unity/textures/color_<id>_*.png.
+  17: { name: 'Black', hex: 0x2d2d30, css: '#2d2d30' },
+  18: { name: 'White', hex: 0xebebe8, css: '#ebebe8' },
+  19: { name: 'DarkRed', hex: 0x8c1010, css: '#8c1010' },
+  20: { name: 'DarkYellow', hex: 0xc89808, css: '#c89808' },
+  21: { name: 'Cream', hex: 0xeedebe, css: '#eedebe' },
+  22: { name: 'MintGreen', hex: 0x69c8aa, css: '#69c8aa' },
+  23: { name: 'MatchaGreen', hex: 0x96c882, css: '#96c882' },
+  24: { name: 'LightPink', hex: 0xf698c4, css: '#f698c4' },
+  25: { name: 'Gray', hex: 0x96989b, css: '#96989b' }
 });
 
 export const PASSENGER_COUNT_BOARD_COLORS = Object.freeze({
@@ -29,7 +46,16 @@ export const PASSENGER_COUNT_BOARD_COLORS = Object.freeze({
   9: { background: 0x35ac93, outline: '#226355' },
   10: { background: 0x3e45ff, outline: '#161b6f' },
   13: { background: 0xf04449, outline: '#8a171b' },
-  15: { background: 0xd8ad6a, outline: '#6d421f' }
+  15: { background: 0xd8ad6a, outline: '#6d421f' },
+  17: { background: 0x767678, outline: '#131314' },
+  18: { background: 0xf2f2f0, outline: '#636361' },
+  19: { background: 0xb46464, outline: '#3b0707' },
+  20: { background: 0xdbbc5e, outline: '#544003' },
+  21: { background: 0xf4ead5, outline: '#645d50' },
+  22: { background: 0x9edbc8, outline: '#2c5447' },
+  23: { background: 0xbbdbae, outline: '#3f5437' },
+  24: { background: 0xf9bcd9, outline: '#674052' },
+  25: { background: 0xbbbcbe, outline: '#3f4041' }
 });
 
 export let LEVEL_1 = ACTIVE_LEVEL;

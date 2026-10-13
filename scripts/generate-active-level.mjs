@@ -1,4 +1,4 @@
-import { readFile, writeFile } from 'node:fs/promises';
+import { copyFile, mkdir, readFile, writeFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -17,6 +17,7 @@ const [{ SCENE_TUNING }, { LEVEL_CATALOG }, { levelDocumentToRuntime }, { derive
   import(editorModelUrl),
   import(mechanismResourcesUrl)
 ]);
+const EDITOR_BACKGROUND_PREFIX = '/assets/editor-backgrounds/';
 
 const selectionPath = path.join(root, 'artifacts', 'selected-level.txt');
 const selected = existsSync(selectionPath)
@@ -24,24 +25,27 @@ const selected = existsSync(selectionPath)
   : (SCENE_TUNING.level?.selected ?? 'level5');
 
 async function resolveProductionLevel(levelKey) {
-  if (LEVEL_CATALOG[levelKey]) return LEVEL_CATALOG[levelKey];
   if (!/^level[1-9]\d*$/u.test(levelKey)) {
     throw new Error(`Unknown SCENE_TUNING.level.selected value: ${levelKey}`);
   }
   const webLevelPath = path.join(root, 'artifacts', 'web-levels', `${levelKey}.json`);
-  if (!existsSync(webLevelPath)) {
-    throw new Error(`Unknown SCENE_TUNING.level.selected value: ${levelKey}`);
+  // The editor resolves a saved web-level before the generated Unity catalog.
+  // Keep production builds on the same source, including when an authored file
+  // intentionally overrides a catalog level with the same numeric key.
+  if (existsSync(webLevelPath)) {
+    const document = JSON.parse(await readFile(webLevelPath, 'utf8'));
+    if (document?.format !== 'bus-loop-web-level-v1' || document?.key !== levelKey) {
+      throw new Error(`Invalid saved web level document: ${levelKey}`);
+    }
+    const runtimeLevel = levelDocumentToRuntime(document, LEVEL_CATALOG.level5);
+    return {
+      ...runtimeLevel,
+      sourceFile: path.relative(root, webLevelPath).replaceAll(path.sep, '/'),
+      mechanics: deriveLevelMechanics(runtimeLevel)
+    };
   }
-  const document = JSON.parse(await readFile(webLevelPath, 'utf8'));
-  if (document?.format !== 'bus-loop-web-level-v1' || document?.key !== levelKey) {
-    throw new Error(`Invalid saved web level document: ${levelKey}`);
-  }
-  const runtimeLevel = levelDocumentToRuntime(document, LEVEL_CATALOG.level5);
-  return {
-    ...runtimeLevel,
-    sourceFile: path.relative(root, webLevelPath).replaceAll(path.sep, '/'),
-    mechanics: deriveLevelMechanics(runtimeLevel)
-  };
+  if (LEVEL_CATALOG[levelKey]) return LEVEL_CATALOG[levelKey];
+  throw new Error(`Unknown SCENE_TUNING.level.selected value: ${levelKey}`);
 }
 
 const level = await resolveProductionLevel(selected);
@@ -50,8 +54,34 @@ const selectedBackground = SCENE_TUNING.background?.asset;
 if (typeof selectedBackground !== 'string' || !selectedBackground.startsWith('/assets/')) {
   throw new Error(`Invalid SCENE_TUNING.background.asset value: ${selectedBackground}`);
 }
-const selectedBackgroundPath = path.join(root, 'public', selectedBackground.replace(/^\/+/, ''));
-if (!existsSync(selectedBackgroundPath)) {
+
+function isSafeEditorBackgroundAsset(asset) {
+  return asset.startsWith(EDITOR_BACKGROUND_PREFIX)
+    && path.basename(asset) === asset.slice(EDITOR_BACKGROUND_PREFIX.length)
+    && /^[A-Za-z0-9][A-Za-z0-9._-]{0,119}\.(?:jpe?g|png|webp)$/iu.test(path.basename(asset));
+}
+
+async function ensureSelectedBackgroundAvailable(asset) {
+  const publicRoot = path.resolve(root, 'public');
+  const publicPath = path.resolve(publicRoot, asset.replace(/^\/+/, ''));
+  if (!publicPath.startsWith(`${publicRoot}${path.sep}`)) {
+    throw new Error(`Invalid SCENE_TUNING.background.asset value: ${asset}`);
+  }
+  if (existsSync(publicPath)) return;
+  if (!isSafeEditorBackgroundAsset(asset)) {
+    throw new Error(`Selected background asset does not exist: ${asset}`);
+  }
+  const filename = path.basename(asset);
+  const artifactPath = path.resolve(root, 'artifacts', 'editor-backgrounds', filename);
+  if (!existsSync(artifactPath)) {
+    throw new Error(`Selected background asset does not exist: ${asset}`);
+  }
+  await mkdir(path.dirname(publicPath), { recursive: true });
+  await copyFile(artifactPath, publicPath);
+}
+
+await ensureSelectedBackgroundAvailable(selectedBackground);
+if (!existsSync(path.resolve(root, 'public', selectedBackground.replace(/^\/+/, '')))) {
   throw new Error(`Selected background asset does not exist: ${selectedBackground}`);
 }
 

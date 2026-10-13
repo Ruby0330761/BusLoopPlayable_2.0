@@ -45,6 +45,7 @@ function mimeForAsset(asset) {
     ['.jpeg', 'image/jpeg'],
     ['.png', 'image/png'],
     ['.mp3', 'audio/mpeg'],
+    ['.mp4', 'video/mp4'],
     ['.wav', 'audio/wav'],
     ['.webp', 'image/webp']
   ]).get(extension) ?? 'application/octet-stream';
@@ -59,11 +60,13 @@ async function assetDataUri(asset) {
 async function main() {
   const [{ PLAYABLE_LEVEL_SEQUENCE }, {
     MECHANISM_RESOURCE_MANIFEST,
+    PRE_ROLL_ASSET_PATHS,
     getMechanismResourcePaths,
     getMechanismTypesForLevels
-  }] = await Promise.all([
+  }, { isPreRollAssetPath }] = await Promise.all([
     import('../src/generated-active-level.js'),
-    import('../src/mechanism-resources.js')
+    import('../src/mechanism-resources.js'),
+    import('../src/pre-roll.js')
   ]);
   const tuningUrl = `${pathToFileURL(TUNING_FILE).href}?t=${Date.now()}`;
   const { SCENE_TUNING } = await import(tuningUrl);
@@ -93,6 +96,16 @@ async function main() {
   const selectedMechanismDataUris = await Promise.all(
     selectedMechanismUrls.map((asset) => assetDataUri(asset))
   );
+  const selectedPreRollAsset = SCENE_TUNING.preRoll?.enabled ? SCENE_TUNING.preRoll?.asset : null;
+  if (selectedPreRollAsset && !(
+    PRE_ROLL_ASSET_PATHS.includes(selectedPreRollAsset)
+    || isPreRollAssetPath(selectedPreRollAsset)
+  )) {
+    throw new Error(`Unsupported pre-roll asset: ${selectedPreRollAsset}`);
+  }
+  const selectedPreRollDataUri = selectedPreRollAsset
+    ? await assetDataUri(selectedPreRollAsset)
+    : null;
   const omittedMechanismUrls = allMechanismUrls.filter((asset) => !selectedMechanismUrls.includes(asset));
 
   function containsMechanismReference(asset) {
@@ -218,6 +231,11 @@ async function main() {
     {
       name: 'inline audio assets present',
       pass: /data:audio\/mpeg/iu.test(html)
+    },
+    {
+      name: 'configured pre-roll video inlined',
+      pass: !selectedPreRollDataUri || html.includes(selectedPreRollDataUri),
+      detail: selectedPreRollAsset ?? 'disabled'
     },
     {
       name: 'no disallowed remote URLs',

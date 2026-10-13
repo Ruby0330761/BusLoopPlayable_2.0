@@ -1,5 +1,139 @@
 # Findings
 
+## 2026-09-29 Q9V2 线上编辑器导出污染了商店链接槽位
+
+- `/Users/von/wxj/试玩成品/BUS/bus-loop-all-platforms-Q9V2/` 的 14 个线上编辑器导出中，Android 变体把 Google Play URL 同时写入 `storeLinks.android` 与 `storeLinks.ios`，iOS 变体把 Apple App Store URL 同时写入两个槽位。目标设备可能暂时正常，但平台用相反 UA 预览时会触发 `Fallback android/ios store link must be ...`，异常发生在 CTA bridge 之前，所以检查显示为 JavaScript / 渲染错误。
+- 原始 `manifest.json` 虽然记录了 PASS，但其中 runtime 报告全部是 `skippedRuntime: true`；静态与 payload 通过不能证明 CTA 可运行。这是线上导出检查链的覆盖缺口，不是玩法逻辑变化。
+- 已在导出器增加双槽位合法链接断言，并让带品牌变体的导出对 Android/iOS UA 都执行 runtime smoke；复用 HTML 时也会检查最终 HTML 是否保留两条合法商品链接。远程 `PLAYABLE_EXPORT_REMOTE_FAST=1` 现在只复用 backup.jpg，不再跳过 runtime；只有显式 `PLAYABLE_EXPORT_SKIP_RUNTIME=1` 才允许跳过。
+- 原始成品未覆盖。仅修正 `storeLinks` 的复制包位于 `/Users/von/wxj/试玩成品/BUS/bus-loop-all-platforms-Q9V2/修正版/`，玩法、关卡、资源和平台桥接均未改动。修正版 14 个产物交叉 UA 运行检查共 28 次，全部通过；Moloco 两个产物另用 Moloco 平台参数复测也通过。Moloco 首轮结果的 4 个 CTA 失败是检查脚本把目标平台识别为 `applovin` 的命令参数错误，并非成品问题。
+
+## 2026-09-29 Moloco iOS 成品的 CTA 失败来自错误的 Android 回退地址
+
+- `BL-Q10V1-N-EN-PL-WXJ-TJW-MO-iOS.html`、`BL-Q7V5-N-EN-PL-WXJ-TJW-MO-iOS.html`、`BL-Q10V3-N-EN-PL-WXJ-TJW-MO-iOS.html` 原本把 Apple App Store URL 同时写入 `storeLinks.android` 和 `storeLinks.ios`。Moloco 的 CTA 代码虽然正确调用 `FbPlayableAd.onCTAClick()`，但运行门禁按桌面/Android fallback 校验时先在 `resolveStoreLink('android', ...)` 抛错，导致 CTA 没有真正到达 `fb-cta` bridge。
+- 修正版只把 `storeLinks.android` 补为合法 Google Play product URL，保留 `storeLinks.ios` 的 Apple App Store URL；没有改玩法、关卡或画面资源。
+- 修正版三份文件已放到 `/Users/von/wxj/试玩成品/BUS/BUS-改/`。Moloco 静态检查均为 `15 pass / 0 warning / 0 fail`，iOS UA 浏览器运行均 `13/13 PASS`，可信 CTA 均捕获为 `FbPlayableAd.onCTAClick()` 且无参数。
+
+## 2026-09-29 MTG/Mintegral 与 Moloco 合规规则不能混用
+
+- 用户提供的合规截图标题明确写的是 **Moloco Ads Manager / Moloco IEC**，不是 Mintegral（MTG）。其中的单 HTML、禁止 `.zip`、禁止 `XMLHttpRequest` / `mraid.js`、`FbPlayableAd.onCTAClick()` 和全部资源 Data URI，均属于 Moloco 交付规则。
+- 当前编辑器导出器按平台分支处理：Mintegral 生成同名目录下的 ZIP（HTML、`index.js`、`style.css`），使用 `window.install()` 和 `gameReady/gameStart/gameEnd/gameClose/gameRetry` 生命周期；Moloco 才生成单 HTML 并使用 `FbPlayableAd.onCTAClick()`。不能把截图规则直接套到 MTG 包，也不能把 MTG ZIP 上传到 Moloco 入口。
+- 现有 `BL_Q16V2_N_EN_PL_WXJ_TJW_MT_Android.zip` 与 `_iOS.zip` 已按 Mintegral 规则静态通过（每包 19 个 pass、0 warning、0 fail，另有 CTA 和 Mindworks 真机/后台复核门）；payload 通过。对交付 ZIP 重新执行 Android/iOS 设备 UA 的浏览器运行门禁，均为 `15/15 PASS`。
+- Mintegral 包中出现的 `fetch(` 命中来自 GLSL 的 `texelFetch(`，不是网络请求；包内没有 `XMLHttpRequest`、`mraid.js`、WebSocket 或 JS 自动跳转。后续排查时要按目标渠道的规则集和语义检查，不能只按截图中的字符串清单误判。
+- 后续上传前先确认后台入口与文件名渠道码一致：`MT` 走 Mintegral/PlayTurbo，`MO` 走 Moloco；若 MTG 后台出现 Moloco 文案，应先核对选择的广告平台和审核入口，再决定是否改导出逻辑。
+
+## 2026-09-29 编辑器与导出关卡源必须保持同一优先级
+
+- `src/main.js` 的 `resolveSelectedLevel()` 原本优先读取网页关卡文件，再回退到 `src/level-catalog.js`；`scripts/generate-active-level.mjs` 却反过来优先 catalog。
+- 当 `artifacts/web-levels/level<number>.json` 覆盖一个同编号 Unity 关卡时，编辑器画面和导出试玩包会使用不同布局。生产生成必须先读取网页文件，并在其不存在时才使用 catalog。
+
+## 2026-09-29 Mintegral 变体必须保留两个合法商店槽位
+
+- 变体导出若把 Android 或 iOS 地址复制到两个槽位，目标设备上的正常 CTA 可能通过，但反向 UA 预览会触发 `resolveStoreLink` 的平台域名校验异常。每个包应同时携带合法的 Google Play 与 Apple App Store product URL；运行时按设备选择对应槽位。
+- `retargetBrandingVariantHtml` 只应替换图标或逐平台替换链接，不能再假设两个槽位相同。
+
+## 2026-09-29 消防员 VATM v2 才是正确的乘客资源
+
+- `Idle_boy_firefighter.fbx` 虽然能显示角色，但 FBX 导出根节点带有机制辅助网格和偏移；直接归一化后，角色会在传送带下方出口处脱离其他乘客，看起来像固定站着的小消防员。
+- `Idle_boy_firefighter_vatmesh.bin` 解压后是 `VATM` version `2`，多一段显式 `vatIndex` 数组；原 loader 只接受 version `1`，因此之前误以为 VAT 不可用。现在 loader 同时支持 `VATM v1/v2`，消防车乘客改走 VAT mesh + `Idle_boy_firefighter_anim_map.vatq`，与警察/救护车使用相同的传送带坐标和动画路径。
+
+## 2026-09-20 识图摆放 calibration against a real gameplay capture
+
+- Tuning used `artifacts/playable-exports/moloco-checker-fix/reports/original-portrait.png` (`390x844`, ~70 cars in the field plus a passenger spiral, HUD, and a green `Play Now` button). Three defaults that look reasonable in theory are wrong on a real capture:
+  - **Fragment merging must be `0`.** With a 2px merge radius, cars 3-8px apart weld into whole-row blobs; the same capture collapsed from `68` detections to `9`.
+  - **Neutral bodies must be off by default.** White seat glyphs, arrows, road markings, HUD text and near-white UI chrome all fall within palette tolerance of `White`/`Vip`/`Cream`; with neutrals enabled, `86` of `133` raw detections were white UI, not cars.
+  - **Auto minimum area belongs at `0.0008` of the image**, not `0.00028`. The lower value keeps car outlines, arrow slivers and passenger dots (`area 20-100`), which outnumber cars roughly `4:1`.
+- The image border is the right background model, but only when clusters must also be *frequent*: a red car clipped by the left edge contributed enough border samples to make red a background colour and lose every red vehicle. Requiring a cluster to cover a few percent of the border samples fixes it.
+- Grid pitch must be measured on the larger half of the detections and on same-line pairs only (same row for the x pitch, same column for the y pitch). The naive version returned `5px`/`13px` — the offsets between a car body and its own highlight/shadow fragments — and then re-spaced whole rows by that pitch. It must also be discarded when it comes out smaller than the vehicles themselves (`< 0.6x` the median blob extent), which leaves the raw centroids in place instead of squeezing a row.
+- On this capture the field's row pitch is `~26-41px` (the `13px` signal is the shadow/glyph half-offset) and the column pitch is `~28-40px`; the estimator now reports `28/41` and `9` rows for a field of `9` visual rows.
+- **Seats are the least recoverable attribute.** In a tilted capture the camera compresses the depth axis, so a car's bounding box reads `~2:1` and a merged pair reads `~2.8:1` — the *opposite* of the top-down intuition that a long box means a 10-seater. The shipped rule is a narrow height band (`1.25-1.65x` the median blob height, never a wide merged run), which catches the real `1.44x` bus/car length ratio and leaves everything else at 4 seats.
+- Horizontal long bodies are deliberately read as 4 seats: at capture scale a wide blob is indistinguishable from a merged run of ordinary cars. This matches the earlier 344x556 finding that 4- and 6-seat bodies cannot be separated at reference scale.
+- Result on that capture: `68` vehicles in `9` rows (`黄 63 / 粉 2 / 深黄 2 / 绿 1`), landing on the reference cars. The `Play Now` button and a passenger clump still produce one green and one pink false positive each; both are visible in the preview and are deleted in one click after applying.
+- Recognition reads the editor's stored underlay, and importing a file re-encodes it to JPEG (`max 2048px`, quality `0.84`). The same capture recognised `68` vehicles from a stored PNG underlay and `64` from a freshly imported one, with one colour reassigned — JPEG artefacts, not a second algorithm. The preview always shows what will be applied.
+- The editor also runs a one-time cleanup of persisted 垫图 caches when it first opens. A reference image written to localStorage *before* that first open is deleted; importing through the editor after it has opened persists normally.
+- The earlier 344x556 reconstruction finding below reached `69/69` cars with a **greedy rectangle cover over legal footprints with a purity threshold**. That method is still stronger for frames where one car is only `12x20px`; the shipped recognizer uses colour blobs plus cell-size splitting because it must also work for larger captures, and the cover approach is the recorded next step if small reference frames become the main input.
+
+## 2026-09-18 Draft reference-level cleanup
+
+- The temporary reference-level data, screenshots, helper workspace, and reference-only renderer branches were removed. Production data now points to `level36`; the older notes below are historical and are not active project inputs.
+
+## 2026-09-18 Reconstructing a web level from a 344x556 reference frame
+
+- One car measures ~`12 px` wide and ~`20 px` (4/6-seat) or ~`29 px` (10-seat) long in these frames, so the usable calibration is `12 px == 0.27` world units (`~43-46 px/unit`). 4 vs 6 seats (`0.472` vs `0.486` world) cannot be separated at this scale.
+- Windshield/arrow blobs are **not** a car count: one car renders two light windows, so 89 ring-passing blobs resolved to 69 cars. Counting cars by blob count, or by `coloured area / one-car area`, both overcount.
+- What worked: a greedy rectangle cover of the car-colour mask with legal footprints (`12x20`, `12x21`, `12x29` px in both orientations), scoring newly covered mask pixels and requiring `>=0.82` purity for short cars but `>=0.88` for 10-seaters. One shared threshold lets a 10-seat rectangle swallow two stacked cars (`53/65` "10-seaters" versus `35/69` with split thresholds).
+- Per-car facing is not recoverable from a frame this small: a car's front and rear windows average to its centre, so `yaw` has to be assumed per orientation. Ray casting along the long axis also leaks through 1-2 px gaps between packed cars; only the short axis measures reliably.
+- Helper scripts: `tmp/cover.py` (mask cover), `tmp/build-level.mjs` (document, SAT overlap check, queues), `tmp/verify-level.mjs` (runtime verification).
+
+## 2026-09-18 Level37 background asset correction
+
+- The first supplied reference includes the autumn tiled road, benches, trees, and fallen leaves; it is not only a warm colour treatment of the blue bus-stop background.
+- `src/scene-view.js` now selects `/assets/applovin/textures/BG03_split01_autumn_light_q60.jpg` for `level37` only. The AppLovin packager explicitly keeps that runtime-selected asset in the single HTML payload.
+- `level38`-`level43` continue to use the shared blue bus-stop texture. A fresh packaged capture confirms the autumn road and the level37 vehicle/parking composition render together.
+
+## 2026-09-18 Gradient colour bands: the split axis is per level, and level37 is diagonal
+
+- The colour bands are **not** always a vertical `x` split. Measuring the reference field by binning it into a grid and scoring how cleanly the colour changes along `score = xNorm + k * rowNorm` (row 0 = top) gives a per-level answer:
+
+  | level | best k | purity at k=0 | purity at best k |
+  | --- | --- | --- | --- |
+  | level37 | **+0.9 … +0.95** | 0.635 | 0.893 |
+  | level38 | +0.10 | 0.820 | 0.844 |
+  | level39 | +0.05 | 0.880 | 0.880 |
+  | level40 | −0.05 | 0.961 | 0.969 |
+  | level41 | −0.05 | 0.957 | 0.966 |
+  | level42 | +0.05 | 0.971 | 0.971 |
+  | level43 | +0.10 | 0.970 | 0.970 |
+
+  So `level37` alone is genuinely diagonal; every other level is a vertical split, and their purity is already higher than level37's best. A first-pass estimate using coarse `16x12` cells and 25-degree hue buckets suggested level38 also needed `k≈+0.15`; with `18x14` cells and palette-nearest hue matching the gain drops to `0.024`, i.e. noise. **Use the palette-aware measurement before changing a level's axis.**
+- Measuring the reference itself settles the axis. With a high-resolution reference (`894x872`) the per-vehicle colour-family centroids are `B (u 0.243, v 0.293)`, `O (0.503, 0.519)`, `Y (0.742, 0.715)`, giving `du=+0.500`, `dv=+0.422` and an implied band slope `k = -du/dv = -1.18`. A current build measures `-1.13`, so the diagonal axis is right. **Prefer the family-centroid slope over fitting a purity maximum**: with ~90 samples, purity-maximising reported `+6.00` for the reference in one framing and `+1.95` for the build — both artefacts of binning noise, while the centroid slope agreed across methods.
+- The reference's per-vehicle colour mix is `brown 34% / orange 37% / yellow 29%` (31/34/27 vehicles). Assigning by cumulative **vehicle count** at `0.34` / `0.71` reproduces it exactly (`35% / 36% / 28%` on a render). The earlier attempt calibrated by **footprint area** instead and produced `15%` brown on a render — the reference's brown share by area is only ~23% because its brown vehicles skew small, so the two measures are not interchangeable. **Pick one measure, take it from the reference with the same method, and match that.**
+- The reference contains **no diagonal vehicles at all**: of 97 detected vehicle arrows, 49 are horizontal and 48 vertical, with 0 ambiguous, while an arrow only reads ambiguous when the vehicle sits at a non-right angle. A build derived from the `level36` skeleton had 17 off-axis vehicles (`yaw` 75/140/150/165/210/215/225/255/285). Snapping them to the nearest right angle — `yaw` values are now only 0/90/180/270 — plus nudging 5 of them along their own axes cleared every overlap; verify with the real `boxesOverlap` from `src/vehicle-collision.js` rather than a bounding-box approximation.
+- Reliable way to locate vehicles in a reference screenshot: find white blobs (`v>=0.85, s<=0.13`) of area 60-2000 whose bounding box is ringed by saturated vehicle pixels (>55%). The ring test rejects watermark text, page background and the buses' own white highlights, which otherwise produced 1272 raw components where only ~97 are arrows.
+- Passenger queues drive the belt's colour, and a blocked queue only ever shows its **head**. The reference's right arm is an orange/yellow blend (hue `32-37`, between the rendered orange `~24` and yellow `~48`), which a blocked queue cannot produce: a brown-then-orange head rendered `50/48/51` (too yellow) and an orange-then-yellow head rendered `24/23/24` (too orange). The reference levels therefore use explicit head-run ordering so the visible arms begin on the matching colour families while preserving the exact total counts.
+- `capturePlayableBackupImage` captures the canvas, so the green `Play Now` CTA is absent — but if a full-page capture is used instead, the CTA's green is classified as "yellow" by warm-hue banding and silently inflates the yellow share. Exclude hues above ~60 degrees from a brown/orange/yellow analysis.
+
+## 2026-09-18 Passenger tint shifts hue away from the vehicle body colour
+
+- Vehicles and passengers share one atlas per colour, but passengers additionally pass through `SCENE_TUNING.passengerMaterial.colors[i]`. For the shipped standard colours those entries are tinted (`emissionColor` at `emissionStrength 0.6`), so a passenger renders at a different hue from the same-coloured vehicle: `index 8` (brown) renders `hue ~5` on the belt but `hue ~15-23` as a vehicle; `index 5` (yellow) renders `~48-62` as a passenger but `~39` as a vehicle.
+- The references do **not** show this shift — in `level37`'s reference the brown passengers read `10-20` and the yellow arm `32-37`, matching their vehicles. So the shipped tints are the reason the belt reads redder (brown) and greener (yellow) than the reference.
+- The global table is deliberately unchanged because `index 5` alone carries 198 of `level12`'s passengers. The seven reference levels bypass those legacy tints and use their atlas colours directly; changing the shared table would still restyle every already-validated level with no reference to check against.
+
+## 2026-09-18 Reference framing calibration
+
+- At equal canvas size (`344x556`) the reference and a current build differ structurally, not just in scale:
+
+  | band | reference | current build |
+  | --- | --- | --- |
+  | conveyor | 12-36% | 0-28% |
+  | road | 36-48% | 28-44% |
+  | vehicle field | 48-80% | 44-96% |
+  | bottom margin | 20% | 4% |
+
+- The ratios are not uniform (road height ratio `0.75`, field height ratio `0.62`), so this is not one camera-zoom number: the field is proportionally larger than the road compared with the reference. Matching it means changing both the global camera fit and the field's internal scale.
+- The reference frames carry a uniform 24px border (`296x508` content, aspect `0.583`, not `9:16`'s `0.5625`), and the `level40`-`level43` references show a video scrubber. Some of the reference's margin is therefore video framing, not game framing — establish the true content box before retuning the camera.
+- The playable now applies a reference-only `1.10` camera fit-height and a compacted conveyor curve/art transform (`0.88` X, `0.78` Z, translated down) for `level37`-`level43`. This aligns the loop's top/bottom bounds and keeps the existing global tuning unchanged for older levels. `level40`-`level43` also use a reference-only `1.15` vehicle-field X scale to match the wider diagonal matrices.
+
+## 2026-09-18 Supplied colour supplement composition
+
+- The supplied zip holds only prefabs and PNGs: no `.mat`, no texture assets, no materials embedded in the prefabs. The bus body material is the one element genuinely absent, so the nine vehicle atlases cannot be extracted from it.
+- The eight supplied passenger PNGs are **not** a different asset type: they are the same atlas layout as the shipped `color_0..10` set. Applying the blue atlas's body mask to any of them lands on one flat colour for 99.9% of the mask, and the skin mask overlaps the shipped atlas at IoU `1.000` for six of the eight (`girl02`'s two are `0.918`/`0.824`). They leave the body region pure white because Unity tints it via the material; only `black` bakes `#101010`.
+- Consequence: the supplied PNGs cannot be dropped in verbatim as `colorTextures`. The web runtime shares one atlas between vehicles and passengers, and the vehicle material applies no tint, so a white body region renders a white car. The body region must be painted; a first attempt that painted only the flat index-1 region rendered the body half white, because a vehicle also samples the body's highlight and shadow entries, which the shipped atlases keep in their own palette indices (`color_0_blue`'s family is 22 indices and 43% of the image, versus 31% for the flat entry alone).
+- `gray`, `mintgreen` and `white` are byte-identical files (`sha256:ea6088ee…`), so those three differ only by their material tint. `darkred` ships no texture; its prefab references the same texture as `gray`/`white`. `matchagreen` and `mintgreen` prefabs carry identical material overrides.
+- Shipped `passengerMaterial` sets `baseColor` to `#ffffff` for 7 of its 11 colours, so leaving it white is the established convention rather than an omission. Because the variant colour is now baked into the atlas, a non-white `baseColor` would double-tint; the new entries therefore keep `baseColor` white and take the supplied prefab's `m_EmissionColor`.
+
+## 2026-09-18 Reference-image limits
+
+- The seven reference images are `344x556` compressed frames carrying a `JQ 资源` watermark, not the game's native framebuffer. Comparing rendered output to them is reliable for **hue** and for **composition** (how many colour stops, and where they sit), but not for absolute brightness or saturation: every newly painted atlas renders roughly 12% brighter than its reference patch, while the untouched shipped `brown` renders slightly darker and more saturated than the same reference's brown.
+- At that resolution a single patch's average mixes vehicles, passengers, arrows, shadows and the pale page background. A `sat>=0.20` filter also silently drops pale cream, which made the warm side of `level39` look brown-dominant until the pale and mid-saturation populations were counted separately. Prefer per-population counts over one average when the patch contains both a pale and a saturated colour.
+
+## 2026-09-18 Supplied colour supplement and the 0-10 colour atlas contract
+
+- The existing `color_0..10_*.png` atlases share one UV layout but order their palettes differently; the correspondence is still one-to-one per region. The painted body is the highest-count palette entry in every atlas (index `1` in blue, index `0` in the other ten) and the body family is its highlight/shadow variants. A new variant can therefore be produced losslessly by rewriting only those body entries and keeping the donor's index map, skin, white and detail entries.
+- Colour ids stopped being array positions once the supplement ids `17-25` were added: `16` is unused, so `VEHICLE_COLOR_OPTIONS[i]`, `VEHICLE_COLORS[i]` and `PASSENGER_QUEUE_COLORS`-style positional lookups are wrong. Editor code must use `getVehicleColorOption(id)`.
+- A supplied colour whose atlas is dark cannot be brightened into the reference's pastel tone by scene lighting: adding white preserves hue and lands near the original hue, so the near-black teal `7` `(1,72,83)` cannot render as the references' light mint/matcha. That is why `level39` and `level40` needed genuine new colours instead of the closest existing `青`.
+- The reference screenshots alone cannot settle every colour stop: at `344x556` the vehicle-field band averages mix in white arrows, shadows and the light background, and the observed hue offset between an atlas and its rendered screenshot varies per level (`level37` `orange 20->21`, `level43` `blue 218->216`, but `level41` `green 130->149`). Stop *lightness* is the reliable discriminator; stop hue is not.
+- Reference level 39's third stop is a light, desaturated green (band average `(122,182,112)`), not the dark teal `7`, and the original `深绿绿青棕` name was therefore wrong. Reference level 40's left half is a uniform light mint `(107,196,173)`, which matches the supplied `mintgreen` swatch rather than the dark teal `7`. `level41`'s green, `level42`'s purple and `level43`'s blue/yellow were left on their existing indices because their reference saturation still matches those atlases.
+
 ## 2026-09-11 Hand hint behavior
 
 - The regular 3D guide hand and the first-click spotlight are separate systems. A no-mask requirement must disable `firstClickGuide`; setting only its opacity to zero still leaves its timed interaction behavior active.
@@ -775,6 +909,12 @@
 Full detailed 2026-07-07 findings were archived to:
 
 - `docs/project/archive/findings.full-2026-07-08.md`
+
+## 2026-09-29 前贴视频触发交互前 AUDIO_PLAY
+
+- 失败导出中的前贴控制器显式调用了 `HTMLMediaElement.play()`，部分平台检测会把它记录成交互前 `AUDIO_PLAY`；视频即使已静音也可能被误判。控制器现在只使用原生 `autoplay + muted`，并在任何加载前同时设置 `defaultMuted` 与 `volume = 0`，声音只在可信点击后恢复。
+- 前贴视频标签在 HTML 初始解析阶段就带有 `autoplay muted playsinline`，避免导出单 HTML 后初始化顺序变化；打包产物不再包含前贴控制器的显式 `video.play()` 调用。
+- Verification: 前贴单元测试、Chrome runtime smoke（含静音前贴和交互前音频门禁）通过；重新生成 `artifacts/applovin/index.html` 并通过 AppLovin 静态检查。
 ## 2026-09-07 Conveyor mechanism tuning boundary
 
 - Conveyor presentation values that were confirmed through the manual adjustment pass must not live in browser-saved `SCENE_TUNING`: the shipped contract is isolated in `src/conveyor-mechanism-config.js`.
@@ -791,3 +931,36 @@ Full detailed 2026-07-07 findings were archived to:
 - Vehicle records contain id, seats, hidden/turn flags, color, position, quaternion rotation, container type/id, and elevator layer. Mechanisms are linkage head/tail/distance; wrench/gear pair/color; second combination color; ambulance step limit; and firetruck time limit.
 - Container records cover ParkingArea, Garage, ConveyorBelt, GateQueue, and Elevator. Gate queues add path shape, lock, gap, and path points; elevators add a 2D size and upper/lower layers; conveyor groups add exit width.
 - Unity shortcuts include save/copy/paste/cut/duplicate/undo, delete, mirror, reset view, and toggles for vehicle snap/alignment guides/grid snap. Toolbar operations include depth rebuild, validation, CSV/Excel export, equal spacing, centering, vehicle-to-gate conversion, and vehicle lookup.
+
+# Level Editor Vehicle/Passenger Colour Binding - 2026-09-18
+
+- The web authoring document has no persistent `vehicleId -> passenger` relation. Colour edits therefore bind seats deterministically to same-colour passenger occurrences in queue order and vehicle document order, with combination primary seats before secondary seats.
+- The binding replaces colours in place, so manual queue layout is preserved; capacity reconciliation remains the final guard for malformed or incomplete queues. An explicit persisted binding graph can be added later if per-passenger identity becomes a requirement.
+## 2026-09-24 识图路线：先做确定性二维预处理，AI 只做候选补全
+
+- 当前照片识别的主要误差不是“没有把 3D 变成 2D”，而是箭头短、车身阴影/高光、编辑器叠加层和斜向阵列被简化成四向朝向。`src/level-image-recognizer.js` 已保留箭头主轴，按 15° 量化 `yaw`，并沿主轴回采车身颜色；垫图旋转也会同步到车辆朝向。
+- 暂不把视觉大模型作为主识别器：大模型适合给出车辆候选框/方向/颜色，但对 48+ 辆车的像素级中心和稳定排序不可作为直接落盘数据，且会引入网络、密钥、成本和平台部署依赖。候选结果应回到同一套本地校验、预览和人工修正流程。
+- 下一阶段若继续提升，优先做“单张照片四点校正/裁剪 -> 每车按箭头旋转到 canonical 2D patch -> 实例分割/颜色与 OBB 估计 -> 置信度和漏检/重复提示”。对当前径向构图不要启用整图行列吸附；平面校正主要服务于车身尺度和遮挡处理，不应重写已识别的世界坐标。
+
+## 2026-09-24 识图失败样本根因
+
+- 用户提供的失败截图带有编辑器红色安全框、网格和编号牌，不是车辆原图。白色编号牌会被箭头检测器解释成车辆，单张图产生 `125` 个候选并形成 `42px` 假网格。
+- 识别入口现在对跨图红框 fail-closed，UI 会提示重新上传无红框/网格/编号牌的原图；大型白色规则矩形也通过箭头剖面过滤。不能靠调颜色容差解决这类输入污染。
+- 箭头照片模式另外按箭头轴线扫描车身长度，自动把明显长车识别为 10 座；手动座位数仍优先。
+
+## 2026-09-29 全平台导出 DevTools 超时
+
+- 失败根因是远程导出并发启动多个平台及 Android/iOS 双设备 Chrome 检测，容器资源不足时 Chrome 在 DevTools 端口监听前退出或卡住；旧进程还会继续占用临时调试端口。
+- 远程容器固定 `PLAYABLE_EXPORT_CONCURRENCY=1`，runtime gate 使用进程组清理并支持导出中止；DevTools 启动等待为 `15s`，服务端导出超时为 `10min`。
+- 直接全平台导出已完成 14 个变体，自动检查 `468/496` 通过；Docker CLI 当前不支持 `docker build --check`，容器镜像语法仍需在支持 BuildKit check 的环境验证。
+
+## 2026-09-29 编辑器直接导出策略
+
+- 用户明确要求导出按钮不再检测，因此编辑器 HTTP 导出路由传入 `skipChecks: true`；本地 CLI 仍默认执行完整规则、payload 和 runtime 检测，避免降低离线发布验证能力。
+- 直接导出不是平台合规保证：聚合包 manifest 使用 `EXPORTED_WITHOUT_LOCAL_CHECKS`，下载提示要求后续平台验收。Google Ads 的 fallback 图从已存在的备份资源复制，不启动 Chrome 截图流程。
+## 2026-10-13 Exported playable CTA fallback
+
+- 普通浏览器打开平台导出包时没有广告宿主对象，原先只有 AppLovin 有预览回退，Google/Meta/Unity/Mintegral/Moloco/TikTok 会因缺少平台 CTA API 而无法跳商店。
+- `src/platform-bridges/basic.js` 统一提供已插入 DOM 的 `<a>` 预览跳转；各平台桥接仅在原生 API 不存在时使用该回退，容器内仍保持原平台 CTA 契约。
+- 真实广告平台仍需在官方预览中验收；浏览器回退只解决导出文件直接打开测试时的跳转问题。
+

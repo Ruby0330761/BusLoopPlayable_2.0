@@ -27,6 +27,18 @@ On 2026-09-08, 62 byte-unique TinyPNG results replaced 112 existing paths across
 | --- | --- | --- |
 | `public/assets/unity/models/Arrow_01.fbx` | wired/packed | Current ordinary vehicle direction marker, refreshed from Unity `Assets/BusJam/Game/Models/Car_0307/Arrow_01.fbx` and stored as gzip bytes in place (`126,928 -> 18,056` bytes); turn vehicles continue to use their dedicated `Arrow_02` model. |
 
+## Supplied colour supplement (Unity indices 17-25)
+
+`车辆及小人颜色补充.zip` contains 36 prefabs and 8 PNGs, nothing else: per variant three bus prefabs (`bus_<name>_4/6/10.prefab`), one `passenger_<name>.prefab`, and — for eight of the nine — one passenger PNG. There are no `.mat` or texture assets in the bundle and no embedded materials inside the prefabs, so the bus body material is the one genuine gap.
+
+The eight passenger PNGs are the same 512x512 atlas layout as the shipped `color_0..10` set: applying the blue atlas's body mask to them lands on a single flat colour for 99.9% of the mask (skin-mask IoU is `1.000` for six of them, `0.918`/`0.824` for the two `girl02` textures). They leave the body region **pure white** because Unity tints it through `m_BaseColor` / `m_EmissionColor`; only `black` bakes its own body colour (`#101010`).
+
+| Resource | Status | Notes |
+| --- | --- | --- |
+| `artifacts/color-supplement-sources/*.png` | source | The eight supplied textures, kept verbatim as the durable input. `gray`, `mintgreen` and `white` are byte-identical (`sha256:ea6088ee…`); `darkred` ships none, and its prefab references the same texture as `gray`/`white`, so it reuses that shared neutral source. |
+| `public/assets/unity/textures/color_17..25_*.png` | derived | Produced by `node scripts/generate-color-variant-textures.mjs`. Non-body pixels (face, skin, eyes, detail) are the supplied art untouched; body pixels take highlight/shadow shading from a shipped atlas whose palette is re-hued to the variant colour, because a vehicle samples the body family and the supplied body is a flat tint placeholder. `black` ships exactly as supplied. |
+| `public/assets/applovin/textures/color_17..25_*_q85.webp` | wired/packed | Delivery derivatives from the same script; referenced by every level's `assets.colorTextures[17..25]` and all nine are inlined by the AppLovin packager. |
+
 ## Conveyor layouts
 
 | Resource | Status | Notes |
@@ -74,6 +86,22 @@ Conveyor vehicles now participate in the conveyor-specific collision context as 
 | `public/assets/unity/mechanisms/ambulance/textures/Idle_girl_rescuer.png` | wired | Ambulance passenger texture. |
 | `public/assets/unity/mechanisms/ambulance/textures/Main_Gamepanel_BubbleLove.png` | wired | Ambulance step-limit board texture. |
 | `public/assets/unity/mechanisms/ambulance/audio/ambulance_countdown_V2.wav` | wired | Ambulance countdown cue. |
+
+## Firetruck and police car
+
+| Resource | Status | Notes |
+| --- | --- | --- |
+| `public/assets/unity/mechanisms/firetruck/models/Fire_Engine.fbx` | wired | Firetruck vehicle model copied from the supplied special-vehicle package and loaded by the editor/runtime for `mechanism.type: firetruck`. |
+| `public/assets/unity/mechanisms/firetruck/models/Idle_boy_firefighter.fbx` | wired | Firefighter passenger FBX is loaded as the dedicated passenger visual. The accompanying VAT mesh is version 2 and is kept as an extraction artifact until the loader supports that format. |
+| `public/assets/unity/mechanisms/firetruck/textures/*` | wired | Firetruck body, firefighter, and shadow textures. |
+| `public/assets/unity/mechanisms/firetruck/audio/*` | wired | Firetruck alert/clear clips and source delivery variants. |
+| `public/assets/unity/mechanisms/firetruck/ui/*` | retained | Supplied firetruck countdown, warning, and guide UI assets are kept with the mechanism package. |
+| `public/assets/unity/mechanisms/police/models/Police_Car_001.fbx` | wired | Police-car vehicle model copied from the supplied special-vehicle package and loaded by the editor/runtime for `mechanism.type: police`. |
+| `public/assets/unity/mechanisms/police/models/Idle_boy_police.fbx` plus VAT files | wired | Police passengers use the dedicated VAT visual and packed animation map; the source FBX remains packaged for inspection/fallback. |
+| `public/assets/unity/mechanisms/police/textures/*` | wired | Police-car and police-passenger textures. |
+| `public/assets/unity/mechanisms/police/audio/police_siren.bin` | wired | Police siren clip selected only when a police vehicle is present. |
+
+The level editor can add both vehicle types directly. Their static vehicle models are displayed in the 3D preview, police passengers use the dedicated animated VAT visual, and firefighters use the dedicated static FBX visual because the supplied firefighter VAT mesh is version 2. Dedicated countdown/siren behavior remains follow-up work.
 
 ## Turn vehicle
 

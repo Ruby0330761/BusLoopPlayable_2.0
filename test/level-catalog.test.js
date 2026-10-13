@@ -1,4 +1,4 @@
-﻿import test from 'node:test';
+import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { LEVEL_CATALOG, LEVEL_OPTIONS } from '../src/level-catalog.js';
@@ -460,7 +460,7 @@ test('editor level selection reloads the runtime and production build regenerate
   const packageJson = JSON.parse(readFileSync('package.json', 'utf8'));
   assert.match(editorSource, /'level\.selected'/);
   assert.match(editorSource, /LEVEL_OPTIONS/);
-  assert.match(mainSource, /getLevelDefinition\(SCENE_TUNING\.level\?\.selected\)/);
+  assert.match(mainSource, /getLevelDefinition\(selectedKey\)|getLevelDefinition\(SCENE_TUNING\.level\?\.selected\)|resolveSelectedLevel\(selectedKey, getLevelDefinition\)/);
   assert.match(mainSource, /setActiveLevel\(levelSession\.currentLevel\(\)\)/);
   assert.match(mainSource, /path === 'level\.selected'/);
   assert.match(mainSource, /fetch\('\/__playable-level'/);
@@ -472,6 +472,10 @@ test('editor level selection reloads the runtime and production build regenerate
   assert.match(generatorSource, /artifacts', 'web-levels'/);
   assert.match(generatorSource, /levelDocumentToRuntime/);
   assert.match(generatorSource, /deriveLevelMechanics/);
+  assert.ok(
+    generatorSource.indexOf('if (existsSync(webLevelPath))') < generatorSource.indexOf('if (LEVEL_CATALOG[levelKey])'),
+    'production generation must prefer saved web-level documents over catalog entries'
+  );
   assert.match(generatorSource, /SCENE_TUNING\.background\?\.asset/);
   assert.match(generatorSource, /background: selectedBackground/);
   assert.match(generatorSource, /Selected background asset does not exist/);
@@ -481,4 +485,18 @@ test('editor level selection reloads the runtime and production build regenerate
   assert.match(viteConfigSource, /'level12'/);
   assert.match(viteConfigSource, /'level17'/);
   assert.match(viteConfigSource, /'level18'/);
+});
+
+test('production generation keeps the editor web-level override for duplicate catalog keys', () => {
+  const document = JSON.parse(readFileSync('artifacts/web-levels/level12.json', 'utf8'));
+  const authored = levelDocumentToRuntime(document, LEVEL_CATALOG.level5);
+  assert.notDeepEqual(authored.passengerQueues, LEVEL_CATALOG.level12.passengerQueues);
+  assert.notDeepEqual(
+    authored.vehicles.map(({ id, x, z, yaw }) => [id, x, z, yaw]),
+    LEVEL_CATALOG.level12.vehicles.map(({ id, x, z, yaw }) => [id, x, z, yaw])
+  );
+  const generatorSource = readFileSync('scripts/generate-active-level.mjs', 'utf8');
+  assert.ok(
+    generatorSource.indexOf('if (existsSync(webLevelPath))') < generatorSource.indexOf('if (LEVEL_CATALOG[levelKey])')
+  );
 });

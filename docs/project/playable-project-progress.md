@@ -1,5 +1,383 @@
 # Playable Project Progress
 
+## Completed On 2026-09-30 - Pre-roll video download
+
+- 场景编辑器“前贴视频”新增下载按钮，内置视频和自定义上传视频都可下载；下载使用当前显示名称生成安全的 `.mp4` 文件名，并显示实际文件大小与失败状态。
+- Verification: `node --check src/scene-editor.js`、前贴/编辑器契约测试、`npm run build` 和 `git diff --check` 通过；版本 `20260930-2022` 已部署到 `http://10.0.0.54:12142/`，远程前贴下载资源返回 `200`，Range 请求返回 `206`。部署包：`http://10.0.0.6:8081/4b/4b3831e1f58cd12ac7704ed62a859ed4.zip`。
+- 服务看板：`http://deploy.hupogames.com/server`。
+
+## Completed On 2026-09-30 - Custom pre-roll videos are compressed before storage/export
+
+- 自定义前贴视频上传现在由服务端用 FFmpeg 转码为 H.264/AAC（`720x1280` 上限、`faststart`、两档码率兜底），压缩结果控制在 `2 MB` 以内；编辑器状态会显示原始大小与压缩后大小。
+- 编辑器首次读取前贴列表时会迁移历史未压缩的 `artifacts/editor-prerolls/*.mp4`，导出工作区也会对未带压缩元数据的旧视频再做一次兜底压缩；Docker 镜像已包含 `ffmpeg`。
+- `TP1331` 从 `9,443,997` bytes 压到 `239,896` bytes，`TP1332` 从 `9,469,681` bytes 压到 `293,449` bytes。使用 TP1331 导出的 AppLovin HTML 从约 `15.15 MB` 降到 `2,878,114` bytes。
+- Verification: `test/pre-roll-transcoder.test.js`、前贴/导出聚焦测试、`npm run build`、上传接口实测、历史文件迁移、Range 请求和完整 AppLovin 导出均通过。已将版本 `20260930-1834` 部署到 `http://10.0.0.54:12142/`；远程 FFmpeg 上传 TP1331/TP1332 后分别为 `241,265` / `289,583` bytes，使用 TP1331 的线上 AppLovin 导出为 `4,395,612` bytes（低于 5 MB），首页、关卡接口和 Range 请求返回正常。
+
+## Completed On 2026-09-30 - Custom pre-roll video management
+
+- 场景编辑器“前贴视频”现在支持上传 MP4、修改自定义视频显示名称和删除自定义视频；内置 `TP1327`、`TP1333`、`TP1334` 仍受保护。视频持久化在 `artifacts/editor-prerolls/`，并支持浏览器 Range 预览。
+- 已加入用户提供的 `TP1331.mp4`、`TP1332.mp4`，上传后可在前贴下拉框选择；导出工作区会复制当前选中的自定义视频并将其内联到试玩包。
+- Verification: 前贴路由上传/重命名/删除与 Range 请求实测通过；`node --check`、前贴/导出聚焦测试、`npm run build` 通过。9 MB 视频会使 AppLovin 单 HTML 超过 5 MB 平台限制，导出前需使用平台允许的压缩版本。
+
+## Completed On 2026-09-29 - Q9V2 online-editor export store-link repair
+
+- 排查线上编辑器导出的 Q9V2 14 个试玩：Android/iOS 变体各自把同一家商店地址复制到两个 `storeLinks` 槽位，反向 UA 预览时在 CTA 前抛出 fallback URL 校验异常；原 manifest 的 runtime 全部是 `skippedRuntime: true`，因此没有发现问题。
+- 导出器现在要求最终 HTML 同时嵌入合法 Google Play 与 Apple App Store product URL，并对每个品牌变体执行目标/反向 UA runtime smoke；复用构建源也会重新检查链接。远程快速模式只复用 Google Ads backup.jpg，不再跳过 runtime，只有显式 `PLAYABLE_EXPORT_SKIP_RUNTIME=1` 才能关闭门禁。
+- 原始成品保留不变；Q9V2 修正版位于 `/Users/von/wxj/试玩成品/BUS/bus-loop-all-platforms-Q9V2/修正版/`，只替换商店链接槽位，未改玩法和资源。
+- Verification: `node --test test/playable-export.test.js`（29/29）、`node --test test/playable-runtime-smoke.test.js`（12/12）、`npm run build` 通过；修正版各平台双 UA 检查通过。
+
+## Completed On 2026-09-29 - Repair three rejected Moloco iOS CTA artifacts
+
+- The three rejected files for Q10V1, Q7V5, and Q10V3 had a valid `FbPlayableAd.onCTAClick()` call, but their iOS export copied the Apple App Store URL into the Android fallback slot. CTA runtime validation therefore threw before reaching the Moloco bridge.
+- Copied corrected artifacts to `/Users/von/wxj/试玩成品/BUS/BUS-改/`, changing only `storeLinks.android` to the Google Play product URL and retaining the iOS URL.
+- Verification: Moloco static checks `15 pass / 0 warning / 0 fail` per file; iOS UA runtime smoke `13/13 PASS` per file with a captured zero-argument `FbPlayableAd.onCTAClick()`.
+
+## Completed On 2026-09-29 - Export uses authored web-level overrides
+
+- 发现编辑器试玩与生产导出来源不一致：编辑器运行时会优先读取 `artifacts/web-levels/level<number>.json`，而生产生成脚本此前先命中同编号的 Unity `LEVEL_CATALOG`，导致同一关卡导出后可能恢复成另一套车辆布局、队列和机制。
+- `scripts/generate-active-level.mjs` 现在与编辑器保持相同优先级：存在已保存网页关卡时先转换该文件，只有不存在时才回退到 Unity catalog。
+- Verification: `node --test test/level-catalog.test.js test/playable-export.test.js`（44/44）。
+
+## Completed On 2026-09-29 - Mintegral fallback store links remain valid across preview UAs
+
+- Mintegral Android/iOS 变体此前把同一个商店地址写进 `android` 和 `ios` 两个槽位；当平台预览用相反设备 UA 打开时，CTA 会校验错误域名并抛出 `Fallback ios/android store link must be a valid ... URL`。导出变体现在保留两个合法的 Google Play / Apple App Store 地址，复用构建时只替换图标，不再污染另一平台的链接。
+- 已修复并重新打包 `BL_Q16V2_N_EN_PL_WXJ_TJW_MT_Android.zip` 与 `BL_Q16V2_N_EN_PL_WXJ_TJW_MT_iOS.zip`；没有改动关卡、运行时玩法或画面数据。
+- Verification: 两个 Mintegral 包交叉 UA 运行检查均 `15/15 PASS`；`node --test test/playable-export.test.js` `29/29`。
+
+## Completed On 2026-09-29 - Firefighter passengers stay on the conveyor path
+
+- 之前把 `Idle_boy_firefighter.fbx` 作为消防员乘客显示时，FBX 的导出根节点带有机制辅助网格和偏移，消防员会在传送带下方出口处像“单独站着”一样错位。现在改用同资源的 VAT passenger mesh/animation map；并兼容消防员专用 `VATM v2` 网格格式，保持消防员仍是专属小人但与警察、救护车共享同一传送带坐标契约。
+- Verification: `node --check src/scene-view.js`、`node --test test/mechanism-resources.test.js`（8/8）、`git diff --check`、`npm run build`；CDP `level999` 验证消防车 VAT 资源加载成功（`706x79`），消防员乘客不再使用偏移 FBX。
+
+## Completed On 2026-09-29 - Remove stray firefighter badge geometry
+
+- 删除消防员乘客上额外叠加的程序化头盔/外套徽标；该徽标会在消防员模型之外形成一个看起来固定不动的小消防员。随后已将消防员乘客统一收敛到同资源的 VAT 模型路径，避免 FBX 根节点偏移再次复现。
+- Verification: `node --check src/scene-view.js`、`node --test test/mechanism-resources.test.js`（8/8）、`git diff --check`；CDP 浏览器验证 `level999` 中徽标数量为 `0`，专属消防员模型仍可见。
+
+## Completed On 2026-09-28 - Preserve dedicated firefighter passengers after tuning refresh
+
+- 修复场景调参刷新时把消防员/警察专属小人材质重新套成普通乘客贴图的问题；专属乘客现在会继续保留自己的模型和贴图，不会只剩普通小人或头盔局部。
+- Verification: `node --test test/mechanism-resources.test.js`（8/8）、`node --check src/scene-view.js`、`git diff --check`、`npm run build` 通过。
+
+## Completed On 2026-09-28 - Firefighter passenger axis correction
+
+- 截图中的消防员不是车身资源缺失，而是 `Idle_boy_firefighter.fbx` 按侧卧坐标导出；载入时增加 `-90° X` 轴校正后，再按统一小人高度归一化，消防员和水管部件会竖直站立。
+- Verification: `node --test test/mechanism-resources.test.js`（8/8）、`node --check src/scene-view.js`、`git diff --check`、`npm run build` 通过。
+
+## Completed On 2026-09-28 - Special vehicle colours are fixed in the level editor
+
+- 警车、消防车、救护车和豪华车在关卡编辑器中不再显示手动颜色、小人颜色微调或车辆区域颜色控件；批量选区包含特殊车辆时同样禁用颜色编辑。
+- 机制切换到警车/消防车/救护车会自动锁定对应颜色索引 `11/12/13`，乘客队列同步更新；切回普通车辆时恢复为可编辑的普通蓝色。
+- Verification: `node --test test/level-editor-model.test.js test/level-layout-editor.test.js`（32/32）、`node --check`、`git diff --check` 和 `npm run build` 通过。
+
+## Completed On 2026-09-28 - Dedicated police and firefighter passengers
+
+- 警车乘客现在使用 `Idle_boy_police` 的专属 VAT 小人和动画贴图；消防车乘客资源已同时接入，后续由 2026-09-29 的 VAT 路径修正负责最终呈现。
+- 特殊乘客会绕过空间传送带的通用小人实例化，避免被通用材质覆盖；`level999` 浏览器验证确认消防员 `16` 个、警察 `88` 个专属小人可见，3D renderer 正常且没有资源初始化失败。
+- 已重新部署 `bus-loop-playable-editor` 到 `http://10.0.0.54:12142/`，沿用端口 `12142` 和持久化 artifacts 卷。部署包：`http://10.0.0.6:8081/cf/cffb4cfa88b05cd38b427beca9e83635.zip`。
+- Verification: `node --check src/scene-view.js`、专项机制测试 `2/2`、`git diff --check`、`npm run build` 通过；线上首页、消防员 FBX、警察 VAT 和消防员贴图均返回 HTTP 200，线上 `level999` 注入验证通过。
+
+## Completed On 2026-09-28 - Remote editor synced with current workspace
+
+- Updated `src/build-version.js` to `20260928-1522`, so the scene editor banner now shows `SCENE EDITOR v20260928-1522`.
+- Built and uploaded the current workspace package `http://10.0.0.6:8081/b1/b1b168dec4900f4449990240dbf9347e.zip`, then redeployed `bus-loop-playable-editor` while reusing port `12142` and its persistent artifacts volume.
+- Verification: remote root and `/__level-authoring` return HTTP 200; the new firetruck and police model assets return HTTP 200; the served scene-editor chunk contains `20260928-1522`.
+
+## Completed On 2026-09-28 - Supplied firetruck and police vehicles added to the editor
+
+- Compared `/Users/von/Downloads/模型文件以及贴图/特殊车辆` with the existing mechanism package. Ambulance and luxury resources were already present; the missing firetruck and police-car resources are now copied under `public/assets/unity/mechanisms/firetruck/` and `public/assets/unity/mechanisms/police/`.
+- Added resource manifests, mechanism metadata detection, and runtime vehicle-model loading for `firetruck` and `police`. The editor's add-elements palette now exposes `添加消防车`, `添加救护车`, and `添加警车`; new entries keep their special mechanism type in saved/exported level data.
+- Firetruck/police passenger VAT and supplied UI/audio resources are packaged for follow-up behavior work. This pass intentionally covers editor placement, static 3D vehicle presentation, and resource selection; countdown/siren behavior is not yet enabled.
+- Verification: mechanism manifests resolve to existing files, focused mechanism/editor tests pass, `node --check` passes for touched runtime/editor modules, and `npm run build` succeeds.
+
+## Completed On 2026-09-28 - Latest editor deployment
+
+- Deployed the current workspace to `bus-loop-playable-editor` at `http://10.0.0.54:12142/`, reusing host port `12142` and the existing persistent artifacts volume.
+- Deployment package: `http://10.0.0.6:8081/98/98c91aad29bc1302f2a80cff91acf15a.zip`.
+- Verification: production build passed; the remote editor returned HTTP 200, `/__level-authoring` returned authored levels, and all three pre-roll videos are served from the deployed bundle.
+
+## Completed On 2026-09-24 - Configurable pre-roll videos
+
+- Added a pre-roll layer that loads alongside the 3D scene, holds until both the selected video and game are ready, then fades directly into playable input without exposing the loading screen. Gameplay and opening-guide timing stay paused while the video is active.
+- Added `TP1327`, `TP1333`, and `TP1334` as editor-selectable H.264/AAC assets; `TP1327` is enabled by default. Autoplay starts muted for ad-WebView compatibility, with optional sound enabled only after a trusted tap.
+- Export packaging embeds only the selected MP4. The direct AppLovin artifact is `3,288,521` bytes and passes all static checks plus Chrome runtime smoke (`13/13`), including the pre-roll transition and pre-interaction audio gates.
+- Verification: pre-roll unit tests `3/3`, focused export/runtime tests and production build pass, and headless Chrome screenshots confirm a real video frame before a clean transition to the rendered game. The full seven-platform Android/iOS export passes all 14 static, payload, and runtime gates (`468/496` local checks; remaining checks require official platform acceptance); aggregate ZIP is `27,070,956` bytes.
+
+## Completed On 2026-09-24 - Opening guide previews blocked target vehicles
+
+- The opening guide no longer disappears when its exact configured vehicle is blocked at the start of a dense level. It highlights that vehicle without falling back to another id; the reusable idle/click hint still requires a movable target.
+- The opening-guide target control now lists only vehicle ids from the active level, so the selected id is the authored small-vehicle id instead of an arbitrary `1-200` value.
+- Vehicle ids selected from the list are persisted as numbers, and the editor repairs the string value written by the first dropdown implementation. Browser export no longer fails with `tuning.firstClickGuide.vehicleId must be finite`.
+- Verification: focused guide tests pass, and browser QA on `Q7V1改` confirms blocked vehicle `88` displays the spotlight and hand and exports with a numeric target id.
+
+## Completed On 2026-09-24 - Opening guide highlight follows the typed vehicle id
+
+- 场景编辑器"开场引导动画"的"目标车 ID"高亮的车，和关卡编辑器里标着同一 ID 的车不是同一辆。ID 和坐标都没问题：关卡编辑器画布与运行时场景对同一 ID 的位置一致（level2 上 43 在左上、100 在底排）。
+- 错在 `resolveGuideHandTarget`（`src/scene-view.js`）：它把填写的车放进候选列表首位，再返回第一辆能开出去的车。目标车被挡住开不出去时，高亮就静默换成车辆数组里第一辆没被挡的车，面板上的数字不变。level2 上填 100，它被 98、99 挡住，高亮落到 ID 最小且无阻挡的 43，正好在车阵左上角。
+- 现在只认填写的那一辆：ID 不存在时不高亮任何车；被挡住时开场引导仍高亮该车，但不会静默换成另一辆。闲置小手提示仍只对可开出的车辆显示。
+- Verification: `node --test test/guide-hand.test.js` 通过，用例覆盖精确 ID、被挡目标和未知 ID；浏览器实测 `Q7V1改`：被挡的目标 `88` 仍在自身画布投影位置显示遮罩和手势。
+
+## Completed On 2026-09-24 - 识图摆放 reads photographed formations
+
+- 识图摆放原先只能吃编辑器导出的截图：真实照片里的箭头只有几个抗锯齿像素，车身又被顶光照得很亮，导致车辆数和颜色都读错。`src/level-image-recognizer.js` 现在按照片的实际情况识别。
+- 朝向取箭头窄的一端作为尖端，采样从尖端往回走到车身，避开白色箭头本身。采样若落在箭头根部的暗边（又暗又偏红）就继续往远处取，若读到近乎灰色的背景就改从箭头另一侧取样。
+- 颜色不再靠与色板的距离：照片里的亮黄离深黄色板比离正黄更近，橙和棕又共用色相。现在色相定色系、亮度定深浅（黄 38°–65° 且饱和，暗橙归棕），只对这种照片读数生效，合成的纯色块仍走原来的色板匹配。
+- 核对结果：`artifacts/color-supplement-sources/1.png` 实际是 45 辆（红 20 / 黄 13 / 橙 10 / 棕 2），此前记的 44 漏了左上角那辆箭头淡入车顶的黄车；`4.png` 是 60 辆（红 27 / 黄 20 / 橙 10 / 棕 3）。两个数字都逐辆对过照片。
+- 照片里的箭头太短，读出的朝向只作为初始值且全部标记为未确认，留给操作者复核。车库、传送带、闸机和电梯不在识别范围内。
+- Verification: `test/level-image-recognizer.test.js` `14/14`，其中照片用例锁定了两张参考图的车辆数、逐色计数和朝向未确认；完整套件 `248` 通过 / `25` 失败，失败项与改动前基线一致，都是既有的关卡布局数量断言。
+
+## Completed On 2026-09-24 - Photo recognition keeps diagonal headings
+
+- `src/level-image-recognizer.js` 不再把箭头方向强行压成上下左右四类：保留箭头主轴并按 15° 量化到车辆 `yaw`，颜色采样也沿箭头主轴回溯车身。径向/斜向车辆阵列因此不会在识别后全部变成正交朝向。
+- Verification: `node --test test/level-image-recognizer.test.js`（15/15），现有两张照片样例的车辆数与逐色计数保持不变，并确认结果中包含斜向 yaw；垫图旋转同步 yaw 的回归用例通过。
+
+## Completed On 2026-09-24 - Recognition rejects editor-result screenshots
+
+- 失败样本证明输入已经是编辑器结果图：红色安全框、网格和编号牌被白色箭头检测器当成车辆，产生 `125` 个候选和假网格。`detectEditorOverlayEvidence` 现在在识别入口检测跨整幅图的红框，直接停止识别并提示重新上传无红框/网格/编号的原始车辆图，避免把垃圾结果写进关卡。
+- 大型白色矩形也增加了箭头轮廓剖面过滤，减少编号牌和规则矩形误报；真实照片 `1.png` / `4.png` 仍保持 `45 / 60` 辆和逐色计数。
+- 箭头模式的自动座位数不再固定为 4：会扫描箭头轴线两侧的车身色带，按相对长度把明显长车标成 10 座；手动选择 4/6/10 时仍完全服从手动值。
+- Verification: `test/level-image-recognizer.test.js` `16/16`，包含编辑器结果图 fail-closed 回归；`level-editor-model` 与 `level-layout-editor` 聚焦测试继续通过。
+
+## Completed On 2026-09-23 - Q9V1 to Q9V4 orientation and colour correction
+
+- 编辑器里 Q9V1 整片倒过来、车头全部反向。原因是记录的朝向表把图片方向映射反了：编辑器画布 `screen y = -z`、箭头指向 `-y`，所以 authored yaw 0 在编辑器和运行时里都是朝上，正确映射是 `up: 0, down: 180, left: 90, right: 270`。
+- 四个关卡的每辆车都按参考图重新核对了位置、朝向和颜色带，`scripts/create-q9-levels.mjs` 现在为每辆车显式记录颜色，不再靠箭头中心采样（那里采到的是白色箭头）。树干的深棕色仍然由 `STEMS` 覆盖到 `#6e3a22`。
+- 颜色统计：Q9V1 红 20 / 黄 12 / 橙 10 / 棕 2；Q9V2 绿 4 / 黄 14 / 红 10 / 橙 12 / 棕 12；Q9V3 青 20 / 白 11 / 紫 11；Q9V4 红 27 / 黄 20 / 橙 10 / 棕 3。
+- Verification: 重新生成的四份文档都通过 `validateLevelDocument`，0 条警告，座位与乘客队列逐色持平；按编辑器同一套坐标和 yaw 渲染的对照图与四张参考图的形状、朝向、颜色带一致。
+
+## Completed On 2026-09-22 - Q9V1 to Q9V4 picture layouts
+
+- Added four web authoring levels traced from the supplied reference photos: `artifacts/web-levels/level52.json` (`Q9V1`, maple leaf, 44 vehicles), `level53.json` (`Q9V2`, pumpkin, 52 vehicles), `level54.json` (`Q9V3`, spiral, 42 vehicles), and `level55.json` (`Q9V4`, dense maple leaf, 60 vehicles).
+- Each vehicle keeps the reference photo's position, heading, and colour band. Q9V1 is red/orange/yellow with one dark-brown trunk; Q9V2 is red/orange/yellow around a brown inner ring with a green stem; Q9V3 is cyan/white/purple; Q9V4 repeats the maple palette with a three-vehicle trunk. Every vehicle is a 6-seater and both passenger queues match the seat totals exactly.
+- `scripts/create-q9-levels.mjs` regenerates the four documents from the reference images and the recorded per-vehicle headings.
+- Verification: all four documents pass `validateLevelDocument` with no errors or warnings, and every colour's seat count equals its passenger count.
+
+## Completed On 2026-09-22 - Formation rotation redeployed as a rigid body
+
+- 车辆整体旋转现在是刚体旋转：位置绕当前关卡车阵包围盒中心旋转，车头朝向按同一角度反向叠加，车阵形状与相对布局保持不变；点击与碰撞的逆映射共用同一个旋转中心。
+- 编辑器面板标题旁新增构建版本号，来源是 `src/build-version.js`，按打包时间戳命名。
+- 已重新部署 `bus-loop-playable-editor` 到 `http://10.0.0.54:12142/`，沿用端口 `12142` 与持久化 artifacts 卷，包地址 `http://10.0.0.6:8081/23/23ba17077ed3f64dcdb2c30b5738c014.zip`。
+- Verification: level33 上 20°/45°/90° 的刚体位置误差与车头朝向误差均为 0；线上 `assets/scene-editor-zx61OgXH.js` 含版本号 `20260922-1745`。
+
+## Completed On 2026-09-22 - Store links split per branding variant
+
+- Android 与 iOS 品牌变体现在各自只携带自己的商店地址：变体调优把 `storeLinks` 的两个槽都写成该变体的链接，运行时无论按设备选哪个槽都落到同一家商店。
+- 回退链接原先在模块加载时快照一次，而刷新只放在 `loadSavedTuning` 里，导出构建会把整个编辑器分支裁掉，导致 iOS 包点击 CTA 时用 android 规则校验 App Store 地址并抛 `Fallback android store link must be a valid HTTPS Google Play product URL`。刷新改到 `startRuntime` 开头，生产包里也会执行。
+- 本地运行时检测只模拟移动视口、不改 UA，iOS 包在桌面 Chrome 里会被判成 Android。检测现在按变体模拟设备：iOS 变体用 iPhone UA，Android 变体用 Android UA。
+- Verification: `node --test test/playable-export.test.js`（27/27）、`node --test test/playable-runtime-smoke.test.js`（11/11）；七平台双变体聚合导出全部通过，`bus-loop-all-platforms.zip` `19,166,068` 字节，14 个产物结论均为 `PASS`。每个产物里只有本变体的商品地址（Android 为 `play.google.com/store/apps/details`，iOS 为 `apps.apple.com/us/app`），另一家商店只出现在链接校验规则的域名表里。
+
+## Completed On 2026-09-22 - Mintegral branding suffix uses underscores
+
+- 一键导出全部在 Mintegral 变体上被本地规则拦截：`MINTEGRAL-ART-002` 要求 ZIP 基础名只含字母、数字和下划线，而 Android/iOS 品牌后缀 `-Android` / `-iOS` 是在基础名的连字符替换之后才拼接的，连字符漏进了最终文件名。
+- `buildPlayableArtifactName` 现在对 Mintegral 的完整基础名（含后缀）统一把连字符替换成下划线；其余平台的连字符命名不变。
+- Verification: `node --test test/playable-export.test.js`（27/27）；用当前调优重跑的七平台聚合导出通过，`bus-loop-all-platforms.zip` `19,166,383` 字节，本地检测 `454/482`，结论 `LOCAL_RULES_PASSED_AWAITING_PLATFORM_ACCEPTANCE`。
+
+## Completed On 2026-09-22 - Export build survived the tuning rewrite
+
+- 编辑器导出失败（“试玩包生成或本地检测失败”）的原因是生产构建报错：`src/game-model.js` 与 `src/scene-view.js` 从 `src/scene-tuning.js` 导入 `getVehicleAreaPivot`，而 `scripts/apply-scene-tuning.mjs` 在导出时把该文件整段重写成只含 `SCENE_TUNING` 常量，函数导出随之丢失。
+- 把 `getVehicleAreaPivot` 挪到独立的 `src/vehicle-area.js`，运行时与测试改为从那里导入；`scene-tuning.js` 重新只承载调优数据，导出重写不再影响运行时代码。
+- Verification: 新增回归测试通过；用当前 `artifacts/scene-tuning.json` 复现的 AppLovin 导出通过，产物 `2,545,829` 字节，本地检测 `30/32`（余下 2 项为既有的官方/人工门）。
+
+## Completed On 2026-09-22 - Dual-platform branding export variants
+
+- 一键导出全部现在分别构建 Android 与 iOS 试玩包，使用 `/assets/icon-android.jpg` 与 `/assets/icon-ios.png`，文件名追加 `-Android` / `-iOS`，并在聚合包 `manifest.json` 中记录 `brandingVariant`。
+- 单平台导出继续沿用当前调优与文件名；Google Ads 变体在触发 50 字符限制时自动省略末尾可选的体力字段后再追加后缀。
+- Verification: `node --test test/playable-export.test.js`（26/26）、导出器语法检查和 `git diff --check` 通过。
+
+## Completed On 2026-09-21 - Remote editor redeployed
+
+- Synced today's editor/runtime changes to `bus-loop-playable-editor` at `http://10.0.0.54:12142/` while reusing the existing `12142` port and persistent artifact volume.
+- Verification: production build passed; the remote service reports healthy, serves the new production bundle, and its editor chunks include today's recognition, passenger-colour, guide, and install-threshold changes.
+
+## Completed On 2026-09-21 - Opening guide input lock
+
+- Vehicle clicks are now blocked for the full opening guide duration and while an entry banner is active; the lock applies both to canvas ray-picking and the main click handler.
+- The guide overlay captures pointer input during the opening animation and releases it automatically when the guide finishes.
+- Verification: guide/mechanism tests pass `8/8`, source syntax checks and `git diff --check` pass, and the production build completes successfully.
+
+## Completed On 2026-09-21 - Q4V1 four-colour contrast cleanup
+
+- Removed the leftover per-vehicle transition overrides from Q4V1 so all 84 vehicles now use exactly four visible body colours: `#7a3218`, `#b95a18`, `#d87310`, and `#f8c332`.
+- Applied the same four bindings to the passenger colour overrides; vehicle seat totals and passenger queue totals remain unchanged and matched.
+
+## Completed On 2026-09-20 - Passenger colour-region overrides
+
+- Added per-colour passenger colour overrides to authored levels. The level editor now exposes body/highlight/shadow/window/detail controls beside the matching vehicle colour, including batch selection support.
+- Passenger overrides are persisted in `passengerColorOverrides`, flow through runtime conversion, tint the passenger atlas, and update the matching vehicle colour region so vehicle and passenger visuals stay aligned.
+- Verification: level editor model tests pass (`28/28`), touched source syntax checks pass, and authored Q4 documents carry matching passenger/vehicle body colours.
+
+## Completed On 2026-09-20 - Q4 series six-colour passenger binding
+
+- Updated Q4V1, Q4V2, and Q4V3 so each level uses six distinct passenger colour ids bound to its six vehicle colour bands.
+- Reassigned each authored vehicle's `colorIndex` and queue entries together, preserving the existing `323 / 311` queues and exact seat/passenger parity in all three levels. Q4V1 uses warm built-in colours only; no black passenger remains for its brown vehicle band.
+- Verification: all three web-level documents validate with no errors or warnings; each reports six vehicle colours and six passenger colours; `git diff --check` is clean.
+
+## Completed On 2026-09-20 - Non-destructive level and background imports
+
+- Scene editor level imports now create a new numeric level identity and use the imported filename as its display name instead of replacing the currently selected level. Added deletion for authored web levels and imported Unity levels; built-in levels remain protected.
+- Added deletion for the currently selected custom background, with automatic fallback to the default background after the asset is removed.
+- Verification: focused importer/layout-editor tests, JavaScript syntax checks, and `git diff --check` pass.
+
+## Completed On 2026-09-20 - Install threshold defaults to vehicle count
+
+- `商店跳转 > 成功操作次数` now defaults to the selected level's vehicle count. Changing the selected level updates the default automatically, so Q5 levels show `64` without manual entry.
+- A manual edit is treated as an explicit override and is preserved across reloads; `恢复默认参数` clears that override and returns to the current level count. Production builds still honor an explicitly baked threshold.
+- Verification: `src/main.js` and scene tuning syntax checks pass; the successful-operation editor/runtime contract test passes.
+
+## Completed On 2026-09-20 - Q5V2/Q5V3/Q5V4 colour variants
+
+- Added `artifacts/web-levels/level49.json` (`Q5V2`), `level50.json` (`Q5V3`), and `level51.json` (`Q5V4`), all reusing the Q5V1/Level 10 layout with 64 vehicles and two `218`-passenger queues.
+- Applied the reference palettes and kept vehicle/passenger seat parity: Q5V2 pink/green, Q5V3 purple/orange, and Q5V4 blue/yellow.
+- Added `scripts/create-q5-variants.mjs` so the three authored documents can be regenerated from Q5V1 without changing layout data.
+- Verification: all three documents have `64` vehicles, queue lengths `218 / 218`, and matching per-colour seat/passenger totals; syntax and whitespace checks pass.
+
+## Completed On 2026-09-20 - Q5V1 level10 mint-brown layout
+
+- Added `artifacts/web-levels/level48.json` with display name `Q5V1`, using the exact Level 10 parking layout: 64 vehicles, Level 10 positions/orientations, and its two `218`-passenger queues.
+- Recoloured the left-side vehicles to mint and the right-side vehicles to brown. The matching passenger flow keeps exact seat parity (`234` mint / `202` brown).
+- Verification: the editor authoring endpoint lists `level48` as `Q5V1`, colour-seat parity passes, and `git diff --check` is clean.
+
+## Completed On 2026-09-18 - Opening guide target-only dimming
+
+- Added a `置灰其他车辆` toggle to the opening guide animation settings. When enabled, the target vehicle stays inside the highlighted hole while the rest of the scene is dimmed; the setting defaults to enabled with `0.68` opacity.
+- Verification: focused guide tests and production build pass.
+
+## Completed On 2026-09-18 - Opening guide follows current level
+
+- Removed the separate `firstClickGuide.levelKey` editor binding. The opening guide animation is now a global scene-tuning option that targets the currently active level, while the idle vehicle hand hint keeps its existing per-level binding.
+- Old browser tuning caches are migrated by removing the obsolete opening-guide level key.
+- Verification: focused guide/game-model tests pass (`18/18`), production build passes, and `git diff --check` is clean.
+
+## Completed On 2026-09-18 - Q4V1/Q4V2/Q4V3 passenger path colour blocks
+
+- Reordered all three authored queues so visible passengers follow continuous path segments instead of a repeating stripe: each branch starts with the central transition colour, then continues into the outer colour bands shown by its vehicle layout.
+- Q4V1 now presents orange-to-brown on the left and orange-to-yellow on the right; Q4V2 presents red-to-pink/purple on the left and red-to-orange/yellow on the right; Q4V3 presents mint-to-green/dark-green on the left and mint-to-cream/brown on the right.
+- Kept each level at `323 / 311` passengers with exact vehicle seat parity. Runtime smoke inspection shows the intended branch colours in the rendered conveyor.
+
+## Completed On 2026-09-18 - Q4V3 green-mint-cream-brown variant
+
+- Added the web authoring level `artifacts/web-levels/level47.json` with display name `Q4V3`, reusing Q4V1/Q4V2's 84-vehicle positions, orientations, containers, and depth graph.
+- Recoloured the same spatial bands to dark green, green, mint, light mint, cream, and brown to match the supplied reference, with six bound passenger colours interleaved across both queues. Seat totals remain exact (`323 / 311`).
+- Verification: Q4V3 loads through the editor service, the initial conveyor fill contains all six colours, and runtime conversion keeps 84 vehicles with colour-seat parity.
+
+## Completed On 2026-09-18 - Q4V2 purple-pink-red-orange-yellow variant
+
+- Added the web authoring level `artifacts/web-levels/level45.json` with display name `Q4V2`, reusing Q4V1's 84-vehicle positions, orientations, containers, and depth graph.
+- Recoloured the same spatial bands to purple, pink, red, orange, and yellow to match the supplied reference, while interleaving all five bound passenger colours across both queues. Seat totals remain exact (`323 / 311`).
+- Verification: Q4V2 loads through the editor service, the initial conveyor fill contains all five colours, and runtime conversion keeps 84 vehicles with colour-seat parity.
+
+## Completed On 2026-09-18 - Q4V1 brown-orange-yellow diagonal gradient
+
+- Reassigned Q4V1's 84 vehicles into six equal spatial bands ordered from the upper-left to the lower-right using only brown, rust-brown, burnt orange, orange, amber, and yellow body overrides; no red swatch is used.
+- Kept passenger binding on the nearest built-in brown/orange/yellow colours and interleaved those three colours across both queue paths so the initial belt fill is visibly varied instead of opening as one orange block. Seat totals remain exact (`323 / 311`), with colour totals still matching the 84 vehicles.
+- Verification: Q4V1 validates with no errors or warnings; focused catalog/editor/layout tests pass.
+
+## Completed On 2026-09-18 - Batch vehicle colour editing
+
+- When multiple vehicles are box-selected in the level editor, the inspector now exposes one shared colour panel. Changing the base colour or any region override applies it to every selected vehicle, with passenger colour synchronization preserved.
+- Mixed region values are labelled as `混合值`; restoring built-in colours clears overrides for the full selection in one undoable action.
+- Verification: level-layout/editor focused tests, syntax checks, and `git diff --check` pass.
+
+## Completed On 2026-09-18 - Per-vehicle colour-region overrides
+
+- Added optional `colorOverrides` to authored/runtime vehicles. The level editor can save independent body, highlight, shadow, window, and detail colours for each vehicle while leaving legacy `colorIndex` levels unchanged.
+- Runtime vehicle materials rasterize only the overridden atlas pixels into cached per-vehicle textures; passenger colours and other vehicles using the same base colour are unaffected. The 2D editor uses the saved body override for its swatch and canvas preview.
+- Verification: source syntax checks, `git diff --check`, focused editor tests, and production build pass.
+
+## Completed On 2026-09-18 - Level editor vehicle frame and tuning history
+
+- Added an editor-only red safety frame around the configured parking-area bounds in the full-level editor grid canvas. It stays fixed while vehicles are arranged and is not part of level data or the playable preview.
+- Added scene tuning undo/redo controls with a bounded 50-step history. Slider/text edits merge by field, and restoring default parameters is itself undoable.
+- Verification: JavaScript syntax checks, `git diff --check`, and production build pass. Existing focused test failures remain the pre-existing Level 35 tuning expectations.
+
+## Completed On 2026-09-18 - Editor swatches aligned with vehicle atlases
+
+- Corrected the editor and queue-editor swatches for the original 0-10 colours to use the actual runtime atlas body colours. Brown is now brown (`#542C16`), orange is `#C24300`, and yellow is `#C68000`, matching the rendered vehicles instead of the previous bright placeholder colours.
+- Kept recognition compatible with older bright reference screenshots through internal legacy aliases; new editor-created levels use the corrected palette.
+- Verification: focused level editor/model/recognizer tests pass `41/41`; `git diff --check` passes.
+
+## Completed On 2026-09-18 - Q4V1 editor layout authored
+
+- Added the web authoring level `artifacts/web-levels/level44.json` with display name `Q4V1`, using the original `level35` layout data: 84 vehicles, the original positions/orientations, and the original two passenger queues (`323 / 311`).
+- Updated Q4V1's vehicle and passenger colours to the supplied warm gradient: brown on the left, orange through the middle, and yellow on the right, with colour-seat parity preserved.
+- Kept this change scoped to the level editor data. The production selection remains unchanged and no reference screenshot is stored in the project.
+- Verification: the level document validates with no errors or warnings; the focused level-editor/model/recognizer suites pass `41/41`.
+
+## In Progress On 2026-09-18 - Photo vehicle recognition first pass
+
+- Added an arrow-marker recognition path for vehicle-sheet photos: white arrow shapes provide one instance center and a coarse direction, while the surrounding body is matched to the nearest built-in color (including the supplied cream, dark-yellow, green, and matcha swatches).
+- The existing preview/apply flow now reports the recognition method and keeps the detected positions in the image layout instead of forcing them onto a rectangular grid.
+- Verification: recognizer/editor focused tests pass (`39/39` across the touched suites). The attached 836x730 sample yields 71 detected vehicles with four built-in color groups and four-way direction estimates; this is a first pass and still needs manual cleanup for low-contrast arrows and seat-count inference.
+
+## Completed On 2026-09-20 - Level editor 识图摆放 (reference-image placement)
+
+- Added a recognition mode to the full-level editor: import a level screenshot as the 垫图, open 识图摆放, and the editor detects every vehicle's colour and position from the image and writes them into the parking area in one undoable step.
+- New `src/level-image-recognizer.js` is canvas-free: quantized palette classification with border-sampled background rejection, per-colour connected components with fragment merging, cell-size splitting for touching vehicles, row/column pitch estimation with a self-guard against fragment pitches, seat/yaw inference, and normalized image-to-world mapping through the 垫图 rectangle (position, size, rotation).
+- The dialog previews every detection as an orange dashed marker on the canvas before applying, exposes 颜色容差 / 最小车辆面积 / 座位数 / 吸附网格 / 行对齐 / 拆分粘连车辆 / 识别黑白灰车身 / 摆放方式 plus advanced filters, re-runs on every change, and reports per-colour counts, rows, pitch, seat mix, filtered fragments and undetectable colours. Options persist in the browser editor cache only.
+- `LevelEditorModel.applyDetectedVehicles` replaces or appends into the target container, renormalizes every vehicle, resyncs passenger queues to seat capacity, and rebuilds the depth graph in the same transaction.
+- Defaults were calibrated against a real `390x844` gameplay capture (`artifacts/playable-exports/moloco-checker-fix/reports/original-portrait.png`): neutral bodies off by default, no fragment merge radius, auto minimum area at `0.0008` of the image, and a conservative grid guard. That capture now yields `68` vehicles in `9` rows (`黄 63 / 粉 2 / 深黄 2 / 绿 1`) against a field of roughly `70` cars, and the applied layout lands on the reference cars.
+- Verification: `test/level-image-recognizer.test.js` `12/12`, model and layout-editor suites pass (`38/38` focused), the full suite matches the baseline (`239` pass / `21` pre-existing failures), and the production build passes. Two headless-Chrome runs exercise the real editor: one recognises from a stored underlay (`68` vehicles applied, queues and depth resynced) and one opens the dialog with no reference (`请先导入参考图`), imports a PNG through the dialog's own file input, and recognises from it (`64` vehicles, JPEG-recompressed underlay); the on-canvas preview and the applied layout were captured and inspected.
+
+## Completed On 2026-09-18 - Removed draft reference levels and screenshots
+
+- Removed the temporary web-authored level data created during reference reconstruction (`level37`-`level44`). The active production selection is restored to `level36`.
+- Removed all level comparison/reconstruction screenshots and the temporary reconstruction workspace.
+- Removed the now-unused reference-only scene branches and autumn background assets. Existing level data, editor capabilities, and shared colour assets remain intact.
+- Added a one-time editor-cache migration that removes every previously persisted level screenshot/垫图 placement while keeping future reference-image imports available.
+
+## Completed On 2026-09-18 - Supplied colour supplement wired
+
+- Wired the nine supplied colour variants (Unity indices `17-25`: black, white, darkred, darkyellow, cream, mintgreen, matchagreen, lightpink, gray) through the runtime colour tables (`src/level-data.js`, `src/scene-view.js`), the editor palette (`src/level-editor-model.js`, `src/level-layout-editor.js`), and the Unity level importer (`scripts/unity-level-importer.mjs`). Colour ids are no longer array positions, so editor lookups go through the new `getVehicleColorOption(id)` helper.
+- Built the nine delivery atlases with `scripts/generate-color-variant-textures.mjs` from the supplied textures, kept verbatim under `artifacts/color-supplement-sources/`. Every non-body pixel (face, skin, eyes, shoe, detail) is the supplied art untouched; body pixels take their highlight and shadow shading from a shipped atlas whose palette is re-hued to the variant colour, because the supplied body region is a flat white tint placeholder and a vehicle samples the body's highlight and shadow entries too. `black` bakes its own body colour and ships exactly as supplied.
+- `assets.colorTextures` is now a 26-slot array: slots `11-16` are `null` on purpose and fall back to slot `0`; the loader, instanced passenger batches and tuning refresh all skip those slots.
+- Verification: focused editor/catalog checks, production build, and AppLovin packaging pass with the shared colour atlas set.
+
+## Completed On 2026-09-16 - Borderless homepage screenshot export
+
+- Added a homepage editor screenshot tool that downloads current playable stills as PNG at `720x1280` or `1080x1920`.
+- Screenshots render the playable content at exact 9:16 output size and composite the in-play branding plus Play Now button, without including the editor panel or phone-preview border.
+- Verification: JavaScript syntax checks and focused export/editor source-contract test pass.
+
+## Completed On 2026-09-16 - Full-level editor reference image layer
+
+- Added an editor-only reference image layer for manually aligning imported level screenshots. PNG/JPG/WebP images are downsampled and stored per level in browser editor cache; the source is never added to level JSON, runtime preview, or playable packages.
+- Added display/lock controls, X/Z position, width/height, rotation, opacity, canvas-fit action, direct drag while unlocked, and cleanup for replaced/closed images.
+- Verification: `node --check src/level-layout-editor.js`, focused level-layout editor tests `3/3`, `git diff --check`, and production build pass.
+
+## Completed On 2026-09-15 - Relaxed imported level filenames
+
+- Level imports now accept arbitrary `.asset` and `.json` upload names. Unity imports derive their internal `level<number>` key from the conventional filename, embedded `m_Name`, or positive Unity `id`, then store a canonical filename for the existing catalog/runtime contract.
+- Unsafe paths, wrong extensions, malformed files, and invalid level content remain rejected. Focused import/editor tests pass `19/19`, and a live custom-name request reaches content validation instead of filename rejection.
+
+## Completed On 2026-09-15 - Scene visibility controls
+
+- Added live `汽车显示`, `小人显示`, and `Play Now 弹窗显示` switches under the editor's `画面 > 显示控制` section; all values persist and flow into platform exports.
+- Vehicle hiding covers cars, their shadows/arrows/count boards, vehicle-path previews, effects, and vehicle-targeted guidance. Passenger hiding covers conveyor, queue, spatial-instanced, shadow, and boarding visuals without changing gameplay state.
+- Focused visibility/export/editor tests pass, touched JavaScript syntax checks pass, and the production build passes.
+
+## Completed On 2026-09-15 - Import level-editor JSON from scene editor
+
+- Extended the scene editor's `导入关卡` control to accept both Unity `.asset` files and the `bus-loop-web-level-v1` JSON exported by the full level editor.
+- JSON imports are normalized and validated in the browser, persisted through `/__level-authoring/import`, added to the selectable level list, and activated as the current level after import.
+- Focused level/editor tests pass `41/41`; production build passes with the existing Vite chunk-size warning.
+
+## Completed On 2026-09-16 - Unbound level-editor JSON imports
+
+- JSON imports now behave as content imports: the source document's `key`, name, and Unity ID are ignored and retargeted to the currently selected/editing level.
+- Full-level editor imports keep the current level's revision and create-only state, so an imported layout can be saved to the current file without a false external-change conflict.
+- Added regression coverage for identity retargeting and updated the editor guide.
+
+## Completed On 2026-09-14 - Vehicle-area translation controls
+
+- Added `车辆` panel controls for the vehicle field's overall X/Z translation. The offsets use the existing shared vehicle-area transform, so parked vehicles, picking/collision coordinates, and departure paths remain aligned.
+- The controls are labeled `车阵整体左右` and `车阵整体上下`; current defaults remain unchanged. Syntax checks, focused export tests `22/22`, and production build pass.
+
+## Completed On 2026-09-12 - Lightweight remote editor deployment
+
+- Deployed the complete editor with `server-deploy` at `http://10.0.0.54:12142/`, retaining level authoring, Unity import, conveyor editing, persistence, and single/all-platform verified exports.
+- Reduced the NAS source package to `4.0 MB` by pruning historical outputs, unused source assets, tests, and non-runtime dependencies. Docker now builds `server-dist` once and serves it with Vite preview instead of keeping a development compiler in memory.
+- Added disconnected-request cancellation and Chromium process-group cleanup. Remote AppLovin export passes `30/32`; the seven-platform aggregate passes `227/241` with all seven artifacts at `PASS`. Peak container memory during the aggregate export was about `561 MB`, returning to about `107 MB` afterward.
+
 ## Completed On 2026-09-11 - Opening and idle hand hint
 
 - Replaced Level 36's dimmed opening spotlight with an unobstructed hand hint: the hand appears immediately, hides on canvas interaction, and returns after five seconds without input.
@@ -1333,3 +1711,176 @@ Full 2026-07-07 progress log was archived to:
 - Added validated Android Google Play and iOS App Store URL fields under the editor's `\u5546\u5e97\u8df3\u8f6c` section; valid edits auto-save without rebuilding the Three.js scene.
 - Runtime CTA routing and platform exports now consume the editor configuration, while export and AppLovin checks reject invalid or non-HTTPS store domains.
 - Verification: focused export/platform bridge tests pass `22/22`; focused editor/store redirect contracts pass `2/2`; production build, AppLovin packaging, all `23/23` AppLovin static checks, live LAN editor inspection, and an exact exporter run (`30/32` automatic checks passed plus 2 manual gates) pass. The package is `2,489,232` bytes; official upload and device acceptance remain external.
+
+## Completed On 2026-09-16 - Level editor reference layer undo and scale
+
+- Extended the level editor undo/redo controls and shortcuts to include reference-layer operations: import, clear, fit, drag, visibility/lock, position, size, rotation, opacity, and scale.
+- Added a reference-layer `整体缩放` control that scales the underlay as one unit while keeping width and height as the base dimensions.
+- Verification: `node --check src/level-layout-editor.js`, focused level-layout editor contract test, and touched-file diff whitespace check pass.
+
+## Completed On 2026-09-17 - Level editor passenger auto-sync
+
+- Vehicle add/delete and vehicle capacity edits now keep passenger queues matched to available seats by color.
+- Verification: `node --check src/level-editor-model.js`, focused level editor model tests, and touched-file diff whitespace check pass.
+
+## Completed On 2026-09-17 - Autumn background options
+
+- Added two optimized BG03 autumn background images to the editor background selector.
+- Verification: focused background asset contract test confirms both files stay under the package size threshold and keep the expected `2100x3382` dimensions.
+
+## Completed On 2026-09-17 - Custom editor backgrounds
+
+- Added an editor-side `添加背景` action under the background controls. Uploaded PNG/JPG/WebP files are compressed in-browser, stored as reusable editor assets, and added to the same background dropdown.
+- Custom backgrounds are served from persisted editor artifacts and copied into export workspaces so generated playable packages can inline them like built-in backgrounds.
+
+## Completed On 2026-09-17 - Background scale control
+
+- Added a uniform `背景 > 缩放` control so imported or built-in backgrounds can be resized without changing the authored X/Y offsets.
+- The runtime layout now applies that scale to both the rendered background plane and source-crop mapping, keeping crop alignment consistent while tuning.
+
+## Completed On 2026-09-17 - Background reset and fixed custom size
+
+- Custom background uploads are now normalized to the original `2100x3382` background canvas size, including existing saved custom backgrounds after refresh.
+- Added `重置背景` beside `添加背景` to restore the default background image, position, scale, opacity, and source dimensions.
+
+## Completed On 2026-09-18 - Level editor vehicle/passenger colour binding
+
+- Changing a vehicle's primary or combination colour now updates the corresponding passenger slots in place, preserving queue order and keeping colour seat totals valid; the operation remains undoable.
+- If WebGL cannot be created in the development browser, the scene editor now falls back to an editor-only mode with a visible canvas diagnostic, so the level layout workspace remains accessible without looking like a blank/crashed page.
+- Verification: focused level editor model/workspace tests pass `28/28`; production build passes.
+
+## Completed On 2026-09-20 - Export ZIP timestamps and optional naming fields
+
+- ZIP exports now use one current UTC timestamp per export run instead of the ZIP epoch date `1980-01-01`; the timestamp is passed to the shared deterministic packer and remains stable across its double-write verification.
+- Export naming fields may be left blank. Blank components are omitted from artifact names, while blank channel codes use the platform name to keep multi-platform artifacts distinct; non-blank values keep the existing safety and length validation.
+- Verification: focused export/editor tests pass `23/23`, Python ZIP tool smoke test shows the requested current timestamp, and syntax/diff checks pass.
+
+## Completed On 2026-09-20 - Background rename and level export
+
+- Added `修改名称` for custom editor backgrounds, persisted through `/__background-assets/rename` without changing the asset URL; built-in backgrounds remain protected.
+- Added `导出关卡` for the current web-authored or Unity level. Web levels download as JSON using their display name; Unity levels download as `.asset`.
+- Deployed the updated editor to `http://10.0.0.54:12142/` with the existing persistent artifact volume. Live checks confirm background listing, web-level listing, and `level36` export headers/content.
+- Verification: syntax checks, focused editor/import/model tests, `git diff --check`, and production build pass.
+
+## Completed On 2026-09-20 - Background rename persistence fix
+
+- Fixed the editor refresh path that replaced a saved custom background label with the fallback `自定义背景` text after renaming.
+- A background option now keeps its existing server-provided label unless a new label is explicitly supplied; redeploy verified the rename endpoint and persisted label list.
+
+## Completed On 2026-09-21 - Q4V1 four-colour gradient
+
+- Updated `artifacts/web-levels/level44.json` (Q4V1) from six orange/brown gradient colours to four by merging the two middle transition colours into their neighbouring retained colours.
+- Vehicle and passenger colour totals remain matched after the remap; the editor source now exposes only colour indices `6`, `8`, `18`, and `21`.
+
+## Completed On 2026-09-21 - Local guide animation preview
+
+- Enabling the opening guide from the local scene editor now restarts the guide timing immediately; the entry-banner overlay is also created lazily when first enabled so its animation can replay without a page refresh.
+- Guide target resolution now falls back to the first currently movable vehicle when a configured vehicle ID is absent from the selected level, keeping the mask and hand visible across level changes.
+- Verification: `node --check src/main.js`, `node --check src/scene-view.js`, focused guide tests `2/2`, and `git diff --check` pass.
+
+## Completed On 2026-09-21 - Vehicle area rotation control
+
+- Added `车辆整体旋转（以车阵中心为轴）` to the scene editor's `车辆` panel, bound to `vehicleArea.rotationDegrees` with a `-180` to `180` degree range and a `1` degree step.
+- The rotation pivot is derived from the transformed vehicle-area bounds, so changing the vehicle area's map scale or offset keeps rotation centered on the car field. Rotation is applied to the formation's positions only; each vehicle keeps its authored yaw and arrow direction, and click-coordinate conversion uses the inverse position transform.
+- Verification: source syntax checks, the focused vehicle-area rotation test, and `git diff --check` pass. The broad `test/game-model.test.js` run still reports the workspace's existing unrelated level/tuning expectation failures.
+
+## Completed On 2026-09-21 - Seat-count board follows vehicle colour
+
+- Seat-count number boards now use each vehicle's effective body colour override when one exists, instead of always looking up the original `colorIndex`. Built-in colours continue using the existing palette.
+- Board outlines are generated as a darker shade of custom body colours so yellow, brown, and other authored vehicle colours remain visibly matched and readable.
+- Verification: scene-view syntax check, focused seat-count board contract test, and `git diff --check` pass.
+
+## Completed On 2026-09-24 - Playable export speed optimization
+
+- All-platform export now builds platforms with bounded concurrency, isolates each Vite/inliner output, and generates active level/conveyor sources once per source variant.
+- Android and iOS deliveries reuse the same platform build; the second branding variant retargets only the embedded icon and pinned store link, with strict guards that block reuse if the built HTML shape changes. All static, payload, and real Chrome runtime gates still run independently for all 14 artifacts.
+- Measured single-platform AppLovin export improved from `11.44s` to `5.83s`. Full 14-artifact export improved from `85.70s` in the first isolated-concurrency pass to `68.13s` after build reuse; all platform reports passed (`454/482` automatic checks, with 28 existing manual acceptance items).
+- Verification: exporter/inliner syntax checks pass, focused export optimization tests pass, all HTML platform artifacts remain byte-identical to the pre-reuse build, and the final aggregate export completes successfully.
+
+## Completed On 2026-09-24 - Q9V5 reference-image playable
+
+- Added `artifacts/web-levels/level56.json` (`Q9V5`) from the supplied circular vehicle reference: 53 six-seat vehicles with five green, nine red, sixteen yellow, ten orange, and thirteen brown vehicles. The hand-corrected colour grouping keeps the brown inner ring and red/orange outer ring distinct from image highlights.
+- Selected `level56` for the production session. Passenger queues are regenerated to `159 / 159`, depth data is rebuilt, and the document validates with no warnings.
+- Verification: focused catalog/editor/model tests pass `46/46`, `npm run build` passes, and the Chrome runtime smoke gate confirms a visible nonblank canvas and working CTA (the gate still reports the workspace's pre-existing missing passenger-model asset 404s).
+
+## Completed On 2026-09-24 - Camera quick views and auto framing
+
+- Added scene-editor camera shortcuts for automatic framing, vehicle-only focus, conveyor focus, and restoring the default camera. Each shortcut is undoable and persists through the existing tuning save path.
+- Auto framing derives bounds from the authored vehicle formation, parking spots, conveyor artwork, and sampled queue/conveyor curves, then projects ground depth using the current camera elevation so the full layout stays visible with a controlled margin.
+- Verification: scene-layout tests pass `17/17`; the combined focused run has `62` passes and one existing selected-level expectation mismatch; `npm run build` passes. Browser screenshot verification was unavailable because the local browser surface could not authenticate while the Mac was locked.
+## Completed On 2026-09-28 - Export cache and remote concurrency optimization
+
+- 服务端全平台导出慢的主要原因是 7 个平台构建、14 个变体检查和 Google Ads 截图任务叠加；远程容器此前只允许 2 个平台任务并发。
+- 导出器现在按场景调优与持久化资源指纹缓存 7 份已构建的通用 HTML。相同场景再次导出时只重做平台打包和本地检查，并继续保留 Android/iOS 的图标与商店链接变体替换；Google Ads 复用预生成 `artifacts/google-ads-backup.jpg`。
+- 远程导出并发调整为 3，响应新增 `X-Playable-Source-Cache` 和已有的耗时响应头，便于确认缓存命中和定位慢点。
+- 验证：`node --test test/playable-export.test.js` 29/29、`npm run build`、`git diff --check` 通过；线上全平台导出首轮 `122477ms`（缓存 miss，278/306），同场景第二轮 `40586ms`（缓存 hit，278/306），均 HTTP 200。
+## Completed On 2026-09-28 - Remote export errors are visible on other computers
+
+- 其他电脑点击导出时此前只显示“试玩包生成或本地检测失败”，因为编辑器忽略了远程接口返回的 `detail` 和 `durationMs`。
+- `src/scene-editor.js` 现在展示服务端具体失败原因与耗时；网络不可达时提示检查当前电脑是否能访问编辑器地址。这样无需登录服务端看板也能区分超时、校验失败和连接问题。
+- Vite 导出接口现在在本地开发和远程预览两种模式都返回 500 详情，并给首页 HTML 设置 `Cache-Control: no-store`，避免其他电脑继续使用旧的 hashed 编辑器脚本。
+- 500 响应的 `error` 字段也会带上压缩后的失败原因，即使其他电脑仍缓存旧版前端，也能直接看到实际错误。
+- Verification: `node --test test/playable-export.test.js` 29/29、`npm run build`、`git diff --check` 通过；线上已部署，并用故意错误的关卡选择验证 500 响应会直接返回具体失败原因。
+
+## Completed On 2026-09-28 - Background image download
+
+- 场景编辑器“背景”区域新增“下载背景图”，支持下载当前内置或自定义背景，并沿用当前背景名称与图片扩展名；下载期间会锁定背景操作并显示结果状态。
+- Verification: `node --check src/scene-editor.js`、背景编辑器契约测试、`git diff --check` 通过。
+
+## Completed On 2026-09-28 - Per-level scene tuning
+
+- 场景编辑器调优现在按当前关卡保存到 `bus-loop-level-tuning-v1`，切换关卡会先保存当前参数，再加载目标关卡自己的参数；首次进入的关卡使用默认调优，不再继承其他关卡的改动。
+- 安装跳转次数的手动覆盖也随关卡保存；“恢复默认参数”只清理当前关卡的调优档案。
+- Verification: `node --check src/main.js`、`node --check src/scene-editor.js`、关卡编辑器测试、`git diff --check` 通过；生产构建继续通过。
+
+## Completed On 2026-09-28 - Per-level tuning deployed
+
+- 已将按关卡保存场景调优的版本更新到 `bus-loop-playable-editor`，继续使用 `http://10.0.0.54:12142/` 和持久化 artifacts 卷。
+- Verification: 线上首页 HTTP 200，`/__level-authoring` 可访问，远程生产脚本包含 `bus-loop-level-tuning-v1` 和 `activateLevelTuning`。
+
+## Completed On 2026-09-28 - Special vehicle preview initialization
+
+- 修复警车和消防车加入关卡后 3D 预览崩溃：特殊车辆使用的颜色索引 `11`、`12` 原先未进入运行时颜色表，车辆占位模型初始化时读取 `undefined.hex`，随后被错误显示为 WebGL 不可用。
+- 补齐警车、消防车和 VIP 颜色回退，并让未知颜色索引安全回退到基础蓝色；编辑器初始化异常时改为显示“3D 预览初始化失败”，不再误导为浏览器 WebGL 问题。
+- Verification: `node --check src/main.js`, `node --check src/scene-view.js`, `git diff --check`, production build pass；本地 Chrome headless 注入 `level999` 后确认警车模板、消防车模板和 3D renderer 均存在，且无初始化异常；已更新服务端 `http://10.0.0.54:12142/`，首页返回新构建并确认警车资源 HTTP 200。
+
+## Completed On 2026-09-29 - Pre-roll audio gate repair
+
+- 修复前贴视频导出后被平台记录为交互前 `AUDIO_PLAY`：不再显式调用 `HTMLMediaElement.play()`，改为 HTML 初始 `autoplay muted playsinline` 与原生静音自动播放；加载前强制 `defaultMuted` 和 `volume = 0`，只有前贴区域的可信点击才允许恢复声音。
+- 重新生成 `artifacts/applovin/index.html`，避免继续使用旧版带显式 `video.play()` 的单 HTML。
+- Verification: `node --test test/pre-roll.test.js test/playable-runtime-smoke.test.js`（15/15）、`node --check src/pre-roll.js`、`npm run build`、AppLovin 静态检查、Chrome runtime smoke（13/13）通过。
+
+## Completed On 2026-09-29 - Vehicle shadow color tuning
+
+- 场景编辑器“车辆”面板新增“投影颜色”参数 `vehicleShadows.color`，通过颜色控件修改小车假阴影贴图的 tint；默认值为白色，保持现有投影外观。
+- 小车 4/6/10 座投影材质在初始化和热更新时都会读取该参数，导出的场景调优 JSON 也包含该字段。
+- Verification: `node --check src/scene-editor.js`, `node --check src/scene-view.js`, `node --check src/scene-tuning.js`, `git diff --check` 通过；完整 `test/game-model.test.js` 仍有工作区既有的关卡数据期望不一致失败。
+
+## Completed On 2026-09-29 - Vehicle shadow color tuning deployed
+
+- 已将小车投影颜色参数同步到 `bus-loop-playable-editor`，沿用端口 `12142` 和持久化 artifacts 卷。
+- Verification: 远程首页 HTTP 200，返回的生产 bundle 包含 `vehicleShadows.color`，访问地址为 `http://10.0.0.54:12142/`。
+
+## Completed On 2026-09-29 - Export DevTools timeout recovery
+
+- 修复全平台导出在服务端因同时启动过多 Chrome runtime smoke 而等待 DevTools 端口超时的问题：远程容器导出并发降为 `1`，单次 DevTools 启动等待延长到 `15s`，总导出超时延长到 `10min`，并在 Chrome 提前退出时返回 stderr 尾部。
+- 导出请求断开或超时会中止浏览器进程组并清理临时目录，避免残留 headless Chrome 占用调试端口。
+- Verification: 全平台 14 个 Android/iOS 变体导出成功；自动检查 `468/496` 通过，其余为既有人工验收项；聚焦测试 `41/41` 通过。当前 Docker CLI 不支持 `build --check`，未执行该检查。
+
+## Completed On 2026-09-29 - Direct playable export
+
+- 编辑器导出按钮现在只负责打包并下载，不再等待本地静态、payload 或 Chrome runtime 检测；命令行导出仍保留完整检测门禁。Google Ads 使用已有 `artifacts/google-ads-backup.jpg`，避免直接导出再次启动截图浏览器。
+- 下载状态会明确显示“未执行本地检测”，聚合包 manifest 标记为 `EXPORTED_WITHOUT_LOCAL_CHECKS`，避免把未经检测的包误认为已通过规则。
+- Verification: AppLovin 导出接口 HTTP 200，返回 `skipped; local checks disabled`，产物约 `3.27 MB`；`test/playable-export.test.js` 29/29、语法检查、`git diff --check` 和 `npm run build` 通过。
+
+## Completed On 2026-09-30 - Remote editor synced to v20260930-1151
+
+- 将编辑器构建号更新为 `20260930-1151`，并把当前工作区重新部署到 `http://10.0.0.54:12142/`；继续复用现有 `artifacts` 持久化卷和端口 `12142`。
+- 部署包：`http://10.0.0.6:8081/88/88c5d2f0904922f8385fe8f935b03437.zip`。`start.sh` 同步补充 2 GB 内存和 1 CPU 容器限制。
+- Verification: `node --test test/playable-export.test.js`（29/29）、普通与远程编辑器生产构建、`git diff --check` 通过；线上容器 healthy，首页和关卡接口 HTTP 200，远程脚本包含版本号与“未执行本地检测”标记，原有 27 个网页关卡仍在。
+## Completed On 2026-10-13 - Browser preview CTA fallback for exported playables
+
+- 发现别人直接在普通浏览器打开导出的试玩时，平台宿主桥接（MRAID、ExitApi、FbPlayableAd、Mintegral、TikTok SDK）不存在，点击商店按钮会直接抛错或没有跳转。
+- AppLovin 以及六个平台桥接现在在宿主 API 不存在时，都通过已插入 DOM 的安全 `<a>` 链接打开配置的商店地址；真实广告容器仍优先走原生平台桥接。
+- Verification: 平台桥接/导出/runtime smoke `50/50`，`npm run build`、AppLovin 打包与静态检查通过；线上 `http://10.0.0.54:12142/` 更新后，实际导出 AppLovin HTML `HTTP 200`、4,783,020 bytes，包含 MRAID 与浏览器回退路径。
+

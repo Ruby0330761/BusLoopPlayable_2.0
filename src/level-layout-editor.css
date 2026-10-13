@@ -62,6 +62,18 @@
 }
 .level-layout-palette { padding: 14px 10px; border-right: 1px solid #c3d0d6; }
 .level-layout-inspector { padding: 14px; border-left: 1px solid #c3d0d6; }
+.level-layout-reference-panel { margin: -14px -14px 14px; padding: 12px 14px 10px; border-bottom: 1px solid #c3d0d6; background: #f1f8fa; }
+.level-layout-reference-panel h3 { margin-top: 0; }
+.level-layout-reference-actions { display: grid; grid-template-columns: minmax(0, 1fr) 58px; gap: 6px; }
+.level-layout-reference-actions button { margin: 0; }
+.level-layout-reference-actions button:disabled { cursor: default; opacity: .45; }
+.level-layout-reference-name { overflow: hidden; margin: 7px 0 8px; color: #315764; font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
+.level-layout-reference-opacity { display: grid; grid-template-columns: 52px minmax(0, 1fr) 38px; align-items: center; gap: 7px; margin: 8px 0; color: #536973; font-size: 12px; }
+.level-layout-reference-opacity input { width: 100%; accent-color: #1683a2; }
+.level-layout-reference-opacity output { color: #315764; font-size: 11px; text-align: right; }
+.level-layout-reference-fit { width: 100%; margin-top: 4px; }
+.level-layout-editor.is-reference-unlocked .level-layout-canvas { cursor: move; }
+.level-layout-editor.is-reference-dragging .level-layout-canvas { cursor: grabbing; }
 .level-layout-palette h3,
 .level-layout-inspector h3 {
   margin: 12px 0 8px;
@@ -127,6 +139,12 @@
 .level-layout-field textarea { resize: vertical; }
 .level-layout-color-select { display: grid; grid-template-columns: 22px minmax(0, 1fr); align-items: center; gap: 7px; min-width: 0; }
 .level-layout-color-swatch { width: 20px; height: 20px; border: 1px solid rgba(15, 23, 42, .35); border-radius: 3px; background: var(--swatch-color); box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .4); }
+.level-layout-color-details { margin: 8px 0 12px; padding: 8px; border: 1px solid #d6e1e5; border-radius: 4px; background: #f7fafb; }
+.level-layout-color-details summary { color: #17627a; font-size: 12px; font-weight: 600; cursor: pointer; }
+.level-layout-color-input { grid-template-columns: 84px minmax(0, 1fr); margin: 8px 0 0; }
+.level-layout-color-input-control { display: grid; grid-template-columns: 34px minmax(0, 1fr); align-items: center; gap: 7px; }
+.level-layout-color-input input[type="color"] { width: 34px; height: 28px; padding: 2px; cursor: pointer; }
+.level-layout-color-input code { overflow: hidden; color: #536973; font: 11px/1.2 ui-monospace, SFMono-Regular, Menlo, monospace; text-overflow: ellipsis; }
 .level-layout-check { display: flex; align-items: center; gap: 8px; min-height: 30px; color: #536973; font-size: 12px; }
 .level-layout-check input { width: 16px; height: 16px; accent-color: #1683a2; }
 .level-layout-check.is-disabled { opacity: .52; }
@@ -271,10 +289,78 @@
 .passenger-stat-row.is-extra { color: #c43f35; }
 .passenger-stat-row.is-missing { color: #b8781a; }
 
+.level-image-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 140;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: rgba(15, 32, 41, .42);
+}
+.level-image-backdrop[hidden] { display: none; }
+
+.level-image-dialog {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  width: min(760px, 96vw);
+  max-height: min(640px, 92vh);
+  border-radius: 8px;
+  background: #f8fafb;
+  box-shadow: 0 24px 60px rgba(11, 32, 44, .32);
+  overflow: hidden;
+}
+.level-image-dialog > header { display: flex; align-items: center; gap: 12px; padding: 10px 12px 10px 16px; border-bottom: 1px solid #d3dee3; background: #fff; }
+.level-image-dialog > header h2 { flex: 1; margin: 0; color: #173444; font-size: 14px; }
+.level-image-source { overflow: hidden; color: #6b808b; font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
+.level-image-dialog > header button { width: 30px; min-height: 30px; border: 1px solid #b8c7ce; border-radius: 5px; background: #fff; color: #28404c; font: 600 15px/1 'Poppins Branding', Arial, sans-serif; cursor: pointer; }
+
+.level-image-body { min-height: 0; display: grid; grid-template-columns: minmax(230px, 1fr) minmax(240px, 1.1fr); gap: 0; overflow: auto; }
+.level-image-options { display: grid; align-content: start; gap: 9px; padding: 14px 16px; border-right: 1px solid #dde6ea; }
+.level-image-preview { display: grid; align-content: start; gap: 10px; padding: 14px 16px; }
+
+.level-image-field { display: grid; grid-template-columns: 96px minmax(0, 1fr); align-items: center; gap: 8px; color: #3c5561; font-size: 12px; }
+.level-image-field input[type="number"],
+.level-image-field input[type="file"],
+.level-image-field select { width: 100%; min-height: 28px; padding: 3px 6px; border: 1px solid #b8c7ce; border-radius: 4px; background: #fff; color: #1f343e; font: 500 12px/1.2 'Poppins Branding', Arial, sans-serif; }
+.level-image-field input[type="file"] { padding: 3px 4px; font-size: 11px; }
+.level-image-range { grid-template-columns: 96px minmax(0, 1fr) 34px; }
+.level-image-range input[type="range"] { width: 100%; }
+.level-image-range output { color: #526a75; font-size: 11px; text-align: right; }
+.level-image-check { display: flex; align-items: center; gap: 7px; color: #3c5561; font-size: 12px; }
+.level-image-check input { width: 15px; height: 15px; }
+.level-image-advanced { display: grid; gap: 9px; padding-top: 6px; border-top: 1px solid #e2eaee; }
+.level-image-advanced summary { color: #1683a2; font-size: 12px; font-weight: 600; cursor: pointer; }
+
+.level-image-total { display: flex; align-items: baseline; gap: 6px; color: #526a75; font-size: 12px; }
+.level-image-total strong { color: #0f5a6e; font-size: 26px; line-height: 1; }
+.level-image-colors { display: flex; flex-wrap: wrap; gap: 5px; margin: 0; padding: 0; list-style: none; }
+.level-image-colors li { display: flex; align-items: center; gap: 5px; padding: 3px 7px; border: 1px solid #d5e0e5; border-radius: 12px; background: #fff; color: #3c5561; font-size: 11px; }
+.level-image-colors li.is-empty { border-style: dashed; color: #8798a1; }
+.level-image-colors i { width: 11px; height: 11px; border: 1px solid rgba(20, 40, 50, .28); border-radius: 50%; background: var(--swatch-color); }
+.level-image-colors b { color: #173444; font-size: 11px; }
+.level-image-metrics { display: grid; grid-template-columns: 74px minmax(0, 1fr); gap: 3px 8px; margin: 0; font-size: 11px; }
+.level-image-metrics dt { color: #71858f; }
+.level-image-metrics dd { margin: 0; color: #334d59; }
+.level-image-hint { margin: 0; color: #6b808b; font-size: 11px; line-height: 1.5; }
+.level-image-warning { margin: 0; color: #b8781a; font-size: 11px; line-height: 1.5; }
+.level-image-message { margin: 0; color: #526a75; font-size: 11px; line-height: 1.5; }
+.level-image-message.is-success { color: #278552; }
+.level-image-message.is-error { color: #c43f35; }
+
+.level-image-dialog > footer { display: flex; justify-content: flex-end; gap: 8px; padding: 10px 16px; border-top: 1px solid #d3dee3; background: #fff; }
+.level-image-dialog > footer button { min-height: 32px; padding: 6px 14px; border: 1px solid #b8c7ce; border-radius: 5px; background: #fff; color: #243944; font: 600 12px/1 'Poppins Branding', Arial, sans-serif; cursor: pointer; }
+.level-image-dialog > footer button:hover { border-color: #1683a2; background: #eefafd; }
+.level-image-dialog > footer button.is-primary { border-color: #0f6b83; background: #1683a2; color: #fff; }
+.level-image-dialog > footer button:disabled { cursor: default; opacity: .45; }
+
 @media (max-width: 900px) {
   .level-layout-body { grid-template-columns: 122px minmax(280px, 1fr) 260px; }
   .level-layout-toolbar { gap: 8px; padding-left: 8px; overflow-x: auto; }
   .level-layout-toolbar strong { min-width: 110px; }
+  .level-image-body { grid-template-columns: minmax(0, 1fr); }
+  .level-image-options { border-right: 0; border-bottom: 1px solid #dde6ea; }
 }
 
 @media (max-width: 680px) {

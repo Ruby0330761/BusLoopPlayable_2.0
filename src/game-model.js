@@ -1,5 +1,6 @@
 import { LEVEL_1 } from './level-data.js';
 import { SCENE_TUNING } from './scene-tuning.js';
+import { getVehicleAreaPivot } from './vehicle-area.js';
 import { CONVEYOR_MECHANISM_TUNING } from './conveyor-mechanism-config.js';
 import {
   UNITY_CURVES,
@@ -74,12 +75,13 @@ function isTurnVehicleRotating(vehicle) {
 
 function visualToVehicleAreaPoint(x, z) {
   const area = SCENE_TUNING.vehicleArea;
+  const pivot = getVehicleAreaPivot(area);
   const unitScale = area.positionUnitScale ?? LEVEL_1.mapScale;
   const rotation = -(area.rotationDegrees || 0) * Math.PI / 180;
-  const dx = x - area.pivotX;
-  const dz = z - area.pivotZ;
-  const unrotatedX = area.pivotX + dx * Math.cos(rotation) - dz * Math.sin(rotation);
-  const unrotatedZ = area.pivotZ + dx * Math.sin(rotation) + dz * Math.cos(rotation);
+  const dx = x - pivot.x;
+  const dz = z - pivot.z;
+  const unrotatedX = pivot.x + dx * Math.cos(rotation) - dz * Math.sin(rotation);
+  const unrotatedZ = pivot.z + dx * Math.sin(rotation) + dz * Math.cos(rotation);
   const unityX = (unrotatedX - area.offsetX) / area.unityToWorldScale - area.sourceRootX;
   const unityZ = (
     (unrotatedZ - area.offsetZ)
@@ -93,8 +95,7 @@ function visualToVehicleAreaPoint(x, z) {
 
 function visualYawToVehicleAreaYaw(yawDegrees) {
   const area = SCENE_TUNING.vehicleArea;
-  const local = yawDegrees - (area.rotationDegrees || 0);
-  return area.mirrorZ ? 180 - local : local;
+  return area.mirrorZ ? 180 - yawDegrees : yawDegrees;
 }
 
 function vehicleForward(vehicle) {
@@ -1308,5 +1309,3 @@ export class BusLoopGame {
     return counts;
   }
 }
-
-

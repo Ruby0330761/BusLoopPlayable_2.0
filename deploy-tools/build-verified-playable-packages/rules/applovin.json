@@ -1,0 +1,134 @@
+{
+  "schemaVersion": "playable-platform-rules-v1",
+  "platform": "applovin",
+  "rules": [
+    {
+      "id": "APL-ART-001",
+      "title": "交付单个 HTML",
+      "stage": "artifact",
+      "severity": "blocker",
+      "sourceClass": "checker-parity",
+      "sourceVersion": "playable_check@86d58e33d293a0a095b574407a2d6c7d191d510f",
+      "check": {
+        "type": "artifact_kind",
+        "value": "html"
+      },
+      "repairHint": "选择 AppLovin 单 HTML 构建入口。",
+      "autoRepair": false
+    },
+    {
+      "id": "APL-ART-002",
+      "title": "HTML 完全自包含",
+      "stage": "artifact",
+      "severity": "blocker",
+      "sourceClass": "checker-parity",
+      "sourceVersion": "playable_check@86d58e33d293a0a095b574407a2d6c7d191d510f",
+      "check": {
+        "type": "self_contained_html",
+        "allow": []
+      },
+      "repairHint": "将脚本、样式、图片、音频和字体内联。",
+      "autoRepair": false
+    },
+    {
+      "id": "APL-STA-001",
+      "title": "MRAID ready/viewable/open 接入完整",
+      "stage": "static",
+      "severity": "blocker",
+      "sourceClass": "delivery-contract",
+      "sourceVersion": "game_playable-playbook@8e26d3b61d52c7540809a3a56fb6821472cc14673c4943ca71ef97f851c8401b",
+      "check": {
+        "type": "all_regex_present",
+        "target": "combined",
+        "patterns": [
+          "mraid\\.getState\\s*\\(",
+          "mraid\\.addEventListener",
+          "['\\\"]ready['\\\"]",
+          "['\\\"]viewableChange['\\\"]",
+          "mraid\\.isViewable\\s*\\(",
+          "mraid\\.open\\s*\\("
+        ]
+      },
+      "repairHint": "修复 AppLovin adapter，ready 后等待 viewable=true，false 时暂停，CTA 使用 mraid.open。",
+      "autoRepair": false
+    },
+    {
+      "id": "APL-STA-002",
+      "title": "禁止定时强启动绕过 viewable",
+      "stage": "static",
+      "severity": "blocker",
+      "sourceClass": "delivery-contract",
+      "sourceVersion": "game_playable-playbook@8e26d3b61d52c7540809a3a56fb6821472cc14673c4943ca71ef97f851c8401b",
+      "check": {
+        "type": "regex_absent",
+        "pattern": "setTimeout\\s*\\(\\s*(?:start|startGame|gameStart|begin|boot)\\b"
+      },
+      "repairHint": "移除 setTimeout 强启动；无 mraid 时才走本地 fallback。",
+      "autoRepair": false
+    },
+    {
+      "id": "APL-STA-003",
+      "title": "使用真实 ALPlayableAnalytics.trackEvent",
+      "stage": "static",
+      "severity": "blocker",
+      "sourceClass": "checker-parity",
+      "sourceVersion": "playable_check@86d58e33d293a0a095b574407a2d6c7d191d510f",
+      "check": {
+        "type": "regex_present",
+        "pattern": "ALPlayableAnalytics\\s*\\.\\s*trackEvent\\s*\\("
+      },
+      "repairHint": "在源码接入容器注入的真实 trackEvent，并保留 typeof 守护。",
+      "autoRepair": false
+    },
+    {
+      "id": "APL-STA-004",
+      "title": "包含 AppLovin 核心事件链",
+      "stage": "static",
+      "severity": "warning",
+      "sourceClass": "delivery-contract",
+      "sourceVersion": "game_playable-playbook@8e26d3b61d52c7540809a3a56fb6821472cc14673c4943ca71ef97f851c8401b",
+      "check": {
+        "type": "all_regex_present",
+        "patterns": [
+          "LOADING",
+          "LOADED",
+          "DISPLAYED",
+          "CHALLENGE_STARTED",
+          "ENDCARD_SHOWN",
+          "CTA_CLICKED"
+        ]
+      },
+      "repairHint": "按真实玩法时机补齐核心事件，不重复注入第二套 tracker。",
+      "autoRepair": false
+    },
+    {
+      "id": "APL-STA-005",
+      "title": "禁止外部字体",
+      "stage": "static",
+      "severity": "blocker",
+      "sourceClass": "checker-parity",
+      "sourceVersion": "playable_check@86d58e33d293a0a095b574407a2d6c7d191d510f",
+      "check": {
+        "type": "regex_absent",
+        "pattern": "fonts\\.googleapis\\.com|fonts\\.gstatic\\.com|use\\.typekit\\.net|@font-face[\\s\\S]{0,500}https?://"
+      },
+      "repairHint": "把字体内联或改用系统字体。",
+      "autoRepair": false
+    },
+    {
+      "id": "APL-MAN-001",
+      "title": "AppLovin Preview 与真机完整试玩",
+      "stage": "manual",
+      "severity": "manual",
+      "sourceClass": "delivery-contract",
+      "sourceVersion": "game_playable-playbook@8e26d3b61d52c7540809a3a56fb6821472cc14673c4943ca71ef97f851c8401b",
+      "check": {
+        "type": "manual"
+      },
+      "repairHint": "在官方 Preview 和 App 中跑完整一局并核对事件、CTA、音频和前后台。",
+      "autoRepair": false,
+      "manualGate": "使用 AppLovin 官方 Preview/真机验证容器行为。"
+    }
+  ]
+}
+

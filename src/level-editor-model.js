@@ -24,25 +24,85 @@ export const CONTAINER_TYPES = Object.freeze({
 });
 
 export const VEHICLE_COLOR_OPTIONS = Object.freeze([
-  { id: 0, name: 'Blue', label: '蓝', css: '#0000FF' },
-  { id: 1, name: 'Green', label: '绿', css: '#00FF00' },
-  { id: 2, name: 'Pink', label: '粉', css: '#FF7DCF' },
-  { id: 3, name: 'Purple', label: '紫', css: '#9400FF' },
-  { id: 4, name: 'Red', label: '红', css: '#FF0000' },
-  { id: 5, name: 'Yellow', label: '黄', css: '#FFEB04' },
-  { id: 6, name: 'Orange', label: '橙', css: '#FF8C00' },
-  { id: 7, name: 'LightBlue', label: '青', css: '#00FFFF' },
-  { id: 8, name: 'Brown', label: '棕', css: '#8DAB8B' },
-  { id: 9, name: 'DarkGreen', label: '碧', css: '#B9B9B9' },
-  { id: 10, name: 'DarkBlue', label: '靛', css: '#555598' },
+  // Keep editor swatches aligned with the vehicle atlas body colours used by
+  // the runtime. The previous bright placeholders made brown look green and
+  // made orange/yellow much lighter than the rendered vehicles.
+  { id: 0, name: 'Blue', label: '蓝', css: '#0061E8' },
+  { id: 1, name: 'Green', label: '绿', css: '#118024' },
+  { id: 2, name: 'Pink', label: '粉', css: '#F338AF' },
+  { id: 3, name: 'Purple', label: '紫', css: '#9725CD' },
+  { id: 4, name: 'Red', label: '红', css: '#B10F11' },
+  { id: 5, name: 'Yellow', label: '黄', css: '#C68000' },
+  { id: 6, name: 'Orange', label: '橙', css: '#C24300' },
+  { id: 7, name: 'LightBlue', label: '青', css: '#014853' },
+  { id: 8, name: 'Brown', label: '棕', css: '#542C16' },
+  { id: 9, name: 'DarkGreen', label: '碧', css: '#206D53' },
+  { id: 10, name: 'DarkBlue', label: '靛', css: '#15209E' },
   { id: 11, name: 'PoliceCar', label: '警车', css: '#000000' },
   { id: 12, name: 'FireTruck', label: '消防车', css: '#196D87' },
   { id: 13, name: 'Ambulance', label: '救护车', css: '#9A0040' },
   { id: 14, name: 'Vip', label: 'VIP 车', css: '#FFDFCE' },
-  { id: 15, name: 'Luxury', label: '豪华车', css: '#FFF7A5' }
+  { id: 15, name: 'Luxury', label: '豪华车', css: '#FFF7A5' },
+  // Supplied colour supplement (Unity indices 17-25). Position is not the id,
+  // so look colours up through getVehicleColorOption().
+  { id: 17, name: 'Black', label: '黑', css: '#2D2D30' },
+  { id: 18, name: 'White', label: '白', css: '#EBEBE8' },
+  { id: 19, name: 'DarkRed', label: '暗红', css: '#8C1010' },
+  { id: 20, name: 'DarkYellow', label: '深黄', css: '#C89808' },
+  { id: 21, name: 'Cream', label: '米', css: '#EEDEBE' },
+  { id: 22, name: 'MintGreen', label: '薄荷绿', css: '#69C8AA' },
+  { id: 23, name: 'MatchaGreen', label: '抹茶绿', css: '#96C882' },
+  { id: 24, name: 'LightPink', label: '浅粉', css: '#F698C4' },
+  { id: 25, name: 'Gray', label: '灰', css: '#96989B' }
 ].map(Object.freeze));
 
+// Special vehicle ids are runtime vehicle types, not paint choices.
+export const VEHICLE_PAINT_COLOR_OPTIONS = Object.freeze(
+  VEHICLE_COLOR_OPTIONS.filter((color) => color.id <= 10 || color.id >= 17)
+);
+
 export const VEHICLE_COLORS = Object.freeze(VEHICLE_COLOR_OPTIONS.map((color) => color.css));
+
+const VEHICLE_COLOR_BY_ID = new Map(VEHICLE_COLOR_OPTIONS.map((color) => [color.id, color]));
+
+const SPECIAL_VEHICLE_COLOR_INDEX = Object.freeze({
+  police: 11,
+  firetruck: 12,
+  ambulance: 13
+});
+
+export function getSpecialVehicleColorIndex(mechanismType) {
+  return SPECIAL_VEHICLE_COLOR_INDEX[String(mechanismType)] ?? null;
+}
+
+export function isSpecialVehicle(vehicle) {
+  return getSpecialVehicleColorIndex(vehicle?.mechanism?.type) != null
+    || Number(vehicle?.colorIndex) === 15;
+}
+
+export function getVehicleColorOption(colorIndex) {
+  return VEHICLE_COLOR_BY_ID.get(Number(colorIndex)) ?? VEHICLE_COLOR_OPTIONS[0];
+}
+
+const HEX_COLOR_RE = /^#[0-9a-f]{6}$/i;
+
+function normalizeHexColor(value) {
+  return typeof value === 'string' && HEX_COLOR_RE.test(value) ? value.toLowerCase() : null;
+}
+
+function normalizeVehicleColorOverrides(value) {
+  if (!value || typeof value !== 'object') return {};
+  return Object.fromEntries(['body', 'highlight', 'shadow', 'window', 'detail']
+    .map((key) => [key, normalizeHexColor(value[key])])
+    .filter(([, color]) => color));
+}
+
+function normalizePassengerColorOverrides(value) {
+  if (!value || typeof value !== 'object') return {};
+  return Object.fromEntries(Object.entries(value)
+    .map(([colorIndex, override]) => [String(Math.max(0, Math.round(finite(colorIndex)))), normalizeVehicleColorOverrides(override)])
+    .filter(([, override]) => Object.keys(override).length));
+}
 
 const clone = (value) => structuredClone(value);
 const finite = (value, fallback = 0) => Number.isFinite(Number(value)) ? Number(value) : fallback;
@@ -50,10 +110,13 @@ const positiveInt = (value, fallback = 1) => Math.max(1, Math.round(finite(value
 const normalizeAngle = (value) => ((finite(value) % 360) + 360) % 360;
 
 function normalizeVehicle(vehicle, fallbackId) {
+  const mechanismType = vehicle?.mechanism?.type ?? (Number.isInteger(vehicle?.ambulanceStepLimit) ? 'ambulance' : 'normal');
   return {
     id: positiveInt(vehicle?.id, fallbackId),
     seats: [4, 6, 10].includes(Number(vehicle?.seats)) ? Number(vehicle.seats) : 4,
-    colorIndex: Math.max(0, Math.round(finite(vehicle?.colorIndex))),
+    colorIndex: getSpecialVehicleColorIndex(mechanismType)
+      ?? Math.max(0, Math.round(finite(vehicle?.colorIndex))),
+    colorOverrides: normalizeVehicleColorOverrides(vehicle?.colorOverrides),
     x: finite(vehicle?.x ?? vehicle?.position?.x),
     z: finite(vehicle?.z ?? vehicle?.position?.z),
     yaw: normalizeAngle(vehicle?.yaw ?? vehicle?.rotationY),
@@ -63,7 +126,7 @@ function normalizeVehicle(vehicle, fallbackId) {
     containerId: Math.max(0, Math.round(finite(vehicle?.containerId))),
     elevatorLayer: Math.max(0, Math.min(1, Math.round(finite(vehicle?.elevatorLayer)))),
     mechanism: {
-      type: vehicle?.mechanism?.type ?? (Number.isInteger(vehicle?.ambulanceStepLimit) ? 'ambulance' : 'normal'),
+      type: mechanismType,
       pairVehicleId: vehicle?.mechanism?.pairVehicleId == null ? null : positiveInt(vehicle.mechanism.pairVehicleId),
       distance: Math.max(0.15, finite(vehicle?.mechanism?.distance, 0.25)),
       wrenchColor: Math.max(0, Math.round(finite(vehicle?.mechanism?.wrenchColor))),
@@ -133,6 +196,16 @@ export function createLevelDocument(level = {}) {
   const passengerQueues = Array.isArray(level.passengerQueues)
     ? level.passengerQueues.map((queue) => queue.map((value) => Math.max(0, Math.round(finite(value)))))
     : [[], []];
+  const passengerColorOverrides = normalizePassengerColorOverrides(level.passengerColorOverrides);
+  for (const vehicle of vehicles) {
+    const overrides = vehicle.colorOverrides;
+    if (!Object.keys(overrides).length) continue;
+    const id = String(vehicle.colorIndex);
+    passengerColorOverrides[id] = {
+      ...overrides,
+      ...(passengerColorOverrides[id] ?? {})
+    };
+  }
   return {
     format: 'bus-loop-web-level-v1',
     key: level.key ?? `level${positiveInt(level.unityId ?? level.id, 1)}`,
@@ -146,6 +219,7 @@ export function createLevelDocument(level = {}) {
     vehicles,
     containers,
     passengerQueues,
+    passengerColorOverrides,
     vehicleDepthes: clone(level.vehicleDepthes ?? {}),
     editor: {
       gridGap: Math.max(0.05, finite(level.editor?.gridGap, 0.27)),
@@ -154,6 +228,16 @@ export function createLevelDocument(level = {}) {
       vehicleSnap: level.editor?.vehicleSnap !== false,
       alignmentGuides: level.editor?.alignmentGuides !== false
     }
+  };
+}
+
+export function retargetLevelDocument(document, target = {}) {
+  const normalized = createLevelDocument(document);
+  return {
+    ...normalized,
+    ...(target.key == null ? {} : { key: String(target.key) }),
+    ...(target.displayName == null ? {} : { displayName: String(target.displayName) }),
+    ...(target.unityId == null ? {} : { unityId: positiveInt(target.unityId, normalized.unityId) })
   };
 }
 
@@ -589,6 +673,98 @@ export function sortPassengerQueuesByVehicleDepth(document, initialCount = 8) {
   return queues;
 }
 
+function addVehiclePassengerCapacity(counts, vehicle) {
+  if (vehicle.mechanism?.type === 'combination') {
+    counts.set(vehicle.colorIndex, (counts.get(vehicle.colorIndex) ?? 0) + 6);
+    counts.set(vehicle.mechanism.secondColorIndex, (counts.get(vehicle.mechanism.secondColorIndex) ?? 0) + 6);
+    return;
+  }
+  counts.set(vehicle.colorIndex, (counts.get(vehicle.colorIndex) ?? 0) + vehicle.seats);
+}
+
+function passengerCapacityByColor(document) {
+  const counts = new Map();
+  for (const vehicle of document.vehicles) addVehiclePassengerCapacity(counts, vehicle);
+  return counts;
+}
+
+function passengerCountsByColor(document) {
+  const counts = new Map();
+  for (const queue of document.passengerQueues) {
+    for (const color of queue) counts.set(color, (counts.get(color) ?? 0) + 1);
+  }
+  return counts;
+}
+
+function shortestPassengerQueueIndex(document) {
+  if (!document.passengerQueues.length) document.passengerQueues.push([]);
+  return document.passengerQueues.reduce((best, queue, index) => (
+    queue.length < document.passengerQueues[best].length ? index : best
+  ), 0);
+}
+
+function syncPassengerQueuesToVehicleCapacity(document) {
+  const capacity = passengerCapacityByColor(document);
+  const passengers = passengerCountsByColor(document);
+  for (const color of new Set([...capacity.keys(), ...passengers.keys()])) {
+    let delta = (passengers.get(color) ?? 0) - (capacity.get(color) ?? 0);
+    for (let queueId = document.passengerQueues.length - 1; queueId >= 0 && delta > 0; queueId -= 1) {
+      const queue = document.passengerQueues[queueId];
+      for (let index = queue.length - 1; index >= 0 && delta > 0; index -= 1) {
+        if (queue[index] !== color) continue;
+        queue.splice(index, 1);
+        delta -= 1;
+      }
+    }
+    while (delta < 0) {
+      document.passengerQueues[shortestPassengerQueueIndex(document)].push(color);
+      delta += 1;
+    }
+  }
+}
+
+function vehicleColorSlotCount(vehicle, slot) {
+  if (slot === 'second') return vehicle.mechanism?.type === 'combination' ? 6 : 0;
+  return vehicle.mechanism?.type === 'combination' ? 6 : vehicle.seats;
+}
+
+function passengerPositionsByColor(document, colorIndex) {
+  const positions = [];
+  document.passengerQueues.forEach((queue, queueId) => {
+    queue.forEach((color, index) => {
+      if (color === colorIndex) positions.push({ queueId, index });
+    });
+  });
+  return positions;
+}
+
+function syncVehiclePassengerColor(document, vehicle, slot, previousColor, nextColor) {
+  const fromColor = Math.max(0, Math.round(finite(previousColor)));
+  const toColor = Math.max(0, Math.round(finite(nextColor)));
+  if (fromColor === toColor) return;
+  const oldCount = vehicleColorSlotCount(vehicle, slot);
+  if (!oldCount) return;
+
+  // A document does not store an explicit vehicle-to-passenger id. Keep the
+  // authored queue order stable by assigning same-colour passengers to vehicles
+  // in document order, with a combination vehicle's primary slot first.
+  let offset = 0;
+  for (const candidate of document.vehicles) {
+    if (candidate === vehicle) break;
+    if (candidate.colorIndex === fromColor) offset += vehicleColorSlotCount(candidate, 'primary');
+    if (candidate.mechanism?.type === 'combination'
+      && candidate.mechanism.secondColorIndex === fromColor) {
+      offset += vehicleColorSlotCount(candidate, 'second');
+    }
+  }
+  if (slot === 'second' && vehicle.colorIndex === fromColor) {
+    offset += vehicleColorSlotCount(vehicle, 'primary');
+  }
+
+  const positions = passengerPositionsByColor(document, fromColor).slice(offset, offset + oldCount);
+  for (const { queueId, index } of positions) document.passengerQueues[queueId][index] = toColor;
+}
+
 export function validateLevelDocument(document) {
   const errors = [];
   const warnings = [];
@@ -614,10 +790,8 @@ export function validateLevelDocument(document) {
       }
     }
   }
-  const seatCounts = new Map();
-  const passengerCounts = new Map();
-  for (const vehicle of document.vehicles) seatCounts.set(vehicle.colorIndex, (seatCounts.get(vehicle.colorIndex) ?? 0) + vehicle.seats);
-  for (const queue of document.passengerQueues) for (const color of queue) passengerCounts.set(color, (passengerCounts.get(color) ?? 0) + 1);
+  const seatCounts = passengerCapacityByColor(document);
+  const passengerCounts = passengerCountsByColor(document);
   for (const color of new Set([...seatCounts.keys(), ...passengerCounts.keys()])) {
     const seats = seatCounts.get(color) ?? 0;
     const passengers = passengerCounts.get(color) ?? 0;
@@ -722,6 +896,7 @@ export class LevelEditorModel {
       if (activeContainer?.type === CONTAINER_TYPES.GARAGE) resetGarageVehiclePositions(document, activeContainer);
       if (activeContainer?.type === CONTAINER_TYPES.CONVEYOR) resetConveyorVehiclePositions(document, activeContainer);
       if (activeContainer?.type === CONTAINER_TYPES.GATE_QUEUE) resetGateQueueVehiclePositions(document, activeContainer);
+      syncPassengerQueuesToVehicleCapacity(document);
       this.selection = new Set([`vehicle:${vehicle.id}`]);
     });
     return vehicle;
@@ -738,6 +913,45 @@ export class LevelEditorModel {
     return container;
   }
 
+  /**
+   * Places reference-image recognition results into a container. Detections only
+   * carry color/position/yaw/seats, so everything else is normalized here, and the
+   * passenger queues and depth graph are resynced in the same undoable step.
+   */
+  applyDetectedVehicles(detections, { containerId = null, mode = 'replace', select = true } = {}) {
+    const list = Array.isArray(detections) ? detections.filter(Boolean) : [];
+    let created = [];
+    this.transact((document) => {
+      const target = (containerId == null
+        ? document.containers.find((item) => item.type === CONTAINER_TYPES.PARKING)
+        : document.containers.find((item) => item.id === Number(containerId)))
+        ?? document.containers.find((item) => item.type === CONTAINER_TYPES.PARKING);
+      if (!target) return;
+      if (mode === 'replace') {
+        document.vehicles = document.vehicles.filter((vehicle) => vehicle.containerId !== target.id);
+      }
+      created = [];
+      for (const detection of list) {
+        const vehicle = normalizeVehicle({
+          seats: detection.seats,
+          colorIndex: detection.colorIndex,
+          x: detection.x,
+          z: detection.z,
+          yaw: detection.yaw,
+          containerType: target.type,
+          containerId: target.id
+        }, nextId(document.vehicles));
+        vehicle.id = nextId(document.vehicles);
+        document.vehicles.push(vehicle);
+        created.push(vehicle);
+      }
+      syncPassengerQueuesToVehicleCapacity(document);
+      document.vehicleDepthes = buildVehicleDepthGraph(document);
+      this.selection = select ? new Set(created.map((vehicle) => `vehicle:${vehicle.id}`)) : new Set();
+    });
+    return created;
+  }
+
   removeSelected() {
     const keys = new Set(this.selection);
     if (!keys.size) return;
@@ -749,6 +963,7 @@ export class LevelEditorModel {
       if (active?.type === CONTAINER_TYPES.GARAGE) resetGarageVehiclePositions(document, active);
       if (active?.type === CONTAINER_TYPES.CONVEYOR) resetConveyorVehiclePositions(document, active);
       if (active?.type === CONTAINER_TYPES.GATE_QUEUE) resetGateQueueVehiclePositions(document, active);
+      syncPassengerQueuesToVehicleCapacity(document);
       this.selection.clear();
     });
   }
@@ -778,6 +993,7 @@ export class LevelEditorModel {
         } else document.containers.push(item);
         pastedKeys.push(`${source.kind}:${item.id}`);
       }
+      if (pastedKeys.some((key) => key.startsWith('vehicle:'))) syncPassengerQueuesToVehicleCapacity(document);
       this.selection = new Set(pastedKeys);
     });
     return pastedKeys;
@@ -929,8 +1145,17 @@ export class LevelEditorModel {
     const items = this.selected();
     if (!items.length) return;
     this.transact((document) => {
+      const bodyColourChanges = new Map();
       for (const item of items) {
         const previous = { x: item.x, z: item.z, yaw: item.yaw };
+        const previousMechanismType = item.seats ? item.mechanism.type : null;
+        const previousColor = field === 'colorIndex'
+          ? item.colorIndex
+          : field === 'mechanism.type'
+            ? item.colorIndex
+            : field === 'mechanism.secondColorIndex'
+              ? item.mechanism.secondColorIndex
+              : null;
         const unlockedGatePath = !item.seats && item.type === CONTAINER_TYPES.GATE_QUEUE && field === 'gateQueueLocked' && value
           ? getGateQueuePath(document, item)
           : null;
@@ -938,6 +1163,15 @@ export class LevelEditorModel {
         const key = path.pop();
         const parent = path.reduce((target, part) => target[part], item);
         parent[key] = value;
+        if (item.seats && field === 'colorIndex') {
+          const fixedColor = getSpecialVehicleColorIndex(item.mechanism.type);
+          if (fixedColor != null) item.colorIndex = fixedColor;
+        }
+        if (item.seats && field === 'mechanism.type') {
+          const fixedColor = getSpecialVehicleColorIndex(item.mechanism.type);
+          if (fixedColor != null) item.colorIndex = fixedColor;
+          else if (getSpecialVehicleColorIndex(previousMechanismType) === item.colorIndex) item.colorIndex = 0;
+        }
         if (!item.seats) {
           if (field === 'x' || field === 'z') translateContainerContents(document, item, item.x - previous.x, item.z - previous.z);
           if (field === 'yaw') rotateContainerContents(document, item, normalizeAngle(item.yaw) - normalizeAngle(previous.yaw));
@@ -948,12 +1182,79 @@ export class LevelEditorModel {
           }
           if (field === 'gateQueuePathShape' && Number(value) === 0) item.gateQueueLocked = true;
           if (unlockedGatePath) item.gateQueuePathPoints = unlockedGatePath;
+        } else if (field === 'colorIndex') {
+          syncVehiclePassengerColor(document, item, 'primary', previousColor, item.colorIndex);
+        } else if (field === 'mechanism.type') {
+          syncVehiclePassengerColor(document, item, 'primary', previousColor, item.colorIndex);
+        } else if (field === 'colorOverrides.body') {
+          document.passengerColorOverrides[item.colorIndex] ??= {};
+          document.passengerColorOverrides[item.colorIndex].body = value;
+          bodyColourChanges.set(String(item.colorIndex), value);
+        } else if (field === 'mechanism.secondColorIndex' && item.mechanism.type === 'combination') {
+          syncVehiclePassengerColor(document, item, 'second', previousColor, item.mechanism.secondColorIndex);
         }
+      }
+      if (bodyColourChanges.size) {
+        document.vehicles
+          .filter((vehicle) => bodyColourChanges.has(String(vehicle.colorIndex)))
+          .forEach((vehicle) => {
+            vehicle.colorOverrides.body = bodyColourChanges.get(String(vehicle.colorIndex));
+          });
       }
       const active = document.containers.find((item) => item.id === this.activeContainerId);
       if (active?.type === CONTAINER_TYPES.CONVEYOR && ['seats', 'conveyorWidth'].includes(field)) resetConveyorVehiclePositions(document, active);
       if (active?.type === CONTAINER_TYPES.GATE_QUEUE && ['seats', 'gateQueuePathShape', 'gateQueueLocked', 'gateQueueGap'].includes(field)) resetGateQueueVehiclePositions(document, active);
+      if (['seats', 'colorIndex', 'mechanism.type', 'mechanism.secondColorIndex'].includes(field)) {
+        syncPassengerQueuesToVehicleCapacity(document);
+      }
     });
+  }
+
+  setSelectedPassengerColorField(region, value) {
+    const vehicles = this.selected().filter((item) => item.seats);
+    const color = normalizeHexColor(value);
+    if (!vehicles.length || !['body', 'highlight', 'shadow', 'window', 'detail'].includes(region) || !color) return false;
+    this.transact((document) => {
+      const colorIds = new Set(vehicles.map((vehicle) => String(vehicle.colorIndex)));
+      for (const id of colorIds) {
+        document.passengerColorOverrides[id] ??= {};
+        document.passengerColorOverrides[id][region] = color;
+      }
+      document.vehicles
+        .filter((vehicle) => colorIds.has(String(vehicle.colorIndex)))
+        .forEach((vehicle) => { vehicle.colorOverrides[region] = color; });
+    });
+    return true;
+  }
+
+  setPassengerColorOverride(colorIndex, region, value) {
+    const id = Math.max(0, Math.round(finite(colorIndex)));
+    const color = normalizeHexColor(value);
+    if (!['body', 'highlight', 'shadow', 'window', 'detail'].includes(region) || !color) return false;
+    this.transact((document) => {
+      document.passengerColorOverrides[String(id)] ??= {};
+      document.passengerColorOverrides[String(id)][region] = color;
+      document.vehicles
+        .filter((vehicle) => vehicle.colorIndex === id)
+        .forEach((vehicle) => { vehicle.colorOverrides[region] = color; });
+    });
+    return true;
+  }
+
+  resetSelectedVehicleColors() {
+    const vehicles = this.selected().filter((item) => item.seats);
+    if (!vehicles.length) return false;
+    this.transact((document) => {
+      const colorIds = new Set(vehicles.map((vehicle) => String(vehicle.colorIndex)));
+      vehicles.forEach((vehicle) => { vehicle.colorOverrides = {}; });
+      colorIds.forEach((colorIndex) => {
+        const hasRemainingOverride = document.vehicles
+          .filter((vehicle) => String(vehicle.colorIndex) === colorIndex)
+          .some((vehicle) => Object.keys(vehicle.colorOverrides).length);
+        if (!hasRemainingOverride) delete document.passengerColorOverrides[colorIndex];
+      });
+    });
+    return true;
   }
 
   refreshActiveGateQueue() {
@@ -1119,6 +1420,7 @@ export function levelDocumentToRuntime(document, baseLevel = {}) {
     vehicles,
     containers: clone(doc.containers),
     conveyorBelts,
+    passengerColorOverrides: clone(doc.passengerColorOverrides),
     vehicleDepthes: clone(doc.vehicleDepthes),
     passengerQueues: clone(doc.passengerQueues),
     passengerSequence: doc.passengerQueues.flat(),

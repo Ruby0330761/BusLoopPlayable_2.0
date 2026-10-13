@@ -3,7 +3,13 @@ import {
   isSpatialConveyorSelection,
   refreshSpatialConveyorPackages
 } from './spatial-conveyor-runtime.js';
+import {
+  retargetLevelDocument,
+  validateLevelDocument
+} from './level-editor-model.js';
+import { LEVEL_1 } from './level-data.js';
 import { isValidStoreLink } from './store-links.js';
+import { BUILD_VERSION } from './build-version.js';
 
 const CONVEYOR_LAYOUT_OPTIONS = [
   ['dualQueue2', 'GameSceneDualQueue2'],
@@ -11,6 +17,14 @@ const CONVEYOR_LAYOUT_OPTIONS = [
   ['dualQueue5', 'GameSceneDualQueue5'],
   ['dualQueue10', 'GameSceneDualQueue10']
 ];
+
+// Web-authored levels live beside the generated Unity catalog. Keep the
+// currently selected authored level available in the editor even though it has
+// no Unity source entry.
+const LEVEL_EDITOR_OPTIONS = Object.freeze([
+  ...LEVEL_OPTIONS,
+  ['level56', 'Q9V5']
+]);
 
 const BACKGROUND_OPTIONS = [
   ['/assets/applovin/textures/BG01_split01_q60.jpg', 'BG01 \u51ac\u5b63'],
@@ -25,6 +39,12 @@ const BRANDING_ICON_OPTIONS = [
   ['/assets/icon-ios.png', 'iOS']
 ];
 
+const PRE_ROLL_OPTIONS = [
+  ['/assets/preroll/TP1327.mp4', 'TP1327 (3.0s)'],
+  ['/assets/preroll/TP1333.mp4', 'TP1333 (4.8s)'],
+  ['/assets/preroll/TP1334.mp4', 'TP1334 (5.0s)']
+];
+
 const PLAYABLE_EXPORT_PLATFORMS = [
   ['applovin', 'AppLovin', 'HTML'],
   ['google-ads', 'Google Ads', 'ZIP'],
@@ -34,6 +54,21 @@ const PLAYABLE_EXPORT_PLATFORMS = [
   ['moloco', 'Moloco', 'HTML'],
   ['tiktok', 'TikTok', 'ZIP']
 ];
+
+const SCREENSHOT_SIZE_OPTIONS = [
+  ['720x1280', '720 x 1280'],
+  ['1080x1920', '1080 x 1920']
+];
+
+const CUSTOM_BACKGROUND_ENDPOINT = '/__background-assets';
+const CUSTOM_BACKGROUND_MAX_SOURCE_BYTES = 20 * 1024 * 1024;
+const CUSTOM_BACKGROUND_MAX_OUTPUT_BYTES = 360 * 1024;
+const CUSTOM_BACKGROUND_OUTPUT_WIDTH = 2100;
+const CUSTOM_BACKGROUND_OUTPUT_HEIGHT = 3382;
+const CUSTOM_BACKGROUND_QUALITIES = [0.72, 0.66, 0.6, 0.54, 0.48, 0.42, 0.36];
+const CUSTOM_PRE_ROLL_ENDPOINT = '/__pre-roll-assets';
+const CUSTOM_PRE_ROLL_ASSET_PREFIX = '/assets/editor-prerolls/';
+const CUSTOM_PRE_ROLL_MAX_SOURCE_BYTES = 50 * 1024 * 1024;
 
 const EDITOR_CATEGORIES = [
   ['level', '\u5173\u5361'],
@@ -53,15 +88,192 @@ function editorCategoryForGroup(group) {
   }
   if (/^(?:parkingSpots|vehiclePath|vehicleDeparturePath|vehicleArea)\./.test(path)) return 'vehicle';
   if (/^(?:cta|installGate|gameOver|vehicleGuideHand|firstClickGuide|entryBanner)\./.test(path)) return 'guide';
+  if (path.startsWith('preRoll.')) return 'guide';
   return 'visual';
+}
+
+export function getVehicleIdOptions(vehicles = []) {
+  return [...new Set(vehicles
+    .map((vehicle) => Number(vehicle?.id))
+    .filter((id) => Number.isInteger(id) && id > 0))]
+    .sort((left, right) => left - right)
+    .map((id) => [String(id), String(id)]);
+}
+
+export function normalizeVehicleIdSelection(value) {
+  const id = Number(value);
+  return Number.isInteger(id) && id > 0 ? id : null;
 }
 
 function isValidExportNamingPart(value) {
   const normalized = String(value ?? '').trim();
-  return normalized.length > 0
-    && normalized.length <= 64
-    && !normalized.includes('..')
-    && /^[A-Za-z0-9_-]+$/.test(normalized);
+  return normalized.length === 0
+    || (normalized.length <= 64
+      && !normalized.includes('..')
+      && /^[A-Za-z0-9_-]+$/.test(normalized));
+}
+
+function isCustomBackgroundAsset(value) {
+  return typeof value === 'string' && value.startsWith('/assets/editor-backgrounds/');
+}
+
+function isCustomPreRollAsset(value) {
+  return typeof value === 'string'
+    && value.startsWith(CUSTOM_PRE_ROLL_ASSET_PREFIX)
+    && pathBasename(value) === value.slice(CUSTOM_PRE_ROLL_ASSET_PREFIX.length)
+    && /^[A-Za-z0-9][A-Za-z0-9._-]{0,119}\.mp4$/iu.test(pathBasename(value));
+}
+
+function pathBasename(value) {
+  return String(value ?? '').split('/').pop() ?? '';
+}
+
+function isSupportedPreRollFile(file) {
+  return file
+    && file.size > 0
+    && file.size <= CUSTOM_PRE_ROLL_MAX_SOURCE_BYTES
+    && /\.mp4$/iu.test(file.name ?? '');
+}
+
+function formatAssetBytes(bytes) {
+  const value = Number(bytes);
+  if (!Number.isFinite(value) || value < 0) return '未知大小';
+  if (value < 1024 * 1024) return `${Math.max(1, Math.round(value / 1024))} KB`;
+  return `${(value / (1024 * 1024)).toFixed(2)} MB`;
+}
+
+function sanitizeBackgroundDownloadName(value, fallback = 'background') {
+  const normalized = String(value ?? '')
+    .trim()
+    .replace(/[<>:"/\\|?*\u0000-\u001f]/g, '-')
+    .replace(/\s+/g, ' ')
+    .replace(/[. ]+$/g, '');
+  return normalized || fallback;
+}
+
+function getBackgroundDownloadFilename(asset, label) {
+  let pathname = '';
+  try {
+    pathname = new URL(asset, window.location.href).pathname;
+  } catch {
+    pathname = String(asset ?? '');
+  }
+  const extension = pathname.match(/\.[a-z0-9]+$/i)?.[0]?.toLowerCase() || '.jpg';
+  const baseLabel = String(label ?? '').replace(/\.[a-z0-9]+$/i, '');
+  return `${sanitizeBackgroundDownloadName(baseLabel)}${extension}`;
+}
+
+function getPreRollDownloadFilename(asset, label) {
+  let pathname = '';
+  try {
+    pathname = new URL(asset, window.location.href).pathname;
+  } catch {
+    pathname = String(asset ?? '');
+  }
+  const fallback = pathBasename(pathname).replace(/\.mp4$/iu, '') || 'pre-roll';
+  const baseLabel = String(label ?? '')
+    .replace(/^\s*自定义\s*/u, '')
+    .replace(/\.mp4$/iu, '');
+  return `${sanitizeBackgroundDownloadName(baseLabel, fallback)}.mp4`;
+}
+
+function isSupportedBackgroundFile(file) {
+  return file
+    && file.size > 0
+    && file.size <= CUSTOM_BACKGROUND_MAX_SOURCE_BYTES
+    && /\.(?:png|jpe?g|webp)$/i.test(file.name ?? '')
+    && /^image\/(?:png|jpe?g|webp)$/i.test(file.type || 'image/jpeg');
+}
+
+function loadImageFromFile(file) {
+  return new Promise((resolve, reject) => {
+    const image = new Image();
+    const objectUrl = URL.createObjectURL(file);
+    const cleanup = () => URL.revokeObjectURL(objectUrl);
+    image.onload = () => {
+      cleanup();
+      resolve(image);
+    };
+    image.onerror = () => {
+      cleanup();
+      reject(new Error('\u80cc\u666f\u56fe\u65e0\u6cd5\u8bfb\u53d6'));
+    };
+    image.decoding = 'async';
+    image.src = objectUrl;
+  });
+}
+
+function canvasToJpegBlob(canvas, quality) {
+  return new Promise((resolve, reject) => {
+    canvas.toBlob((blob) => {
+      if (blob) resolve(blob);
+      else reject(new Error('\u80cc\u666f\u56fe\u538b\u7f29\u5931\u8d25'));
+    }, 'image/jpeg', quality);
+  });
+}
+
+async function prepareBackgroundUpload(file) {
+  if (!isSupportedBackgroundFile(file)) {
+    throw new Error('\u4ec5\u652f\u6301 20 MB \u4ee5\u5185\u7684 PNG\u3001JPG \u6216 WebP \u56fe\u7247');
+  }
+  const image = await loadImageFromFile(file);
+  const sourceWidth = image.naturalWidth || image.width;
+  const sourceHeight = image.naturalHeight || image.height;
+  if (!sourceWidth || !sourceHeight) throw new Error('\u80cc\u666f\u56fe\u5c3a\u5bf8\u65e0\u6548');
+  const width = CUSTOM_BACKGROUND_OUTPUT_WIDTH;
+  const height = CUSTOM_BACKGROUND_OUTPUT_HEIGHT;
+  const scale = Math.max(width / sourceWidth, height / sourceHeight);
+  const drawWidth = sourceWidth * scale;
+  const drawHeight = sourceHeight * scale;
+  const drawX = (width - drawWidth) / 2;
+  const drawY = (height - drawHeight) / 2;
+  const canvas = document.createElement('canvas');
+  canvas.width = width;
+  canvas.height = height;
+  const context = canvas.getContext('2d');
+  if (!context) throw new Error('\u6d4f\u89c8\u5668\u65e0\u6cd5\u5904\u7406\u80cc\u666f\u56fe');
+  context.fillStyle = '#ffffff';
+  context.fillRect(0, 0, width, height);
+  context.drawImage(image, drawX, drawY, drawWidth, drawHeight);
+  let output = null;
+  for (const quality of CUSTOM_BACKGROUND_QUALITIES) {
+    output = await canvasToJpegBlob(canvas, quality);
+    if (output.size <= CUSTOM_BACKGROUND_MAX_OUTPUT_BYTES) break;
+  }
+  return { blob: output, width, height };
+}
+
+function ensureBackgroundSelectValue(select, value, label) {
+  if (!select || !isCustomBackgroundAsset(value)) return;
+  let option = [...select.options].find((entry) => entry.value === value);
+  if (!option) {
+    option = document.createElement('option');
+    option.value = value;
+    option.dataset.customBackground = 'true';
+    option.textContent = label || '\u81ea\u5b9a\u4e49\u80cc\u666f';
+    select.append(option);
+  }
+  if (label) option.textContent = label;
+}
+
+function ensurePreRollSelectValue(select, value, label) {
+  if (!select || !isCustomPreRollAsset(value)) return;
+  let option = [...select.options].find((entry) => entry.value === value);
+  if (!option) {
+    option = document.createElement('option');
+    option.value = value;
+    option.dataset.customPreRoll = 'true';
+    option.textContent = label || '\u81ea\u5b9a\u4e49\u524d\u8d34';
+    select.append(option);
+  }
+  if (label) option.textContent = label;
+}
+
+function applySelectedBackgroundDimensions(tuning, option) {
+  const width = Number(option?.dataset?.sourceWidth);
+  const height = Number(option?.dataset?.sourceHeight);
+  if (Number.isFinite(width) && width > 0) tuning.background.sourceWidth = Math.round(width);
+  if (Number.isFinite(height) && height > 0) tuning.background.sourceHeight = Math.round(height);
 }
 
 function makeConveyorLayoutGroups(layoutId, label) {
@@ -138,8 +350,12 @@ const FIELD_GROUPS = [
   },
   {
     title: '\u5173\u5361',
+    // Keep the level tools discoverable when the editor first opens. The
+    // layout editor is the primary authoring workflow, so hiding its button
+    // behind a collapsed disclosure makes it look as if the editor is broken.
+    defaultOpen: true,
     fields: [
-      ['\u5f53\u524d\u5173\u5361', 'level.selected', 0, 0, 1, LEVEL_OPTIONS]
+      ['\u5f53\u524d\u5173\u5361', 'level.selected', 0, 0, 1, LEVEL_EDITOR_OPTIONS]
     ]
   },
   {
@@ -171,6 +387,25 @@ const FIELD_GROUPS = [
     ]
   },
   {
+    title: '\u663e\u793a\u63a7\u5236',
+    defaultOpen: true,
+    fields: [
+      ['\u6c7d\u8f66\u663e\u793a', 'visibility.vehicles', 0, 1, 1, null, 'toggle'],
+      ['\u5c0f\u4eba\u663e\u793a', 'visibility.passengers', 0, 1, 1, null, 'toggle'],
+      ['Play Now \u5f39\u7a97\u663e\u793a', 'cta.enabled', 0, 1, 1, null, 'toggle']
+    ]
+  },
+  {
+    title: '\u524d\u8d34\u89c6\u9891',
+    defaultOpen: true,
+    fields: [
+      ['\u542f\u7528', 'preRoll.enabled', 0, 1, 1, null, 'toggle'],
+      ['\u89c6\u9891', 'preRoll.asset', 0, 0, 1, PRE_ROLL_OPTIONS],
+      ['\u64ad\u653e\u58f0\u97f3', 'preRoll.soundEnabled', 0, 1, 1, null, 'toggle'],
+      ['\u6de1\u51fa\u65f6\u957f', 'preRoll.fadeDurationSeconds', 0.1, 2, 0.05]
+    ]
+  },
+  {
     title: '\u76f8\u673a',
     fields: [
       ['\u4fef\u89d2', 'camera.elevationDegrees', 25, 80, 1],
@@ -178,7 +413,8 @@ const FIELD_GROUPS = [
       ['\u76ee\u6807 X', 'camera.targetX', -10, 10, 0.05],
       ['\u76ee\u6807 Z', 'camera.targetZ', -12, 12, 0.05],
       ['\u753b\u9762\u5bbd\u5ea6', 'camera.fitWidth', 8, 30, 0.1],
-      ['\u753b\u9762\u9ad8\u5ea6', 'camera.fitHeight', 8, 36, 0.1]
+      ['\u753b\u9762\u9ad8\u5ea6', 'camera.fitHeight', 8, 36, 0.1],
+      ['\u5b89\u5168\u8fb9\u8ddd', 'camera.padding', 0, 3, 0.05]
     ]
   },
   {
@@ -209,6 +445,7 @@ const FIELD_GROUPS = [
     title: '\u80cc\u666f',
     fields: [
       ['\u56fe\u7247', 'background.asset', 0, 0, 1, BACKGROUND_OPTIONS],
+      ['\u7f29\u653e', 'background.scale', 0.3, 3, 0.01],
       ['X \u5750\u6807', 'background.offsetX', -10, 10, 0.05],
       ['Y \u5750\u6807', 'background.offsetY', -10, 10, 0.05],
       ['\u900f\u660e\u5ea6', 'background.opacity', 0, 1, 0.01]
@@ -224,7 +461,6 @@ const FIELD_GROUPS = [
   {
     title: 'CTA',
     fields: [
-      ['Enabled', 'cta.enabled', 0, 1, 1],
       ['\u5c4f\u5e55 X', 'cta.x', 0, 1080, 1],
       ['\u5c4f\u5e55 Y', 'cta.y', 0, 2160, 1],
       ['Height', 'cta.height', 36, 140, 1],
@@ -468,7 +704,11 @@ const FIELD_GROUPS = [
   {
     title: '\u8f66\u8f86',
     fields: [
-      ['Map Scale', 'vehicleArea.positionUnitScale', 0.6, 2.2, 0.01],
+      ['\u8f66\u9635\u6574\u4f53\u5de6\u53f3\uff08\u5411\u53f3\u4e3a\u6b63\uff09', 'vehicleArea.offsetX', -3, 3, 0.05],
+      ['\u8f66\u9635\u6574\u4f53\u4e0a\u4e0b\uff08\u5411\u4e0b\u4e3a\u6b63\uff09', 'vehicleArea.offsetZ', -3, 3, 0.05],
+      ['\u8f66\u8f86\u6574\u4f53\u65cb\u8f6c\uff08\u4ee5\u8f66\u9635\u4e2d\u5fc3\u4e3a\u8f74\uff09', 'vehicleArea.rotationDegrees', -180, 180, 1],
+      ['\u6295\u5f71\u989c\u8272', 'vehicleShadows.color', 0, 16777215, 1],
+      ['Map Scale', 'vehicleArea.positionUnitScale', 0.1, 2.2, 0.01],
       ['\u6a21\u578b\u5927\u5c0f', 'vehicleArea.modelScale', 0.3, 2.5, 0.05],
       ['\u4e0a\u8f66\u653e\u5927\u500d\u6570', 'vehicleBoardingPulse.scale', 1, 2, 0.01],
       ['\u4e0a\u8f66\u7f29\u653e\u901f\u5ea6', 'vehicleBoardingPulse.speed', 0, 20, 0.1],
@@ -487,7 +727,7 @@ const FIELD_GROUPS = [
       ['\u63d0\u793a\u5f00\u542f', 'vehicleGuideHand.enabled', 0, 1, 1, null, 'toggle'],
       ['\u5f00\u573a\u7acb\u5373\u663e\u793a', 'vehicleGuideHand.showAtStart', 0, 1, 1, null, 'toggle'],
       ['\u65e0\u64cd\u4f5c\u7b49\u5f85\uff08\u79d2\uff09', 'vehicleGuideHand.idleDelaySeconds', 1, 30, 0.5],
-      ['\u5f15\u5bfc\u5173\u5361', 'vehicleGuideHand.levelKey', 0, 0, 1, LEVEL_OPTIONS],
+      ['\u5f15\u5bfc\u5173\u5361', 'vehicleGuideHand.levelKey', 0, 0, 1, LEVEL_EDITOR_OPTIONS],
       ['\u5f15\u5bfc\u8f66 ID', 'vehicleGuideHand.vehicleId', 1, 200, 1],
       ['\u5c0f\u624b X', 'vehicleGuideHand.offsetX', -3, 3, 0.01],
       ['\u5c0f\u624b\u9ad8\u5ea6', 'vehicleGuideHand.offsetY', 0, 3, 0.01],
@@ -508,9 +748,9 @@ const FIELD_GROUPS = [
     defaultOpen: true,
     fields: [
       ['\u52a8\u753b\u5f00\u542f', 'firstClickGuide.enabled', 0, 1, 1, null, 'toggle'],
-      ['\u751f\u6548\u5173\u5361', 'firstClickGuide.levelKey', 0, 0, 1, LEVEL_OPTIONS],
-      ['\u76ee\u6807\u8f66 ID', 'firstClickGuide.vehicleId', 1, 200, 1],
+      ['\u76ee\u6807\u8f66 ID', 'firstClickGuide.vehicleId', 1, 200, 1, null, 'vehicle-id-select'],
       ['\u6301\u7eed\u65f6\u95f4', 'firstClickGuide.durationSeconds', 0, 10, 0.1],
+      ['\u7f6e\u7070\u5176\u4ed6\u8f66\u8f86', 'firstClickGuide.maskEnabled', 0, 1, 1, null, 'toggle'],
       ['\u906e\u7f69\u900f\u660e\u5ea6', 'firstClickGuide.maskOpacity', 0, 1, 0.01],
       ['\u5149\u6548\u8fb9\u8ddd', 'firstClickGuide.holePadding', 0, 120, 1],
       ['\u5149\u6548\u5706\u89d2', 'firstClickGuide.holeRadius', 0, 120, 1],
@@ -613,21 +853,38 @@ export function createSceneEditor(root, {
   getTuning,
   defaultTuning = getTuning(),
   setTuning,
+  getPlayableExportPayload = () => ({ tuning: getTuning() }),
   clearSavedTuning = () => {},
+  captureScreenshot = async () => { throw new Error('\u622a\u56fe\u529f\u80fd\u4e0d\u53ef\u7528'); },
+  previewPreRoll = async () => {},
   openSpatialPointEditor = async () => {},
-  openLevelLayoutEditor = async () => {}
+  openLevelLayoutEditor = async () => {},
+  getCameraPreset = () => null
 }) {
   const defaults = structuredClone(defaultTuning);
   root.innerHTML = `
     <header class="editor-header">
       <div>
-        <span class="editor-kicker">SCENE EDITOR</span>
+        <span class="editor-kicker">SCENE EDITOR <span class="editor-version">v${BUILD_VERSION}</span></span>
         <h2>\u573a\u666f\u8c03\u8282</h2>
       </div>
       <button class="editor-toggle" type="button" aria-label="\u6536\u8d77\u573a\u666f\u7f16\u8f91\u5668" aria-expanded="true">\u00d7</button>
     </header>
     <div class="editor-body">
-      <p class="editor-help">\u56fe\u7247\u4e0e\u884c\u8d70\u66f2\u7ebf\u53ef\u5206\u522b\u8c03\u8282\u3002\u6bcf\u6b21\u8c03\u6574\u4f1a\u81ea\u52a8\u4fdd\u5b58\u3002</p>
+      <p class="editor-help">\u56fe\u7247\u4e0e\u884c\u8d70\u66f2\u7ebf\u53ef\u5206\u522b\u8c03\u8282\u3002\u53c2\u6570\u6309\u5f53\u524d\u5173\u5361\u5355\u72ec\u4fdd\u5b58\uff0c\u6bcf\u6b21\u8c03\u6574\u4f1a\u81ea\u52a8\u4fdd\u5b58\u3002</p>
+      <details class="editor-section editor-screenshot" open>
+        <summary class="editor-section-summary"><h3>\u622a\u56fe\u51fa\u56fe</h3></summary>
+        <label class="editor-screenshot-size">
+          <span>\u753b\u9762\u5c3a\u5bf8</span>
+          <select class="editor-screenshot-select">
+            ${SCREENSHOT_SIZE_OPTIONS.map(([value, label]) => (
+              `<option value="${value}">${label} PNG</option>`
+            )).join('')}
+          </select>
+        </label>
+        <button class="editor-screenshot-button" type="button">\u4e0b\u8f7d\u622a\u56fe</button>
+        <p class="editor-screenshot-status" role="status" aria-live="polite" aria-atomic="true">\u4e0d\u5305\u542b\u624b\u673a\u8fb9\u6846</p>
+      </details>
       <nav class="editor-category-tabs" role="tablist" aria-label="\u7f16\u8f91\u5668\u529f\u80fd\u5206\u7c7b">
         ${EDITOR_CATEGORIES.map(([id, label], index) => (
           `<button type="button" role="tab" data-editor-category-tab="${id}" aria-selected="${index === 0}" tabindex="${index === 0 ? 0 : -1}">${label}</button>`
@@ -650,7 +907,11 @@ export function createSceneEditor(root, {
         <p class="editor-export-status" role="status" aria-live="polite" aria-atomic="true">\u5c31\u7eea</p>
       </details>
       <div class="editor-fields"></div>
-      <button class="editor-reset" type="button">\u6062\u590d\u9ed8\u8ba4\u53c2\u6570</button>
+      <div class="editor-history-actions">
+        <button class="editor-history-button editor-undo" type="button" aria-label="\u64a4\u56de\u4e0a\u4e00\u6b65" title="\u64a4\u56de\u4e0a\u4e00\u6b65">&#8630;</button>
+        <button class="editor-history-button editor-redo" type="button" aria-label="\u91cd\u505a\u4e0a\u4e00\u6b65" title="\u91cd\u505a\u4e0a\u4e00\u6b65">&#8631;</button>
+        <button class="editor-reset" type="button">\u6062\u590d\u9ed8\u8ba4\u53c2\u6570</button>
+      </div>
     </div>
   `;
 
@@ -660,7 +921,61 @@ export function createSceneEditor(root, {
   const exportButton = root.querySelector('.editor-export-button');
   const exportAllButton = root.querySelector('.editor-export-all-button');
   const exportStatus = root.querySelector('.editor-export-status');
+  const screenshotSelect = root.querySelector('.editor-screenshot-select');
+  const screenshotButton = root.querySelector('.editor-screenshot-button');
+  const screenshotStatus = root.querySelector('.editor-screenshot-status');
   const categoryTabs = [...root.querySelectorAll('[data-editor-category-tab]')];
+  const undoButton = root.querySelector('.editor-undo');
+  const redoButton = root.querySelector('.editor-redo');
+  const tuningUndoStack = [];
+  const tuningRedoStack = [];
+  const MAX_TUNING_HISTORY = 50;
+  let restoringHistory = false;
+
+  const sameTuning = (left, right) => JSON.stringify(left) === JSON.stringify(right);
+  function updateHistoryButtons() {
+    undoButton.disabled = tuningUndoStack.length === 0;
+    redoButton.disabled = tuningRedoStack.length === 0;
+  }
+  function commitTuning(next, { path, merge = false } = {}) {
+    const before = structuredClone(getTuning());
+    const result = setTuning(next, { path });
+    const after = structuredClone(result ?? getTuning());
+    if (!restoringHistory && !sameTuning(before, after)) {
+      const previous = tuningUndoStack[tuningUndoStack.length - 1];
+      if (merge && previous?.path === path) {
+        previous.after = after;
+      } else {
+        tuningUndoStack.push({ before, after, path });
+        if (tuningUndoStack.length > MAX_TUNING_HISTORY) tuningUndoStack.shift();
+      }
+      tuningRedoStack.length = 0;
+    }
+    updateHistoryButtons();
+    return result;
+  }
+
+  function restoreHistoryEntry(entry, direction) {
+    if (!entry) return;
+    const current = structuredClone(getTuning());
+    const target = direction === 'undo' ? entry.before : entry.after;
+    restoringHistory = true;
+    try {
+      setTuning(structuredClone(target), { path: entry.path });
+      if (direction === 'undo') {
+        tuningRedoStack.push({ before: target, after: current, path: entry.path });
+      } else {
+        tuningUndoStack.push({ before: current, after: target, path: entry.path });
+      }
+      sync();
+    } finally {
+      restoringHistory = false;
+      updateHistoryButtons();
+    }
+  }
+
+  undoButton.addEventListener('click', () => restoreHistoryEntry(tuningUndoStack.pop(), 'undo'));
+  redoButton.addEventListener('click', () => restoreHistoryEntry(tuningRedoStack.pop(), 'redo'));
 
   function setEditorCategory(category, { focus = false } = {}) {
     if (!EDITOR_CATEGORIES.some(([id]) => id === category)) return;
@@ -701,7 +1016,7 @@ export function createSceneEditor(root, {
     }
     const platform = all ? null : exportSelect.value;
     const platformLabel = all
-      ? '\u5168\u90e8 7 \u4e2a\u5e73\u53f0'
+      ? '\u5168\u90e8 7 \u4e2a\u5e73\u53f0 \u00d7 Android/iOS'
       : (PLAYABLE_EXPORT_PLATFORMS.find(([id]) => id === platform)?.[1] ?? platform);
     exportSelect.disabled = true;
     exportButton.disabled = true;
@@ -709,16 +1024,29 @@ export function createSceneEditor(root, {
     exportButton.setAttribute('aria-busy', 'true');
     exportAllButton.setAttribute('aria-busy', 'true');
     exportStatus.dataset.state = 'busy';
-    exportStatus.textContent = `\u6b63\u5728\u6253\u5305 ${platformLabel} \u5e76\u6267\u884c\u672c\u5730\u68c0\u6d4b...`;
+    exportStatus.textContent = `\u6b63\u5728\u6253\u5305 ${platformLabel}...`;
     try {
+      const exportPayload = getPlayableExportPayload() ?? { tuning: getTuning() };
       const response = await fetch(all ? '/__playable-export-all' : '/__playable-export', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(all ? { tuning: getTuning() } : { platform, tuning: getTuning() })
+        body: JSON.stringify(all ? exportPayload : { ...exportPayload, platform })
       });
       if (!response.ok) {
         const payload = await response.json().catch(() => ({}));
-        throw new Error(payload.error || `HTTP ${response.status}`);
+        const baseMessage = payload.error || `HTTP ${response.status}`;
+        const detail = typeof payload.detail === 'string' && payload.detail.trim()
+          ? payload.detail.trim()
+          : null;
+        const detailAlreadyShown = detail && (
+          baseMessage.includes(detail)
+          || /^试玩包生成或本地检测失败[:：]/u.test(baseMessage)
+        );
+        const duration = Number(payload.durationMs);
+        const durationMessage = Number.isFinite(duration) && duration > 0
+          ? `，服务端耗时 ${Math.round(duration / 1000)} 秒`
+          : '';
+        throw new Error(`${baseMessage}${detail && !detailAlreadyShown ? `：${detail}` : ''}${durationMessage}`);
       }
 
       const blob = await response.blob();
@@ -737,10 +1065,16 @@ export function createSceneEditor(root, {
 
       const check = response.headers.get('X-Playable-Check');
       exportStatus.dataset.state = 'success';
-      exportStatus.textContent = `\u5df2\u4e0b\u8f7d ${filename}${check ? `\uff08\u672c\u5730\u68c0\u6d4b ${check}\uff09` : ''}\uff0c\u5f85\u5e73\u53f0\u9a8c\u6536`;
+      const checkMessage = check?.startsWith('skipped;')
+        ? '\uff08\u672a\u6267\u884c\u672c\u5730\u68c0\u6d4b\uff09'
+        : check ? `\uff08\u672c\u5730\u68c0\u6d4b ${check}\uff09` : '';
+      exportStatus.textContent = `\u5df2\u4e0b\u8f7d ${filename}${checkMessage}\uff0c\u5f85\u5e73\u53f0\u9a8c\u6536`;
     } catch (error) {
       exportStatus.dataset.state = 'error';
-      exportStatus.textContent = `\u5bfc\u51fa\u5931\u8d25\uff1a${error.message}`;
+      const message = error instanceof TypeError && /fetch|network|failed to fetch/i.test(error.message)
+        ? '\u65e0\u6cd5\u8fde\u63a5\u5bfc\u51fa\u670d\u52a1\uff0c\u8bf7\u786e\u8ba4\u5f53\u524d\u7535\u8111\u53ef\u8bbf\u95ee\u7f16\u8f91\u5668\u5730\u5740'
+        : error.message;
+      exportStatus.textContent = `\u5bfc\u51fa\u5931\u8d25\uff1a${message}`;
     } finally {
       exportSelect.disabled = false;
       exportButton.disabled = false;
@@ -753,6 +1087,29 @@ export function createSceneEditor(root, {
   exportButton.addEventListener('click', () => exportPlayable());
   exportAllButton.addEventListener('click', () => exportPlayable({ all: true }));
 
+  screenshotButton.addEventListener('click', async () => {
+    const [width, height] = String(screenshotSelect.value || '720x1280')
+      .split('x')
+      .map((value) => Number(value));
+    screenshotButton.disabled = true;
+    screenshotSelect.disabled = true;
+    screenshotButton.setAttribute('aria-busy', 'true');
+    screenshotStatus.dataset.state = 'busy';
+    screenshotStatus.textContent = `\u6b63\u5728\u622a\u53d6 ${width} x ${height}...`;
+    try {
+      const result = await captureScreenshot({ width, height });
+      screenshotStatus.dataset.state = 'success';
+      screenshotStatus.textContent = `\u5df2\u4e0b\u8f7d ${result?.filename ?? `${width}x${height}.png`}\uff0c\u4e0d\u5305\u542b\u624b\u673a\u8fb9\u6846`;
+    } catch (error) {
+      screenshotStatus.dataset.state = 'error';
+      screenshotStatus.textContent = `\u622a\u56fe\u5931\u8d25\uff1a${error.message}`;
+    } finally {
+      screenshotButton.disabled = false;
+      screenshotSelect.disabled = false;
+      screenshotButton.removeAttribute('aria-busy');
+    }
+  });
+
   for (const group of FIELD_GROUPS) {
     const section = document.createElement('details');
     section.className = 'editor-section';
@@ -762,7 +1119,10 @@ export function createSceneEditor(root, {
     if (group.spatialOnly) section.dataset.spatialOnly = 'true';
     if (group.spatialImportAnchor) section.dataset.spatialImportAnchor = 'true';
     section.innerHTML = `<summary class="editor-section-summary"><h3>${group.title}</h3></summary>`;
-    for (const [label, path, min, max, step, options, control] of group.fields) {
+    for (const [label, path, min, max, step, configuredOptions, control] of group.fields) {
+      const options = control === 'vehicle-id-select'
+        ? getVehicleIdOptions(LEVEL_1.vehicles)
+        : configuredOptions;
       const isColor = /color$/i.test(path) || /^passengerMaterial\.solidColors\.\d+$/.test(path);
       const isToggle = control === 'toggle';
       const isFilename = control === 'filename';
@@ -800,11 +1160,16 @@ export function createSceneEditor(root, {
       const textInput = row.querySelector('.editor-text');
       const urlInput = row.querySelector('.editor-url');
       if (options) {
-        const commitOption = (value) => {
+        const commitOption = (rawValue) => {
+          const value = control === 'vehicle-id-select'
+            ? normalizeVehicleIdSelection(rawValue)
+            : rawValue;
+          if (value === null) return;
           const next = structuredClone(getTuning());
           setAtPath(next, path, value);
-          setTuning(next, { path });
-          select.value = value;
+          if (path === 'background.asset') applySelectedBackgroundDimensions(next, select.selectedOptions?.[0]);
+          commitTuning(next, { path });
+          select.value = String(value);
           sync();
         };
         select.addEventListener('change', () => commitOption(select.value));
@@ -816,11 +1181,10 @@ export function createSceneEditor(root, {
         checkbox.addEventListener('change', () => {
           const next = structuredClone(getTuning());
           setAtPath(next, path, checkbox.checked ? 1 : 0);
-          if ((path === 'firstClickGuide.enabled' || path === 'vehicleGuideHand.enabled') && checkbox.checked) {
-            const guideKey = path.split('.')[0];
-            setAtPath(next, `${guideKey}.levelKey`, getAtPath(next, 'level.selected'));
+          if (path === 'vehicleGuideHand.enabled' && checkbox.checked) {
+            setAtPath(next, 'vehicleGuideHand.levelKey', getAtPath(next, 'level.selected'));
           }
-          setTuning(next, { path });
+          commitTuning(next, { path });
           if (path === 'firstClickGuide.enabled') sync();
         });
         inputs.set(path, { row, checkbox, step });
@@ -832,14 +1196,14 @@ export function createSceneEditor(root, {
           if (!isFilename) return true;
           const valid = isValidExportNamingPart(textInput.value);
           textInput.setAttribute('aria-invalid', String(!valid));
-          textInput.setCustomValidity(valid ? '' : '\u4ec5\u652f\u6301 1-64 \u4f4d\u82f1\u6587\u5b57\u6bcd\u3001\u6570\u5b57\u3001\u4e2d\u5212\u7ebf\u548c\u4e0b\u5212\u7ebf\uff0c\u4e0d\u80fd\u5305\u542b ..');
+          textInput.setCustomValidity(valid ? '' : '\u53ef\u7559\u7a7a\uff0c\u6216\u8f93\u5165 1-64 \u4f4d\u82f1\u6587\u5b57\u6bcd\u3001\u6570\u5b57\u3001\u4e2d\u5212\u7ebf\u548c\u4e0b\u5212\u7ebf\uff0c\u4e0d\u80fd\u5305\u542b ..');
           return valid;
         };
         textInput.addEventListener('input', () => {
           updateValidity();
           const next = structuredClone(getTuning());
           setAtPath(next, path, textInput.value);
-          setTuning(next, { path });
+          commitTuning(next, { path, merge: true });
         });
         textInput.addEventListener('blur', updateValidity);
         inputs.set(path, { row, textInput, isFilename, updateValidity });
@@ -859,7 +1223,7 @@ export function createSceneEditor(root, {
           const next = structuredClone(getTuning());
           const value = urlInput.value.trim();
           setAtPath(next, path, value);
-          setTuning(next, { path });
+          commitTuning(next, { path, merge: true });
         });
         urlInput.addEventListener('blur', updateValidity);
         inputs.set(path, { row, urlInput, platform, updateValidity });
@@ -871,7 +1235,7 @@ export function createSceneEditor(root, {
         if (!Number.isFinite(value)) return;
         const next = structuredClone(getTuning());
         setAtPath(next, path, value);
-        setTuning(next, { path });
+        commitTuning(next, { path, merge: true });
         if (range) range.value = String(value);
         number.value = formatValue(value, step);
         if (color) color.value = formatColor(value);
@@ -885,21 +1249,474 @@ export function createSceneEditor(root, {
     fieldsRoot.append(section);
   }
 
+  const cameraControls = inputs.get('camera.fitWidth');
+  const cameraSection = cameraControls?.row.closest('.editor-section');
+  const cameraTools = document.createElement('div');
+  cameraTools.className = 'editor-camera-tools';
+  cameraTools.innerHTML = `
+    <div class="editor-camera-actions" role="group" aria-label="相机快捷视图">
+      <button type="button" data-camera-action="auto">自动取景</button>
+      <button type="button" data-camera-action="vehicles">车阵聚焦</button>
+      <button type="button" data-camera-action="conveyor">传送带聚焦</button>
+      <button type="button" data-camera-action="default">默认视图</button>
+    </div>
+    <p class="editor-camera-status" role="status" aria-live="polite">就绪</p>
+  `;
+  cameraSection?.append(cameraTools);
+  const cameraStatus = cameraTools.querySelector('.editor-camera-status');
+  for (const button of cameraTools.querySelectorAll('[data-camera-action]')) {
+    button.addEventListener('click', () => {
+      const action = button.dataset.cameraAction;
+      try {
+        const camera = getCameraPreset(action);
+        if (!camera) throw new Error('当前视图不可用');
+        const next = structuredClone(getTuning());
+        setAtPath(next, 'camera', structuredClone(camera));
+        commitTuning(next, { path: 'camera' });
+        sync();
+        cameraStatus.dataset.state = 'success';
+        cameraStatus.textContent = action === 'default'
+          ? '已恢复默认视图'
+          : '已更新视图，可继续微调';
+      } catch (error) {
+        cameraStatus.dataset.state = 'error';
+        cameraStatus.textContent = `视图调整失败：${error.message}`;
+      }
+    });
+  }
+
+  const preRollControls = inputs.get('preRoll.asset');
+  const preRollSection = preRollControls?.row.closest('.editor-section');
+  const preRollPreviewButton = document.createElement('button');
+  preRollPreviewButton.className = 'editor-pre-roll-preview';
+  preRollPreviewButton.type = 'button';
+  preRollPreviewButton.textContent = '\u91cd\u65b0\u64ad\u653e\u524d\u8d34';
+  preRollPreviewButton.addEventListener('click', () => {
+    void Promise.resolve(previewPreRoll()).catch((error) => {
+      console.warn('\u524d\u8d34\u89c6\u9891\u9884\u89c8\u5931\u8d25\u3002', error);
+    });
+  });
+  const preRollTools = document.createElement('div');
+  preRollTools.className = 'editor-pre-roll-tools';
+  preRollTools.innerHTML = `
+    <div class="editor-pre-roll-actions">
+      <button class="editor-pre-roll-import" type="button">\u4e0a\u4f20\u89c6\u9891</button>
+      <button class="editor-pre-roll-rename" type="button">\u4fee\u6539\u540d\u79f0</button>
+      <button class="editor-pre-roll-delete" type="button">\u5220\u9664\u89c6\u9891</button>
+      <button class="editor-pre-roll-download" type="button">\u4e0b\u8f7d\u89c6\u9891</button>
+    </div>
+    <input class="editor-pre-roll-file" type="file" accept="video/mp4,.mp4" hidden>
+    <p class="editor-pre-roll-status" role="status" aria-live="polite">\u652f\u6301 50 MB \u4ee5\u5185 MP4，\u4e0a\u4f20\u540e\u4f1a\u81ea\u52a8\u538b\u7f29\u81f3 2 MB \u4ee5\u5185</p>
+  `;
+  preRollSection?.append(preRollPreviewButton, preRollTools);
+  const preRollImportButton = preRollTools.querySelector('.editor-pre-roll-import');
+  const preRollRenameButton = preRollTools.querySelector('.editor-pre-roll-rename');
+  const preRollDeleteButton = preRollTools.querySelector('.editor-pre-roll-delete');
+  const preRollDownloadButton = preRollTools.querySelector('.editor-pre-roll-download');
+  const preRollFileInput = preRollTools.querySelector('.editor-pre-roll-file');
+  const preRollStatus = preRollTools.querySelector('.editor-pre-roll-status');
+  let preRollBusy = false;
+
+  function setPreRollBusy(busy) {
+    preRollBusy = busy;
+    const custom = isCustomPreRollAsset(getTuning().preRoll?.asset);
+    preRollImportButton.disabled = busy;
+    preRollRenameButton.disabled = busy || !custom;
+    preRollDeleteButton.disabled = busy || !custom;
+    preRollDownloadButton.disabled = busy || !getTuning().preRoll?.asset;
+    preRollPreviewButton.disabled = busy || !Boolean(getTuning().preRoll?.enabled);
+  }
+
+  function replaceCustomPreRollOptions(items = []) {
+    const select = preRollControls?.select;
+    if (!select) return;
+    for (const option of [...select.querySelectorAll('[data-custom-pre-roll]')]) option.remove();
+    for (const item of items) {
+      if (!item?.value || !item?.label || select.querySelector(`option[value="${CSS.escape(item.value)}"]`)) continue;
+      const option = document.createElement('option');
+      option.value = item.value;
+      option.textContent = item.label;
+      option.dataset.customPreRoll = 'true';
+      select.append(option);
+    }
+  }
+
+  async function refreshPreRollOptions() {
+    const response = await fetch(CUSTOM_PRE_ROLL_ENDPOINT, { cache: 'no-store' });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(payload.error || `HTTP ${response.status}`);
+    replaceCustomPreRollOptions(payload.items ?? []);
+    const current = getTuning().preRoll?.asset;
+    ensurePreRollSelectValue(preRollControls?.select, current);
+    if (preRollControls?.select) preRollControls.select.value = current ?? '';
+    return payload.items ?? [];
+  }
+
+  async function importPreRollFile(file) {
+    if (!isSupportedPreRollFile(file)) {
+      throw new Error('\u4ec5\u652f\u6301 50 MB \u4ee5\u5185\u7684 MP4 \u89c6\u9891');
+    }
+    const response = await fetch(`${CUSTOM_PRE_ROLL_ENDPOINT}/import`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'video/mp4',
+        'X-Pre-Roll-Filename': encodeURIComponent(file.name)
+      },
+      body: file
+    });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(payload.error || `HTTP ${response.status}`);
+    if (!payload.item?.value) throw new Error('\u670d\u52a1\u672a\u8fd4\u56de\u524d\u8d34\u89c6\u9891\u5730\u5740');
+    await refreshPreRollOptions();
+    const next = structuredClone(getTuning());
+    next.preRoll.asset = payload.item.value;
+    ensurePreRollSelectValue(preRollControls?.select, payload.item.value, payload.item.label);
+    commitTuning(next, { path: 'preRoll.asset' });
+    sync();
+    return payload.item;
+  }
+
+  preRollImportButton.addEventListener('click', () => preRollFileInput.click());
+  preRollRenameButton.addEventListener('click', async () => {
+    const current = getTuning().preRoll?.asset;
+    if (!isCustomPreRollAsset(current)) {
+      preRollStatus.dataset.state = 'error';
+      preRollStatus.textContent = '\u53ea\u80fd\u4fee\u6539\u81ea\u5b9a\u4e49\u524d\u8d34\u540d\u79f0';
+      return;
+    }
+    const currentOption = preRollControls?.select?.selectedOptions?.[0];
+    const currentLabel = currentOption?.textContent?.replace(/^\u81ea\u5b9a\u4e49\s*/u, '') || '';
+    const label = window.prompt('\u8bf7\u8f93\u5165\u524d\u8d34\u89c6\u9891\u540d\u79f0', currentLabel);
+    if (label == null || !label.trim()) return;
+    setPreRollBusy(true);
+    try {
+      const filename = current.slice(CUSTOM_PRE_ROLL_ASSET_PREFIX.length);
+      const response = await fetch(`${CUSTOM_PRE_ROLL_ENDPOINT}/rename`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json; charset=utf-8' },
+        body: JSON.stringify({ filename, label: label.trim() })
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(payload.error || `HTTP ${response.status}`);
+      await refreshPreRollOptions();
+      ensurePreRollSelectValue(preRollControls?.select, current, payload.item?.label);
+      sync();
+      preRollStatus.dataset.state = 'success';
+      preRollStatus.textContent = `\u5df2\u4fee\u6539\u524d\u8d34\u540d\u79f0\u4e3a ${label.trim()}`;
+    } catch (error) {
+      preRollStatus.dataset.state = 'error';
+      preRollStatus.textContent = `\u4fee\u6539\u5931\u8d25\uff1a${error.message}`;
+    } finally {
+      setPreRollBusy(false);
+    }
+  });
+  preRollDeleteButton.addEventListener('click', async () => {
+    const current = getTuning().preRoll?.asset;
+    if (!isCustomPreRollAsset(current)) {
+      preRollStatus.dataset.state = 'error';
+      preRollStatus.textContent = '\u53ea\u80fd\u5220\u9664\u81ea\u5b9a\u4e49\u524d\u8d34\u89c6\u9891';
+      return;
+    }
+    if (!window.confirm('\u786e\u5b9a\u5220\u9664\u5f53\u524d\u81ea\u5b9a\u4e49\u524d\u8d34\u89c6\u9891\uff1f')) return;
+    setPreRollBusy(true);
+    try {
+      const filename = current.slice(CUSTOM_PRE_ROLL_ASSET_PREFIX.length);
+      const response = await fetch(`${CUSTOM_PRE_ROLL_ENDPOINT}?filename=${encodeURIComponent(filename)}`, { method: 'DELETE' });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(payload.error || `HTTP ${response.status}`);
+      const next = structuredClone(getTuning());
+      next.preRoll.asset = defaults.preRoll?.asset || PRE_ROLL_OPTIONS[0][0];
+      commitTuning(next, { path: 'preRoll.asset' });
+      await refreshPreRollOptions();
+      sync();
+      preRollStatus.dataset.state = 'success';
+      preRollStatus.textContent = '\u5df2\u5220\u9664\u524d\u8d34\u89c6\u9891\u5e76\u6062\u590d\u9ed8\u8ba4';
+    } catch (error) {
+      preRollStatus.dataset.state = 'error';
+      preRollStatus.textContent = `\u5220\u9664\u5931\u8d25\uff1a${error.message}`;
+    } finally {
+      setPreRollBusy(false);
+    }
+  });
+  preRollDownloadButton.addEventListener('click', async () => {
+    const current = getTuning().preRoll?.asset;
+    if (!current) return;
+    const currentLabel = preRollControls?.select?.selectedOptions?.[0]?.textContent || 'pre-roll';
+    setPreRollBusy(true);
+    preRollStatus.dataset.state = 'busy';
+    preRollStatus.textContent = '\u6b63\u5728\u51c6\u5907\u524d\u8d34\u89c6\u9891\u4e0b\u8f7d...';
+    let objectUrl = '';
+    try {
+      const response = await fetch(current, { cache: 'no-store' });
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      const blob = await response.blob();
+      if (!blob.size) throw new Error('\u524d\u8d34\u89c6\u9891\u5185\u5bb9\u4e3a\u7a7a');
+      objectUrl = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = objectUrl;
+      link.download = getPreRollDownloadFilename(current, currentLabel);
+      link.rel = 'noopener';
+      const filename = link.download;
+      document.body.append(link);
+      link.click();
+      link.remove();
+      preRollStatus.dataset.state = 'success';
+      preRollStatus.textContent = `\u5df2\u4e0b\u8f7d ${filename} (${formatAssetBytes(blob.size)})`;
+    } catch (error) {
+      preRollStatus.dataset.state = 'error';
+      preRollStatus.textContent = `\u4e0b\u8f7d\u5931\u8d25\uff1a${error.message}`;
+    } finally {
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+      setPreRollBusy(false);
+    }
+  });
+  preRollFileInput.addEventListener('change', async () => {
+    const [file] = preRollFileInput.files ?? [];
+    preRollFileInput.value = '';
+    if (!file) return;
+    setPreRollBusy(true);
+    preRollStatus.dataset.state = 'busy';
+    preRollStatus.textContent = `\u6b63\u5728\u4e0a\u4f20\u5e76\u538b\u7f29 ${file.name}...`;
+    try {
+      const item = await importPreRollFile(file);
+      preRollStatus.dataset.state = 'success';
+      preRollStatus.textContent = `\u5df2\u538b\u7f29\u5e76\u5207\u6362\u5230 ${item.label} (${formatAssetBytes(item.sourceBytes ?? file.size)} -> ${formatAssetBytes(item.bytes)})`;
+    } catch (error) {
+      preRollStatus.dataset.state = 'error';
+      preRollStatus.textContent = `\u4e0a\u4f20\u5931\u8d25\uff1a${error.message}`;
+    } finally {
+      setPreRollBusy(false);
+    }
+  });
+
+  const backgroundControls = inputs.get('background.asset');
+  const backgroundSection = backgroundControls?.row.closest('.editor-section');
+  const backgroundTools = document.createElement('div');
+  backgroundTools.className = 'editor-background-tools';
+  backgroundTools.innerHTML = `
+    <div class="editor-background-actions">
+      <button class="editor-background-import" type="button">\u6dfb\u52a0\u80cc\u666f</button>
+      <button class="editor-background-rename" type="button">修改名称</button>
+      <button class="editor-background-delete" type="button">\u5220\u9664\u80cc\u666f</button>
+      <button class="editor-background-reset" type="button">\u91cd\u7f6e\u80cc\u666f</button>
+      <button class="editor-background-download" type="button">下载背景图</button>
+    </div>
+    <input class="editor-background-file" type="file" accept="image/png,image/jpeg,image/webp,.png,.jpg,.jpeg,.webp" hidden>
+    <p class="editor-background-status" aria-live="polite">\u652f\u6301 PNG\u3001JPG\u3001WebP\uff0c\u4f1a\u6309\u539f\u80cc\u666f\u5c3a\u5bf8\u5904\u7406\u540e\u52a0\u5165\u5217\u8868</p>
+  `;
+  backgroundSection?.append(backgroundTools);
+  const backgroundImportButton = backgroundTools.querySelector('.editor-background-import');
+  const backgroundRenameButton = backgroundTools.querySelector('.editor-background-rename');
+  const backgroundDeleteButton = backgroundTools.querySelector('.editor-background-delete');
+  const backgroundResetButton = backgroundTools.querySelector('.editor-background-reset');
+  const backgroundDownloadButton = backgroundTools.querySelector('.editor-background-download');
+  const backgroundFileInput = backgroundTools.querySelector('.editor-background-file');
+  const backgroundStatus = backgroundTools.querySelector('.editor-background-status');
+
+  function setBackgroundBusy(busy) {
+    backgroundImportButton.disabled = busy;
+    backgroundRenameButton.disabled = busy || !isCustomBackgroundAsset(getTuning().background?.asset);
+    backgroundDeleteButton.disabled = busy || !isCustomBackgroundAsset(getTuning().background?.asset);
+    backgroundResetButton.disabled = busy;
+    backgroundDownloadButton.disabled = busy || !getTuning().background?.asset;
+  }
+
+  function replaceCustomBackgroundOptions(items = []) {
+    const select = backgroundControls?.select;
+    if (!select) return;
+    for (const option of [...select.querySelectorAll('[data-custom-background]')]) option.remove();
+    for (const item of items) {
+      if (!item?.value || !item?.label || select.querySelector(`option[value="${CSS.escape(item.value)}"]`)) continue;
+      const option = document.createElement('option');
+      option.value = item.value;
+      option.textContent = item.label;
+      option.dataset.customBackground = 'true';
+      if (item.width) option.dataset.sourceWidth = String(item.width);
+      if (item.height) option.dataset.sourceHeight = String(item.height);
+      select.append(option);
+    }
+  }
+
+  async function refreshBackgroundOptions() {
+    const response = await fetch(CUSTOM_BACKGROUND_ENDPOINT, { cache: 'no-store' });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(payload.error || `HTTP ${response.status}`);
+    replaceCustomBackgroundOptions(payload.items ?? []);
+    const current = getTuning().background?.asset;
+    ensureBackgroundSelectValue(backgroundControls?.select, current);
+    if (backgroundControls?.select) backgroundControls.select.value = current ?? '';
+    return payload.items ?? [];
+  }
+
+  async function importBackgroundFile(file) {
+    const prepared = await prepareBackgroundUpload(file);
+    const response = await fetch(`${CUSTOM_BACKGROUND_ENDPOINT}/import`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'image/jpeg',
+        'X-Background-Filename': encodeURIComponent(file.name),
+        'X-Background-Width': String(prepared.width),
+        'X-Background-Height': String(prepared.height)
+      },
+      body: prepared.blob
+    });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(payload.error || `HTTP ${response.status}`);
+    if (!payload.item?.value) throw new Error('\u670d\u52a1\u672a\u8fd4\u56de\u80cc\u666f\u5730\u5740');
+    await refreshBackgroundOptions();
+    const next = structuredClone(getTuning());
+    next.background.asset = payload.item.value;
+    next.background.sourceWidth = payload.item.width || prepared.width;
+    next.background.sourceHeight = payload.item.height || prepared.height;
+    ensureBackgroundSelectValue(backgroundControls?.select, payload.item.value, payload.item.label);
+    commitTuning(next, { path: 'background.asset' });
+    sync();
+    return payload.item;
+  }
+
+  backgroundImportButton.addEventListener('click', () => backgroundFileInput.click());
+  backgroundRenameButton.addEventListener('click', async () => {
+    const current = getTuning().background?.asset;
+    if (!isCustomBackgroundAsset(current)) {
+      backgroundStatus.dataset.state = 'error';
+      backgroundStatus.textContent = '只能修改自定义背景名称';
+      return;
+    }
+    const currentOption = backgroundControls?.select?.selectedOptions?.[0];
+    const currentLabel = currentOption?.textContent?.replace(/^自定义\s*/u, '') || '';
+    const label = window.prompt('请输入背景名称', currentLabel);
+    if (label == null || !label.trim()) return;
+    setBackgroundBusy(true);
+    try {
+      const filename = current.slice('/assets/editor-backgrounds/'.length);
+      const response = await fetch(`${CUSTOM_BACKGROUND_ENDPOINT}/rename`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json; charset=utf-8' },
+        body: JSON.stringify({ filename, label: label.trim() })
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(payload.error || `HTTP ${response.status}`);
+      await refreshBackgroundOptions();
+      ensureBackgroundSelectValue(backgroundControls?.select, current, payload.item?.label);
+      sync();
+      backgroundStatus.dataset.state = 'success';
+      backgroundStatus.textContent = `已修改背景名称为 ${label.trim()}`;
+    } catch (error) {
+      backgroundStatus.dataset.state = 'error';
+      backgroundStatus.textContent = `修改失败：${error.message}`;
+    } finally {
+      setBackgroundBusy(false);
+    }
+  });
+  backgroundDeleteButton.addEventListener('click', async () => {
+    const current = getTuning().background?.asset;
+    if (!isCustomBackgroundAsset(current)) {
+      backgroundStatus.dataset.state = 'error';
+      backgroundStatus.textContent = '\u53ea\u80fd\u5220\u9664\u81ea\u5b9a\u4e49\u80cc\u666f';
+      return;
+    }
+    if (!window.confirm('\u786e\u5b9a\u5220\u9664\u5f53\u524d\u81ea\u5b9a\u4e49\u80cc\u666f\uff1f')) return;
+    setBackgroundBusy(true);
+    try {
+      const filename = current.slice('/assets/editor-backgrounds/'.length);
+      const response = await fetch(`${CUSTOM_BACKGROUND_ENDPOINT}?filename=${encodeURIComponent(filename)}`, { method: 'DELETE' });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(payload.error || `HTTP ${response.status}`);
+      const next = structuredClone(getTuning());
+      next.background = structuredClone(defaults.background);
+      commitTuning(next, { path: 'background.asset' });
+      await refreshBackgroundOptions();
+      sync();
+      backgroundStatus.dataset.state = 'success';
+      backgroundStatus.textContent = '\u5df2\u5220\u9664\u5e76\u6062\u590d\u9ed8\u8ba4\u80cc\u666f';
+    } catch (error) {
+      backgroundStatus.dataset.state = 'error';
+      backgroundStatus.textContent = `\u5220\u9664\u5931\u8d25\uff1a${error.message}`;
+    } finally {
+      setBackgroundBusy(false);
+    }
+  });
+  backgroundResetButton.addEventListener('click', () => {
+    const next = structuredClone(getTuning());
+    next.background = structuredClone(defaults.background);
+    commitTuning(next, { path: 'background.asset' });
+    sync();
+    backgroundStatus.dataset.state = 'success';
+    backgroundStatus.textContent = '\u80cc\u666f\u5df2\u91cd\u7f6e\u4e3a\u9ed8\u8ba4\u56fe\u7247\u3001\u4f4d\u7f6e\u3001\u7f29\u653e\u548c\u900f\u660e\u5ea6';
+  });
+  backgroundDownloadButton.addEventListener('click', async () => {
+    const current = getTuning().background?.asset;
+    if (!current) return;
+    const currentLabel = backgroundControls?.select?.selectedOptions?.[0]?.textContent || 'background';
+    setBackgroundBusy(true);
+    backgroundStatus.dataset.state = 'busy';
+    backgroundStatus.textContent = '\u6b63\u5728\u51c6\u5907\u80cc\u666f\u56fe\u4e0b\u8f7d...';
+    let objectUrl = '';
+    try {
+      const response = await fetch(current, { cache: 'no-store' });
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      const blob = await response.blob();
+      if (!blob.size) throw new Error('\u80cc\u666f\u56fe\u5185\u5bb9\u4e3a\u7a7a');
+      objectUrl = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = objectUrl;
+      link.download = getBackgroundDownloadFilename(current, currentLabel);
+      link.rel = 'noopener';
+      document.body.append(link);
+      link.click();
+      link.remove();
+      backgroundStatus.dataset.state = 'success';
+      backgroundStatus.textContent = `\u5df2\u4e0b\u8f7d ${link.download}`;
+    } catch (error) {
+      backgroundStatus.dataset.state = 'error';
+      backgroundStatus.textContent = `\u4e0b\u8f7d\u5931\u8d25\uff1a${error.message}`;
+    } finally {
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+      setBackgroundBusy(false);
+    }
+  });
+  backgroundFileInput.addEventListener('change', async () => {
+    const [file] = backgroundFileInput.files ?? [];
+    backgroundFileInput.value = '';
+    if (!file) return;
+    setBackgroundBusy(true);
+    backgroundStatus.dataset.state = 'busy';
+    backgroundStatus.textContent = '\u6b63\u5728\u5904\u7406\u5e76\u6dfb\u52a0\u80cc\u666f...';
+    try {
+      const item = await importBackgroundFile(file);
+      backgroundStatus.dataset.state = 'success';
+      backgroundStatus.textContent = `\u5df2\u6dfb\u52a0\u5e76\u5207\u6362\u5230 ${item.label}`;
+    } catch (error) {
+      backgroundStatus.dataset.state = 'error';
+      backgroundStatus.textContent = `\u6dfb\u52a0\u5931\u8d25\uff1a${error.message}`;
+    } finally {
+      setBackgroundBusy(false);
+    }
+  });
+
   const levelSection = inputs.get('level.selected')?.row.closest('.editor-section');
   const levelActions = document.createElement('div');
   levelActions.className = 'editor-level-tools';
+  levelActions.dataset.editorCategory = 'level';
   levelActions.innerHTML = `
     <div class="editor-level-actions">
       <button class="editor-level-edit" type="button">编辑关卡布局</button>
       <button class="editor-level-import" type="button">\u5bfc\u5165\u5173\u5361</button>
+      <button class="editor-level-delete" type="button">删除关卡</button>
+      <button class="editor-level-export" type="button">导出关卡</button>
       <button class="editor-level-open-folder" type="button">\u6253\u5f00\u5173\u5361\u6587\u4ef6\u5939</button>
     </div>
-    <input class="editor-level-file" type="file" accept=".asset" hidden>
+    <input class="editor-level-file" type="file" accept=".asset,.json,application/json" hidden>
     <p class="editor-level-status" aria-live="polite">\u5c31\u7eea</p>
   `;
-  levelSection?.append(levelActions);
+  // Keep these actions outside the collapsible fields so the layout editor,
+  // import, and folder controls remain available even after the level fields
+  // are collapsed.
+  if (levelSection?.parentElement) levelSection.parentElement.insertBefore(levelActions, levelSection.nextSibling);
 
   const levelImportButton = levelActions.querySelector('.editor-level-import');
+  const levelDeleteButton = levelActions.querySelector('.editor-level-delete');
+  const levelExportButton = levelActions.querySelector('.editor-level-export');
   const levelEditButton = levelActions.querySelector('.editor-level-edit');
   const levelOpenFolderButton = levelActions.querySelector('.editor-level-open-folder');
   const levelFileInput = levelActions.querySelector('.editor-level-file');
@@ -908,6 +1725,8 @@ export function createSceneEditor(root, {
   function setLevelBusy(busy) {
     levelEditButton.disabled = busy;
     levelImportButton.disabled = busy;
+    levelDeleteButton.disabled = busy;
+    levelExportButton.disabled = busy;
     levelOpenFolderButton.disabled = busy;
   }
 
@@ -944,14 +1763,15 @@ export function createSceneEditor(root, {
   });
 
   async function importUnityLevel(file) {
-    if (!/^level[1-9]\d*\.asset$/i.test(file?.name ?? '')) {
-      throw new Error('\u6587\u4ef6\u540d\u5fc5\u987b\u4e3a level<number>.asset');
+    if (!/\.asset$/i.test(file?.name ?? '')) {
+      throw new Error('\u6587\u4ef6\u540d\u53ea\u9700\u4ee5 .asset \u7ed3\u5c3e');
     }
     const response = await fetch('/__unity-levels/import', {
       method: 'POST',
       headers: {
         'Content-Type': 'text/plain; charset=utf-8',
-        'X-Level-Filename': encodeURIComponent(file.name)
+        'X-Level-Filename': encodeURIComponent(file.name),
+        'X-Level-Target-Key': nextImportedLevelKey()
       },
       body: await file.text()
     });
@@ -961,15 +1781,116 @@ export function createSceneEditor(root, {
     if (controls?.select && !controls.select.querySelector(`option[value="${CSS.escape(payload.level.key)}"]`)) {
       const option = document.createElement('option');
       option.value = payload.level.key;
-      option.textContent = `${payload.level.key} (${payload.level.filename})`;
+      option.textContent = payload.level.displayName || `${payload.level.key} (${payload.level.filename})`;
       controls.select.append(option);
     }
     const action = payload.replaced ? '\u5df2\u66f4\u65b0' : '\u5df2\u5bfc\u5165';
     levelStatus.textContent = `${action} ${payload.level.key}\uff1a${payload.level.vehicleCount} \u8f86\u8f66\uff0c${payload.level.passengerCount} \u540d\u4e58\u5ba2\u3002\u6b63\u5728\u5207\u6362...`;
     const next = structuredClone(getTuning());
     next.level.selected = payload.level.key;
-    setTuning(next, { path: 'level.selected' });
+    commitTuning(next, { path: 'level.selected' });
   }
+
+  async function importWebLevel(file) {
+    let source;
+    try {
+      source = JSON.parse(await file.text());
+    } catch {
+      throw new Error('JSON 文件格式无效，无法解析关卡编辑数据。');
+    }
+    if (!source || typeof source !== 'object' || Array.isArray(source)
+      || source.format !== 'bus-loop-web-level-v1') {
+      throw new Error('只能导入关卡编辑器导出的 JSON 文件。');
+    }
+    const selectedKey = nextImportedLevelKey();
+    const controls = inputs.get('level.selected');
+    const displayName = file.name.replace(/\.json$/i, '').trim() || selectedKey;
+    const unityId = Number(selectedKey.slice(5));
+    const document = retargetLevelDocument(source, {
+      key: selectedKey,
+      displayName,
+      unityId: Number.isSafeInteger(unityId) ? unityId : undefined
+    });
+    const validation = validateLevelDocument(document);
+    if (!validation.valid) {
+      throw new Error(`关卡数据无效：${validation.errors.slice(0, 3).join('；')}`);
+    }
+    const response = await fetch('/__level-authoring/import', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json; charset=utf-8' },
+      body: JSON.stringify({ document, filename: file.name })
+    });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(payload.error || `HTTP ${response.status}`);
+    await refreshWebLevelOptions();
+    if (controls?.select) controls.select.value = payload.level.key;
+    levelStatus.textContent = `已导入新关卡 ${payload.level.displayName}：${payload.level.vehicleCount} 辆车，${payload.level.passengerCount} 名乘客。正在应用...`;
+    const next = structuredClone(getTuning());
+    next.level.selected = payload.level.key;
+    commitTuning(next, { path: 'level.selected' });
+  }
+
+  function nextImportedLevelKey() {
+    const keys = [...(inputs.get('level.selected')?.select?.options ?? [])]
+      .map((option) => Number(String(option.value).match(/^level(\d+)$/)?.[1]))
+      .filter(Number.isSafeInteger);
+    return `level${Math.max(0, ...keys) + 1}`;
+  }
+
+  levelDeleteButton.addEventListener('click', async () => {
+    const key = String(getTuning().level?.selected ?? '');
+    if (!/^level[1-9]\d*$/.test(key)) return;
+    if (!window.confirm(`确定删除关卡 ${key}？`)) return;
+    setLevelBusy(true);
+    try {
+      let response = await fetch(`/__level-authoring/${encodeURIComponent(key)}`, { method: 'DELETE' });
+      if (response.status === 404) response = await fetch(`/__unity-levels/${encodeURIComponent(key)}`, { method: 'DELETE' });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(payload.error || `HTTP ${response.status}`);
+      inputs.get('level.selected')?.select?.querySelector(`option[value="${CSS.escape(key)}"]`)?.remove();
+      await refreshWebLevelOptions();
+      const fallback = inputs.get('level.selected')?.select?.options?.[0]?.value;
+      if (fallback) {
+        const next = structuredClone(getTuning());
+        next.level.selected = fallback;
+        commitTuning(next, { path: 'level.selected' });
+      }
+      levelStatus.textContent = `已删除 ${key}`;
+    } catch (error) {
+      levelStatus.textContent = `删除失败：${error.message}`;
+    } finally {
+      setLevelBusy(false);
+    }
+  });
+
+  levelExportButton.addEventListener('click', async () => {
+    const key = String(getTuning().level?.selected ?? '');
+    if (!/^level[1-9]\d*$/.test(key)) return;
+    setLevelBusy(true);
+    levelStatus.textContent = `正在导出 ${key}...`;
+    try {
+      const response = await fetch(`/__level-authoring-export/${encodeURIComponent(key)}`, { cache: 'no-store' });
+      if (!response.ok) {
+        const payload = await response.json().catch(() => ({}));
+        throw new Error(payload.error || `HTTP ${response.status}`);
+      }
+      const blob = await response.blob();
+      const disposition = response.headers.get('Content-Disposition') || '';
+      const encoded = disposition.match(/filename\*=UTF-8''([^;]+)/i)?.[1];
+      const filename = encoded ? decodeURIComponent(encoded) : `level-${key}.json`;
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement('a');
+      anchor.href = url;
+      anchor.download = filename;
+      anchor.click();
+      setTimeout(() => URL.revokeObjectURL(url), 0);
+      levelStatus.textContent = `已导出 ${filename}`;
+    } catch (error) {
+      levelStatus.textContent = `导出失败：${error.message}`;
+    } finally {
+      setLevelBusy(false);
+    }
+  });
 
   levelImportButton.addEventListener('click', () => levelFileInput.click());
   levelOpenFolderButton.addEventListener('click', async () => {
@@ -992,7 +1913,9 @@ export function createSceneEditor(root, {
     setLevelBusy(true);
     levelStatus.textContent = `\u6b63\u5728\u9a8c\u8bc1 ${file.name}...`;
     try {
-      await importUnityLevel(file);
+      if (/\.json$/i.test(file.name)) await importWebLevel(file);
+      else if (/\.asset$/i.test(file.name)) await importUnityLevel(file);
+      else throw new Error('请选择 .asset 或关卡编辑器导出的 .json 文件');
     } catch (error) {
       levelStatus.textContent = `\u5bfc\u5165\u5931\u8d25\uff1a${error.message}`;
     } finally {
@@ -1035,7 +1958,7 @@ export function createSceneEditor(root, {
   function reloadSelectedSpatialConveyor() {
     const selected = getTuning().conveyorLayout?.selected;
     if (!isSpatialConveyorSelection(selected)) return;
-    setTuning(structuredClone(getTuning()), { path: 'conveyorLayout.selected' });
+    commitTuning(structuredClone(getTuning()), { path: 'conveyorLayout.selected' });
   }
 
   async function refreshSpatialConveyorOptions() {
@@ -1162,6 +2085,7 @@ export function createSceneEditor(root, {
     for (const [path, controls] of inputs) {
       const value = getAtPath(tuning, path);
       if (controls.select) {
+        if (path === 'background.asset') ensureBackgroundSelectValue(controls.select, value);
         controls.select.value = value;
         continue;
       }
@@ -1185,6 +2109,8 @@ export function createSceneEditor(root, {
     }
     updatePassengerMaterialVisibility(tuning);
     updateConveyorLayoutVisibility(tuning);
+    setPreRollBusy(preRollBusy);
+    setBackgroundBusy(false);
   }
 
   const toggle = root.querySelector('.editor-toggle');
@@ -1196,22 +2122,42 @@ export function createSceneEditor(root, {
   };
   toggle.addEventListener('click', () => setCollapsed(!root.classList.contains('is-collapsed')));
   root.querySelector('.editor-reset').addEventListener('click', () => {
-    const shouldReloadLevel = defaults.level?.selected !== getTuning().level?.selected;
+    const selectedLevel = getTuning().level?.selected;
     clearSavedTuning();
-    setTuning(structuredClone(defaults), {
-      path: shouldReloadLevel ? 'level.selected' : undefined
-    });
+    const resetTuning = structuredClone(defaults);
+    resetTuning.level ??= {};
+    resetTuning.level.selected = selectedLevel;
+    commitTuning(resetTuning);
     sync();
   });
 
   if (matchMedia('(max-width: 760px)').matches) setCollapsed(true);
+  const savedOpeningGuideVehicleId = getAtPath(getTuning(), 'firstClickGuide.vehicleId');
+  const normalizedOpeningGuideVehicleId = normalizeVehicleIdSelection(savedOpeningGuideVehicleId);
+  if (
+    normalizedOpeningGuideVehicleId !== null
+    && normalizedOpeningGuideVehicleId !== savedOpeningGuideVehicleId
+  ) {
+    const next = structuredClone(getTuning());
+    setAtPath(next, 'firstClickGuide.vehicleId', normalizedOpeningGuideVehicleId);
+    setTuning(next, { path: 'firstClickGuide.vehicleId' });
+  }
   setEditorCategory('level');
   sync();
+  updateHistoryButtons();
   refreshSpatialConveyorOptions().catch((error) => {
     spatialStatus.textContent = `\u5217\u8868\u4e0d\u53ef\u7528\uff1a${error.message}`;
   });
   refreshWebLevelOptions().catch((error) => {
     levelStatus.textContent = `\u7f51\u9875\u5173\u5361\u5217\u8868\u4e0d\u53ef\u7528\uff1a${error.message}`;
   });
-  return { sync, setCollapsed, refreshSpatialConveyorOptions, refreshWebLevelOptions };
+  refreshBackgroundOptions().catch((error) => {
+    backgroundStatus.dataset.state = 'error';
+    backgroundStatus.textContent = `\u80cc\u666f\u5217\u8868\u4e0d\u53ef\u7528\uff1a${error.message}`;
+  });
+  refreshPreRollOptions().catch((error) => {
+    preRollStatus.dataset.state = 'error';
+    preRollStatus.textContent = `\u524d\u8d34\u5217\u8868\u4e0d\u53ef\u7528\uff1a${error.message}`;
+  });
+  return { sync, setCollapsed, refreshSpatialConveyorOptions, refreshWebLevelOptions, refreshPreRollOptions };
 }

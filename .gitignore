@@ -5,3 +5,8 @@ artifacts/playable-exports/
 %SystemDrive%/
 BusLoopPlayable_new/
 *.log
+
+# Local noise and generated build outputs
+.DS_Store
+server-dist/
+__pycache__/

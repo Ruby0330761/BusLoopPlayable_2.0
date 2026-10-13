@@ -15,6 +15,7 @@ import {
   MAX_QUEUE_CAPACITY
 } from '../src/conveyor-layouts.js';
 import { SCENE_TUNING } from '../src/scene-tuning.js';
+import { getVehicleAreaPivot } from '../src/vehicle-area.js';
 import { GameAudioController } from '../src/audio-controller.js';
 import {
   DreamteckClosedBSplineCurve3,
@@ -722,7 +723,10 @@ test('Unity visual assets and tunable camera configuration are complete', () => 
   assert.equal(SCENE_TUNING.facing.arrowYawDegrees, 180);
   assert.match(ACTIVE_LEVEL.assets.background, /BG01_split01_Sakura_q60\.jpg$/);
   assert.match(LEVEL_1.assets.textures.parkingSpot, /Car_P2\.png$/);
-  assert.equal(LEVEL_1.assets.colorTextures.length, 11);
+  assert.equal(LEVEL_1.assets.colorTextures.length, 26);
+  // Slots 11-16 have no standard atlas and stay null on purpose.
+  assert.deepEqual(LEVEL_1.assets.colorTextures.slice(11, 17), Array(6).fill(null));
+  assert.match(LEVEL_1.assets.colorTextures[23], /color_23_matchagreen_q85\.webp$/);
   assert.deepEqual(Object.keys(LEVEL_1.assets.models.vehicleBySeats).map(Number), [4, 6, 10]);
   assert.match(LEVEL_1.assets.models.vehicleShadowBySeats[10], /Bus_FakeShadow\.fbx$/);
   assert.match(LEVEL_1.assets.textures.vehicleShadowBySeats[10], /Bus_FakeShadow\.png$/);
@@ -737,7 +741,7 @@ test('Unity visual assets and tunable camera configuration are complete', () => 
     ...Object.values(LEVEL_1.assets.audio).flatMap((data) => data.clips),
     ...Object.values(LEVEL_1.assets.models.vehicleBySeats),
     ...Object.values(LEVEL_1.assets.models.vehicleShadowBySeats),
-    ...LEVEL_1.assets.colorTextures,
+    ...LEVEL_1.assets.colorTextures.filter(Boolean),
     LEVEL_1.assets.textures.shadow,
     LEVEL_1.assets.textures.parkingSpot,
     ...Object.values(LEVEL_1.assets.textures.effects),
@@ -1136,6 +1140,10 @@ test('vehicle arrows hide after entering a parking spot', () => {
 test('background asset selection remains editor-switchable with optimized variants', () => {
   const editorSource = readFileSync(join('src', 'scene-editor.js'), 'utf8');
   const viewSource = readFileSync(join('src', 'scene-view.js'), 'utf8');
+  const mainSource = readFileSync(join('src', 'main.js'), 'utf8');
+  const viteSource = readFileSync(join('vite.config.js'), 'utf8');
+  const exporterSource = readFileSync(join('scripts', 'export-playable-package.mjs'), 'utf8');
+  const generatorSource = readFileSync(join('scripts', 'generate-active-level.mjs'), 'utf8');
   const backgroundPath = join('public', SCENE_TUNING.background.asset.replace(/^\//, ''));
   const sakuraPath = join('public', 'assets', 'applovin', 'textures', 'BG01_split01_Sakura_q60.jpg');
   const grasslandPath = join('public', 'assets', 'applovin', 'textures', 'BG01_split01_Grassland_q60.jpg');
@@ -1143,6 +1151,7 @@ test('background asset selection remains editor-switchable with optimized varian
   assert.equal(SCENE_TUNING.background.asset, ACTIVE_LEVEL.assets.background);
   assert.ok(statSync(backgroundPath).size < 350_000);
   assert.deepEqual(readImageDimensions(readFileSync(backgroundPath)), { width: 2100, height: 3382 });
+  assert.equal(SCENE_TUNING.background.scale, 1);
   assert.ok(statSync(sakuraPath).size < 350_000);
   assert.ok(statSync(grasslandPath).size < 350_000);
   assert.deepEqual(readImageDimensions(readFileSync(grasslandPath)), { width: 2100, height: 3382 });
@@ -1152,6 +1161,55 @@ test('background asset selection remains editor-switchable with optimized varian
   assert.match(editorSource, /BG02_split01_summer_q60\.jpg/);
   assert.match(editorSource, /BG01_split01_Sakura_q60\.jpg/);
   assert.match(editorSource, /BG01_split01_Grassland_q60\.jpg/);
+  assert.match(editorSource, /'background\.scale', 0\.3, 3, 0\.01/);
+  assert.match(editorSource, /CUSTOM_BACKGROUND_ENDPOINT = '\/__background-assets'/);
+  assert.match(editorSource, /CUSTOM_BACKGROUND_OUTPUT_WIDTH = 2100/);
+  assert.match(editorSource, /CUSTOM_BACKGROUND_OUTPUT_HEIGHT = 3382/);
+  assert.match(editorSource, /prepareBackgroundUpload/);
+  assert.match(editorSource, /editor-background-import/);
+  assert.match(editorSource, /editor-background-delete/);
+  assert.match(editorSource, /editor-background-rename/);
+  assert.match(editorSource, /CUSTOM_BACKGROUND_ENDPOINT\}\/rename/);
+  assert.match(editorSource, /if \(label\) option\.textContent = label/);
+  assert.match(editorSource, /editor-background-reset/);
+  assert.match(editorSource, /editor-background-download/);
+  assert.match(editorSource, /fetch\(current, \{ cache: 'no-store' \}\)/);
+  assert.match(editorSource, /URL\.createObjectURL\(blob\)/);
+  assert.match(editorSource, /link\.download = getBackgroundDownloadFilename/);
+  assert.match(editorSource, /CUSTOM_PRE_ROLL_ENDPOINT = '\/__pre-roll-assets'/);
+  assert.match(editorSource, /editor-pre-roll-import/);
+  assert.match(editorSource, /editor-pre-roll-rename/);
+  assert.match(editorSource, /editor-pre-roll-delete/);
+  assert.match(editorSource, /editor-pre-roll-download/);
+  assert.match(editorSource, /getPreRollDownloadFilename/);
+  assert.match(editorSource, /fetch\(current, \{ cache: 'no-store' \}\)/);
+  assert.match(editorSource, /link\.download = getPreRollDownloadFilename/);
+  assert.match(editorSource, /accept="video\/mp4,\.mp4"/);
+  assert.match(viteSource, /BACKGROUND_ASSET_ROOT = path\.resolve\('artifacts', 'editor-backgrounds'\)/);
+  assert.match(viteSource, /BACKGROUND_CANVAS_WIDTH = 2100/);
+  assert.match(viteSource, /BACKGROUND_CANVAS_HEIGHT = 3382/);
+  assert.match(viteSource, /pathname === '\/__background-assets\/import'/);
+  assert.match(viteSource, /pathname === '\/__background-assets\/rename'/);
+  assert.match(viteSource, /deleteEditorBackgroundAsset/);
+  assert.match(viteSource, /\/assets\/editor-backgrounds\//);
+  assert.match(viteSource, /PRE_ROLL_ASSET_ROOT = path\.resolve\('artifacts', 'editor-prerolls'\)/);
+  assert.match(viteSource, /pathname === '\/__pre-roll-assets\/import'/);
+  assert.match(viteSource, /pathname === '\/__pre-roll-assets\/rename'/);
+  assert.match(viteSource, /deleteEditorPreRollAsset/);
+  assert.match(viteSource, /\/assets\/editor-prerolls\//);
+  assert.match(viteSource, /compressPreRollBuffer/);
+  assert.match(viteSource, /PRE_ROLL_COMPRESSION_VERSION/);
+  assert.match(viteSource, /MAX_PRE_ROLL_COMPRESSED_BYTES = PRE_ROLL_MAX_COMPRESSED_BYTES/);
+  assert.match(viteSource, /migrateEditorPreRollAssets/);
+  assert.match(readFileSync(join('scripts', 'pre-roll-transcoder.mjs'), 'utf8'), /libx264/);
+  assert.match(readFileSync(join('scripts', 'pre-roll-transcoder.mjs'), 'utf8'), /PRE_ROLL_MAX_COMPRESSED_BYTES = 2 \* 1024 \* 1024/);
+  assert.match(mainSource, /migrateCustomBackgroundSourceSize/);
+  assert.match(mainSource, /CUSTOM_BACKGROUND_ASSET_PREFIX = '\/assets\/editor-backgrounds\/'/);
+  assert.match(generatorSource, /EDITOR_BACKGROUND_PREFIX = '\/assets\/editor-backgrounds\/'/);
+  assert.match(exporterSource, /copySelectedEditorBackground/);
+  assert.match(exporterSource, /copySelectedEditorPreRoll/);
+  assert.match(viewSource, /backgroundScale = Math\.max\(0\.01, Number\(background\?\.scale\) \|\| 1\)/);
+  assert.match(viewSource, /width: Math\.max\(0\.01, Number\(background\?\.width\) \|\| 0\.01\) \* backgroundScale/);
   assert.match(viewSource, /this\.setArtworkPlaneTexture\(this\.backgroundPlane, getSelectedBackgroundUrl\(\)\)/);
 });
 
@@ -1189,6 +1247,31 @@ test('vehicle generation region matches GameSceneDualQueue2 VehicleRoot Cube', (
   }
 });
 
+test('vehicle area rotation uses the transformed vehicle-region center', () => {
+  const area = SCENE_TUNING.vehicleArea;
+  const pivot = getVehicleAreaPivot(area);
+  const unitScale = area.positionUnitScale ?? LEVEL_1.mapScale;
+  const worldScale = area.unityToWorldScale * (area.mirrorZ ? -1 : 1);
+  const bounds = LEVEL_1.vehicles.reduce((box, vehicle) => {
+    const x = ((vehicle.x - area.positionPivotX) * unitScale + area.positionPivotX + area.sourceRootX)
+      * area.unityToWorldScale + area.offsetX;
+    const z = ((vehicle.z - area.positionPivotZ) * unitScale + area.positionPivotZ + area.sourceRootZ)
+      * worldScale + area.offsetZ;
+    return {
+      minX: Math.min(box.minX, x),
+      maxX: Math.max(box.maxX, x),
+      minZ: Math.min(box.minZ, z),
+      maxZ: Math.max(box.maxZ, z)
+    };
+  }, { minX: Infinity, maxX: -Infinity, minZ: Infinity, maxZ: -Infinity });
+  assert.ok(Math.abs(pivot.x - (bounds.minX + bounds.maxX) / 2) < 1e-9);
+  assert.ok(Math.abs(pivot.z - (bounds.minZ + bounds.maxZ) / 2) < 1e-9);
+  assert.match(sceneViewSource, /getVehicleAreaPivot\(area\)/);
+  assert.match(gameModelSource, /getVehicleAreaPivot\(area\)/);
+  assert.match(sceneViewSource, /function mapVehicleAreaYaw\(yawDegrees\) \{[\s\S]*?return mirroredYaw - deg\(SCENE_TUNING\.vehicleArea\.rotationDegrees\);\n\}/);
+  assert.match(gameModelSource, /function visualYawToVehicleAreaYaw\(yawDegrees\) \{[\s\S]*?return area\.mirrorZ \? 180 - yawDegrees : yawDegrees;/);
+});
+
 test('editor sizing, source background ratio, and passenger shadow anchor stay wired', () => {
   const indexSource = readFileSync(join('index.html'), 'utf8');
   const stylesSource = readFileSync(join('src', 'styles.css'), 'utf8');
@@ -1215,6 +1298,7 @@ test('editor sizing, source background ratio, and passenger shadow anchor stay w
   assert.equal(SCENE_TUNING.vehicleArrow.outlineScale, 1.28);
   assert.equal(SCENE_TUNING.vehicleArrow.outlineDepthTest, 0);
   assert.equal(SCENE_TUNING.vehicleShadows.depthBySeats[10], 2.05);
+  assert.equal(SCENE_TUNING.vehicleShadows.color, 0xffffff);
   assert.deepEqual(SCENE_TUNING.vehicleShadows.scaleBySeats[10], { x: 1.28, z: 1.18 });
   assert.equal(SCENE_TUNING.camera.fovDegrees, 2.2);
   assert.equal(SCENE_TUNING.background.distanceOffset, 7);
@@ -1252,7 +1336,7 @@ test('editor sizing, source background ratio, and passenger shadow anchor stay w
     appearSpeed: 1.45
   });
   assert.deepEqual(SCENE_TUNING.installGate, {
-    successfulOperationThreshold: 20
+    successfulOperationThreshold: 64
   });
   assert.deepEqual(SCENE_TUNING.gameOver, {
     failureDelaySeconds: 2,
@@ -1384,8 +1468,15 @@ test('editor sizing, source background ratio, and passenger shadow anchor stay w
   assert.match(editorSource, /seatCountBoard\.textScale/);
   assert.match(editorSource, /vehicleArrow\.offsetY/);
   assert.match(editorSource, /vehicleArrow\.outlineColor/);
+  assert.match(editorSource, /vehicleShadows\.color/);
   assert.match(editorSource, /vehicleArrow\.outlineScale/);
   assert.match(editorSource, /vehicleArrow\.outlineDepthTest/);
+  assert.match(editorSource, /vehicleArea\.offsetX/);
+  assert.match(editorSource, /vehicleArea\.offsetZ/);
+  assert.match(editorSource, /\u8f66\u9635\u6574\u4f53\u5de6\u53f3/);
+  assert.match(editorSource, /\u8f66\u9635\u6574\u4f53\u4e0a\u4e0b/);
+  assert.match(editorSource, /vehicleArea\.rotationDegrees/);
+  assert.match(editorSource, /\u8f66\u8f86\u6574\u4f53\u65cb\u8f6c/);
   assert.match(editorSource, /vehicleArea\.positionUnitScale/);
   assert.match(editorSource, /Map Scale/);
   assert.match(editorSource, /vehicleBoardingPulse\.scale/);
@@ -1441,8 +1532,11 @@ test('editor sizing, source background ratio, and passenger shadow anchor stay w
   assert.match(viewSource, /prepareVehicleShadowTemplate\(busShadowFbx, 10\)/);
   assert.match(viewSource, /SCENE_TUNING\.vehicleShadows\.depthBySeats\?\.\[seats\]/);
   assert.match(viewSource, /SCENE_TUNING\.vehicleShadows\.scaleBySeats\?\.\[seats\]/);
+  assert.match(viewSource, /SCENE_TUNING\.vehicleShadows\.color/);
+  assert.match(viewSource, /material\.color\.setHex\(SCENE_TUNING\.vehicleShadows\.color/);
   assert.match(viewSource, /seats === '10' \? 0\.8/);
-  assert.match(viewSource, /this\.vehicleColorTextures = colorTextures\.map\(configureColorTexture\)/);
+  assert.match(viewSource, /this\.vehicleColorTextures = colorTextures\.map\(\(texture\) => \(/);
+  assert.match(viewSource, /texture \? configureColorTexture\(texture\) : null/);
   assert.match(viewSource, /this\.passengerColorTextures = this\.vehicleColorTextures/);
   assert.match(viewSource, /PASSENGER_DEFAULT_MATERIAL_COLORS/);
   assert.match(viewSource, /setPassengerMaterialMaps/);
@@ -1529,7 +1623,11 @@ test('fallback colors remain available before Unity color textures finish loadin
   assert.equal(COLORS[8].hex, 0x542c16);
   assert.equal(COLORS[9].hex, 0x206d53);
   assert.equal(COLORS[10].hex, 0x15209e);
+  assert.equal(COLORS[11].hex, 0x1b2638);
+  assert.equal(COLORS[12].hex, 0xb10f11);
+  assert.equal(COLORS[14].hex, 0xffd8c8);
   assert.equal(COLORS[15].hex, 0xd7b477);
+  assert.match(sceneViewSource, /const color = COLORS\[vehicle\.colorIndex\] \?\? COLORS\[0\]/);
 });
 
 test('scene view keeps luxury vehicles and passengers on their dedicated visual path', () => {
@@ -1753,6 +1851,10 @@ test('seat count board displays remaining passengers, not remaining groups', () 
   assert.match(viewSource, /boardingRemaining \+= 1/);
   assert.match(viewSource, /context\.font = '700 112px "Poppins Branding", Arial, sans-serif'/);
   assert.match(viewSource, /snapshot\.spots\[vehicle\.spotIndex\]\?\.vehicleId === vehicle\.id/);
+  assert.match(viewSource, /function resolveCountBoardColors\(vehicle\)/);
+  assert.match(viewSource, /vehicle\?\.colorOverrides\?\.body/);
+  assert.match(viewSource, /const config = resolveCountBoardColors\(vehicle\)/);
+  assert.match(viewSource, /board\.userData\.bodyColor === bodyColor/);
 });
 
 test('all UI and canvas font references prefer bundled Poppins with a package-safe fallback', () => {
@@ -2046,7 +2148,11 @@ test('main thread saves and restores scene tuning from localStorage', () => {
   );
   assert.match(sceneEditorSource, /defaultTuning = getTuning\(\)/);
   assert.match(sceneEditorSource, /const defaults = structuredClone\(defaultTuning\);/);
-  assert.match(sceneEditorSource, /shouldReloadLevel \? 'level\.selected' : undefined/);
+  assert.match(sceneEditorSource, /resetTuning\.level\.selected = selectedLevel/);
+  assert.match(mainSource, /LEVEL_TUNING_STORAGE_KEY = 'bus-loop-level-tuning-v1'/);
+  assert.match(mainSource, /function saveLevelTuningProfile\(value\)/);
+  assert.match(mainSource, /function activateLevelTuning\(levelKey\)/);
+  assert.match(mainSource, /activateLevelTuning\(selectedLevelKey\)/);
   assert.match(mainSource, /isPassengerMaterialTuningPath/);
   assert.match(mainSource, /PASSENGER_MATERIAL_TUNING_PREFIX = 'passengerMaterial\.'/);
   assert.match(mainSource, /PASSENGER_MATERIAL_COLOR_INDEX_PATTERN/);
@@ -2270,10 +2376,30 @@ test('successful operation store redirect uses the baked threshold and remains e
   const mainSource = readFileSync(join('src', 'main.js'), 'utf8');
   const editorSource = readFileSync(join('src', 'scene-editor.js'), 'utf8');
 
-  assert.equal(SCENE_TUNING.installGate.successfulOperationThreshold, 18);
+  assert.equal(SCENE_TUNING.installGate.successfulOperationThreshold, 64);
   assert.match(editorSource, /installGate\.successfulOperationThreshold/);
   assert.match(mainSource, /SCENE_TUNING\.installGate\?\.successfulOperationThreshold/);
   assert.match(mainSource, /^\s*if \(result\?\.ok && markInstallVehicle\(vehicleId\)\) InstallFullGame\(\);/m);
   assert.match(mainSource, /levelSession\.recordSuccessfulVehicle\(vehicleId, getSuccessfulOperationThreshold\(\)\)/);
   assert.doesNotMatch(mainSource, /INSTALL_GATE_AFTER_SUCCESSFUL_OPERATIONS_ENABLED/);
+});
+
+test('scene visibility controls cover vehicles, passengers, and Play Now', () => {
+  const editorSource = readFileSync(join('src', 'scene-editor.js'), 'utf8');
+  const mainSource = readFileSync(join('src', 'main.js'), 'utf8');
+  const stylesSource = readFileSync(join('src', 'styles.css'), 'utf8');
+  const viewSource = readFileSync(join('src', 'scene-view.js'), 'utf8');
+
+  for (const path of ['visibility.vehicles', 'visibility.passengers', 'cta.enabled']) {
+    assert.match(editorSource, new RegExp(`${path.replaceAll('.', '\\.')}', 0, 1, 1, null, 'toggle'`));
+  }
+  assert.deepEqual(SCENE_TUNING.visibility, { vehicles: 1, passengers: 1 });
+  assert.match(mainSource, /ctaButton\.hidden = !Boolean\(cta\.enabled \?\? 1\)/);
+  assert.match(viewSource, /const vehiclesVisible = Boolean\(SCENE_TUNING\.visibility\?\.vehicles \?\? 1\)/);
+  assert.match(viewSource, /const passengersVisible = Boolean\(SCENE_TUNING\.visibility\?\.passengers \?\? 1\)/);
+  assert.match(viewSource, /view\.visible = vehiclesVisible/);
+  assert.match(viewSource, /view\.visible = passengersVisible && slot\.colorIndex !== null/);
+  assert.match(viewSource, /entry\.root\.visible = passengersVisible/);
+  assert.match(viewSource, /if \(!this\.inputEnabled \|\| !Boolean\(SCENE_TUNING\.visibility\?\.vehicles \?\? 1\)\) return/);
+  assert.match(stylesSource, /\.cta-button\[hidden\]\s*\{\s*display:\s*none;\s*\}/);
 });

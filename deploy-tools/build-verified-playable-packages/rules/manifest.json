@@ -1,0 +1,122 @@
+{
+  "schemaVersion": "playable-ruleset-manifest-v1",
+  "rulesetVersion": "1.5.0",
+  "createdAt": "2026-08-11T12:00:00+08:00",
+  "checkerParityMatrix": "checker-parity-matrix.json",
+  "sourceProvenance": [
+    {
+      "sourceClass": "checker-parity",
+      "name": "playable_check",
+      "commit": "86d58e33d293a0a095b574407a2d6c7d191d510f",
+      "files": [
+        {
+          "name": "checker_rules.js",
+          "sha256": "b2a93e76ca0825a945e8fdd48f8e7cc2d0f7fb2e304960f3cfbf91ffbd465bdd"
+        },
+        {
+          "name": "checker_static_validators.js",
+          "sha256": "231376e53ca66063ce3b4f72cade2d0d10aee7b1310df55d9f5618577d2dc266"
+        },
+        {
+          "name": "checker_artifact.js",
+          "sha256": "48e4e0710758d31dcecc0a7535f89e72deb0d1cc33ad91cfddd97ce0a369f7c3"
+        },
+        {
+          "name": "hook_normal.js",
+          "sha256": "b7e2f947d6c24dd4f8b755e5761a2d062f2a7586f89618ff4b72d35ff8135e45"
+        },
+        {
+          "name": "hook_nowebgl.js",
+          "sha256": "8742abbfabf8eaab957818d654b5b28b56b161aa11a9688011880a1682c4f771"
+        }
+      ]
+    },
+    {
+      "sourceClass": "delivery-contract",
+      "name": "game_playable playbook",
+      "sopSha256": "8e26d3b61d52c7540809a3a56fb6821472cc14673c4943ca71ef97f851c8401b",
+      "lessonsSha256": "62c44566efdbb2610e9889b82ae1d301f3dd3ee3001442850034c350e6f1c91f"
+    },
+    {
+      "sourceClass": "delivery-contract",
+      "name": "single-platform delivery clarification",
+      "confirmedAt": "2026-08-05",
+      "decision": "单端投放只要求对应商店地址；未声明目标端时仅提示确认，不产生 warning。"
+    },
+    {
+      "sourceClass": "delivery-contract",
+      "name": "BW Google/Meta dynamic image regression",
+      "confirmedAt": "2026-08-06",
+      "decision": "ZIP 内存在图片文件不等于真实容器可加载。Google Ads 与 Meta 中由 JavaScript 动态赋值的 imageAsset 必须映射为 data URI 或可证明的 Blob URL，并记录原始 src 赋值运行时证据。"
+    },
+    {
+      "sourceClass": "delivery-contract",
+      "name": "zero warning and Mintegral lifecycle regression",
+      "confirmedAt": "2026-08-06",
+      "decision": "除实际单端投放导致的 COMMON-STA-004 商店地址提示外，任何 warning 都必须修复并完整重建。最终产物不得暴露会触发 checker 的非交付 HTTP(S) 字面量；Mintegral 必须观察到 gameReady 后真实调用 gameStart。"
+    },
+    {
+      "sourceClass": "delivery-contract",
+      "name": "SJ Checker visible Google orientation and Mintegral lifecycle regression",
+      "confirmedAt": "2026-08-10",
+      "decision": "Google Ads 本地静态检查必须要求合法 ad.orientation；Mintegral 本地运行时必须观察完整 gameReady → gameStart → gameEnd 顺序，避免问题延迟到 Checker 页面终检。"
+    },
+    {
+      "sourceClass": "checker-parity",
+      "name": "SJ UnityAds S11 and seven-platform parity audit",
+      "confirmedAt": "2026-08-11",
+      "decision": "UnityAds 本地静态规则覆盖 fetch、XMLHttpRequest、WebSocket 字面量；七个平台的 Checker 节点、本地规则、严重级别、封闭 notice 类别和 fixtures 由显式 parity 矩阵验签。"
+    }
+  ],
+  "platforms": {
+    "applovin": {
+      "delivery": "html",
+      "files": [
+        "common.json",
+        "applovin.json"
+      ]
+    },
+    "unityads": {
+      "delivery": "html",
+      "files": [
+        "common.json",
+        "unityads.json"
+      ]
+    },
+    "moloco": {
+      "delivery": "html",
+      "files": [
+        "common.json",
+        "moloco.json"
+      ]
+    },
+    "meta": {
+      "delivery": "zip",
+      "files": [
+        "common.json",
+        "meta.json"
+      ]
+    },
+    "tiktok": {
+      "delivery": "zip",
+      "files": [
+        "common.json",
+        "tiktok.json"
+      ]
+    },
+    "mintegral": {
+      "delivery": "zip",
+      "files": [
+        "common.json",
+        "mintegral.json"
+      ]
+    },
+    "google-ads": {
+      "delivery": "zip",
+      "files": [
+        "common.json",
+        "google-ads.json"
+      ]
+    }
+  }
+}

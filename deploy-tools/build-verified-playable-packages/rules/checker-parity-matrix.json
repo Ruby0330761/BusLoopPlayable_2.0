@@ -1,0 +1,77 @@
+{
+  "schemaVersion": "playable-checker-parity-matrix-v1",
+  "entries": [
+    {
+      "platform": "applovin",
+      "ruleId": "CHECKER-APPLOVIN-STATIC-RUNTIME",
+      "checkerNode": "AppLovin S1-S11 / R1-R2",
+      "localRules": ["COMMON-ART-001", "COMMON-STA-001", "COMMON-STA-006", "APL-STA-001"],
+      "severity": "blocker",
+      "exemptCategory": "none",
+      "fixture": "../tests/fixtures/checker-parity/platform-matrix.json"
+    },
+    {
+      "platform": "applovin",
+      "ruleId": "COMMON-STA-004",
+      "checkerNode": "平台/商店链接 notice",
+      "localRules": ["COMMON-STA-004"],
+      "severity": "warning",
+      "exemptCategory": "android-missing-ios-store-only",
+      "fixture": "../tests/fixtures/checker-parity/store-links-positive.html"
+    },
+    {
+      "platform": "google-ads",
+      "ruleId": "CHECKER-GOOGLE-STATIC-RUNTIME",
+      "checkerNode": "Google Ads S1-S11 / R1-R2",
+      "localRules": ["COMMON-ART-001", "COMMON-STA-006", "GOOGLE-STA-001", "GOOGLE-STA-006"],
+      "severity": "blocker",
+      "exemptCategory": "none",
+      "fixture": "../tests/fixtures/checker-parity/platform-matrix.json"
+    },
+    {
+      "platform": "meta",
+      "ruleId": "CHECKER-META-STATIC-RUNTIME",
+      "checkerNode": "Meta S1-S11 / R1-R2",
+      "localRules": ["COMMON-ART-001", "COMMON-STA-006", "META-STA-001"],
+      "severity": "blocker",
+      "exemptCategory": "none",
+      "fixture": "../tests/fixtures/checker-parity/platform-matrix.json"
+    },
+    {
+      "platform": "unityads",
+      "ruleId": "UNITY-STA-006",
+      "checkerNode": "UnityAds S11 网络请求风险",
+      "localRules": ["COMMON-STA-006", "UNITY-STA-006"],
+      "severity": "blocker",
+      "exemptCategory": "none",
+      "fixture": "../tests/fixtures/checker-parity/unityads-modulepreload-fetch.html"
+    },
+    {
+      "platform": "mintegral",
+      "ruleId": "CHECKER-MINTEGRAL-STATIC-RUNTIME",
+      "checkerNode": "Mintegral S1-S11 / R1-R2 / R5",
+      "localRules": ["COMMON-ART-001", "COMMON-STA-006", "MINTEGRAL-STA-001", "MINTEGRAL-STA-002"],
+      "severity": "blocker",
+      "exemptCategory": "none",
+      "fixture": "../tests/fixtures/checker-parity/platform-matrix.json"
+    },
+    {
+      "platform": "moloco",
+      "ruleId": "CHECKER-MOLOCO-STATIC-RUNTIME",
+      "checkerNode": "Moloco S1-S11 / R1-R2",
+      "localRules": ["COMMON-ART-001", "COMMON-STA-006", "MOLOCO-STA-001"],
+      "severity": "blocker",
+      "exemptCategory": "none",
+      "fixture": "../tests/fixtures/checker-parity/platform-matrix.json"
+    },
+    {
+      "platform": "tiktok",
+      "ruleId": "CHECKER-TIKTOK-LOCAL-AND-TAB",
+      "checkerNode": "TikTok 本地 S1-S11 / R1-R2 与 Checker 页签可用性",
+      "localRules": ["COMMON-ART-001", "COMMON-STA-006", "TIKTOK-STA-001"],
+      "severity": "blocker",
+      "exemptCategory": "none",
+      "fixture": "../tests/fixtures/checker-parity/platform-matrix.json"
+    }
+  ]
+}

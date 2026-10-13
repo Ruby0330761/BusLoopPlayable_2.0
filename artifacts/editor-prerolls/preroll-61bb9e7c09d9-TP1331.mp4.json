@@ -1,0 +1,17 @@
+{
+  "label": "TP1331",
+  "compression": {
+    "version": 1,
+    "profile": "balanced",
+    "codec": "h264",
+    "audioCodec": "aac",
+    "maxWidth": 720,
+    "maxHeight": 1280,
+    "crf": 28,
+    "maxrate": "1400k",
+    "audioBitrate": "64k",
+    "sourceBytes": 9443997,
+    "outputBytes": 239896,
+    "retainedSource": false
+  }
+}

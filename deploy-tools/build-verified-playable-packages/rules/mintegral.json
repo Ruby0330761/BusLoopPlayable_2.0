@@ -1,0 +1,154 @@
+{
+  "schemaVersion": "playable-platform-rules-v1",
+  "platform": "mintegral",
+  "rules": [
+    {
+      "id": "MINTEGRAL-ART-001",
+      "title": "交付 ZIP",
+      "stage": "artifact",
+      "severity": "blocker",
+      "sourceClass": "checker-parity",
+      "sourceVersion": "playable_check@86d58e33d293a0a095b574407a2d6c7d191d510f",
+      "check": {
+        "type": "artifact_kind",
+        "value": "zip"
+      },
+      "repairHint": "使用 Mintegral ZIP 构建入口。",
+      "autoRepair": false
+    },
+    {
+      "id": "MINTEGRAL-ART-002",
+      "title": "ZIP 基础名仅字母数字下划线",
+      "stage": "artifact",
+      "severity": "blocker",
+      "sourceClass": "delivery-contract",
+      "sourceVersion": "game_playable-playbook@8e26d3b61d52c7540809a3a56fb6821472cc14673c4943ca71ef97f851c8401b",
+      "check": {
+        "type": "zip_name_regex",
+        "pattern": "^[A-Za-z0-9_]+$"
+      },
+      "repairHint": "在构建配置中生成 ASCII 基础名。",
+      "autoRepair": true
+    },
+    {
+      "id": "MINTEGRAL-ART-003",
+      "title": "ZIP、目录和主 HTML 同名",
+      "stage": "artifact",
+      "severity": "blocker",
+      "sourceClass": "delivery-contract",
+      "sourceVersion": "game_playable-playbook@8e26d3b61d52c7540809a3a56fb6821472cc14673c4943ca71ef97f851c8401b",
+      "check": {
+        "type": "mintegral_structure"
+      },
+      "repairHint": "修正打包器，使 ZIP 基础名、唯一目录名和主 HTML 基础名一致。",
+      "autoRepair": false
+    },
+    {
+      "id": "MINTEGRAL-ART-004",
+      "title": "资源引用完整",
+      "stage": "artifact",
+      "severity": "blocker",
+      "sourceClass": "delivery-contract",
+      "sourceVersion": "game_playable-playbook@8e26d3b61d52c7540809a3a56fb6821472cc14673c4943ca71ef97f851c8401b",
+      "check": {
+        "type": "resource_references_exist",
+        "allow": []
+      },
+      "repairHint": "修复相对路径并补齐 ZIP 资源。",
+      "autoRepair": false
+    },
+    {
+      "id": "MINTEGRAL-STA-001",
+      "title": "禁止模块语法",
+      "stage": "static",
+      "severity": "blocker",
+      "sourceClass": "checker-parity",
+      "sourceVersion": "playable_check@86d58e33d293a0a095b574407a2d6c7d191d510f",
+      "check": {
+        "type": "regex_absent",
+        "pattern": "type\\s*=\\s*['\\\"]module['\\\"]|import\\.meta|modulepreload|(^|[;{}\\n])\\s*import\\s+(?:[^(']|\\()"
+      },
+      "repairHint": "使用 classic/IIFE 构建并手动注入 production NODE_ENV。",
+      "autoRepair": false
+    },
+    {
+      "id": "MINTEGRAL-STA-002",
+      "title": "生命周期函数全局可调用",
+      "stage": "static",
+      "severity": "blocker",
+      "sourceClass": "delivery-contract",
+      "sourceVersion": "game_playable-playbook@8e26d3b61d52c7540809a3a56fb6821472cc14673c4943ca71ef97f851c8401b",
+      "check": {
+        "type": "global_functions",
+        "names": [
+          "install",
+          "gameReady",
+          "gameStart",
+          "gameEnd",
+          "gameClose",
+          "gameRetry"
+        ]
+      },
+      "repairHint": "在 classic 作用域真实暴露 window.install 与全部生命周期函数。",
+      "autoRepair": false
+    },
+    {
+      "id": "MINTEGRAL-STA-003",
+      "title": "禁止在线外链",
+      "stage": "static",
+      "severity": "blocker",
+      "sourceClass": "checker-parity",
+      "sourceVersion": "playable_check@86d58e33d293a0a095b574407a2d6c7d191d510f",
+      "check": {
+        "type": "external_urls_allowlist",
+        "allow": []
+      },
+      "repairHint": "把资源打进 ZIP，移除运行时网络请求。",
+      "autoRepair": false
+    },
+    {
+      "id": "MINTEGRAL-STA-004",
+      "title": "禁止高风险投放态 API 残留",
+      "stage": "static",
+      "severity": "blocker",
+      "sourceClass": "delivery-contract",
+      "sourceVersion": "game_playable-playbook@8e26d3b61d52c7540809a3a56fb6821472cc14673c4943ca71ef97f851c8401b",
+      "check": {
+        "type": "regex_absent",
+        "pattern": "\\bstructuredClone\\s*\\(|\\blocalStorage\\b|\\bBlob\\s*\\(|URL\\.(?:createObjectURL|revokeObjectURL)\\s*\\(|\\bResizeObserver\\b|Object\\.hasOwn\\s*\\(|\\bfetch\\s*\\(|\\bXMLHttpRequest\\b|console\\.error\\s*\\(|throw\\s+new\\s+Error|new\\s+Error\\s*\\("
+      },
+      "repairHint": "剥离 editor-only、上传下载、动态资源和旧 WebView 高风险分支。",
+      "autoRepair": false
+    },
+    {
+      "id": "MINTEGRAL-STA-005",
+      "title": "禁止 crossorigin 属性",
+      "stage": "static",
+      "severity": "warning",
+      "sourceClass": "checker-parity",
+      "sourceVersion": "playable_check@86d58e33d293a0a095b574407a2d6c7d191d510f",
+      "check": {
+        "type": "regex_absent",
+        "target": "main_html",
+        "pattern": "<(?:img|audio|video|script|link|source|track|iframe|image)\\b[^>]*\\bcrossorigin"
+      },
+      "repairHint": "移除本地资源标签的 crossorigin 属性。",
+      "autoRepair": false
+    },
+    {
+      "id": "MINTEGRAL-MAN-001",
+      "title": "Mindworks 完整生命周期复验",
+      "stage": "manual",
+      "severity": "manual",
+      "sourceClass": "checker-parity",
+      "sourceVersion": "playable_check@86d58e33d293a0a095b574407a2d6c7d191d510f",
+      "check": {
+        "type": "manual"
+      },
+      "repairHint": "在 Mindworks/PlayTurbo 完整试玩，确认 gameReady、gameStart、gameEnd、CTA 和结束页。",
+      "autoRepair": false,
+      "manualGate": "使用官方工具完成完整生命周期测试。"
+    }
+  ]
+}
+

@@ -4,8 +4,10 @@ import {
   GARAGE_SIZE,
   GATE_TANGENT_HANDLE_RADIUS,
   LevelEditorModel,
-  VEHICLE_COLOR_OPTIONS,
+  VEHICLE_PAINT_COLOR_OPTIONS,
   VEHICLE_COLORS,
+  getVehicleColorOption,
+  isSpecialVehicle,
   createLevelDocument,
   exportLevelCsv,
   exportLevelExcelXml,
@@ -14,8 +16,16 @@ import {
   getGateQueueBounds,
   getGateQueuePath,
   getGateQueueTangentHandles,
+  retargetLevelDocument,
   validateLevelDocument
 } from './level-editor-model.js';
+import { SCENE_TUNING } from './scene-tuning.js';
+import {
+  RECOGNITION_DEFAULTS,
+  blobsToWorldVehicles,
+  createImageWorldMapping,
+  recognizeLevelFromImage
+} from './level-image-recognizer.js';
 import './level-layout-editor.css';
 
 const TYPE_NAMES = Object.freeze({
@@ -24,19 +34,163 @@ const TYPE_NAMES = Object.freeze({
 const MECHANISM_NAMES = Object.freeze({
   normal: '普通车辆', hidden: '隐藏车辆', combination: '双色组合',
   linkHead: '联动车头', linkTail: '联动车尾', wrench: '扳手车', gear: '齿轮车',
-  ambulance: '救护车', firetruck: '消防车'
+  ambulance: '救护车', firetruck: '消防车', police: '警车'
 });
 const WORLD_SCALE = 78;
 const GARAGE_TEXTURE_URL = '/assets/unity/mechanisms/garage/textures/garage-2d.png';
 const CONVEYOR_TEXTURE_URL = '/assets/unity/level-editor/conveyor-belt-2d.png';
 const PASSENGER_QUEUE_COLORS = Object.freeze([
-  '#4073F2', '#2EA640', '#F259A6', '#8C47D9', '#F0291F', '#FAAB1F',
-  '#F2701A', '#40BFF2', '#754729', '#0D6B38', '#142E80', '#26262E',
-  '#F22E14', '#F2F2F2', '#FADB2E', '#D1A861'
+  '#0061E8', '#118024', '#F338AF', '#9725CD', '#B10F11', '#C68000',
+  '#C24300', '#014853', '#542C16', '#206D53', '#15209E', '#26262E',
+  '#F22E14', '#F2F2F2', '#FADB2E', '#D1A861', '#8A8A8A',
+  '#2D2D30', '#EBEBE8', '#8C1010', '#C89808', '#EEDEBE', '#69C8AA',
+  '#96C882', '#F698C4', '#96989B'
 ]);
 const DEFAULT_INITIAL_PASSENGER_COUNT = 8;
 const LEVEL_EDITOR_PREVIEW_STORAGE_KEY = 'bus-loop-level-editor-preview-v3';
 const LEVEL_EDITOR_PREVIEW_FORMAT = 'bus-loop-level-editor-preview-v3';
+const REFERENCE_IMAGE_MAX_BYTES = 20 * 1024 * 1024;
+const REFERENCE_IMAGE_TYPES = new Set(['image/png', 'image/jpeg', 'image/webp']);
+const REFERENCE_IMAGE_STORAGE_PREFIX = 'bus-loop-level-editor-reference-v1:';
+const REFERENCE_IMAGE_STORAGE_MAX_CHARS = 4_000_000;
+const REFERENCE_IMAGE_CLEANUP_STORAGE_KEY = 'bus-loop-level-editor-reference-cleanup-v1';
+const RECOGNITION_OPTIONS_STORAGE_KEY = 'bus-loop-level-editor-recognition-v1';
+const RECOGNITION_WORK_MAX_DIMENSION = 1400;
+
+function createReferenceLayer() {
+  return {
+    image: null,
+    source: '',
+    name: '',
+    visible: true,
+    locked: true,
+    x: 0,
+    z: 0,
+    width: 8,
+    height: 8,
+    scale: 1,
+    rotation: 0,
+    opacity: 0.45
+  };
+}
+
+function referenceStorageKey(levelKey) {
+  return `${REFERENCE_IMAGE_STORAGE_PREFIX}${encodeURIComponent(String(levelKey ?? ''))}`;
+}
+
+function readReferenceLayer(levelKey) {
+  const layer = createReferenceLayer();
+  if (typeof localStorage === 'undefined') return layer;
+  try {
+    const source = JSON.parse(localStorage.getItem(referenceStorageKey(levelKey)) || 'null');
+    if (!source || typeof source !== 'object') return layer;
+    layer.source = typeof source.source === 'string'
+      && source.source.length <= REFERENCE_IMAGE_STORAGE_MAX_CHARS
+      && /^data:image\/(?:jpeg|png|webp);base64,/i.test(source.source) ? source.source : '';
+    layer.name = typeof source.name === 'string' ? source.name : '';
+    layer.visible = source.visible !== false;
+    layer.locked = source.locked !== false;
+    layer.x = clampNumber(source.x, -100, 100, 0);
+    layer.z = clampNumber(source.z, -100, 100, 0);
+    layer.width = clampNumber(source.width, 0.1, 100, 8);
+    layer.height = clampNumber(source.height, 0.1, 100, 8);
+    layer.scale = clampNumber(source.scale, 0.05, 5, 1);
+    layer.rotation = clampNumber(source.rotation, -360, 360, 0);
+    layer.opacity = clampNumber(source.opacity, 0.05, 1, 0.45);
+  } catch {
+    // A stale or quota-truncated editor cache should not prevent level editing.
+  }
+  return layer;
+}
+
+function persistReferenceLayer(levelKey, layer) {
+  if (!layer?.source || typeof localStorage === 'undefined') return;
+  try {
+    localStorage.setItem(referenceStorageKey(levelKey), JSON.stringify({
+      source: layer.source,
+      name: layer.name,
+      visible: layer.visible,
+      locked: layer.locked,
+      x: layer.x,
+      z: layer.z,
+      width: layer.width,
+      height: layer.height,
+      scale: layer.scale,
+      rotation: layer.rotation,
+      opacity: layer.opacity
+    }));
+  } catch {
+    // The image remains available for the current editor session if storage is full.
+  }
+}
+
+function clearPersistedReferenceLayer(levelKey) {
+  if (typeof localStorage === 'undefined') return;
+  try { localStorage.removeItem(referenceStorageKey(levelKey)); } catch { /* private mode */ }
+}
+
+function clearPersistedReferenceLayersOnce() {
+  if (typeof localStorage === 'undefined') return;
+  try {
+    if (localStorage.getItem(REFERENCE_IMAGE_CLEANUP_STORAGE_KEY) === '1') return;
+    const keys = [];
+    for (let index = 0; index < localStorage.length; index += 1) {
+      const key = localStorage.key(index);
+      if (key?.startsWith(REFERENCE_IMAGE_STORAGE_PREFIX)) keys.push(key);
+    }
+    for (const key of keys) localStorage.removeItem(key);
+    localStorage.setItem(REFERENCE_IMAGE_CLEANUP_STORAGE_KEY, '1');
+  } catch {
+    // A restricted storage implementation should not prevent the editor from opening.
+  }
+}
+
+function referenceLayerReady(layer) {
+  return Boolean(layer?.image?.complete && layer.image.naturalWidth > 0 && layer.image.naturalHeight > 0);
+}
+
+function referenceLayerSize(layer) {
+  const scale = clampNumber(layer?.scale, 0.05, 5, 1);
+  return {
+    width: layer.width * scale,
+    height: layer.height * scale
+  };
+}
+
+function snapshotReferenceLayer(layer) {
+  return {
+    source: layer.source || '',
+    name: layer.name || '',
+    visible: layer.visible !== false,
+    locked: layer.locked !== false,
+    x: clampNumber(layer.x, -100, 100, 0),
+    z: clampNumber(layer.z, -100, 100, 0),
+    width: clampNumber(layer.width, 0.1, 100, 8),
+    height: clampNumber(layer.height, 0.1, 100, 8),
+    scale: clampNumber(layer.scale, 0.05, 5, 1),
+    rotation: clampNumber(layer.rotation, -360, 360, 0),
+    opacity: clampNumber(layer.opacity, 0.05, 1, 0.45)
+  };
+}
+
+function referenceSnapshotsEqual(left, right) {
+  return left.source === right.source
+    && left.name === right.name
+    && left.visible === right.visible
+    && left.locked === right.locked
+    && left.x === right.x
+    && left.z === right.z
+    && left.width === right.width
+    && left.height === right.height
+    && left.scale === right.scale
+    && left.rotation === right.rotation
+    && left.opacity === right.opacity;
+}
+
+function clampNumber(value, min, max, fallback) {
+  const number = Number(value);
+  return Number.isFinite(number) ? Math.max(min, Math.min(max, number)) : fallback;
+}
 
 function writeLevelEditorPreviewDocument(document, mode, baseRevision = null) {
   localStorage.setItem(LEVEL_EDITOR_PREVIEW_STORAGE_KEY, JSON.stringify({
@@ -78,9 +232,34 @@ function selectField(label, path, value, options) {
   return `<label class="level-layout-field"><span>${label}</span><select data-field="${path}">${options.map(([key, text]) => `<option value="${key}" ${String(key) === String(value) ? 'selected' : ''}>${text}</option>`).join('')}</select></label>`;
 }
 
-function vehicleColorField(label, path, value, options = VEHICLE_COLOR_OPTIONS) {
+function vehicleColorField(label, path, value, options = VEHICLE_PAINT_COLOR_OPTIONS) {
   const current = options.find((color) => color.id === Number(value)) ?? options[0];
   return `<label class="level-layout-field"><span>${label}</span><span class="level-layout-color-select"><span class="level-layout-color-swatch" style="--swatch-color:${current.css}" aria-hidden="true"></span><select data-field="${path}">${options.map((color) => `<option value="${color.id}" ${color.id === Number(value) ? 'selected' : ''}>${color.id}: ${color.name} / ${color.label}</option>`).join('')}</select></span></label>`;
+}
+
+function vehicleOverrideField(label, path, value) {
+  return `<label class="level-layout-field level-layout-color-input"><span>${label}</span><span class="level-layout-color-input-control"><input type="color" data-field="${path}" value="${value}"><code>${value}</code></span></label>`;
+}
+
+function passengerOverrideField(label, region, colorIndex, value) {
+  return `<label class="level-layout-field level-layout-color-input"><span>${label}</span><span class="level-layout-color-input-control"><input type="color" data-passenger-color-region="${region}" data-passenger-color-index="${colorIndex}" value="${value}"><code>${value}</code></span></label>`;
+}
+
+function vehicleBatchOverrideField(label, path, value, mixed = false) {
+  return `<label class="level-layout-field level-layout-color-input"><span>${label}</span><span class="level-layout-color-input-control"><input type="color" data-field="${path}" value="${value}" title="${mixed ? '当前车辆颜色不同，修改后将统一应用' : ''}"><code>${mixed ? '混合值' : value}</code></span></label>`;
+}
+
+function passengerColorOverridesMarkup(document, colorIndex) {
+  const overrides = document.passengerColorOverrides?.[String(colorIndex)] ?? {};
+  const base = overrides.body ?? getVehicleColorOption(colorIndex).css.toLowerCase();
+  return `<details class="level-layout-color-details"><summary>小人颜色微调</summary>
+    ${passengerOverrideField('小人身体', 'body', colorIndex, base)}
+    ${passengerOverrideField('小人高光', 'highlight', colorIndex, overrides.highlight ?? base)}
+    ${passengerOverrideField('小人阴影', 'shadow', colorIndex, overrides.shadow ?? base)}
+    ${passengerOverrideField('小人车窗', 'window', colorIndex, overrides.window ?? '#263238')}
+    ${passengerOverrideField('小人细节', 'detail', colorIndex, overrides.detail ?? base)}
+    <p class="level-layout-hint">小人颜色会同步到相同颜色的车辆；修改车身颜色也会同步这里。</p>
+  </details>`;
 }
 
 function invertHexColor(color) {
@@ -88,12 +267,18 @@ function invertHexColor(color) {
   return `#${(0xFFFFFF ^ value).toString(16).padStart(6, '0')}`;
 }
 
-function passengerColor(colorIndex) {
-  return PASSENGER_QUEUE_COLORS[colorIndex] ?? '#64748b';
+function vehicleDisplayColor(vehicle) {
+  return vehicle?.colorOverrides?.body ?? getVehicleColorOption(vehicle?.colorIndex).css;
+}
+
+function passengerColor(colorIndex, document = null) {
+  return document?.passengerColorOverrides?.[String(colorIndex)]?.body
+    ?? PASSENGER_QUEUE_COLORS[colorIndex]
+    ?? '#64748b';
 }
 
 function passengerColorName(colorIndex) {
-  const color = VEHICLE_COLOR_OPTIONS[colorIndex];
+  const color = getVehicleColorOption(colorIndex);
   return color ? `${color.id}: ${color.label}` : String(colorIndex);
 }
 
@@ -120,6 +305,32 @@ function countTotal(counts) {
 
 function toggleField(label, path, value) {
   return `<label class="level-layout-check"><input type="checkbox" data-field="${path}" ${value ? 'checked' : ''}><span>${label}</span></label>`;
+}
+
+function referenceNumberField(label, path, value, { min = '', max = '', step = '0.01' } = {}) {
+  return `<label class="level-layout-field"><span>${label}</span><input type="number" data-reference-field="${path}" value="${Number(value)}" min="${min}" max="${max}" step="${step}"></label>`;
+}
+
+function renderReferencePanel(root, layer) {
+  const hasImage = referenceLayerReady(layer);
+  root.innerHTML = `<div class="level-layout-reference-actions">
+      <button type="button" data-action="import-reference-image">${hasImage ? '更换图片' : '导入图片'}</button>
+      <button type="button" data-action="clear-reference-image" ${hasImage ? '' : 'disabled'}>清除</button>
+      <button type="button" data-action="recognize-image" ${hasImage ? '' : 'disabled'}>识图摆放</button>
+    </div>
+    ${hasImage ? `<p class="level-layout-reference-name" title="${escapeHtml(layer.name)}">${escapeHtml(layer.name)}</p>
+      <label class="level-layout-check"><input type="checkbox" data-reference-field="visible" ${layer.visible ? 'checked' : ''}><span>显示垫图</span></label>
+      <label class="level-layout-check"><input type="checkbox" data-reference-field="locked" ${layer.locked ? 'checked' : ''}><span>锁定位置</span></label>
+      ${referenceNumberField('X', 'x', layer.x, { step: 0.05 })}
+      ${referenceNumberField('Z', 'z', layer.z, { step: 0.05 })}
+      ${referenceNumberField('宽度', 'width', layer.width, { min: 0.1, max: 100, step: 0.05 })}
+      ${referenceNumberField('高度', 'height', layer.height, { min: 0.1, max: 100, step: 0.05 })}
+      ${referenceNumberField('整体缩放', 'scale', layer.scale, { min: 0.05, max: 5, step: 0.05 })}
+      ${referenceNumberField('旋转', 'rotation', layer.rotation, { min: -360, max: 360, step: 1 })}
+      <label class="level-layout-reference-opacity"><span>透明度</span><input type="range" data-reference-field="opacity" value="${layer.opacity}" min="0.05" max="1" step="0.01"><output>${Math.round(layer.opacity * 100)}%</output></label>
+      <button type="button" class="level-layout-reference-fit" data-action="fit-reference-image">适配当前画布</button>
+      <p class="level-layout-hint">取消锁定后可在画布上直接拖动。垫图仅用于编辑，不会保存到关卡或试玩包。</p>`
+      : '<p class="level-layout-hint">支持 PNG、JPG、WebP，最大 20 MB。图片只作为编辑辅助，不会进入关卡数据。</p>'}`;
 }
 
 function worldToScreen(camera, rect, x, z) {
@@ -253,7 +464,237 @@ function drawArrow(context, length) {
   context.fill();
 }
 
-function drawCanvas(canvas, model, camera, gesture, garageTexture, conveyorTexture) {
+function drawVehicleSafeFrame(context, camera, rect) {
+  const sourceCube = SCENE_TUNING.vehicleArea?.sourceCube;
+  const width = Number(sourceCube?.width);
+  const depth = Number(sourceCube?.depth);
+  const centerX = Number(sourceCube?.centerX);
+  const centerZ = Number(sourceCube?.centerZ);
+  if (![width, depth, centerX, centerZ].every(Number.isFinite) || width <= 0 || depth <= 0) return;
+  const padding = 0.1;
+  const halfWidth = width * 0.5 + padding;
+  const halfDepth = depth * 0.5 + padding;
+  const points = [
+    worldToScreen(camera, rect, centerX - halfWidth, centerZ - halfDepth),
+    worldToScreen(camera, rect, centerX + halfWidth, centerZ - halfDepth),
+    worldToScreen(camera, rect, centerX + halfWidth, centerZ + halfDepth),
+    worldToScreen(camera, rect, centerX - halfWidth, centerZ + halfDepth)
+  ];
+  context.save();
+  context.fillStyle = 'rgba(236, 72, 72, .035)';
+  context.strokeStyle = 'rgba(231, 62, 62, .92)';
+  context.lineWidth = 3;
+  context.beginPath();
+  context.moveTo(points[0].x, points[0].y);
+  points.slice(1).forEach((point) => context.lineTo(point.x, point.y));
+  context.closePath();
+  context.fill();
+  context.stroke();
+  context.restore();
+}
+
+function fitReferenceLayerToView(layer, camera, rect) {
+  if (!referenceLayerReady(layer)) return;
+  const scale = WORLD_SCALE * camera.zoom;
+  const maxWidth = Math.max(1, rect.width * 0.82 / scale);
+  const maxHeight = Math.max(1, rect.height * 0.82 / scale);
+  const aspect = layer.image.naturalWidth / layer.image.naturalHeight;
+  if (maxWidth / maxHeight < aspect) {
+    layer.width = maxWidth;
+    layer.height = maxWidth / aspect;
+  } else {
+    layer.height = maxHeight;
+    layer.width = maxHeight * aspect;
+  }
+  layer.x = camera.x;
+  layer.z = camera.z;
+  layer.scale = 1;
+  layer.rotation = 0;
+}
+
+function readRecognitionOptions() {
+  const options = {
+    tolerance: RECOGNITION_DEFAULTS.tolerance,
+    backgroundTolerance: RECOGNITION_DEFAULTS.backgroundTolerance,
+    minArea: null,
+    maxAreaRatio: RECOGNITION_DEFAULTS.maxAreaRatio,
+    fillRatio: RECOGNITION_DEFAULTS.fillRatio,
+    mergeGap: RECOGNITION_DEFAULTS.mergeGap,
+    seats: 'auto',
+    snapToGrid: true,
+    alignRows: true,
+    splitMerged: RECOGNITION_DEFAULTS.splitMerged,
+    allowNeutralColors: RECOGNITION_DEFAULTS.allowNeutralColors,
+    mode: 'replace'
+  };
+  if (typeof localStorage === 'undefined') return options;
+  try {
+    const stored = JSON.parse(localStorage.getItem(RECOGNITION_OPTIONS_STORAGE_KEY) || 'null');
+    if (stored && typeof stored === 'object') Object.assign(options, stored);
+  } catch {
+    // A stale editor cache should not prevent level editing.
+  }
+  options.seats = ['auto', '4', '6', '10'].includes(String(options.seats)) ? String(options.seats) : 'auto';
+  options.mode = options.mode === 'append' ? 'append' : 'replace';
+  return options;
+}
+
+function persistRecognitionOptions(options) {
+  if (typeof localStorage === 'undefined') return;
+  try { localStorage.setItem(RECOGNITION_OPTIONS_STORAGE_KEY, JSON.stringify(options)); } catch { /* private mode */ }
+}
+
+function recognitionSettings(options) {
+  return {
+    tolerance: options.tolerance,
+    backgroundTolerance: options.backgroundTolerance,
+    minArea: options.minArea,
+    maxAreaRatio: options.maxAreaRatio,
+    fillRatio: options.fillRatio,
+    mergeGap: options.mergeGap,
+    seats: options.seats,
+    snapToGrid: options.snapToGrid,
+    alignRows: options.alignRows,
+    splitMerged: options.splitMerged,
+    allowNeutralColors: options.allowNeutralColors
+  };
+}
+
+function referenceLayerMapping(layer, imageWidth, imageHeight) {
+  const size = referenceLayerSize(layer);
+  return createImageWorldMapping({
+    imageWidth,
+    imageHeight,
+    x: layer.x,
+    z: layer.z,
+    width: size.width,
+    height: size.height,
+    rotation: layer.rotation
+  });
+}
+
+/**
+ * Recognition works on a bounded copy of the underlay: it keeps a 1600px reference
+ * responsive while leaving the normalized mapping untouched.
+ */
+function readRecognitionImageData(image, maxDimension = RECOGNITION_WORK_MAX_DIMENSION) {
+  const ratio = Math.min(1, maxDimension / Math.max(image.naturalWidth, image.naturalHeight));
+  const width = Math.max(8, Math.round(image.naturalWidth * ratio));
+  const height = Math.max(8, Math.round(image.naturalHeight * ratio));
+  const canvas = document.createElement('canvas');
+  canvas.width = width;
+  canvas.height = height;
+  const context = canvas.getContext('2d', { willReadFrequently: true });
+  context.drawImage(image, 0, 0, width, height);
+  return context.getImageData(0, 0, width, height);
+}
+
+function recognitionStatsMarkup(result) {
+  const summary = result.summary;
+  const colorChips = summary.byColor.length
+    ? summary.byColor.map((entry) => `<li><i style="--swatch-color:${entry.css}"></i><span>${entry.id}: ${escapeHtml(entry.label)}</span><b>${entry.count}</b></li>`).join('')
+    : '<li class="is-empty">没有识别到车辆颜色</li>';
+  const rejected = summary.rejected;
+  const skipped = summary.skippedColorIds.length;
+  if (result.method === 'editor-overlay') {
+    return `<p class="level-image-warning">${escapeHtml(result.warning || '这是一张编辑器结果图，不能作为识图输入。')}</p>
+      <p class="level-image-hint">请重新选择没有红色边框、网格线和编号牌的原始车辆图片。</p>`;
+  }
+  return `<div class="level-image-total"><strong>${summary.total}</strong><span>辆车</span></div>
+    ${result.method === 'arrow-markers' ? '<p class="level-image-hint">已使用箭头中心识别：颜色匹配到内置近似色，方向按箭头估算。</p>' : ''}
+    <ul class="level-image-colors">${colorChips}</ul>
+    <dl class="level-image-metrics">
+      <dt>行列</dt><dd>${summary.rows} 行 / 最多 ${summary.columns} 列</dd>
+      <dt>网格间距</dt><dd>X ${summary.pitch.x}px · Y ${summary.pitch.y}px</dd>
+      <dt>座位</dt><dd>${Object.entries(summary.seats).map(([seats, count]) => `${seats} 座 ${count}`).join(' · ') || '无'}</dd>
+      <dt>已过滤</dt><dd>面积 ${rejected.area} · 过大 ${rejected.edge} · 稀疏 ${rejected.fill} · 重复 ${rejected.overlap}</dd>
+    </dl>
+    ${skipped ? `<p class="level-image-warning">${skipped} 个颜色与图片背景过于接近，无法识别（可能是黑白灰车身或路面同色）。</p>` : ''}
+    <p class="level-image-hint">识别使用当前垫图的位置、大小和旋转。摆放后可继续微调，或按 ⌘/Ctrl+Z 撤销。</p>`;
+}
+
+function isReferenceImageFile(file) {
+  const extension = String(file?.name ?? '').toLowerCase().match(/\.(png|jpe?g|webp)$/)?.[1];
+  return REFERENCE_IMAGE_TYPES.has(file?.type) || Boolean(extension);
+}
+
+function loadReferenceImage(source) {
+  const image = new Image();
+  image.decoding = 'async';
+  return new Promise((resolve, reject) => {
+    image.onload = () => resolve(image);
+    image.onerror = () => reject(new Error('图片无法读取'));
+    image.src = source;
+  });
+}
+
+async function prepareReferenceImage(file) {
+  const objectUrl = URL.createObjectURL(file);
+  try {
+    const sourceImage = await loadReferenceImage(objectUrl);
+    const maxDimension = 2048;
+    const ratio = Math.min(1, maxDimension / Math.max(sourceImage.naturalWidth, sourceImage.naturalHeight));
+    const width = Math.max(1, Math.round(sourceImage.naturalWidth * ratio));
+    const height = Math.max(1, Math.round(sourceImage.naturalHeight * ratio));
+    const canvas = document.createElement('canvas');
+    canvas.width = width;
+    canvas.height = height;
+    const context = canvas.getContext('2d', { alpha: false });
+    context.fillStyle = '#ffffff';
+    context.fillRect(0, 0, width, height);
+    context.drawImage(sourceImage, 0, 0, width, height);
+    let source = '';
+    for (const quality of [0.84, 0.7, 0.56, 0.42]) {
+      source = canvas.toDataURL('image/jpeg', quality);
+      if (source.length <= REFERENCE_IMAGE_STORAGE_MAX_CHARS) break;
+    }
+    if (source.length > REFERENCE_IMAGE_STORAGE_MAX_CHARS) throw new Error('图片压缩后仍然过大，请换一张较小的图片');
+    return { source, image: await loadReferenceImage(source), width, height };
+  } finally {
+    URL.revokeObjectURL(objectUrl);
+  }
+}
+
+function hitReferenceLayer(layer, point) {
+  if (!referenceLayerReady(layer) || !layer.visible || layer.locked) return false;
+  const radians = layer.rotation * Math.PI / 180;
+  const dx = point.x - layer.x;
+  const dz = point.z - layer.z;
+  const localX = dx * Math.cos(radians) - dz * Math.sin(radians);
+  const localZ = -dx * Math.sin(radians) - dz * Math.cos(radians);
+  const size = referenceLayerSize(layer);
+  return Math.abs(localX) <= size.width * 0.5 && Math.abs(localZ) <= size.height * 0.5;
+}
+
+function drawReferenceLayer(context, camera, rect, layer, gesture) {
+  if (!referenceLayerReady(layer) || !layer.visible) return;
+  const delta = gesture?.type === 'reference-drag' ? gesture.delta : { x: 0, z: 0 };
+  const screen = worldToScreen(camera, rect, layer.x + delta.x, layer.z + delta.z);
+  const scale = WORLD_SCALE * camera.zoom;
+  const size = referenceLayerSize(layer);
+  const width = size.width * scale;
+  const height = size.height * scale;
+  context.save();
+  context.translate(screen.x, screen.y);
+  context.rotate(layer.rotation * Math.PI / 180);
+  context.globalAlpha = layer.opacity;
+  context.drawImage(layer.image, -width * 0.5, -height * 0.5, width, height);
+  context.globalAlpha = 1;
+  if (!layer.locked) {
+    context.setLineDash([6, 4]);
+    context.strokeStyle = '#1683a2';
+    context.lineWidth = 1.5;
+    context.strokeRect(-width * 0.5, -height * 0.5, width, height);
+    context.setLineDash([]);
+    context.beginPath();
+    context.moveTo(-6, 0); context.lineTo(6, 0);
+    context.moveTo(0, -6); context.lineTo(0, 6);
+    context.stroke();
+  }
+  context.restore();
+}
+
+function drawCanvas(canvas, model, camera, gesture, garageTexture, conveyorTexture, referenceLayer, recognitionPreview = null) {
   const ratio = window.devicePixelRatio || 1;
   const rect = canvas.getBoundingClientRect();
   const width = Math.max(1, Math.round(rect.width * ratio));
@@ -264,6 +705,8 @@ function drawCanvas(canvas, model, camera, gesture, garageTexture, conveyorTextu
   context.clearRect(0, 0, rect.width, rect.height);
   context.fillStyle = '#f3f6f8';
   context.fillRect(0, 0, rect.width, rect.height);
+
+  drawReferenceLayer(context, camera, rect, referenceLayer, gesture);
 
   const gap = model.document.editor.gridGap;
   const scale = WORLD_SCALE * camera.zoom;
@@ -383,6 +826,10 @@ function drawCanvas(canvas, model, camera, gesture, garageTexture, conveyorTextu
     context.restore();
   }
 
+  if (model.activeContainerId === 0) {
+    drawVehicleSafeFrame(context, camera, rect);
+  }
+
   for (const vehicle of visibleVehicles(model.document, model.activeContainerId)) {
     const selected = model.selection.has(`vehicle:${vehicle.id}`);
     const moving = selected ? offset : { x: 0, z: 0 };
@@ -390,7 +837,7 @@ function drawCanvas(canvas, model, camera, gesture, garageTexture, conveyorTextu
     const size = vehicleDimensions(vehicle);
     context.save();
     context.translate(screen.x, screen.y); context.rotate(vehicle.yaw * Math.PI / 180);
-    const vehicleColor = VEHICLE_COLORS[vehicle.colorIndex] ?? '#64748b';
+    const vehicleColor = vehicleDisplayColor(vehicle);
     const inverseColor = vehicle.isHidden ? '#ffffff' : invertHexColor(vehicleColor);
     context.fillStyle = vehicleColor;
     context.globalAlpha = vehicle.isHidden ? 0.42 : 1;
@@ -445,16 +892,82 @@ function drawCanvas(canvas, model, camera, gesture, garageTexture, conveyorTextu
     context.fillStyle = 'rgba(8, 145, 178, .12)'; context.strokeStyle = '#0891b2'; context.setLineDash([5, 4]);
     context.fillRect(x, y, widthBox, heightBox); context.strokeRect(x, y, widthBox, heightBox); context.setLineDash([]);
   }
+
+  if (recognitionPreview?.length) {
+    for (const vehicle of recognitionPreview) {
+      const screen = worldToScreen(camera, rect, vehicle.x, vehicle.z);
+      const size = vehicleDimensions(vehicle);
+      const previewSize = vehicle.recognitionWidth && vehicle.recognitionLength
+        ? { width: vehicle.recognitionWidth, length: vehicle.recognitionLength }
+        : size;
+      context.save();
+      context.translate(screen.x, screen.y);
+      context.rotate((vehicle.yaw ?? 0) * Math.PI / 180);
+      context.fillStyle = getVehicleColorOption(vehicle.colorIndex).css;
+      context.globalAlpha = 0.28;
+      context.fillRect(-previewSize.width * scale / 2, -previewSize.length * scale / 2, previewSize.width * scale, previewSize.length * scale);
+      context.globalAlpha = 1;
+      context.strokeStyle = '#ef5b25';
+      context.lineWidth = 1.25;
+      context.setLineDash([3, 3]);
+      context.strokeRect(-previewSize.width * scale / 2, -previewSize.length * scale / 2, previewSize.width * scale, previewSize.length * scale);
+      context.setLineDash([]);
+      context.fillStyle = '#152a37';
+      context.globalAlpha = 0.9;
+      context.beginPath();
+      context.moveTo(0, -previewSize.length * scale * 0.36);
+      context.lineTo(previewSize.width * scale * 0.22, -previewSize.length * scale * 0.05);
+      context.lineTo(-previewSize.width * scale * 0.22, -previewSize.length * scale * 0.05);
+      context.closePath();
+      context.fill();
+      context.restore();
+    }
+  }
 }
 
 function renderInspector(root, model) {
   let selected = model.selected();
+  const selectedVehicles = selected.filter((item) => item.seats);
+  const isVehicleBatch = selected.length > 1 && selectedVehicles.length === selected.length;
   const activeContainer = model.activeContainerId === 0
     ? null
     : model.document.containers.find((item) => item.id === model.activeContainerId);
-  if (selected.length !== 1 && activeContainer) {
+  if (!isVehicleBatch && selected.length !== 1 && activeContainer) {
     model.select(`container:${activeContainer.id}`);
     selected = [activeContainer];
+  }
+  if (isVehicleBatch) {
+    const first = selectedVehicles[0];
+    const hasSpecialVehicle = selectedVehicles.some(isSpecialVehicle);
+    const colorValue = (vehicle, key) => {
+      const overrides = vehicle.colorOverrides ?? {};
+      if (key === 'body') return overrides.body ?? getVehicleColorOption(vehicle.colorIndex).css.toLowerCase();
+      if (key === 'window') return overrides.window ?? '#263238';
+      return overrides[key] ?? (key === 'detail' ? (overrides.body ?? getVehicleColorOption(vehicle.colorIndex).css.toLowerCase()) : (overrides.body ?? getVehicleColorOption(vehicle.colorIndex).css.toLowerCase()));
+    };
+    const batchValue = (key) => {
+      const values = selectedVehicles.map((vehicle) => colorValue(vehicle, key));
+      return { value: values[0], mixed: new Set(values).size > 1 };
+    };
+    const body = batchValue('body');
+    const highlight = batchValue('highlight');
+    const shadow = batchValue('shadow');
+    const window = batchValue('window');
+    const detail = batchValue('detail');
+    root.innerHTML = `<h3>已选车辆 ${selectedVehicles.length} 辆</h3>
+      <p class="level-layout-hint">框选车辆后，修改下面任一参数会统一应用到全部选中车辆；${hasSpecialVehicle ? '选区包含特殊车辆，颜色编辑已禁用。' : '车辆颜色会同步对应小人。'}</p>
+      ${hasSpecialVehicle ? '<p class="level-layout-hint">特殊车辆使用专属颜色，不需要手动选择。</p>' : `
+        ${vehicleColorField('基础颜色（同步小人）', 'colorIndex', first.colorIndex)}
+        ${passengerColorOverridesMarkup(model.document, first.colorIndex)}
+        <details class="level-layout-color-details" open><summary>统一调节颜色区域</summary>
+          ${vehicleBatchOverrideField('车身', 'colorOverrides.body', body.value, body.mixed)}
+          ${vehicleBatchOverrideField('高光', 'colorOverrides.highlight', highlight.value, highlight.mixed)}
+          ${vehicleBatchOverrideField('阴影', 'colorOverrides.shadow', shadow.value, shadow.mixed)}
+          ${vehicleBatchOverrideField('车窗', 'colorOverrides.window', window.value, window.mixed)}
+          ${vehicleBatchOverrideField('细节', 'colorOverrides.detail', detail.value, detail.mixed)}
+          <button type="button" data-action="reset-vehicle-colors">恢复选中车辆内置颜色</button>
+        </details>`}`;
+    return;
   }
   if (selected.length !== 1) {
     const validation = validateLevelDocument(model.document);
@@ -480,9 +993,24 @@ function renderInspector(root, model) {
   }
   const item = selected[0];
   if (item.seats) {
+    const specialVehicle = isSpecialVehicle(item);
+    const baseColor = getVehicleColorOption(item.colorIndex).css.toLowerCase();
+    const overrides = item.colorOverrides ?? {};
+    const bodyColor = overrides.body ?? baseColor;
     root.innerHTML = `<h3>车辆 #${item.id}</h3>
       ${numberField('X', 'x', item.x)}${numberField('Z', 'z', item.z)}${numberField('旋转', 'yaw', item.yaw, { min: 0, max: 360, step: 1 })}
-      ${vehicleColorField('颜色', 'colorIndex', item.colorIndex)}
+      ${specialVehicle ? '<p class="level-layout-hint">特殊车辆使用专属颜色，不需要手动选择。</p>' : `
+        ${vehicleColorField('颜色（同步小人）', 'colorIndex', item.colorIndex)}
+        ${passengerColorOverridesMarkup(model.document, item.colorIndex)}
+        <details class="level-layout-color-details" ${Object.keys(overrides).length ? 'open' : ''}><summary>车辆颜色微调</summary>
+          ${vehicleOverrideField('车身', 'colorOverrides.body', bodyColor)}
+          ${vehicleOverrideField('高光', 'colorOverrides.highlight', overrides.highlight ?? bodyColor)}
+          ${vehicleOverrideField('阴影', 'colorOverrides.shadow', overrides.shadow ?? bodyColor)}
+          ${vehicleOverrideField('车窗', 'colorOverrides.window', overrides.window ?? '#263238')}
+          ${vehicleOverrideField('细节', 'colorOverrides.detail', overrides.detail ?? bodyColor)}
+          <p class="level-layout-hint">只保存本车的覆盖颜色；清除后恢复内置贴图。</p>
+          <button type="button" data-action="reset-vehicle-colors">恢复内置颜色</button>
+        </details>`}
       ${selectField('座位', 'seats', item.seats, [[4, '4 座'], [6, '6 座'], [10, '10 座']])}
       ${selectField('机制', 'mechanism.type', item.mechanism.type, Object.entries(MECHANISM_NAMES))}
       ${toggleField('隐藏', 'isHidden', item.isHidden)}${toggleField('转向车', 'isTurnVehicle', item.isTurnVehicle)}
@@ -491,7 +1019,7 @@ function renderInspector(root, model) {
       ${['linkHead', 'linkTail', 'wrench', 'gear'].includes(item.mechanism.type) ? numberField('关联车辆', 'mechanism.pairVehicleId', item.mechanism.pairVehicleId ?? 0, { min: 1, step: 1 }) : ''}
       ${['linkHead', 'linkTail'].includes(item.mechanism.type) ? numberField('连接距离', 'mechanism.distance', item.mechanism.distance, { min: 0.15, max: 0.5, step: 0.01 }) : ''}
       ${['wrench', 'gear'].includes(item.mechanism.type) ? selectField('扳手颜色', 'mechanism.wrenchColor', item.mechanism.wrenchColor, [[0,'粉'],[1,'蓝'],[2,'紫'],[3,'绿'],[4,'黄']]) : ''}
-      ${item.mechanism.type === 'combination' ? vehicleColorField('组合颜色', 'mechanism.secondColorIndex', item.mechanism.secondColorIndex, VEHICLE_COLOR_OPTIONS.slice(0, 11)) : ''}
+      ${item.mechanism.type === 'combination' ? vehicleColorField('组合颜色（同步小人）', 'mechanism.secondColorIndex', item.mechanism.secondColorIndex) : ''}
       ${item.mechanism.type === 'ambulance' ? numberField('步数限制', 'mechanism.stepLimit', item.mechanism.stepLimit, { min: 1, step: 1 }) : ''}
       ${item.mechanism.type === 'firetruck' ? numberField('倒计时', 'mechanism.timeLimit', item.mechanism.timeLimit, { min: 1, step: 1 }) : ''}
       <div class="level-layout-inspector-actions"><button type="button" data-action="rotate-left" title="Q：左转 15°；Alt+Q：绕选区中心左转">左转 15°</button><button type="button" data-action="rotate-right" title="E：右转 15°；Alt+E：绕选区中心右转">右转 15°</button></div>
@@ -520,6 +1048,14 @@ async function loadSavedDocument(level) {
   }
 }
 
+function renderReferenceInspector(root, referenceLayer) {
+  const section = document.createElement('section');
+  section.className = 'level-layout-reference-panel';
+  section.innerHTML = '<h3>垫图</h3><div class="level-layout-reference-content"></div>';
+  renderReferencePanel(section.querySelector('.level-layout-reference-content'), referenceLayer);
+  root.prepend(section);
+}
+
 export async function createLevelLayoutEditor({
   baseLevel,
   initialDocument = null,
@@ -527,6 +1063,7 @@ export async function createLevelLayoutEditor({
   onClose = () => {},
   onPreview = () => {}
 }) {
+  clearPersistedReferenceLayersOnce();
   const loaded = initialDocument
     ? { document: createLevelDocument(initialDocument), revision: initialRevision }
     : await loadSavedDocument(baseLevel);
@@ -538,6 +1075,20 @@ export async function createLevelLayoutEditor({
   let gesture = null;
   let altPressed = false;
   let anchorRotationCenter = null;
+  let referenceLayer = readReferenceLayer(model.document.key);
+  let referencePersistTimer = null;
+  const recognitionState = {
+    open: false,
+    busy: false,
+    options: readRecognitionOptions(),
+    result: null,
+    message: '',
+    messageKind: ''
+  };
+  const editorHistoryLimit = 100;
+  const editorUndoStack = [];
+  const editorRedoStack = [];
+  model = attachModelHistoryTracker(model);
   const garageTexture = new Image();
   garageTexture.decoding = 'async';
   garageTexture.src = GARAGE_TEXTURE_URL;
@@ -550,14 +1101,14 @@ export async function createLevelLayoutEditor({
   overlay.innerHTML = `<header class="level-layout-toolbar">
     <strong>${escapeHtml(model.document.key)} 关卡编辑器</strong>
     <div class="level-layout-toolbar-group">
-      <button type="button" data-action="undo" title="撤销" aria-label="撤销">↶</button><button type="button" data-action="redo" title="重做" aria-label="重做">↷</button>
+      <button type="button" data-action="undo" title="上一步（⌘/Ctrl+Z）" aria-label="上一步">↶</button><button type="button" data-action="redo" title="下一步（⌘/Ctrl+Shift+Z / Ctrl+Y）" aria-label="下一步">↷</button>
       <button type="button" data-action="new-level">新建关卡</button><button type="button" data-action="rebuild">重算深度</button><button type="button" data-action="validate">验证</button><button type="button" data-action="save">保存</button><button type="button" data-action="preview">试玩</button>
       <button type="button" data-action="import-json">导入 JSON</button><button type="button" data-action="export-json">JSON</button><button type="button" data-action="export-unity">Unity</button><button type="button" data-action="export-csv">CSV</button><button type="button" data-action="export-excel">Excel</button>
     </div>
     <div class="level-layout-toolbar-group"><button type="button" data-action="close" aria-label="关闭">×</button></div>
   </header>
   <div class="level-layout-body">
-    <aside class="level-layout-palette"><h3>添加元素</h3><button data-add="vehicle">添加车辆</button><h3>地图机制</h3><button data-add="garage">添加车库</button><button data-add="conveyor">添加运输带</button><button data-add="gate">添加闸门</button><button data-add="elevator">添加升降舱</button><h3>排列</h3><button data-action="align-horizontal">水平等距</button><button data-action="align-vertical">垂直等距</button><button data-action="align-line">连线等距</button><button data-action="center">全部居中</button><button data-action="to-gate">转为闸门队列</button><h3>定位</h3><label class="level-layout-locate"><input type="number" min="1" placeholder="车辆 ID"><button data-action="locate">定位</button></label></aside>
+    <aside class="level-layout-palette"><h3>添加元素</h3><button data-add="vehicle">添加车辆</button><button data-add="vehicle-firetruck">添加消防车</button><button data-add="vehicle-ambulance">添加救护车</button><button data-add="vehicle-police">添加警车</button><h3>地图机制</h3><button data-add="garage">添加车库</button><button data-add="conveyor">添加运输带</button><button data-add="gate">添加闸门</button><button data-add="elevator">添加升降舱</button><h3>排列</h3><button data-action="align-horizontal">水平等距</button><button data-action="align-vertical">垂直等距</button><button data-action="align-line">连线等距</button><button data-action="center">全部居中</button><button data-action="to-gate">转为闸门队列</button><h3>辅助</h3><button data-action="import-reference-image">导入垫图</button><button data-action="clear-reference-image">清除垫图</button><button data-action="recognize-image">识图摆放</button><h3>定位</h3><label class="level-layout-locate"><input type="number" min="1" placeholder="车辆 ID"><button data-action="locate">定位</button></label></aside>
     <main class="level-layout-canvas-wrap"><canvas class="level-layout-canvas"></canvas><button type="button" class="level-layout-breadcrumb" data-action="exit-container" hidden>返回关卡</button><div class="level-layout-status" aria-live="polite">就绪</div></main>
     <aside class="level-layout-inspector"></aside>
   </div>
@@ -575,7 +1126,46 @@ export async function createLevelLayoutEditor({
       <footer><button type="button" data-action="cancel-new-level">取消</button><button class="is-primary" type="submit">创建</button></footer>
     </form>
   </section>
-  <input class="level-layout-json-input" type="file" accept=".json,application/json" hidden>`;
+  <input class="level-layout-json-input" type="file" accept=".json,application/json" hidden>
+  <input class="level-layout-reference-input" type="file" accept=".png,.jpg,.jpeg,.webp,image/png,image/jpeg,image/webp" hidden>
+  <section class="level-image-backdrop" hidden>
+    <form class="level-image-dialog">
+      <header>
+        <h2>识图摆放</h2>
+        <span class="level-image-source"></span>
+        <button type="button" data-image-action="close" aria-label="关闭识图摆放">×</button>
+      </header>
+      <div class="level-image-body">
+        <div class="level-image-options">
+          <label class="level-image-field level-image-file"><span>参考图</span><input type="file" data-image-action="pick-file" accept=".png,.jpg,.jpeg,.webp,image/png,image/jpeg,image/webp"></label>
+          <label class="level-image-field level-image-range"><span>颜色容差</span><input type="range" min="8" max="180" step="2" data-image-field="tolerance" value="${recognitionState.options.tolerance}"><output>${recognitionState.options.tolerance}</output></label>
+          <label class="level-image-field"><span>最小车辆面积</span><input type="number" min="2" max="20000" step="1" data-image-field="minArea" placeholder="自动" value="${recognitionState.options.minArea ?? ''}"></label>
+          <label class="level-image-field"><span>座位数</span><select data-image-field="seats">${[['auto', '自动'], ['4', '4 座'], ['6', '6 座'], ['10', '10 座（大巴）']].map(([value, text]) => `<option value="${value}" ${String(recognitionState.options.seats) === value ? 'selected' : ''}>${text}</option>`).join('')}</select></label>
+          <label class="level-image-check"><input type="checkbox" data-image-field="snapToGrid" ${recognitionState.options.snapToGrid ? 'checked' : ''}><span>吸附网格（同行等距）</span></label>
+          <label class="level-image-check"><input type="checkbox" data-image-field="alignRows" ${recognitionState.options.alignRows ? 'checked' : ''}><span>行对齐</span></label>
+          <label class="level-image-check"><input type="checkbox" data-image-field="splitMerged" ${recognitionState.options.splitMerged ? 'checked' : ''}><span>拆分粘连车辆</span></label>
+          <label class="level-image-check"><input type="checkbox" data-image-field="allowNeutralColors" ${recognitionState.options.allowNeutralColors ? 'checked' : ''}><span>识别黑白灰车身</span></label>
+          <label class="level-image-field"><span>摆放方式</span><select data-image-field="mode"><option value="replace" ${recognitionState.options.mode === 'replace' ? 'selected' : ''}>替换停车区车辆</option><option value="append" ${recognitionState.options.mode === 'append' ? 'selected' : ''}>追加到停车区</option></select></label>
+          <details class="level-image-advanced">
+            <summary>更多设置</summary>
+            <label class="level-image-field level-image-range"><span>背景容差</span><input type="range" min="0" max="160" step="2" data-image-field="backgroundTolerance" value="${recognitionState.options.backgroundTolerance}"><output>${recognitionState.options.backgroundTolerance}</output></label>
+            <label class="level-image-field"><span>最大面积占比</span><input type="number" min="0.005" max="0.5" step="0.005" data-image-field="maxAreaRatio" value="${recognitionState.options.maxAreaRatio}"></label>
+            <label class="level-image-field"><span>最小填充率</span><input type="number" min="0" max="1" step="0.05" data-image-field="fillRatio" value="${recognitionState.options.fillRatio}"></label>
+            <label class="level-image-field"><span>碎片合并像素</span><input type="number" min="0" max="12" step="1" data-image-field="mergeGap" value="${recognitionState.options.mergeGap}"></label>
+          </details>
+        </div>
+        <div class="level-image-preview">
+          <div class="level-image-stats"></div>
+          <p class="level-image-message" aria-live="polite"></p>
+        </div>
+      </div>
+      <footer>
+        <button type="button" data-image-action="rescan">重新识别</button>
+        <button type="button" data-image-action="close">取消</button>
+        <button type="submit" class="is-primary" data-image-action="apply">应用摆放</button>
+      </footer>
+    </form>
+  </section>`;
   document.body.append(overlay);
   const canvas = overlay.querySelector('canvas');
   const toolbarTitle = overlay.querySelector('.level-layout-toolbar > strong');
@@ -583,6 +1173,14 @@ export async function createLevelLayoutEditor({
   const status = overlay.querySelector('.level-layout-status');
   const breadcrumb = overlay.querySelector('.level-layout-breadcrumb');
   const jsonInput = overlay.querySelector('.level-layout-json-input');
+  const referenceInput = overlay.querySelector('.level-layout-reference-input');
+  const recognitionBackdrop = overlay.querySelector('.level-image-backdrop');
+  const recognitionForm = overlay.querySelector('.level-image-dialog');
+  const recognitionStats = overlay.querySelector('.level-image-stats');
+  const recognitionMessage = overlay.querySelector('.level-image-message');
+  const recognitionSource = overlay.querySelector('.level-image-source');
+  const recognitionRescan = recognitionForm.querySelector('[data-image-action="rescan"]');
+  const recognitionApply = recognitionForm.querySelector('[data-image-action="apply"]');
   const locateInput = overlay.querySelector('.level-layout-locate input');
   const passengerEditor = overlay.querySelector('.passenger-queue-editor');
   const passengerOperations = passengerEditor.querySelector('.passenger-queue-operations');
@@ -601,25 +1199,309 @@ export async function createLevelLayoutEditor({
   let suppressPassengerClickUntil = 0;
   const resizeObserver = new ResizeObserver(() => render());
   resizeObserver.observe(canvas);
-  const redrawCanvas = () => drawCanvas(canvas, model, camera, gesture, garageTexture, conveyorTexture);
+  const recognitionPreview = () => (recognitionState.open ? recognitionVehicles() : null);
+  const redrawCanvas = () => drawCanvas(canvas, model, camera, gesture, garageTexture, conveyorTexture, referenceLayer, recognitionPreview());
   garageTexture.addEventListener('load', redrawCanvas);
   conveyorTexture.addEventListener('load', redrawCanvas);
 
   function render() {
     toolbarTitle.textContent = `${model.document.key} 关卡编辑器`;
-    drawCanvas(canvas, model, camera, gesture, garageTexture, conveyorTexture);
+    drawCanvas(canvas, model, camera, gesture, garageTexture, conveyorTexture, referenceLayer, recognitionPreview());
     renderInspector(inspector, model);
+    renderReferenceInspector(inspector, referenceLayer);
     const activeContainer = model.document.containers.find((item) => item.id === model.activeContainerId);
     const isEditingContainer = model.activeContainerId !== 0 && Boolean(activeContainer);
     breadcrumb.hidden = !isEditingContainer;
     breadcrumb.textContent = isEditingContainer ? `← 返回关卡 · ${TYPE_NAMES[activeContainer.type]} #${activeContainer.id}` : '返回关卡';
     overlay.classList.toggle('is-dirty', persistentDocumentSource(model.document) !== savedDocumentSource);
+    overlay.classList.toggle('is-reference-unlocked', referenceLayerReady(referenceLayer) && referenceLayer.visible && !referenceLayer.locked);
     if (passengerQueueState.open) renderPassengerQueueEditor();
   }
 
-  function passengerKey(queueId, index) { return `${queueId}:${index}`; }
+  function trimEditorHistory(stack) {
+    if (stack.length > editorHistoryLimit) stack.splice(0, stack.length - editorHistoryLimit);
+  }
 
-  function selectedPassengerEntries() {
+  function recordEditorHistory(entry) {
+    if (entry.kind === 'reference') model.redoStack.length = 0;
+    editorUndoStack.push(entry);
+    trimEditorHistory(editorUndoStack);
+    editorRedoStack.length = 0;
+  }
+
+  function attachModelHistoryTracker(nextModel) {
+    const transact = nextModel.transact.bind(nextModel);
+    nextModel.transact = (mutator) => {
+      const result = transact(mutator);
+      recordEditorHistory({ kind: 'model' });
+      return result;
+    };
+    return nextModel;
+  }
+
+  function clearEditorHistory() {
+    editorUndoStack.length = 0;
+    editorRedoStack.length = 0;
+  }
+
+  function writeReferenceLayerStorage(levelKey = model.document.key) {
+    if (referenceLayer.source) persistReferenceLayer(levelKey, referenceLayer);
+    else clearPersistedReferenceLayer(levelKey);
+  }
+
+  function scheduleReferencePersist() {
+    if (referencePersistTimer) clearTimeout(referencePersistTimer);
+    referencePersistTimer = setTimeout(() => {
+      referencePersistTimer = null;
+      writeReferenceLayerStorage();
+    }, 150);
+  }
+
+  function recordReferenceHistory(before) {
+    const after = snapshotReferenceLayer(referenceLayer);
+    if (referenceSnapshotsEqual(before, after)) return false;
+    recordEditorHistory({ kind: 'reference', before });
+    return true;
+  }
+
+  async function restoreReferenceSnapshot(snapshot) {
+    const previousImage = referenceLayer.source === snapshot.source ? referenceLayer.image : null;
+    if (!previousImage) releaseReferenceImage();
+    Object.assign(referenceLayer, createReferenceLayer(), snapshot);
+    referenceLayer.image = previousImage;
+    if (referenceLayer.source && !referenceLayer.image) {
+      try {
+        referenceLayer.image = await loadReferenceImage(referenceLayer.source);
+      } catch {
+        releaseReferenceImage();
+        referenceLayer.source = '';
+        referenceLayer.name = '';
+        setStatus('历史垫图图片无法读取，已跳过图片恢复', 'error');
+      }
+    }
+    if (referencePersistTimer) clearTimeout(referencePersistTimer);
+    referencePersistTimer = null;
+    writeReferenceLayerStorage();
+  }
+
+  async function undoEditorAction() {
+    const entry = editorUndoStack.pop();
+    if (!entry) return model.undo();
+    if (entry.kind === 'reference') {
+      editorRedoStack.push({ kind: 'reference', before: snapshotReferenceLayer(referenceLayer) });
+      trimEditorHistory(editorRedoStack);
+      await restoreReferenceSnapshot(entry.before);
+      return true;
+    }
+    const restored = model.undo();
+    if (restored) {
+      editorRedoStack.push({ kind: 'model' });
+      trimEditorHistory(editorRedoStack);
+    }
+    return restored;
+  }
+
+  async function redoEditorAction() {
+    const entry = editorRedoStack.pop();
+    if (!entry) return model.redo();
+    if (entry.kind === 'reference') {
+      editorUndoStack.push({ kind: 'reference', before: snapshotReferenceLayer(referenceLayer) });
+      trimEditorHistory(editorUndoStack);
+      await restoreReferenceSnapshot(entry.before);
+      return true;
+    }
+    const restored = model.redo();
+    if (restored) {
+      editorUndoStack.push({ kind: 'model' });
+      trimEditorHistory(editorUndoStack);
+    }
+    return restored;
+  }
+
+  function updateReferenceField(field, value) {
+    const before = snapshotReferenceLayer(referenceLayer);
+    if (field === 'visible' || field === 'locked') referenceLayer[field] = Boolean(value);
+    else if (field === 'opacity') referenceLayer.opacity = clampNumber(value, 0.05, 1, referenceLayer.opacity);
+    else if (field === 'width' || field === 'height') referenceLayer[field] = clampNumber(value, 0.1, 100, referenceLayer[field]);
+    else if (field === 'scale') referenceLayer.scale = clampNumber(value, 0.05, 5, referenceLayer.scale);
+    else if (field === 'rotation') referenceLayer.rotation = clampNumber(value, -360, 360, referenceLayer.rotation);
+    else if (field === 'x' || field === 'z') referenceLayer[field] = clampNumber(value, -100, 100, referenceLayer[field]);
+    if (recordReferenceHistory(before)) scheduleReferencePersist();
+  }
+
+  function releaseReferenceImage() {
+    referenceLayer.image = null;
+  }
+
+  async function importReferenceImage(file) {
+    if (!file) return;
+    if (!isReferenceImageFile(file)) throw new Error('仅支持 PNG、JPG 和 WebP 图片');
+    if (file.size > REFERENCE_IMAGE_MAX_BYTES) throw new Error('垫图不能超过 20 MB');
+    const before = snapshotReferenceLayer(referenceLayer);
+    const prepared = await prepareReferenceImage(file);
+    releaseReferenceImage();
+    referenceLayer.source = prepared.source;
+    referenceLayer.image = prepared.image;
+    referenceLayer.name = file.name;
+    referenceLayer.visible = true;
+    referenceLayer.locked = true;
+    const rect = canvas.getBoundingClientRect();
+    fitReferenceLayerToView(referenceLayer, camera, rect);
+    recordReferenceHistory(before);
+    writeReferenceLayerStorage();
+    setStatus(`已导入垫图 ${file.name}`, 'success');
+    render();
+  }
+
+  async function restoreReferenceImage() {
+    if (!referenceLayer.source) return;
+    const source = referenceLayer.source;
+    try {
+      const image = await loadReferenceImage(source);
+      if (referenceLayer.source !== source || !overlay.isConnected) return;
+      referenceLayer.image = image;
+      render();
+    } catch {
+      if (referenceLayer.source === source) {
+        referenceLayer.source = '';
+        referenceLayer.name = '';
+        clearPersistedReferenceLayer(model.document.key);
+        if (overlay.isConnected) {
+          setStatus('已忽略无法读取的历史垫图', 'error');
+          render();
+        }
+      }
+    }
+  }
+
+  function clearReferenceImage() {
+    const before = snapshotReferenceLayer(referenceLayer);
+    if (referencePersistTimer) clearTimeout(referencePersistTimer);
+    referencePersistTimer = null;
+    releaseReferenceImage();
+    referenceLayer.source = '';
+    referenceLayer.name = '';
+    recordReferenceHistory(before);
+    writeReferenceLayerStorage();
+    gesture = null;
+    setStatus('已清除垫图', 'success');
+    render();
+  }
+
+  function setRecognitionMessage(message, kind = '') {
+    recognitionState.message = message;
+    recognitionState.messageKind = kind;
+  }
+
+  /** Detected pixels are stable; only the underlay transform decides world X/Z. */
+  function recognitionVehicles() {
+    const result = recognitionState.result;
+    if (!result) return null;
+    const mapping = referenceLayerMapping(referenceLayer, result.image.width, result.image.height);
+    return blobsToWorldVehicles(result.blobs, mapping);
+  }
+
+  function syncRecognitionInputs() {
+    for (const input of recognitionForm.querySelectorAll('[data-image-field]')) {
+      const field = input.dataset.imageField;
+      const value = recognitionState.options[field];
+      if (input.type === 'checkbox') input.checked = Boolean(value);
+      else if (input.type === 'range') {
+        input.value = String(value);
+        const output = input.parentElement.querySelector('output');
+        if (output) output.textContent = String(value);
+      } else input.value = value == null ? '' : String(value);
+    }
+    recognitionSource.textContent = referenceLayerReady(referenceLayer)
+      ? `${referenceLayer.name || '参考图'} · ${referenceLayer.image.naturalWidth}×${referenceLayer.image.naturalHeight}`
+      : '未导入参考图';
+  }
+
+  function renderRecognitionDialog() {
+    recognitionBackdrop.hidden = !recognitionState.open;
+    if (!recognitionState.open) return;
+    recognitionMessage.textContent = recognitionState.message;
+    recognitionMessage.className = `level-image-message${recognitionState.messageKind ? ` is-${recognitionState.messageKind}` : ''}`;
+    recognitionRescan.disabled = recognitionState.busy;
+    recognitionApply.disabled = recognitionState.busy || !recognitionState.result?.blobs?.length;
+    recognitionStats.innerHTML = recognitionState.result
+      ? recognitionStatsMarkup(recognitionState.result)
+      : '<p class="level-image-hint">导入参考图后点击“重新识别”。识别使用垫图当前的位置、大小和旋转。</p>';
+  }
+
+  async function runRecognition() {
+    if (recognitionState.busy) return;
+    // A saved underlay decodes asynchronously; wait for it instead of reporting a
+    // missing reference image while the editor is still loading it.
+    if (!referenceLayerReady(referenceLayer) && referenceLayer.source) await restoreReferenceImage();
+    if (!referenceLayerReady(referenceLayer)) {
+      recognitionState.result = null;
+      setRecognitionMessage(referenceLayer.source
+        ? '参考图仍在加载，请稍后点击【重新识别】。'
+        : '请先导入参考图（垫图），或在左侧选择一张图片。', 'error');
+      syncRecognitionInputs();
+      renderRecognitionDialog();
+      return;
+    }
+    recognitionState.busy = true;
+    setRecognitionMessage('正在识别…');
+    renderRecognitionDialog();
+    await new Promise((resolve) => setTimeout(resolve, 16));
+    try {
+      const imageData = readRecognitionImageData(referenceLayer.image);
+      const mapping = referenceLayerMapping(referenceLayer, imageData.width, imageData.height);
+      const result = recognizeLevelFromImage(imageData, mapping, recognitionSettings(recognitionState.options));
+      recognitionState.result = result;
+      const summary = result.summary;
+      if (result.method === 'editor-overlay') {
+        setRecognitionMessage(result.warning, 'error');
+      } else if (!summary.total) {
+        setRecognitionMessage('没有识别到车辆：可以提高颜色容差、调小最小车辆面积，或确认参考图已经完整显示在垫图里。', 'error');
+      } else {
+        setRecognitionMessage(`识别到 ${summary.total} 辆车（${summary.byColor.map((entry) => `${entry.label} ${entry.count}`).join('，')}），共 ${summary.rows} 行。确认后进行摆放。`, 'success');
+      }
+    } catch (error) {
+      recognitionState.result = null;
+      setRecognitionMessage(`识别失败：${error.message}`, 'error');
+    } finally {
+      recognitionState.busy = false;
+      persistRecognitionOptions(recognitionState.options);
+      renderRecognitionDialog();
+      redrawCanvas();
+    }
+  }
+
+  function openRecognition() {
+    recognitionState.open = true;
+    setRecognitionMessage('');
+    syncRecognitionInputs();
+    renderRecognitionDialog();
+    void runRecognition();
+  }
+
+  function closeRecognition() {
+    recognitionState.open = false;
+    recognitionState.result = null;
+    setRecognitionMessage('');
+    renderRecognitionDialog();
+    redrawCanvas();
+  }
+
+  function applyRecognition() {
+    const vehicles = recognitionVehicles();
+    if (!vehicles?.length) {
+      setRecognitionMessage('没有可摆放的识别结果。', 'error');
+      renderRecognitionDialog();
+      return;
+    }
+    const mode = recognitionState.options.mode === 'append' ? 'append' : 'replace';
+    const created = model.applyDetectedVehicles(vehicles, { mode });
+    setStatus(`识图摆放：已${mode === 'append' ? '追加' : '替换'} ${created.length} 辆车，乘客队列和深度已同步`, 'success');
+    closeRecognition();
+    render();
+  }
+
+  function passengerKey(queueId, index) { return `${queueId}:${index}`; }  function selectedPassengerEntries() {
     const entries = [];
     model.document.passengerQueues.forEach((queue, queueId) => queue.forEach((color, index) => {
       if (passengerQueueState.selected.has(passengerKey(queueId, index))) entries.push({ queueId, index, color });
@@ -635,14 +1517,14 @@ export async function createLevelLayoutEditor({
     const { passengers, capacity } = passengerQueueStats(model.document);
     const colorIds = [...new Set([...passengers.keys(), ...capacity.keys()])].sort((a, b) => a - b);
     const hasMismatch = colorIds.some((id) => (passengers.get(id) ?? 0) !== (capacity.get(id) ?? 0));
-    const currentColor = VEHICLE_COLOR_OPTIONS[passengerQueueState.colorIndex] ?? VEHICLE_COLOR_OPTIONS[0];
+    const currentColor = getVehicleColorOption(passengerQueueState.colorIndex);
     passengerEditor.querySelector('.passenger-queue-toolbar strong').textContent = `乘客队列 - ${model.document.key}`;
     const dirty = persistentDocumentSource(model.document) !== savedDocumentSource;
     const saveState = passengerEditor.querySelector('.passenger-queue-save-state');
     saveState.textContent = dirty ? '未保存修改' : '已保存';
     saveState.classList.toggle('is-dirty', dirty);
     passengerOperations.innerHTML = `<h3>乘客操作区</h3>
-      <label class="passenger-queue-field"><span>颜色</span><span class="level-layout-color-select"><span class="level-layout-color-swatch" style="--swatch-color:${passengerColor(currentColor.id)}"></span><select data-passenger-field="colorIndex">${VEHICLE_COLOR_OPTIONS.map((color) => `<option value="${color.id}" ${color.id === currentColor.id ? 'selected' : ''}>${color.id}: ${color.label}</option>`).join('')}</select></span></label>
+      <label class="passenger-queue-field"><span>颜色</span><span class="level-layout-color-select"><span class="level-layout-color-swatch" style="--swatch-color:${passengerColor(currentColor.id, model.document)}"></span><select data-passenger-field="colorIndex">${VEHICLE_PAINT_COLOR_OPTIONS.map((color) => `<option value="${color.id}" ${color.id === currentColor.id ? 'selected' : ''}>${color.id}: ${color.label}</option>`).join('')}</select></span></label>
       <label class="passenger-queue-field"><span>数量</span><input type="number" min="1" step="1" data-passenger-field="addCount" value="${passengerQueueState.addCount}"></label>
       <h4>加入位置</h4><div class="passenger-queue-modes">
         ${[['append','添加到队尾'],['before','插入到前面'],['after','插入到后面']].map(([mode, label]) => `<button type="button" data-passenger-mode="${mode}" class="${passengerQueueState.mode === mode ? 'is-active' : ''}">${label}</button>`).join('')}
@@ -658,12 +1540,12 @@ export async function createLevelLayoutEditor({
 
     const maxFlowStart = Math.max(0, ...model.document.passengerQueues.map((queue) => queue.length - 1));
     passengerQueueState.flowStart = Math.min(passengerQueueState.flowStart, maxFlowStart);
-    passengerCenter.innerHTML = `<section class="passenger-queue-list"><h3>队列编辑区</h3>${model.document.passengerQueues.map((queue, queueId) => `<article class="passenger-queue-row ${passengerQueueState.activeQueueId === queueId ? 'is-active' : ''}" data-passenger-queue="${queueId}"><header><strong>队列 ${queueId}</strong><span>总数: ${queue.length}　首次: ${Math.min(DEFAULT_INITIAL_PASSENGER_COUNT, queue.length)}</span></header><div class="passenger-queue-items" data-passenger-drop-queue="${queueId}">${queue.map((color, index) => { const isSelected = passengerQueueState.selected.has(passengerKey(queueId, index)); return `<button type="button" class="passenger-queue-item ${index < DEFAULT_INITIAL_PASSENGER_COUNT ? 'is-initial' : ''} ${isSelected ? 'is-selected' : ''}" style="--passenger-color:${passengerColor(color)}" data-passenger-queue-id="${queueId}" data-passenger-index="${index}" title="${passengerColorName(color)}"><small>${String(index + 1).padStart(2, '0')}</small><span>${color}</span></button>`; }).join('')}<button type="button" class="passenger-queue-drop-end" data-passenger-drop-queue="${queueId}" data-passenger-drop-index="${queue.length}" aria-label="添加到队列 ${queueId} 末尾">+</button></div></article>`).join('')}</section>
-      <section class="passenger-flow-preview"><h3>Passenger Flow 预览区</h3><div class="passenger-flow-controls"><label>起始位置 <input type="range" min="0" max="${maxFlowStart}" value="${passengerQueueState.flowStart}" data-passenger-field="flowStart"></label><button type="button" data-passenger-action="toggle-flow" aria-label="播放或暂停预览">${passengerQueueState.flowTimer ? 'Ⅱ' : '▶'}</button><label>显示数量 <input type="number" min="1" value="${passengerQueueState.flowVisibleCount}" data-passenger-field="flowVisibleCount"></label></div>${model.document.passengerQueues.map((queue, queueId) => { const start = Math.min(passengerQueueState.flowStart, Math.max(0, queue.length - 1)); const end = Math.min(queue.length, start + passengerQueueState.flowVisibleCount); return `<div class="passenger-flow-row"><span>队列 ${queueId}: Passenger ${queue.length ? start + 1 : 0} - ${end}</span><div>${queue.slice(start, end).map((color) => `<i style="--passenger-color:${passengerColor(color)}" title="${passengerColorName(color)}"></i>`).join('')}</div></div>`; }).join('')}</section>`;
+    passengerCenter.innerHTML = `<section class="passenger-queue-list"><h3>队列编辑区</h3>${model.document.passengerQueues.map((queue, queueId) => `<article class="passenger-queue-row ${passengerQueueState.activeQueueId === queueId ? 'is-active' : ''}" data-passenger-queue="${queueId}"><header><strong>队列 ${queueId}</strong><span>总数: ${queue.length}　首次: ${Math.min(DEFAULT_INITIAL_PASSENGER_COUNT, queue.length)}</span></header><div class="passenger-queue-items" data-passenger-drop-queue="${queueId}">${queue.map((color, index) => { const isSelected = passengerQueueState.selected.has(passengerKey(queueId, index)); return `<button type="button" class="passenger-queue-item ${index < DEFAULT_INITIAL_PASSENGER_COUNT ? 'is-initial' : ''} ${isSelected ? 'is-selected' : ''}" style="--passenger-color:${passengerColor(color, model.document)}" data-passenger-queue-id="${queueId}" data-passenger-index="${index}" title="${passengerColorName(color)}"><small>${String(index + 1).padStart(2, '0')}</small><span>${color}</span></button>`; }).join('')}<button type="button" class="passenger-queue-drop-end" data-passenger-drop-queue="${queueId}" data-passenger-drop-index="${queue.length}" aria-label="添加到队列 ${queueId} 末尾">+</button></div></article>`).join('')}</section>
+      <section class="passenger-flow-preview"><h3>Passenger Flow 预览区</h3><div class="passenger-flow-controls"><label>起始位置 <input type="range" min="0" max="${maxFlowStart}" value="${passengerQueueState.flowStart}" data-passenger-field="flowStart"></label><button type="button" data-passenger-action="toggle-flow" aria-label="播放或暂停预览">${passengerQueueState.flowTimer ? 'Ⅱ' : '▶'}</button><label>显示数量 <input type="number" min="1" value="${passengerQueueState.flowVisibleCount}" data-passenger-field="flowVisibleCount"></label></div>${model.document.passengerQueues.map((queue, queueId) => { const start = Math.min(passengerQueueState.flowStart, Math.max(0, queue.length - 1)); const end = Math.min(queue.length, start + passengerQueueState.flowVisibleCount); return `<div class="passenger-flow-row"><span>队列 ${queueId}: Passenger ${queue.length ? start + 1 : 0} - ${end}</span><div>${queue.slice(start, end).map((color) => `<i style="--passenger-color:${passengerColor(color, model.document)}" title="${passengerColorName(color)}"></i>`).join('')}</div></div>`; }).join('')}</section>`;
 
-    const renderCounts = (title, counts) => `<section><h4>${title}</h4><strong>总数: ${countTotal(counts)}</strong>${[...counts.keys()].sort((a, b) => a - b).map((id) => `<button type="button" class="passenger-stat-row" data-passenger-select-color="${id}"><i style="--passenger-color:${passengerColor(id)}"></i><span>${passengerColorName(id)}</span><b>${counts.get(id)}</b></button>`).join('')}</section>`;
+    const renderCounts = (title, counts) => `<section><h4>${title}</h4><strong>总数: ${countTotal(counts)}</strong>${[...counts.keys()].sort((a, b) => a - b).map((id) => `<button type="button" class="passenger-stat-row" data-passenger-select-color="${id}"><i style="--passenger-color:${passengerColor(id, model.document)}"></i><span>${passengerColorName(id)}</span><b>${counts.get(id)}</b></button>`).join('')}</section>`;
     const selectedCounts = new Map(); selected.forEach((entry) => incrementCount(selectedCounts, entry.color));
-    passengerStats.innerHTML = `<h3>数据统计区</h3>${renderCounts('乘客统计', passengers)}${renderCounts('乘客容量', capacity)}<section><h4>匹配结果</h4><strong>总数: ${countTotal(passengers)} / ${countTotal(capacity)}</strong>${colorIds.map((id) => { const p = passengers.get(id) ?? 0; const c = capacity.get(id) ?? 0; const delta = p - c; return `<button type="button" class="passenger-stat-row ${delta === 0 ? 'is-valid' : delta > 0 ? 'is-extra' : 'is-missing'}" data-passenger-select-color="${id}"><i style="--passenger-color:${passengerColor(id)}"></i><span>${passengerColorName(id)}</span><b>(${p} / ${c}) ${delta === 0 ? '[✓] 正确' : delta > 0 ? `[+${delta}] 超出` : `[${delta}] 缺少`}</b></button>`; }).join('')}</section>${renderCounts('选中统计', selectedCounts)}`;
+    passengerStats.innerHTML = `<h3>数据统计区</h3>${renderCounts('乘客统计', passengers)}${renderCounts('乘客容量', capacity)}<section><h4>匹配结果</h4><strong>总数: ${countTotal(passengers)} / ${countTotal(capacity)}</strong>${colorIds.map((id) => { const p = passengers.get(id) ?? 0; const c = capacity.get(id) ?? 0; const delta = p - c; return `<button type="button" class="passenger-stat-row ${delta === 0 ? 'is-valid' : delta > 0 ? 'is-extra' : 'is-missing'}" data-passenger-select-color="${id}"><i style="--passenger-color:${passengerColor(id, model.document)}"></i><span>${passengerColorName(id)}</span><b>(${p} / ${c}) ${delta === 0 ? '[✓] 正确' : delta > 0 ? `[+${delta}] 超出` : `[${delta}] 缺少`}</b></button>`; }).join('')}</section>${renderCounts('选中统计', selectedCounts)}`;
   }
 
   function stopPassengerFlow() {
@@ -893,11 +1775,19 @@ export async function createLevelLayoutEditor({
         if (payload.reason === 'name') throw new Error(`关卡名称已被 ${payload.conflict?.key ?? '其他关卡'} 使用`);
         throw new Error(payload.reason === 'catalog' ? '该编号已被 Unity 关卡使用' : '该网页关卡文件已经存在');
       }
-      model = new LevelEditorModel(createLevelDocument({ key, unityId: number, displayName }));
+      const previousLevelKey = model.document.key;
+      model = attachModelHistoryTracker(new LevelEditorModel(createLevelDocument({ key, unityId: number, displayName })));
       revision = null;
       savedDocumentSource = null;
       createOnly = true;
       camera.x = 0; camera.z = 0; camera.zoom = 1;
+      if (referencePersistTimer) clearTimeout(referencePersistTimer);
+      referencePersistTimer = null;
+      writeReferenceLayerStorage(previousLevelKey);
+      releaseReferenceImage();
+      referenceLayer = readReferenceLayer(model.document.key);
+      clearEditorHistory();
+      void restoreReferenceImage();
       passengerQueueState.selected.clear();
       hideNewLevelDialog();
       setStatus(`已新建 ${key}，点击保存创建关卡文件`, 'success');
@@ -909,11 +1799,12 @@ export async function createLevelLayoutEditor({
     }
   });
 
-  function runAction(action) {
+  async function runAction(action) {
     const selected = model.selected()[0];
-    if (action === 'undo') model.undo();
-    else if (action === 'redo') model.redo();
+    if (action === 'undo') await undoEditorAction();
+    else if (action === 'redo') await redoEditorAction();
     else if (action === 'delete') model.removeSelected();
+    else if (action === 'reset-vehicle-colors') model.resetSelectedVehicleColors();
     else if (action === 'align-horizontal') model.align('horizontal');
     else if (action === 'align-vertical') model.align('vertical');
     else if (action === 'align-line') model.align('line');
@@ -942,7 +1833,17 @@ export async function createLevelLayoutEditor({
   overlay.addEventListener('click', async (event) => {
     const add = event.target.closest('[data-add]')?.dataset.add;
     if (add) {
-      if (add === 'vehicle') model.addVehicle(model.activeContainerId === 0 ? { x: camera.x, z: camera.z } : {});
+      const specialVehicle = {
+        'vehicle-firetruck': { colorIndex: 12, mechanism: { type: 'firetruck' } },
+        'vehicle-ambulance': { colorIndex: 13, mechanism: { type: 'ambulance' } },
+        'vehicle-police': { colorIndex: 11, mechanism: { type: 'police' } }
+      }[add];
+      if (add === 'vehicle' || specialVehicle) {
+        model.addVehicle({
+          ...(model.activeContainerId === 0 ? { x: camera.x, z: camera.z } : {}),
+          ...(specialVehicle ?? {})
+        });
+      }
       else {
         const container = model.addContainer({ garage: 2, conveyor: 3, gate: 4, elevator: 5 }[add], { x: camera.x, z: camera.z });
         model.enterContainer(container.id);
@@ -956,6 +1857,20 @@ export async function createLevelLayoutEditor({
     if (action === 'save') { await save(); return; }
     if (action === 'preview') { writeLevelEditorPreviewDocument(model.document, 'draft', revision); onPreview(model.snapshot()); return; }
     if (action === 'import-json') { jsonInput.click(); return; }
+    if (action === 'import-reference-image') { referenceInput.click(); return; }
+    if (action === 'clear-reference-image') { clearReferenceImage(); return; }
+    if (action === 'recognize-image') { openRecognition(); return; }
+    if (action === 'fit-reference-image') {
+      const before = snapshotReferenceLayer(referenceLayer);
+      fitReferenceLayerToView(referenceLayer, camera, canvas.getBoundingClientRect());
+      if (referencePersistTimer) clearTimeout(referencePersistTimer);
+      referencePersistTimer = null;
+      recordReferenceHistory(before);
+      writeReferenceLayerStorage();
+      setStatus('垫图已适配当前画布', 'success');
+      render();
+      return;
+    }
     if (action === 'export-json') { download(`${model.document.key}.json`, `${JSON.stringify(model.document, null, 2)}\n`, 'application/json'); return; }
     if (action === 'export-unity') { download(`${model.document.key}.asset`, exportUnityLevelAsset(model.document), 'text/plain;charset=utf-8'); return; }
     if (action === 'export-csv') { download(`${model.document.key}.csv`, `\ufeff${exportLevelCsv(model.document)}`, 'text/csv;charset=utf-8'); return; }
@@ -970,7 +1885,15 @@ export async function createLevelLayoutEditor({
     if (action === 'close') {
       if (persistentDocumentSource(model.document) !== savedDocumentSource && !window.confirm('有未保存的关卡修改，仍要关闭吗？')) return;
       stopPassengerFlow();
+      recognitionState.open = false;
+      recognitionState.result = null;
+      if (referencePersistTimer) clearTimeout(referencePersistTimer);
+      referencePersistTimer = null;
+      writeReferenceLayerStorage();
+      releaseReferenceImage();
       resizeObserver.disconnect();
+      garageTexture.removeEventListener('load', redrawCanvas);
+      conveyorTexture.removeEventListener('load', redrawCanvas);
       window.removeEventListener('keydown', handleShortcut, true);
       window.removeEventListener('keyup', handleShortcutKeyUp, true);
       window.removeEventListener('blur', resetAnchorRotation);
@@ -979,7 +1902,7 @@ export async function createLevelLayoutEditor({
       window.removeEventListener('pointercancel', finishPassengerBoxSelection, true);
       overlay.remove(); onClose(); return;
     }
-    runAction(action);
+    await runAction(action);
   });
 
   passengerEditor.addEventListener('click', async (event) => {
@@ -1044,7 +1967,10 @@ export async function createLevelLayoutEditor({
   passengerEditor.addEventListener('change', (event) => {
     const field = event.target.dataset.passengerField;
     if (!field) return;
-    if (field === 'colorIndex') passengerQueueState.colorIndex = Math.max(0, Math.min(15, Number(event.target.value)));
+    if (field === 'colorIndex') {
+      const colorIndex = Number(event.target.value);
+      if (VEHICLE_PAINT_COLOR_OPTIONS.some((color) => color.id === colorIndex)) passengerQueueState.colorIndex = colorIndex;
+    }
     else if (field === 'addCount') passengerQueueState.addCount = Math.max(1, Math.round(Number(event.target.value) || 1));
     else if (field === 'flowStart') { stopPassengerFlow(); passengerQueueState.flowStart = Math.max(0, Math.round(Number(event.target.value) || 0)); }
     else if (field === 'flowVisibleCount') passengerQueueState.flowVisibleCount = Math.max(1, Math.round(Number(event.target.value) || 1));
@@ -1079,13 +2005,23 @@ export async function createLevelLayoutEditor({
     const [file] = jsonInput.files ?? [];
     if (!file) return;
     try {
-      const normalized = createLevelDocument(JSON.parse(await file.text()));
-      if (normalized.key !== model.document.key) throw new Error(`只能导入 ${model.document.key} 的编辑文档`);
-      model = new LevelEditorModel(normalized);
-      revision = null;
-      savedDocumentSource = null;
-      createOnly = false;
-      setStatus(`已导入 ${file.name}`, 'success');
+      const source = JSON.parse(await file.text());
+      if (!source || typeof source !== 'object' || Array.isArray(source)
+        || source.format !== 'bus-loop-web-level-v1') {
+        throw new Error('只能导入关卡编辑器导出的 JSON 文件');
+      }
+      const normalized = retargetLevelDocument(source, {
+        key: model.document.key,
+        displayName: model.document.displayName,
+        unityId: model.document.unityId
+      });
+      const validation = validateLevelDocument(normalized);
+      if (!validation.valid) {
+        throw new Error(`关卡数据无效：${validation.errors.slice(0, 3).join('；')}`);
+      }
+      model = attachModelHistoryTracker(new LevelEditorModel(normalized));
+      clearEditorHistory();
+      setStatus(`已导入 ${file.name}，内容已应用到 ${model.document.key}；点击保存后生效`, 'success');
       render();
     } catch (error) {
       setStatus(`导入失败：${error.message}`, 'error');
@@ -1094,7 +2030,87 @@ export async function createLevelLayoutEditor({
     }
   });
 
+  referenceInput.addEventListener('change', async () => {
+    const [file] = referenceInput.files ?? [];
+    if (!file) return;
+    try {
+      await importReferenceImage(file);
+    } catch (error) {
+      setStatus(`垫图导入失败：${error.message}`, 'error');
+    } finally {
+      referenceInput.value = '';
+    }
+  });
+
+  recognitionForm.addEventListener('submit', (event) => {
+    event.preventDefault();
+    applyRecognition();
+  });
+
+  recognitionForm.addEventListener('click', (event) => {
+    const action = event.target.closest('[data-image-action]')?.dataset.imageAction;
+    if (action === 'close') closeRecognition();
+    else if (action === 'rescan') void runRecognition();
+  });
+
+  recognitionForm.addEventListener('input', (event) => {
+    const input = event.target;
+    if (input.type !== 'range') return;
+    const output = input.parentElement.querySelector('output');
+    if (output) output.textContent = input.value;
+  });
+
+  recognitionForm.addEventListener('change', async (event) => {
+    const input = event.target;
+    if (input.dataset.imageAction === 'pick-file') {
+      const [file] = input.files ?? [];
+      input.value = '';
+      if (!file) return;
+      try {
+        await importReferenceImage(file);
+        syncRecognitionInputs();
+        await runRecognition();
+      } catch (error) {
+        setRecognitionMessage(`参考图导入失败：${error.message}`, 'error');
+        renderRecognitionDialog();
+      }
+      return;
+    }
+    const field = input.dataset.imageField;
+    if (!field) return;
+    if (input.type === 'checkbox') recognitionState.options[field] = input.checked;
+    else if (field === 'minArea') recognitionState.options[field] = input.value === '' ? null : Math.max(2, Math.round(Number(input.value)));
+    else if (field === 'seats' || field === 'mode') recognitionState.options[field] = input.value;
+    else recognitionState.options[field] = Number(input.value);
+    persistRecognitionOptions(recognitionState.options);
+    await runRecognition();
+  });
+
+  inspector.addEventListener('input', (event) => {
+    const field = event.target.dataset.referenceField;
+    if (!field) return;
+    const value = event.target.type === 'checkbox' ? event.target.checked : event.target.value;
+    updateReferenceField(field, value);
+    if (field === 'opacity') {
+      const output = event.target.closest('.level-layout-reference-opacity')?.querySelector('output');
+      if (output) output.textContent = `${Math.round(referenceLayer.opacity * 100)}%`;
+    }
+    overlay.classList.toggle('is-reference-unlocked', referenceLayerReady(referenceLayer) && referenceLayer.visible && !referenceLayer.locked);
+    redrawCanvas();
+  });
+
   inspector.addEventListener('change', (event) => {
+    const passengerRegion = event.target.dataset.passengerColorRegion;
+    if (passengerRegion) {
+      const color = event.target.value;
+      if (model.selected().filter((item) => item.seats).length > 1) {
+        model.setSelectedPassengerColorField(passengerRegion, color);
+      } else {
+        model.setPassengerColorOverride(Number(event.target.dataset.passengerColorIndex), passengerRegion, color);
+      }
+      render();
+      return;
+    }
     const queue = event.target.dataset.queue;
     if (queue != null) {
       const colors = event.target.value.split(/[\s,，]+/).filter(Boolean).map(Number).filter(Number.isFinite);
@@ -1127,6 +2143,11 @@ export async function createLevelLayoutEditor({
     if (event.button === 1 || event.button === 2 || event.altKey) {
       gesture = { type: 'pan', startScreen: screen, camera: { ...camera } }; return;
     }
+    if (hitReferenceLayer(referenceLayer, world)) {
+      gesture = { type: 'reference-drag', startWorld: world, delta: { x: 0, z: 0 }, before: snapshotReferenceLayer(referenceLayer) };
+      overlay.classList.add('is-reference-dragging');
+      return;
+    }
     const tangentHandle = hitGateTangentHandle(model.document, model.activeContainerId, model.selected(), world);
     if (tangentHandle) {
       gesture = { type: 'gate-tangent', gateId: tangentHandle.gate.id, vehicleId: tangentHandle.vehicle.id, side: tangentHandle.side, currentWorld: world };
@@ -1157,27 +2178,41 @@ export async function createLevelLayoutEditor({
       const scale = WORLD_SCALE * camera.zoom;
       camera.x = gesture.camera.x - (screen.x - gesture.startScreen.x) / scale;
       camera.z = gesture.camera.z + (screen.y - gesture.startScreen.y) / scale;
-    } else if (gesture.type === 'drag') gesture.delta = { x: world.x - gesture.startWorld.x, z: world.z - gesture.startWorld.z };
+    } else if (gesture.type === 'drag' || gesture.type === 'reference-drag') gesture.delta = { x: world.x - gesture.startWorld.x, z: world.z - gesture.startWorld.z };
     else if (gesture.type === 'gate-tangent' || gesture.type === 'elevator-resize') gesture.currentWorld = world;
     else { gesture.currentScreen = screen; gesture.currentWorld = world; }
-    drawCanvas(canvas, model, camera, gesture, garageTexture, conveyorTexture);
+    drawCanvas(canvas, model, camera, gesture, garageTexture, conveyorTexture, referenceLayer, recognitionPreview());
   });
-  canvas.addEventListener('pointerup', () => {
+  function finishCanvasGesture(event) {
     if (!gesture) return;
-    if (gesture.type === 'drag' && (Math.abs(gesture.delta.x) > 0.001 || Math.abs(gesture.delta.z) > 0.001)) model.moveSelected(gesture.delta.x, gesture.delta.z);
-    if (gesture.type === 'gate-tangent') model.setGateQueueTangentHandle(gesture.gateId, gesture.vehicleId, gesture.side, gesture.currentWorld);
-    if (gesture.type === 'elevator-resize') model.resizeElevatorByHandle(gesture.elevatorId, gesture.handleIndex, gesture.currentWorld);
-    if (gesture.type === 'box') {
+    const cancelled = event?.type === 'pointercancel';
+    if (!cancelled && gesture.type === 'drag' && (Math.abs(gesture.delta.x) > 0.001 || Math.abs(gesture.delta.z) > 0.001)) model.moveSelected(gesture.delta.x, gesture.delta.z);
+    if (!cancelled && gesture.type === 'reference-drag' && (Math.abs(gesture.delta.x) > 0.001 || Math.abs(gesture.delta.z) > 0.001)) {
+      referenceLayer.x += gesture.delta.x;
+      referenceLayer.z += gesture.delta.z;
+      if (referencePersistTimer) clearTimeout(referencePersistTimer);
+      referencePersistTimer = null;
+      recordReferenceHistory(gesture.before);
+      writeReferenceLayerStorage();
+    }
+    if (!cancelled && gesture.type === 'gate-tangent') model.setGateQueueTangentHandle(gesture.gateId, gesture.vehicleId, gesture.side, gesture.currentWorld);
+    if (!cancelled && gesture.type === 'elevator-resize') model.resizeElevatorByHandle(gesture.elevatorId, gesture.handleIndex, gesture.currentWorld);
+    if (!cancelled && gesture.type === 'box') {
       const minX = Math.min(gesture.startWorld.x, gesture.currentWorld.x); const maxX = Math.max(gesture.startWorld.x, gesture.currentWorld.x);
       const minZ = Math.min(gesture.startWorld.z, gesture.currentWorld.z); const maxZ = Math.max(gesture.startWorld.z, gesture.currentWorld.z);
       const keys = [...(gesture.add ? model.selection : [])];
       for (const item of [...visibleVehicles(model.document, model.activeContainerId), ...model.document.containers.filter((entry) => entry.type !== 1)]) if (item.x >= minX && item.x <= maxX && item.z >= minZ && item.z <= maxZ) keys.push(itemKey(item));
       model.selectMany(keys);
     }
-    gesture = null; render();
-  });
+    gesture = null;
+    overlay.classList.remove('is-reference-dragging');
+    render();
+  }
+  canvas.addEventListener('pointerup', finishCanvasGesture);
+  canvas.addEventListener('pointercancel', finishCanvasGesture);
   canvas.addEventListener('dblclick', (event) => {
     const rect = canvas.getBoundingClientRect(); const point = screenToWorld(camera, rect, event.clientX - rect.left, event.clientY - rect.top);
+    if (hitReferenceLayer(referenceLayer, point)) return;
     const hit = hitItem(model.document, point, model.activeContainerId);
     if (hit && !hit.seats) {
       if (model.activeContainerId === hit.id) model.exitActiveContainer();
@@ -1186,11 +2221,17 @@ export async function createLevelLayoutEditor({
     }
   });
   canvas.addEventListener('wheel', (event) => {
-    event.preventDefault(); camera.zoom = Math.max(0.25, Math.min(5, camera.zoom * Math.exp(-event.deltaY * 0.001))); drawCanvas(canvas, model, camera, gesture, garageTexture);
+    event.preventDefault(); camera.zoom = Math.max(0.25, Math.min(5, camera.zoom * Math.exp(-event.deltaY * 0.001))); drawCanvas(canvas, model, camera, gesture, garageTexture, conveyorTexture, referenceLayer, recognitionPreview());
   }, { passive: false });
 
   async function handleShortcut(event) {
     if (!overlay.isConnected) return;
+    if (!recognitionBackdrop.hidden) {
+      if (event.key === 'Escape') {
+        event.preventDefault(); event.stopPropagation(); closeRecognition();
+      }
+      return;
+    }
     if (!newLevelBackdrop.hidden) {
       if (event.key === 'Escape') {
         event.preventDefault(); event.stopPropagation(); hideNewLevelDialog();
@@ -1211,8 +2252,8 @@ export async function createLevelLayoutEditor({
       }
       else if (command && event.key.toLowerCase() === 'c') { event.preventDefault(); event.stopPropagation(); passengerQueueState.clipboard = selectedPassengerEntries().map((entry) => entry.color); renderPassengerQueueEditor(); }
       else if (command && event.key.toLowerCase() === 'v') { event.preventDefault(); event.stopPropagation(); insertPassengers(passengerQueueState.clipboard); }
-      else if (command && event.key.toLowerCase() === 'z') { event.preventDefault(); event.stopPropagation(); event.shiftKey ? model.redo() : model.undo(); passengerQueueState.selected.clear(); render(); }
-      else if (command && event.key.toLowerCase() === 'y') { event.preventDefault(); event.stopPropagation(); model.redo(); passengerQueueState.selected.clear(); render(); }
+      else if (command && event.key.toLowerCase() === 'z') { event.preventDefault(); event.stopPropagation(); await runAction(event.shiftKey ? 'redo' : 'undo'); passengerQueueState.selected.clear(); render(); }
+      else if (command && event.key.toLowerCase() === 'y') { event.preventDefault(); event.stopPropagation(); await runAction('redo'); passengerQueueState.selected.clear(); render(); }
       else if (event.key === 'Delete' || event.key === 'Backspace') { event.preventDefault(); event.stopPropagation(); deleteSelectedPassengers(); }
       return;
     }
@@ -1229,7 +2270,8 @@ export async function createLevelLayoutEditor({
     }
     const command = event.ctrlKey || event.metaKey;
     if (command && event.key.toLowerCase() === 's') { event.preventDefault(); await save(); }
-    else if (command && event.key.toLowerCase() === 'z') { event.preventDefault(); event.shiftKey ? model.redo() : model.undo(); render(); }
+    else if (command && event.key.toLowerCase() === 'z') { event.preventDefault(); await runAction(event.shiftKey ? 'redo' : 'undo'); }
+    else if (command && event.key.toLowerCase() === 'y') { event.preventDefault(); await runAction('redo'); }
     else if (command && event.key.toLowerCase() === 'c') model.copy();
     else if (command && event.key.toLowerCase() === 'x') { model.cut(); render(); }
     else if (command && event.key.toLowerCase() === 'v') { model.paste(); render(); }
@@ -1272,5 +2314,6 @@ export async function createLevelLayoutEditor({
   overlay.tabIndex = -1;
   overlay.focus();
   render();
+  void restoreReferenceImage();
   return { element: overlay, model, save, close: () => overlay.querySelector('[data-action="close"]').click() };
 }

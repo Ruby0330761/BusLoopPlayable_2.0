@@ -91,6 +91,77 @@ export function resolveCameraFit({ camera = {} }) {
   };
 }
 
+export function createSceneBounds() {
+  return {
+    minX: Infinity,
+    maxX: -Infinity,
+    minZ: Infinity,
+    maxZ: -Infinity
+  };
+}
+
+export function extendSceneBounds(bounds, point, padding = 0) {
+  if (!bounds || !point) return bounds;
+  const x = Number(point.x);
+  const z = Number(point.z);
+  if (!Number.isFinite(x) || !Number.isFinite(z)) return bounds;
+  const safePadding = Math.max(0, Number(padding) || 0);
+  bounds.minX = Math.min(bounds.minX, x - safePadding);
+  bounds.maxX = Math.max(bounds.maxX, x + safePadding);
+  bounds.minZ = Math.min(bounds.minZ, z - safePadding);
+  bounds.maxZ = Math.max(bounds.maxZ, z + safePadding);
+  return bounds;
+}
+
+export function normalizeSceneBounds(bounds, fallback = {}) {
+  const minX = Number(bounds?.minX);
+  const maxX = Number(bounds?.maxX);
+  const minZ = Number(bounds?.minZ);
+  const maxZ = Number(bounds?.maxZ);
+  if ([minX, maxX, minZ, maxZ].every(Number.isFinite) && maxX >= minX && maxZ >= minZ) {
+    return { minX, maxX, minZ, maxZ };
+  }
+  const centerX = Number(fallback.centerX) || 0;
+  const centerZ = Number(fallback.centerZ) || 0;
+  const halfWidth = Math.max(0.5, Number(fallback.halfWidth) || 0.5);
+  const halfDepth = Math.max(0.5, Number(fallback.halfDepth) || 0.5);
+  return {
+    minX: centerX - halfWidth,
+    maxX: centerX + halfWidth,
+    minZ: centerZ - halfDepth,
+    maxZ: centerZ + halfDepth
+  };
+}
+
+export function calculateAutoCameraFit({
+  bounds,
+  camera = {},
+  margin = 0.7,
+  minFitWidth = 8,
+  minFitHeight = 8,
+  maxFitWidth = 30,
+  maxFitHeight = 36
+} = {}) {
+  const normalized = normalizeSceneBounds(bounds, {
+    centerX: camera.targetX,
+    centerZ: camera.targetZ,
+    halfWidth: 4,
+    halfDepth: 4
+  });
+  const safeMargin = Math.max(0, Number(margin) || 0);
+  const elevation = Math.abs(Number(camera.elevationDegrees) || 0) * Math.PI / 180;
+  // Ground depth is foreshortened by the camera elevation. Keeping this
+  // projection in the fit calculation prevents the queue from forcing an
+  // unnecessarily wide view while retaining the full front-to-back layout.
+  const projectedDepth = (normalized.maxZ - normalized.minZ) * Math.sin(elevation);
+  return {
+    targetX: (normalized.minX + normalized.maxX) / 2,
+    targetZ: (normalized.minZ + normalized.maxZ) / 2,
+    fitWidth: Math.min(maxFitWidth, Math.max(minFitWidth, normalized.maxX - normalized.minX + safeMargin * 2)),
+    fitHeight: Math.min(maxFitHeight, Math.max(minFitHeight, projectedDepth + safeMargin * 2))
+  };
+}
+
 export function transformCurveCoordinates(points, tuning = {}, anchorMode = 'center') {
   if (!points.length) return [];
   const offsetX = Number(tuning.offsetX) || 0;

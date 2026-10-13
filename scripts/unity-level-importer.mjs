@@ -28,6 +28,15 @@ const UNSUPPORTED_MECHANISM_SECTIONS = [
 const STANDARD_COLOR_INDEX_MAX = 10;
 const AMBULANCE_COLOR_INDEX = 13;
 const LUXURY_COLOR_INDEX = 15;
+// Supplied colour supplement (see scripts/generate-color-variant-textures.mjs).
+const SUPPLEMENT_COLOR_INDEX_MIN = 17;
+const SUPPLEMENT_COLOR_INDEX_MAX = 25;
+
+function isSupportedColorIndex(colorIndex) {
+  if (colorIndex <= STANDARD_COLOR_INDEX_MAX) return true;
+  if (colorIndex === AMBULANCE_COLOR_INDEX || colorIndex === LUXURY_COLOR_INDEX) return true;
+  return colorIndex >= SUPPLEMENT_COLOR_INDEX_MIN && colorIndex <= SUPPLEMENT_COLOR_INDEX_MAX;
+}
 const PARKING_AREA_CONTAINER_TYPE = 1;
 const GARAGE_CONTAINER_TYPE = 2;
 const CONVEYOR_BELT_CONTAINER_TYPE = 3;
@@ -45,14 +54,23 @@ function invalid(message) {
 }
 
 function validateFilename(filename) {
-  if (typeof filename !== 'string' || path.basename(filename) !== filename) {
+  if (typeof filename !== 'string'
+    || filename.length === 0
+    || /[\\/\x00-\x1f]/.test(filename)
+    || path.basename(filename) !== filename) {
     throw invalid('Only one local Unity level file can be imported.');
   }
-  const match = filename.match(/^level([1-9]\d*)\.asset$/i);
-  if (!match) throw invalid('The filename must use the level<number>.asset format.');
+  if (path.extname(filename).toLowerCase() !== '.asset') {
+    throw invalid('The filename must use the .asset extension.');
+  }
+  return filename;
+}
+
+function levelKeyFromValue(value) {
+  const match = String(value ?? '').trim().match(/^level([1-9]\d*)$/i);
+  if (!match) return null;
   const number = Number(match[1]);
-  if (!Number.isSafeInteger(number)) throw invalid('The level number is too large.');
-  return { key: `level${number}`, filename: `level${number}.asset` };
+  return Number.isSafeInteger(number) ? `level${number}` : null;
 }
 
 function topLevelValue(source, name) {
@@ -157,8 +175,8 @@ function validateVehicles(source) {
     if (!SUPPORTED_SEAT_COUNTS.has(seats)) {
       throw invalid(`Vehicle ${id} uses unsupported seat count ${seats}; supported values are 4, 6, and 10.`);
     }
-    const colorIndex = requireInteger(record.colorIndex, `${label}.colorIndex`, { min: 0, max: LUXURY_COLOR_INDEX });
-    if (colorIndex > STANDARD_COLOR_INDEX_MAX && colorIndex !== AMBULANCE_COLOR_INDEX && colorIndex !== LUXURY_COLOR_INDEX) {
+    const colorIndex = requireInteger(record.colorIndex, `${label}.colorIndex`, { min: 0, max: SUPPLEMENT_COLOR_INDEX_MAX });
+    if (!isSupportedColorIndex(colorIndex)) {
       throw invalid(`Vehicle ${id} uses unsupported color index ${colorIndex}.`);
     }
     if (colorIndex === LUXURY_COLOR_INDEX && seats !== 6) {
@@ -292,7 +310,7 @@ function validateConveyorBelts(source, containers, vehicles) {
     seen.add(belt.vcId);
     belt.width = requireFinite(belt.width, `conveyorBelts[${index}].width`, { min: 0.1, max: 100 });
     for (const colorIndex of belt.colorIndices) {
-      if (colorIndex < 0 || colorIndex > LUXURY_COLOR_INDEX) {
+      if (!isSupportedColorIndex(colorIndex)) {
         throw invalid(`conveyorBelts[${index}] uses unsupported color index ${colorIndex}.`);
       }
     }
@@ -331,8 +349,8 @@ function validatePassengerQueues(source, vehicles) {
     }
     const colorMatch = line.match(/^    colorIndex:\s*(-?\d+)\s*$/);
     if (colorMatch && queueId != null) {
-      const colorIndex = requireInteger(colorMatch[1], 'fixedPassengerSequence.colorIndex', { min: 0, max: LUXURY_COLOR_INDEX });
-      if (colorIndex > STANDARD_COLOR_INDEX_MAX && colorIndex !== AMBULANCE_COLOR_INDEX && colorIndex !== LUXURY_COLOR_INDEX) {
+      const colorIndex = requireInteger(colorMatch[1], 'fixedPassengerSequence.colorIndex', { min: 0, max: SUPPLEMENT_COLOR_INDEX_MAX });
+      if (!isSupportedColorIndex(colorIndex)) {
         throw invalid(`Passenger uses unsupported color index ${colorIndex}.`);
       }
       if (!queues.has(queueId)) queues.set(queueId, []);
@@ -388,8 +406,8 @@ function validateDepthReferences(source, vehicleIds) {
   }
 }
 
-export function validateUnityLevelSource({ filename, source }) {
-  const identity = validateFilename(filename);
+export function validateUnityLevelSource({ filename, source, targetKey = null, displayName = null }) {
+  validateFilename(filename);
   if (typeof source !== 'string' || source.length === 0) throw invalid('The Unity level file is empty.');
   if (Buffer.byteLength(source, 'utf8') > MAX_UNITY_LEVEL_BYTES) {
     const error = invalid('The Unity level file exceeds the 8 MB import limit.');
@@ -407,8 +425,15 @@ export function validateUnityLevelSource({ filename, source }) {
     throw invalid('The Unity level script reference is missing or malformed.');
   }
   const assetName = topLevelValue(source, 'm_Name');
-  if (!/^level[1-9]\d*$/i.test(assetName ?? '')) throw invalid('Unity m_Name must use the level<number> format.');
   const unityId = requireInteger(topLevelValue(source, 'id'), 'id');
+  const key = targetKey == null
+    ? levelKeyFromValue(path.basename(filename, path.extname(filename)))
+      ?? levelKeyFromValue(assetName)
+      ?? (unityId > 0 ? `level${unityId}` : null)
+    : levelKeyFromValue(targetKey);
+  if (!key) {
+    throw invalid('The Unity level needs a positive id when neither the filename nor m_Name contains level<number>.');
+  }
   const mapScale = requireFinite(topLevelValue(source, 'mapScale'), 'mapScale', { min: 0.01, max: 10 });
   validateNoUnsupportedMechanisms(source);
   const { vehicles, vehicleIds } = validateVehicles(source);
@@ -424,8 +449,10 @@ export function validateUnityLevelSource({ filename, source }) {
     conveyorBelts
   });
   return {
-    ...identity,
+    key,
+    filename: `${key}.asset`,
     sourceName: assetName,
+    ...(typeof displayName === 'string' && displayName.trim() ? { displayName: displayName.trim().slice(0, 80) } : {}),
     unityId,
     mapScale,
     vehicleCount: vehicles.length,
@@ -491,10 +518,15 @@ async function restoreFile(filePath, previous) {
   await writeAtomically(filePath, previous);
 }
 
-export async function updateUnityLevelCatalog(sourcePath) {
+export async function updateUnityLevelCatalog(sourcePath, level = null) {
   await new Promise((resolve, reject) => {
     const child = spawn(process.execPath, [EXTRACT_SCRIPT, sourcePath, '--merge-existing'], {
       cwd: ROOT,
+      env: {
+        ...process.env,
+        ...(level?.displayName ? { PLAYABLE_IMPORTED_DISPLAY_NAME: level.displayName } : {}),
+        ...(level?.originalFilename ? { PLAYABLE_IMPORTED_SOURCE_FILENAME: level.originalFilename } : {})
+      },
       stdio: ['ignore', 'pipe', 'pipe']
     });
     let stdout = '';
@@ -513,12 +545,68 @@ export async function updateUnityLevelCatalog(sourcePath) {
   });
 }
 
-export async function importUnityLevelAsset({ filename, source }, {
+async function removeUnityLevelFromCatalog(levelKey) {
+  await new Promise((resolve, reject) => {
+    const child = spawn(process.execPath, [EXTRACT_SCRIPT, '--merge-existing', `--remove=${levelKey}`], {
+      cwd: ROOT,
+      stdio: ['ignore', 'pipe', 'pipe']
+    });
+    let stdout = '';
+    let stderr = '';
+    const append = (current, chunk) => `${current}${chunk}`.slice(-32000);
+    child.stdout.on('data', (chunk) => { stdout = append(stdout, chunk); });
+    child.stderr.on('data', (chunk) => { stderr = append(stderr, chunk); });
+    child.once('error', reject);
+    child.once('close', (code) => {
+      if (code === 0) {
+        resolve();
+        return;
+      }
+      reject(invalid((stderr || stdout || `Unity level catalog removal exited with code ${code}.`).trim()));
+    });
+  });
+}
+
+export async function deleteUnityLevel(levelKey, {
+  outputRoot = DEFAULT_UNITY_LEVEL_SOURCE_ROOT,
+  metadataPaths = [LEVEL_ARTIFACT_PATH, CATALOG_PATH]
+} = {}) {
+  const key = levelKeyFromValue(levelKey);
+  if (!key) throw invalid('The Unity level key is invalid.');
+  const outputPath = path.join(path.resolve(outputRoot), `${key}.asset`);
+  const trackedPaths = [outputPath, ...metadataPaths];
+  const previousFiles = new Map(await Promise.all(
+    trackedPaths.map(async (filePath) => [filePath, await readOptional(filePath)])
+  ));
+  if (previousFiles.get(outputPath) == null) {
+    const error = invalid('The imported Unity level does not exist.');
+    error.statusCode = 404;
+    throw error;
+  }
+  try {
+    await removeUnityLevelFromCatalog(key);
+    await unlink(outputPath);
+  } catch (error) {
+    const rollbackErrors = [];
+    for (const filePath of trackedPaths) {
+      try {
+        await restoreFile(filePath, previousFiles.get(filePath));
+      } catch (rollbackError) {
+        rollbackErrors.push(`${path.basename(filePath)}: ${rollbackError.message}`);
+      }
+    }
+    if (rollbackErrors.length > 0) error.message += ` Rollback failed for ${rollbackErrors.join('; ')}`;
+    throw error;
+  }
+  return { key, outputPath };
+}
+
+export async function importUnityLevelAsset({ filename, source, targetKey = null, displayName = null }, {
   outputRoot = DEFAULT_UNITY_LEVEL_SOURCE_ROOT,
   updateCatalog = updateUnityLevelCatalog,
   metadataPaths = [LEVEL_ARTIFACT_PATH, CATALOG_PATH]
 } = {}) {
-  const level = validateUnityLevelSource({ filename, source });
+  const level = validateUnityLevelSource({ filename, source, targetKey, displayName });
   const outputPath = path.join(path.resolve(outputRoot), level.filename);
   const trackedPaths = [outputPath, ...metadataPaths];
   const previousFiles = new Map(await Promise.all(
@@ -526,7 +614,7 @@ export async function importUnityLevelAsset({ filename, source }, {
   ));
   try {
     await writeAtomically(outputPath, source);
-    await updateCatalog(outputPath, level);
+    await updateCatalog(outputPath, { ...level, originalFilename: filename });
   } catch (error) {
     const rollbackErrors = [];
     for (const filePath of trackedPaths) {

@@ -1,0 +1,73 @@
+{
+  "format": "bus-loop-web-level-v1",
+  "key": "level46",
+  "displayName": "123",
+  "unityId": 46,
+  "mapScale": 1,
+  "difficulty": "Normal",
+  "conveyorBeltName": "GameSceneDualQueue2",
+  "background": null,
+  "passengerMethod": "FixedSequence",
+  "vehicles": [
+    {
+      "id": 1,
+      "seats": 4,
+      "colorIndex": 0,
+      "x": 0,
+      "z": 0,
+      "yaw": 0,
+      "isHidden": false,
+      "isTurnVehicle": false,
+      "containerType": 1,
+      "containerId": 0,
+      "elevatorLayer": 0,
+      "mechanism": {
+        "type": "normal",
+        "pairVehicleId": null,
+        "distance": 0.25,
+        "wrenchColor": 0,
+        "secondColorIndex": 0,
+        "stepLimit": 35,
+        "timeLimit": 30
+      }
+    }
+  ],
+  "containers": [
+    {
+      "id": 0,
+      "type": 1,
+      "x": 0,
+      "z": 0,
+      "yaw": 0,
+      "width": 1.1,
+      "length": 0.8,
+      "conveyorWidth": 3.8,
+      "gateQueuePathShape": 0,
+      "gateQueueLocked": true,
+      "gateQueueGap": 0.1,
+      "gateQueueShowCurveHandles": false,
+      "gateQueueTangents": [],
+      "gateQueueTangentOverrides": [],
+      "gateQueuePathPoints": [],
+      "elevatorEditingLayer": 0
+    }
+  ],
+  "passengerQueues": [
+    [
+      0,
+      0
+    ],
+    [
+      0,
+      0
+    ]
+  ],
+  "vehicleDepthes": {},
+  "editor": {
+    "gridGap": 0.27,
+    "gridRotation": 0,
+    "gridSnap": true,
+    "vehicleSnap": true,
+    "alignmentGuides": true
+  }
+}

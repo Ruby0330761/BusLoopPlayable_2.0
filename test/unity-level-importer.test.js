@@ -112,7 +112,7 @@ test('validates a supported Unity level and reports import counts', () => {
   });
 });
 
-test('rejects unsafe filenames and malformed Unity asset names', () => {
+test('accepts arbitrary Unity asset filenames and rejects unsafe paths or extensions', () => {
   const source = makeLevelSource();
   assert.throws(
     () => validateUnityLevelSource({ filename: '../level19.asset', source }),
@@ -120,15 +120,20 @@ test('rejects unsafe filenames and malformed Unity asset names', () => {
   );
   assert.throws(
     () => validateUnityLevelSource({ filename: 'level19.txt', source }),
-    /level<number>\.asset/
+    /\.asset extension/
   );
+  const customFilename = validateUnityLevelSource({ filename: 'Q3V1.asset', source });
+  assert.equal(customFilename.key, 'level19');
+  assert.equal(customFilename.filename, 'level19.asset');
   const renamed = validateUnityLevelSource({ filename: 'level20.asset', source });
   assert.equal(renamed.key, 'level20');
   assert.equal(renamed.sourceName, 'level19');
-  assert.throws(
-    () => validateUnityLevelSource({ filename: 'level19.asset', source: source.replace('m_Name: level19', 'm_Name: custom') }),
-    /m_Name must use the level<number> format/
-  );
+  const customAssetName = validateUnityLevelSource({
+    filename: '\u81ea\u5b9a\u4e49\u5173\u5361.asset',
+    source: source.replace('m_Name: level19', 'm_Name: custom')
+  });
+  assert.equal(customAssetName.key, 'level19');
+  assert.equal(customAssetName.sourceName, 'custom');
 });
 
 test('rejects duplicate vehicle ids and passenger-seat mismatches', () => {
@@ -359,10 +364,11 @@ test('imports a validated source and reports replacements', async () => {
     metadataPaths: [],
     updateCatalog: async (sourcePath, level) => updateCalls.push({ sourcePath, level })
   };
-  const first = await importUnityLevelAsset({ filename: 'level19.asset', source }, options);
-  const second = await importUnityLevelAsset({ filename: 'level19.asset', source }, options);
+  const first = await importUnityLevelAsset({ filename: 'Q3V1.asset', source }, options);
+  const second = await importUnityLevelAsset({ filename: '\u65b0\u7248\u672c.asset', source }, options);
   assert.equal(first.replaced, false);
   assert.equal(second.replaced, true);
+  assert.equal(path.basename(first.outputPath), 'level19.asset');
   assert.equal(await readFile(first.outputPath, 'utf8'), source);
   assert.equal(updateCalls.length, 2);
   assert.equal(updateCalls[0].level.key, 'level19');
@@ -394,6 +400,10 @@ test('editor and Vite service expose Unity level import controls', () => {
   assert.match(editorSource, /editor-level-import/);
   assert.match(editorSource, /editor-level-open-folder/);
   assert.match(editorSource, /X-Level-Filename/);
+  assert.match(editorSource, /if \(!\/\\\.asset\$\/i\.test\(file\?\.name \?\? ''\)\)/);
+  assert.match(editorSource, /accept="\.asset,\.json,application\/json"/);
+  assert.match(editorSource, /__level-authoring\/import/);
+  assert.match(editorSource, /validateLevelDocument/);
   assert.match(viteSource, /__unity-levels\/import/);
   assert.match(viteSource, /__unity-levels\/open-folder/);
   assert.match(viteSource, /importUnityLevelAsset/);

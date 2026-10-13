@@ -304,8 +304,8 @@ function parseUnityLevel(path, baseLevel) {
   const level = structuredClone(baseLevel);
   Object.assign(level, {
     key,
-    displayName: `${key} (${fileName})`,
-    sourceFile: fileName,
+    displayName: process.env.PLAYABLE_IMPORTED_DISPLAY_NAME || `${key} (${fileName})`,
+    sourceFile: process.env.PLAYABLE_IMPORTED_SOURCE_FILENAME || fileName,
     unityId: Number(scalar(source, 'id', 0)),
     id: Number(scalar(source, 'id', 0)),
     mapScale,
@@ -418,9 +418,13 @@ levels = levels.map((level) => ({
   mechanics: level.mechanics ?? deriveLevelMechanics(level)
 }));
 const activeLevel = levels.find((level) => level.key === selected);
-if (!activeLevel) throw new Error(`Unknown selected level: ${selected}`);
+const resolvedSelected = activeLevel
+  ? selected
+  : levels.find((level) => level.key !== 'currentLevel12')?.key ?? baseLevel.key;
+const resolvedActiveLevel = levels.find((level) => level.key === resolvedSelected);
+if (!resolvedActiveLevel) throw new Error(`Unknown selected level: ${selected}`);
 
-writeFileSync(artifactPath, `${JSON.stringify({ selected, levels }, null, 2)}\n`);
+writeFileSync(artifactPath, `${JSON.stringify({ selected: resolvedSelected, levels }, null, 2)}\n`);
 writeFileSync(catalogPath, moduleSource(
   'LEVEL_CATALOG',
   Object.fromEntries(levels.map((level) => [level.key, level])),
@@ -434,5 +438,5 @@ for (const level of levels) {
   console.log(`${level.key}: ${level.vehicles.length} vehicles, queues ${level.passengerQueues.map((queue) => queue.length).join('+')}`);
 }
 console.log(mergeExisting
-  ? `Preserved production active module; catalog selection remains ${selected}`
-  : `Generated active level: ${activeLevel.key}`);
+  ? `Preserved production active module; catalog selection remains ${resolvedSelected}`
+  : `Generated active level: ${resolvedActiveLevel.key}`);

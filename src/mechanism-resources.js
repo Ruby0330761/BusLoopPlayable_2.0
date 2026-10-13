@@ -6,6 +6,8 @@ export const MECHANISM_TYPES = Object.freeze({
   spatialConveyor: 'spatialConveyor',
   luxuryVehicle: 'luxuryVehicle',
   ambulance: 'ambulance',
+  firetruck: 'firetruck',
+  police: 'police',
   turnVehicle: 'turnVehicle',
   hiddenVehicle: 'hiddenVehicle',
   garage: 'garage',
@@ -18,6 +20,8 @@ export const MECHANISM_TYPE_ORDER = Object.freeze([
   MECHANISM_TYPES.spatialConveyor,
   MECHANISM_TYPES.luxuryVehicle,
   MECHANISM_TYPES.ambulance,
+  MECHANISM_TYPES.firetruck,
+  MECHANISM_TYPES.police,
   MECHANISM_TYPES.turnVehicle,
   MECHANISM_TYPES.hiddenVehicle,
   MECHANISM_TYPES.garage,
@@ -62,6 +66,28 @@ export const MECHANISM_RESOURCE_MANIFEST = Object.freeze({
     `${MECHANISM_ROOT}/ambulance/textures/Idle_girl_rescuer.png`,
     `${MECHANISM_ROOT}/ambulance/textures/Main_Gamepanel_BubbleLove.png`,
     `${MECHANISM_ROOT}/ambulance/audio/ambulance_countdown_V2.wav`
+  ]),
+  [MECHANISM_TYPES.firetruck]: Object.freeze([
+    `${MECHANISM_ROOT}/firetruck/models/Fire_Engine.fbx`,
+    `${MECHANISM_ROOT}/firetruck/models/Idle_boy_firefighter.fbx`,
+    `${MECHANISM_ROOT}/firetruck/models/Idle_boy_firefighter_vatmesh.bin`,
+    `${MECHANISM_ROOT}/firetruck/models/Idle_boy_firefighter_anim_map.vatq`,
+    `${MECHANISM_ROOT}/firetruck/textures/Fire_Engine.png`,
+    `${MECHANISM_ROOT}/firetruck/textures/Idle_boy_firefighter.png`,
+    `${MECHANISM_ROOT}/firetruck/textures/Car_firetruck_shadow.png`,
+    `${MECHANISM_ROOT}/firetruck/audio/firetruck_1.bin`,
+    `${MECHANISM_ROOT}/firetruck/audio/firetruck_3.bin`,
+    `${MECHANISM_ROOT}/firetruck/audio/firetruck_1.wav`,
+    `${MECHANISM_ROOT}/firetruck/audio/firetruck_3.wav`
+  ]),
+  [MECHANISM_TYPES.police]: Object.freeze([
+    `${MECHANISM_ROOT}/police/models/Police_Car_001.fbx`,
+    `${MECHANISM_ROOT}/police/models/Idle_boy_police.fbx`,
+    `${MECHANISM_ROOT}/police/models/Idle_boy_police_vatmesh.bin`,
+    `${MECHANISM_ROOT}/police/models/Idle_boy_police_anim_map.vatq`,
+    `${MECHANISM_ROOT}/police/textures/Police_Car.png`,
+    `${MECHANISM_ROOT}/police/textures/Idle_boy_police.png`,
+    `${MECHANISM_ROOT}/police/audio/police_siren.bin`
   ]),
   [MECHANISM_TYPES.turnVehicle]: Object.freeze([
     `${MECHANISM_ROOT}/turn-vehicle/models/Arrow_02.fbx.bin`,
@@ -125,6 +151,28 @@ export const MECHANISM_ASSETS = Object.freeze({
     stepBubble: `${MECHANISM_ROOT}/ambulance/textures/Main_Gamepanel_BubbleLove.png`,
     audio: `${MECHANISM_ROOT}/ambulance/audio/ambulance_countdown_V2.wav`
   }),
+  firetruck: Object.freeze({
+    vehicleModel: `${MECHANISM_ROOT}/firetruck/models/Fire_Engine.fbx`,
+    passengerModel: `${MECHANISM_ROOT}/firetruck/models/Idle_boy_firefighter.fbx`,
+    passengerVatMesh: `${MECHANISM_ROOT}/firetruck/models/Idle_boy_firefighter_vatmesh.bin`,
+    passengerVatTexture: `${MECHANISM_ROOT}/firetruck/models/Idle_boy_firefighter_anim_map.vatq`,
+    vehicleTexture: `${MECHANISM_ROOT}/firetruck/textures/Fire_Engine.png`,
+    passengerTexture: `${MECHANISM_ROOT}/firetruck/textures/Idle_boy_firefighter.png`,
+    shadowTexture: `${MECHANISM_ROOT}/firetruck/textures/Car_firetruck_shadow.png`,
+    audio: Object.freeze({
+      alert: `${MECHANISM_ROOT}/firetruck/audio/firetruck_1.wav`,
+      clear: `${MECHANISM_ROOT}/firetruck/audio/firetruck_3.wav`
+    })
+  }),
+  police: Object.freeze({
+    vehicleModel: `${MECHANISM_ROOT}/police/models/Police_Car_001.fbx`,
+    passengerModel: `${MECHANISM_ROOT}/police/models/Idle_boy_police.fbx`,
+    passengerVatMesh: `${MECHANISM_ROOT}/police/models/Idle_boy_police_vatmesh.bin`,
+    passengerVatTexture: `${MECHANISM_ROOT}/police/models/Idle_boy_police_anim_map.vatq`,
+    vehicleTexture: `${MECHANISM_ROOT}/police/textures/Police_Car.png`,
+    passengerTexture: `${MECHANISM_ROOT}/police/textures/Idle_boy_police.png`,
+    audio: `${MECHANISM_ROOT}/police/audio/police_siren.bin`
+  }),
   turnVehicle: Object.freeze({
     arrow: `${MECHANISM_ROOT}/turn-vehicle/models/Arrow_02.fbx.bin`,
     audio: `${MECHANISM_ROOT}/turn-vehicle/audio/guidemove.bin`
@@ -163,6 +211,22 @@ const MECHANISM_AUDIO_CONFIG = Object.freeze({
   [MECHANISM_TYPES.ambulance]: Object.freeze({
     ambulance_countdown: Object.freeze({
       clips: Object.freeze([MECHANISM_ASSETS.ambulance.audio]),
+      volume: 0.72
+    })
+  }),
+  [MECHANISM_TYPES.firetruck]: Object.freeze({
+    firetruck_alert: Object.freeze({
+      clips: Object.freeze([MECHANISM_ASSETS.firetruck.audio.alert]),
+      volume: 0.72
+    }),
+    firetruck_clear: Object.freeze({
+      clips: Object.freeze([MECHANISM_ASSETS.firetruck.audio.clear]),
+      volume: 0.72
+    })
+  }),
+  [MECHANISM_TYPES.police]: Object.freeze({
+    police_siren: Object.freeze({
+      clips: Object.freeze([MECHANISM_ASSETS.police.audio]),
       volume: 0.72
     })
   }),
@@ -207,6 +271,12 @@ export const BASE_RUNTIME_ASSET_PATHS = Object.freeze([
   '/assets/unity/ui/Main_Prop_GreenBtn.png'
 ]);
 
+export const PRE_ROLL_ASSET_PATHS = Object.freeze([
+  '/assets/preroll/TP1327.mp4',
+  '/assets/preroll/TP1333.mp4',
+  '/assets/preroll/TP1334.mp4'
+]);
+
 function addType(types, type) {
   if (!types.includes(type)) types.push(type);
 }
@@ -236,9 +306,18 @@ export function deriveLevelMechanics(level = {}) {
     vehicleTransportBelt: containers.filter(isVehicleTransportContainer).length
       || conveyorBelts.length
   };
+  const firetruckCount = vehicles.filter((vehicle) => vehicle?.mechanism?.type === 'firetruck' || Number.isInteger(vehicle?.firetruckTimeLimit)).length
+    || (Array.isArray(level.vehicleFiretrucks) ? level.vehicleFiretrucks.length : 0);
+  const policeCount = vehicles.filter((vehicle) => vehicle?.mechanism?.type === 'police' || vehicle?.colorIndex === 11).length;
+  // Keep the legacy metadata shape byte-for-byte for levels that do not use the
+  // newly imported vehicle families.
+  if (firetruckCount > 0) counts.firetruck = firetruckCount;
+  if (policeCount > 0) counts.police = policeCount;
   const specialTypes = [];
   if (counts.luxuryVehicle > 0) addType(specialTypes, MECHANISM_TYPES.luxuryVehicle);
   if (counts.ambulance > 0) addType(specialTypes, MECHANISM_TYPES.ambulance);
+  if (counts.firetruck > 0) addType(specialTypes, MECHANISM_TYPES.firetruck);
+  if (counts.police > 0) addType(specialTypes, MECHANISM_TYPES.police);
   if (counts.turnVehicle > 0) addType(specialTypes, MECHANISM_TYPES.turnVehicle);
   if (counts.hiddenVehicle > 0) addType(specialTypes, MECHANISM_TYPES.hiddenVehicle);
   if (counts.garage > 0) addType(specialTypes, MECHANISM_TYPES.garage);

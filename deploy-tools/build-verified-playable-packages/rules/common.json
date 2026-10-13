@@ -1,0 +1,174 @@
+{
+  "schemaVersion": "playable-platform-rules-v1",
+  "platform": "common",
+  "rules": [
+    {
+      "id": "COMMON-ART-001",
+      "title": "最终文件大小不超过 5MB",
+      "stage": "artifact",
+      "severity": "blocker",
+      "sourceClass": "checker-parity",
+      "sourceVersion": "playable_check@86d58e33d293a0a095b574407a2d6c7d191d510f",
+      "check": {
+        "type": "max_bytes",
+        "value": 5242880
+      },
+      "repairHint": "优化已引用载荷，或从当前候选清单排除非交付资源；不得删除项目资源，并从构建链路重新生成。",
+      "autoRepair": false
+    },
+    {
+      "id": "COMMON-ART-002",
+      "title": "主 HTML 结构完整",
+      "stage": "artifact",
+      "severity": "blocker",
+      "sourceClass": "checker-parity",
+      "sourceVersion": "playable_check@86d58e33d293a0a095b574407a2d6c7d191d510f",
+      "check": {
+        "type": "html_scaffold"
+      },
+      "repairHint": "确保入口包含 html、head、body，并重新构建。",
+      "autoRepair": false
+    },
+    {
+      "id": "COMMON-ART-003",
+      "title": "ZIP 不含垃圾文件",
+      "stage": "artifact",
+      "severity": "blocker",
+      "sourceClass": "delivery-contract",
+      "sourceVersion": "game_playable-playbook@8e26d3b61d52c7540809a3a56fb6821472cc14673c4943ca71ef97f851c8401b",
+      "check": {
+        "type": "no_junk_entries",
+        "patterns": [
+          "(^|/)__MACOSX(/|$)",
+          "(^|/)\\.DS_Store$",
+          "\\.map$",
+          "(^|/)Thumbs\\.db$"
+        ]
+      },
+      "repairHint": "在打包脚本中排除系统文件与 sourcemap。",
+      "autoRepair": true
+    },
+    {
+      "id": "COMMON-ART-004",
+      "title": "ZIP 不含嵌套 ZIP",
+      "stage": "artifact",
+      "severity": "blocker",
+      "sourceClass": "delivery-contract",
+      "sourceVersion": "game_playable-playbook@8e26d3b61d52c7540809a3a56fb6821472cc14673c4943ca71ef97f851c8401b",
+      "check": {
+        "type": "no_nested_zip"
+      },
+      "repairHint": "修正打包入口，禁止把候选包再次嵌套压缩。",
+      "autoRepair": true
+    },
+    {
+      "id": "COMMON-STA-001",
+      "title": "禁止自动跳转",
+      "stage": "static",
+      "severity": "blocker",
+      "sourceClass": "checker-parity",
+      "sourceVersion": "playable_check@86d58e33d293a0a095b574407a2d6c7d191d510f",
+      "check": {
+        "type": "no_auto_redirect"
+      },
+      "repairHint": "移除 meta refresh、location.assign/replace/href 等自动跳转；只在真实 CTA 点击中调用平台桥接。",
+      "autoRepair": false
+    },
+    {
+      "id": "COMMON-STA-002",
+      "title": "存在 viewport meta",
+      "stage": "static",
+      "severity": "warning",
+      "sourceClass": "checker-parity",
+      "sourceVersion": "playable_check@86d58e33d293a0a095b574407a2d6c7d191d510f",
+      "check": {
+        "type": "regex_present",
+        "target": "main_html",
+        "pattern": "<meta[^>]+name\\s*=\\s*['\\\"]viewport['\\\"]"
+      },
+      "repairHint": "在 head 中添加适配移动端的 viewport meta。",
+      "autoRepair": false
+    },
+    {
+      "id": "COMMON-STA-003",
+      "title": "音频存在用户交互门控",
+      "stage": "static",
+      "severity": "warning",
+      "sourceClass": "checker-parity",
+      "sourceVersion": "playable_check@86d58e33d293a0a095b574407a2d6c7d191d510f",
+      "check": {
+        "type": "audio_gate"
+      },
+      "repairHint": "在 pointerdown/click/touchstart 后恢复 AudioContext 或播放媒体。",
+      "autoRepair": false
+    },
+    {
+      "id": "COMMON-STA-004",
+      "title": "商店落地页与投放目标端一致",
+      "stage": "static",
+      "severity": "warning",
+      "sourceClass": "delivery-contract",
+      "sourceVersion": "user-confirmed@2026-08-05",
+      "description": "单端投放只要求对应商店地址；双端投放要求 App Store 与 Google Play 地址；未声明目标端时只提示确认。",
+      "check": {
+        "type": "store_links"
+      },
+      "repairHint": "按实际投放目标端配置对应商店地址；只有双端投放才要求同时配置 App Store 与 Google Play URL。",
+      "autoRepair": false,
+      "manualGate": "未声明投放目标端时，确认包内商店地址与本次实际投放端一致。"
+    },
+    {
+      "id": "COMMON-STA-005",
+      "title": "不残留 sourceMappingURL",
+      "stage": "static",
+      "severity": "warning",
+      "sourceClass": "delivery-contract",
+      "sourceVersion": "game_playable-playbook@8e26d3b61d52c7540809a3a56fb6821472cc14673c4943ca71ef97f851c8401b",
+      "check": {
+        "type": "regex_absent",
+        "pattern": "sourceMappingURL\\s*="
+      },
+      "repairHint": "关闭生产 sourcemap 或在构建阶段移除映射注释。",
+      "autoRepair": false
+    },
+    {
+      "id": "COMMON-STA-006",
+      "title": "checker 可见 URL 不产生网络请求警告",
+      "stage": "static",
+      "severity": "blocker",
+      "sourceClass": "user-confirmed",
+      "sourceVersion": "user-confirmed@2026-08-06",
+      "check": {
+        "type": "checker_visible_http_urls_allowlist",
+        "allow": [
+          "^https://(?:apps|itunes)\\.apple\\.com/[^\\s'\"<>`\\\\]+$",
+          "^https://play\\.google\\.com/[^\\s'\"<>`\\\\]+$"
+        ],
+        "allowByPlatform": {
+          "google-ads": [
+            "^https://tpc\\.googlesyndication\\.com/pagead/gadgets/html5/api/exitapi\\.js$"
+          ],
+          "tiktok": [
+            "^https://sf16-muse-va\\.ibytedtos\\.com/obj/union-fe-nc-i18n/playable/sdk/playable-sdk\\.js$"
+          ]
+        }
+      },
+      "repairHint": "真实外链必须内联或移除；React 错误文档和 W3C 命名空间等非网络常量应在真实构建链中做保持运行时值不变的 checker 兼容编码，并重新执行运行时检查。",
+      "autoRepair": false
+    },
+    {
+      "id": "COMMON-MAN-001",
+      "title": "CTA 只由明确用户意图触发",
+      "stage": "manual",
+      "severity": "manual",
+      "sourceClass": "delivery-contract",
+      "sourceVersion": "game_playable-playbook@8e26d3b61d52c7540809a3a56fb6821472cc14673c4943ca71ef97f851c8401b",
+      "check": {
+        "type": "manual"
+      },
+      "repairHint": "在官方 Preview 和真机点击正常游戏区与 CTA 分别验证。",
+      "autoRepair": false,
+      "manualGate": "正常游戏区不跳转；明确 CTA 点击才调用目标平台桥接。"
+    }
+  ]
+}

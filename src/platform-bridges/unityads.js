@@ -1,3 +1,5 @@
+import { openBrowserStorePreview } from './basic.js';
+
 export const PLAYABLE_PLATFORM = 'unityads';
 
 export function createPlatformBridge({ onStart, onVisibilityChange = () => {}, onSizeChange = () => {} } = {}) {
@@ -41,8 +43,11 @@ export function createPlatformBridge({ onStart, onVisibilityChange = () => {}, o
     end() {},
     retry() {},
     openStore({ ios, android } = {}) {
-      window.mraid.open(ios || android);
-      return true;
+      if (typeof window.mraid?.open === 'function') {
+        window.mraid.open(ios || android);
+        return true;
+      }
+      return openBrowserStorePreview(ios || android);
     }
   });
 }

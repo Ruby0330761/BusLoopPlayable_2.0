@@ -1,0 +1,190 @@
+{
+  "schemaVersion": "playable-platform-rules-v1",
+  "platform": "google-ads",
+  "rules": [
+    {
+      "id": "GOOGLE-ART-001",
+      "title": "交付 ZIP",
+      "stage": "artifact",
+      "severity": "blocker",
+      "sourceClass": "checker-parity",
+      "sourceVersion": "playable_check@86d58e33d293a0a095b574407a2d6c7d191d510f",
+      "check": {
+        "type": "artifact_kind",
+        "value": "zip"
+      },
+      "repairHint": "使用 Google Ads ZIP 构建入口。",
+      "autoRepair": false
+    },
+    {
+      "id": "GOOGLE-ART-002",
+      "title": "ZIP 文件数不超过 512",
+      "stage": "artifact",
+      "severity": "blocker",
+      "sourceClass": "checker-parity",
+      "sourceVersion": "playable_check@86d58e33d293a0a095b574407a2d6c7d191d510f",
+      "check": {
+        "type": "max_file_count",
+        "value": 512
+      },
+      "repairHint": "在当前候选清单排除非交付文件；不得删除项目资源。",
+      "autoRepair": false
+    },
+    {
+      "id": "GOOGLE-ART-003",
+      "title": "根目录包含 index.html 与 backup.jpg",
+      "stage": "artifact",
+      "severity": "blocker",
+      "sourceClass": "delivery-contract",
+      "sourceVersion": "game_playable-playbook@8e26d3b61d52c7540809a3a56fb6821472cc14673c4943ca71ef97f851c8401b",
+      "check": {
+        "type": "required_root_files",
+        "values": [
+          "index.html",
+          "backup.jpg"
+        ]
+      },
+      "repairHint": "在 Google Ads 打包器生成真实试玩截图 backup.jpg 并放在根目录。",
+      "autoRepair": false
+    },
+    {
+      "id": "GOOGLE-ART-004",
+      "title": "资源引用完整",
+      "stage": "artifact",
+      "severity": "blocker",
+      "sourceClass": "delivery-contract",
+      "sourceVersion": "game_playable-playbook@8e26d3b61d52c7540809a3a56fb6821472cc14673c4943ca71ef97f851c8401b",
+      "check": {
+        "type": "resource_references_exist",
+        "allow": [
+          "https://tpc.googlesyndication.com/pagead/gadgets/html5/api/exitapi.js"
+        ]
+      },
+      "repairHint": "修复相对资源路径或补齐 ZIP 文件。",
+      "autoRepair": false
+    },
+    {
+      "id": "GOOGLE-STA-001",
+      "title": "存在合法 ad.size",
+      "stage": "static",
+      "severity": "blocker",
+      "sourceClass": "delivery-contract",
+      "sourceVersion": "game_playable-playbook@8e26d3b61d52c7540809a3a56fb6821472cc14673c4943ca71ef97f851c8401b",
+      "check": {
+        "type": "meta_content_regex",
+        "name": "ad.size",
+        "pattern": "^width=\\d+,height=\\d+$",
+        "normalizeWhitespace": true
+      },
+      "repairHint": "在 head 中添加合法 ad.size meta。",
+      "autoRepair": false
+    },
+    {
+      "id": "GOOGLE-STA-006",
+      "title": "存在合法 ad.orientation",
+      "stage": "static",
+      "severity": "blocker",
+      "sourceClass": "delivery-contract",
+      "sourceVersion": "sj-checker-visible-regression@2026-08-10",
+      "check": {
+        "type": "meta_content_regex",
+        "name": "ad.orientation",
+        "pattern": "^(portrait|landscape)$",
+        "normalizeWhitespace": true
+      },
+      "repairHint": "在 Google Ads 真实构建模板的 head 中添加与素材方向一致的 ad.orientation meta，并完整重建 ZIP。",
+      "autoRepair": false
+    },
+    {
+      "id": "GOOGLE-STA-002",
+      "title": "接入 Google CTA API 或 MRAID",
+      "stage": "static",
+      "severity": "blocker",
+      "sourceClass": "checker-parity",
+      "sourceVersion": "playable_check@86d58e33d293a0a095b574407a2d6c7d191d510f",
+      "check": {
+        "type": "any_regex_present",
+        "patterns": [
+          "https://tpc\\.googlesyndication\\.com/pagead/gadgets/html5/api/exitapi\\.js",
+          "mraid\\.open\\s*\\("
+        ]
+      },
+      "repairHint": "引入官方 exitapi.js 或使用允许的 mraid.open 等价桥接。",
+      "autoRepair": false
+    },
+    {
+      "id": "GOOGLE-STA-003",
+      "title": "CTA 调用真实平台桥接",
+      "stage": "static",
+      "severity": "blocker",
+      "sourceClass": "checker-parity",
+      "sourceVersion": "playable_check@86d58e33d293a0a095b574407a2d6c7d191d510f",
+      "check": {
+        "type": "any_regex_present",
+        "patterns": [
+          "ExitApi\\.exit\\s*\\(",
+          "mraid\\.open\\s*\\("
+        ]
+      },
+      "repairHint": "把真实 CTA 点击连接到 ExitApi.exit 或 mraid.open。",
+      "autoRepair": false
+    },
+    {
+      "id": "GOOGLE-STA-004",
+      "title": "仅允许官方 exitapi.js 外链",
+      "stage": "static",
+      "severity": "blocker",
+      "sourceClass": "checker-parity",
+      "sourceVersion": "playable_check@86d58e33d293a0a095b574407a2d6c7d191d510f",
+      "check": {
+        "type": "external_urls_allowlist",
+        "allow": [
+          "^https://tpc\\.googlesyndication\\.com/pagead/gadgets/html5/api/exitapi\\.js$"
+        ]
+      },
+      "repairHint": "内联其他资源并禁止网络请求。",
+      "autoRepair": false
+    },
+    {
+      "id": "GOOGLE-STA-005",
+      "title": "运行时图片资源使用容器安全映射",
+      "stage": "static",
+      "severity": "blocker",
+      "sourceClass": "delivery-contract",
+      "sourceVersion": "bw-real-checker-regression@2026-08-06",
+      "check": {
+        "type": "dynamic_image_assets_embedded"
+      },
+      "repairHint": "在真实 Google Ads adapter 或资源 projector 中把 imageAsset 动态图片映射为 data URI 或可证明的 Blob URL，完整重建；不要手改 ZIP。",
+      "autoRepair": false
+    },
+    {
+      "id": "GOOGLE-ART-005",
+      "title": "ZIP 基础名不超过 50 字符",
+      "stage": "artifact",
+      "severity": "blocker",
+      "sourceClass": "checker-parity",
+      "sourceVersion": "playable_check@86d58e33d293a0a095b574407a2d6c7d191d510f",
+      "check": {
+        "type": "zip_name_max_chars",
+        "value": 50
+      },
+      "repairHint": "缩短构建输出基础名。",
+      "autoRepair": true
+    },
+    {
+      "id": "GOOGLE-MAN-001",
+      "title": "Google HTML5 Validator 与 CTA 复验",
+      "stage": "manual",
+      "severity": "manual",
+      "sourceClass": "checker-parity",
+      "sourceVersion": "playable_check@86d58e33d293a0a095b574407a2d6c7d191d510f",
+      "check": {
+        "type": "manual"
+      },
+      "repairHint": "上传最终 ZIP，验证普通游戏区不跳转、CTA 才调用退出。",
+      "autoRepair": false,
+      "manualGate": "使用 Google HTML5 Validator/广告后台完成人工测试。"
+    }
+  ]
+}

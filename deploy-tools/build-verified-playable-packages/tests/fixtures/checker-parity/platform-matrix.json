@@ -1,0 +1,12 @@
+{
+  "schemaVersion": "playable-checker-parity-fixtures-v1",
+  "cases": [
+    {"platform": "applovin", "nodes": ["S1-S11", "R1-R2"], "expected": "PASS_OR_BLOCK_LOCALLY"},
+    {"platform": "google-ads", "nodes": ["S1-S11", "R1-R2"], "expected": "PASS_OR_BLOCK_LOCALLY"},
+    {"platform": "meta", "nodes": ["S1-S11", "R1-R2"], "expected": "PASS_OR_BLOCK_LOCALLY"},
+    {"platform": "unityads", "nodes": ["S1-S11", "R1-R2"], "expected": "PASS_OR_BLOCK_LOCALLY"},
+    {"platform": "mintegral", "nodes": ["S1-S11", "R1-R2", "R5"], "expected": "PASS_OR_BLOCK_LOCALLY"},
+    {"platform": "moloco", "nodes": ["S1-S11", "R1-R2"], "expected": "PASS_OR_BLOCK_LOCALLY"},
+    {"platform": "tiktok", "nodes": ["LOCAL_S1-S11", "LOCAL_R1-R2", "TAB_AVAILABILITY"], "expected": "BLOCK_EXTERNAL_WHEN_TAB_MISSING"}
+  ]
+}

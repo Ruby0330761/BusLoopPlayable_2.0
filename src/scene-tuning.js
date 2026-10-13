@@ -7,6 +7,16 @@ export const SCENE_TUNING = {
     "width": 1080,
     "height": 2160
   },
+  "visibility": {
+    "vehicles": 1,
+    "passengers": 1
+  },
+  "preRoll": {
+    "enabled": 1,
+    "asset": "/assets/preroll/TP1327.mp4",
+    "soundEnabled": 0,
+    "fadeDurationSeconds": 0.45
+  },
   "storeLinks": {
     "android": "https://play.google.com/store/apps/details?id=gridplus.busjam.carpuzzle",
     "ios": "https://apps.apple.com/us/app/bus-fever-party/id6746743297"
@@ -91,7 +101,7 @@ export const SCENE_TUNING = {
     "appearSpeed": 1.45
   },
   "installGate": {
-    "successfulOperationThreshold": 18
+    "successfulOperationThreshold": 64
   },
   "gameOver": {
     "failureDelaySeconds": 2,
@@ -341,6 +351,7 @@ export const SCENE_TUNING = {
     "distanceOffset": 7,
     "width": 14.1,
     "height": 22.708,
+    "scale": 1,
     "sourceWidth": 2100,
     "sourceHeight": 3382,
     "opacity": 1
@@ -513,10 +524,10 @@ export const SCENE_TUNING = {
   },
   "firstClickGuide": {
     "enabled": 0,
-    "levelKey": "level36",
     "vehicleId": 1,
     "durationSeconds": 3,
-    "maskOpacity": 0,
+    "maskEnabled": 1,
+    "maskOpacity": 0.68,
     "holePadding": 30,
     "holeRadius": 16,
     "holeOffsetX": 0,
@@ -708,6 +719,7 @@ export const SCENE_TUNING = {
   },
   "vehicleShadows": {
     "y": 0.004,
+    "color": 16777215,
     "opacity": 0.72,
     "scaleX": 1,
     "scaleZ": 1,

@@ -42,9 +42,33 @@ const NONBLANK_CANVAS_FIXTURE = `<!doctype html>
     </script>
   </body></html>`;
 
+const DEVICE_PROBE_FIXTURE = NONBLANK_CANVAS_FIXTURE.replace(
+  '</body>',
+  `<script>
+    document.querySelector('#cta-button').addEventListener('click', () => {
+      const ios = /iPhone|iPad|iPod/i.test(navigator.userAgent);
+      if (!ios) throw new Error('device probe expected an iPhone user agent, got ' + navigator.userAgent);
+    });
+  </script></body>`
+);
+
 const EARLY_AUDIO_FIXTURE = NONBLANK_CANVAS_FIXTURE.replace(
   '</body>',
   '<script>document.createElement("audio").play();</script></body>'
+);
+
+const MUTED_PRE_ROLL_FIXTURE = NONBLANK_CANVAS_FIXTURE.replace(
+  '</body>',
+  `<div id="pre-roll-overlay" style="position:fixed;inset:0;background:#000;z-index:20">
+    <video id="pre-roll-video" muted playsinline></video>
+  </div>
+  <script>
+    const preRoll = document.querySelector('#pre-roll-overlay');
+    const video = document.querySelector('#pre-roll-video');
+    video.addEventListener('ended', () => { preRoll.hidden = true; });
+    video.autoplay = true;
+    video.load();
+  </script></body>`
 );
 
 const INVALID_AUDIO_ON_CTA_FIXTURE = NONBLANK_CANVAS_FIXTURE.replace(
@@ -86,6 +110,13 @@ test('runtime smoke resolves root, nested, and single platform HTML entries', as
   }
 });
 
+test('runtime smoke isolates Chromium in a process group and cleans up descendants', async () => {
+  const runtime = await readFile(new URL('../scripts/check-playable-runtime.mjs', import.meta.url), 'utf8');
+  assert.match(runtime, /detached: process\.platform !== 'win32'/);
+  assert.match(runtime, /process\.kill\(-browser\.pid, signal\)/);
+  assert.match(runtime, /signalBrowserTree\('SIGKILL'\)/);
+});
+
 test('runtime smoke accepts a loaded, nonblank playable canvas without console errors', { timeout: 30_000 }, async (context) => {
   const chrome = await findChromeExecutable();
   if (!chrome) {
@@ -111,6 +142,38 @@ test('runtime smoke accepts a loaded, nonblank playable canvas without console e
     assert.equal(report.checks.find((item) => item.id === 'RUNTIME-DYNAMIC-IMAGE-001').status, 'pass');
     assert.equal(report.ctaCapture.isTrusted, true);
     assert.equal(report.ctaCapture.actualBridgeCalls[0].bridge, 'fb-cta');
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test('runtime smoke emulates the branding variant device instead of the host browser', { timeout: 30_000 }, async (context) => {
+  const chrome = await findChromeExecutable();
+  if (!chrome) {
+    context.skip('Chrome/Chromium is unavailable.');
+    return;
+  }
+  const root = await mkdtemp(path.join(os.tmpdir(), 'runtime-device-fixture-'));
+  try {
+    const artifactPath = path.join(root, 'fixture.html');
+    await writeFile(artifactPath, DEVICE_PROBE_FIXTURE, 'utf8');
+    // Without a device the page sees the desktop host, so an iOS-only path fails the check.
+    const hostReport = await checkPlayableRuntimeArtifact({
+      artifactPath,
+      platform: 'applovin',
+      chrome,
+      timeoutMs: 8_000
+    });
+    assert.equal(hostReport.checks.find((item) => item.id === 'RUNTIME-CONSOLE-001').status, 'fail');
+    // The ios device profile must reach the page before its scripts run, matching a real iPhone.
+    const iosReport = await checkPlayableRuntimeArtifact({
+      artifactPath,
+      platform: 'applovin',
+      chrome,
+      timeoutMs: 8_000,
+      device: 'ios'
+    });
+    assert.equal(iosReport.conclusion, 'PASS', JSON.stringify(iosReport.checks, null, 2));
   } finally {
     await rm(root, { recursive: true, force: true });
   }
@@ -161,6 +224,30 @@ test('runtime smoke rejects audio playback attempted before trusted interaction'
     assert.equal(report.conclusion, 'FAIL');
     assert.equal(report.checks.find((item) => item.id === 'RUNTIME-AUDIO-001').status, 'fail');
     assert.equal(report.probe.audioBeforeInteraction[0].type, 'HTMLMediaElement.play');
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test('runtime smoke accepts muted pre-roll playback and waits for its transition', { timeout: 30_000 }, async (context) => {
+  const chrome = await findChromeExecutable();
+  if (!chrome) {
+    context.skip('Chrome/Chromium is unavailable.');
+    return;
+  }
+  const root = await mkdtemp(path.join(os.tmpdir(), 'runtime-preroll-fixture-'));
+  try {
+    const artifactPath = path.join(root, 'fixture.html');
+    await writeFile(artifactPath, MUTED_PRE_ROLL_FIXTURE, 'utf8');
+    const report = await checkPlayableRuntimeArtifact({
+      artifactPath,
+      platform: 'meta',
+      chrome,
+      timeoutMs: 8_000
+    });
+    assert.equal(report.conclusion, 'PASS', JSON.stringify(report.checks, null, 2));
+    assert.equal(report.checks.find((item) => item.id === 'RUNTIME-PREROLL-001').status, 'pass');
+    assert.equal(report.checks.find((item) => item.id === 'RUNTIME-AUDIO-001').status, 'pass');
   } finally {
     await rm(root, { recursive: true, force: true });
   }

@@ -5,10 +5,11 @@ import { ACTIVE_SPATIAL_CONVEYOR_PACKAGE } from './generated-active-spatial-conv
 import { LEVEL_1, setActiveLevel } from './level-data.js';
 import { createLevelSession } from './level-session.js';
 import { SceneView } from './scene-view.js';
-import { clampCenteredRectX } from './scene-layout.js';
+import { calculateAutoCameraFit, clampCenteredRectX } from './scene-layout.js';
 import { SCENE_TUNING } from './scene-tuning.js';
 import { isValidStoreLink, resolveStoreLink } from './store-links.js';
 import { createGameAudioController } from './audio-controller.js';
+import { createPreRollController } from './pre-roll.js';
 import {
   getMechanismAudioConfig,
   getMechanismTypesForLevels
@@ -21,7 +22,7 @@ import {
   refreshSpatialConveyorPackages
 } from './spatial-conveyor-runtime.js';
 
-const EDITOR_ENABLED = import.meta.env.DEV;
+const EDITOR_ENABLED = import.meta.env.DEV || __REMOTE_EDITOR__;
 const DEFAULT_SCENE_TUNING = EDITOR_ENABLED ? structuredClone(SCENE_TUNING) : null;
 
 if (ACTIVE_SPATIAL_CONVEYOR_PACKAGE) {
@@ -30,16 +31,21 @@ if (ACTIVE_SPATIAL_CONVEYOR_PACKAGE) {
 
 const TUNING_STORAGE_KEY = 'bus-loop-scene-tuning-v3';
 const LEGACY_TUNING_STORAGE_KEY = 'bus-loop-scene-tuning-v2';
+const LEVEL_TUNING_STORAGE_KEY = 'bus-loop-level-tuning-v1';
 const LEVEL_EDITOR_PREVIEW_STORAGE_KEY = 'bus-loop-level-editor-preview-v3';
 const LEGACY_LEVEL_EDITOR_PREVIEW_STORAGE_KEYS = Object.freeze([
   'bus-loop-level-editor-preview-v1',
   'bus-loop-level-editor-preview-v2'
 ]);
 const LEVEL_EDITOR_PREVIEW_FORMAT = 'bus-loop-level-editor-preview-v3';
+const INSTALL_THRESHOLD_CUSTOM_STORAGE_KEY = 'bus-loop-install-threshold-custom-v1';
 const LEVEL36_VEHICLE_SCALE_MIGRATION_KEY = 'bus-loop-level36-vehicle-scale-v1';
 const LEVEL36_VEHICLE_COMPACTION_MIGRATION_KEY = 'bus-loop-level36-vehicle-compaction-v1';
 const LEVEL36_TIMED_GUIDE_MIGRATION_KEY = 'bus-loop-level36-timed-guide-v1';
-const DEFAULT_STORE_LINKS = Object.freeze({ ...SCENE_TUNING.storeLinks });
+const CUSTOM_BACKGROUND_ASSET_PREFIX = '/assets/editor-backgrounds/';
+const DEFAULT_BACKGROUND_SOURCE_WIDTH = 2100;
+const DEFAULT_BACKGROUND_SOURCE_HEIGHT = 3382;
+const DEFAULT_STORE_LINKS = { ...SCENE_TUNING.storeLinks };
 const STORE_OPEN_COOLDOWN_MS = 800;
 let platformVisible = true;
 let platformBridge;
@@ -51,6 +57,8 @@ const loadingScreen = $('#loading-screen');
 const loadingProgress = loadingScreen?.querySelector('.loading-progress');
 const loadingProgressBar = $('#loading-progress-bar');
 const loadingProgressValue = $('#loading-progress-value');
+const preRollOverlay = $('#pre-roll-overlay');
+const preRollVideo = $('#pre-roll-video');
 const gameOverOverlay = $('#game-over-overlay');
 const gameOverTitle = $('#game-over-title');
 const gameOverLogo = $('#game-over-logo');
@@ -71,6 +79,88 @@ const getPassengerMaterialColorIndex = (path) => {
   const colorIndex = Number(match[1]);
   return Number.isInteger(colorIndex) ? colorIndex : null;
 };
+
+function createEditorFallbackView(level, initializationError = null) {
+  const queueCount = Math.max(1, Number(level?.queueCount) || 2);
+  const queueCapacity = Math.max(0, Number(level?.queueCapacity) || 0);
+  const queueSpacing = Math.max(0.01, Number(level?.passengerQueue?.spacing) || 0.4);
+  const queueCapacities = Array(queueCount).fill(queueCapacity);
+  const context = canvas?.getContext?.('2d');
+  const fallbackNotice = document.createElement('div');
+  fallbackNotice.className = 'editor-fallback-notice';
+  const hasInitializationError = Boolean(initializationError);
+  const noticeTitle = document.createElement('strong');
+  noticeTitle.textContent = hasInitializationError ? '3D 预览初始化失败' : '3D 预览不可用';
+  const noticeText = document.createElement('span');
+  noticeText.textContent = hasInitializationError
+    ? '场景资源或配置初始化异常，二维关卡编辑器仍可使用；请查看悬停提示中的错误信息'
+    : '当前浏览器未启用 WebGL，请使用支持硬件加速的 Chrome；关卡编辑器仍可使用';
+  fallbackNotice.append(noticeTitle, noticeText);
+  if (initializationError?.message) fallbackNotice.title = `初始化信息：${initializationError.message}`;
+  stage?.append(fallbackNotice);
+  let lastSize = { width: 0, height: 0, ratio: 1 };
+  const drawFallbackState = () => {
+    if (!context) return;
+    const { width, height } = lastSize;
+    context.clearRect(0, 0, width, height);
+    context.fillStyle = '#0d1c2b';
+    context.fillRect(0, 0, width, height);
+  };
+  return {
+    ready: Promise.resolve(),
+    resize() {
+      if (!context || !canvas) return;
+      const rect = canvas.getBoundingClientRect();
+      const width = Math.max(1, Math.round(rect.width || innerWidth));
+      const height = Math.max(1, Math.round(rect.height || innerHeight));
+      const ratio = Math.min(globalThis.devicePixelRatio || 1, 2);
+      if (canvas.width !== Math.round(width * ratio) || canvas.height !== Math.round(height * ratio)) {
+        canvas.width = Math.round(width * ratio);
+        canvas.height = Math.round(height * ratio);
+        context.setTransform(ratio, 0, 0, ratio, 0, 0);
+        lastSize = { width, height, ratio };
+      }
+      drawFallbackState();
+    },
+    render() {},
+    update() { drawFallbackState(); },
+    setInputEnabled() {},
+    setTuning(patch) {
+      deepMerge(SCENE_TUNING, patch);
+      return SCENE_TUNING;
+    },
+    replaceActiveLevel() {},
+    refreshSpatialConveyorDraft() {},
+    resetGuideHandActivity() {},
+    showEntryBanner() {},
+    getBackgroundCanvasBounds() {
+      const rect = canvas?.getBoundingClientRect?.();
+      return { left: 0, top: 0, width: rect?.width || 1, height: rect?.height || 1 };
+    },
+    getCameraContentBounds() {
+      return { minX: -4, maxX: 4, minZ: -4, maxZ: 4 };
+    },
+    getQueueSpacing() { return queueSpacing; },
+    getQueueLengths() { return queueCapacities.map((capacity) => Math.max(0, capacity - 1) * queueSpacing); },
+    getQueueCapacities() { return [...queueCapacities]; },
+    getConveyorPathLength() { return Math.max(0.0001, Number(level?.conveyorPathLength) || 1); },
+    getConveyorConfig() {
+      return {
+        layoutId: 'editor-fallback',
+        capacity: Math.max(1, Number(level?.conveyorCapacity) || 1),
+        queueCapacities: [...queueCapacities],
+        entryPercents: [...(level?.entryPercents ?? [])],
+        exitStart: Number(level?.exitStart) || 0,
+        exitEnd: Number(level?.exitEnd) || 1,
+        directEntrance: false,
+        initiallyFull: false
+      };
+    },
+    async captureFrame() {
+      throw new Error('当前浏览器无法创建 WebGL 画布，暂时不能截图。');
+    }
+  };
+}
 
 function deepMerge(target, source) {
   for (const [key, value] of Object.entries(source ?? {})) {
@@ -203,11 +293,24 @@ function migrateLevel36TimedGuideTuning(source) {
   });
   assignChanged(source.firstClickGuide, {
     enabled: 0,
-    levelKey: 'level36',
     vehicleId: 1,
     maskOpacity: 0
   });
   return changed;
+}
+
+function migrateFirstClickGuideScope(source) {
+  if (!source?.firstClickGuide || !Object.hasOwn(source.firstClickGuide, 'levelKey')) return false;
+  delete source.firstClickGuide.levelKey;
+  return true;
+}
+
+function migrateFirstClickGuideMaskTuning(source) {
+  const guide = source?.firstClickGuide;
+  if (!guide || Object.hasOwn(guide, 'maskEnabled')) return false;
+  guide.maskEnabled = 1;
+  if (Number(guide.maskOpacity) <= 0) guide.maskOpacity = 0.68;
+  return true;
 }
 
 function migrateLevel16PackageTuning(source) {
@@ -325,12 +428,34 @@ function migrateCtaScreenPositionTuning(source) {
   return changed;
 }
 
+function migrateCustomBackgroundSourceSize(source) {
+  const background = source?.background;
+  if (!background?.asset?.startsWith(CUSTOM_BACKGROUND_ASSET_PREFIX)) return false;
+  let changed = false;
+  if (Number(background.sourceWidth) !== DEFAULT_BACKGROUND_SOURCE_WIDTH) {
+    background.sourceWidth = DEFAULT_BACKGROUND_SOURCE_WIDTH;
+    changed = true;
+  }
+  if (Number(background.sourceHeight) !== DEFAULT_BACKGROUND_SOURCE_HEIGHT) {
+    background.sourceHeight = DEFAULT_BACKGROUND_SOURCE_HEIGHT;
+    changed = true;
+  }
+  return changed;
+}
+
 function applyPreviewFrame() {
   const preview = SCENE_TUNING.preview;
   app?.classList.toggle('is-phone-preview', EDITOR_ENABLED && Boolean(preview?.enabled));
   if (app) {
     app.style.setProperty('--preview-width', String(preview?.width ?? 1080));
     app.style.setProperty('--preview-height', String(preview?.height ?? 2160));
+  }
+}
+
+function refreshDefaultStoreLinks() {
+  // Keep the fallback snapshot aligned with the links embedded in the exported tuning.
+  for (const platform of ['android', 'ios']) {
+    DEFAULT_STORE_LINKS[platform] = SCENE_TUNING.storeLinks?.[platform];
   }
 }
 
@@ -345,8 +470,11 @@ function loadSavedTuning() {
       const level36VehicleScaleMigrated = migrateLevel36VehicleScaleTuning(savedTuning);
       const level36VehicleCompactionMigrated = migrateLevel36VehicleCompactionTuning(savedTuning);
       const level36TimedGuideMigrated = migrateLevel36TimedGuideTuning(savedTuning);
+      const firstClickGuideScopeMigrated = migrateFirstClickGuideScope(savedTuning);
+      const firstClickGuideMaskMigrated = migrateFirstClickGuideMaskTuning(savedTuning);
       const spatialSpeedMigrated = migrateSpatialSpeedTuning(savedTuning);
       const ctaScreenPositionMigrated = migrateCtaScreenPositionTuning(savedTuning);
+      const customBackgroundSourceMigrated = migrateCustomBackgroundSourceSize(savedTuning);
       const luxuryPassengerRotationRemoved = delete savedTuning.luxuryPassengerRotation;
       const luxuryPassengerOffsetRemoved = delete savedTuning.luxuryPassengerOffset;
       const luxuryMaterialDebugRemoved = delete savedTuning.luxuryMaterialDebug;
@@ -365,8 +493,11 @@ function loadSavedTuning() {
         || level36VehicleScaleMigrated
         || level36VehicleCompactionMigrated
         || level36TimedGuideMigrated
+        || firstClickGuideScopeMigrated
+        || firstClickGuideMaskMigrated
         || spatialSpeedMigrated
         || ctaScreenPositionMigrated
+        || customBackgroundSourceMigrated
         || luxuryPassengerRotationRemoved
         || luxuryPassengerOffsetRemoved
         || luxuryMaterialDebugRemoved
@@ -376,18 +507,25 @@ function loadSavedTuning() {
         savedTuning.luxuryMaterial = structuredClone(SCENE_TUNING.luxuryMaterial);
         localStorage.setItem(TUNING_STORAGE_KEY, JSON.stringify(savedTuning));
       }
+      restoreSelectedLevelTuning();
       return;
     }
     const legacySaved = localStorage.getItem(LEGACY_TUNING_STORAGE_KEY);
-    if (!legacySaved) return;
+    if (!legacySaved) {
+      restoreSelectedLevelTuning();
+      return;
+    }
     const legacy = JSON.parse(legacySaved);
     migrateGuideHandMotionTuning(legacy);
     migrateLevel33EnhancementTuning(legacy);
     migrateLevel36VehicleScaleTuning(legacy);
     migrateLevel36VehicleCompactionTuning(legacy);
     migrateLevel36TimedGuideTuning(legacy);
+    migrateFirstClickGuideScope(legacy);
+    migrateFirstClickGuideMaskTuning(legacy);
     migrateSpatialSpeedTuning(legacy);
     migrateCtaScreenPositionTuning(legacy);
+    migrateCustomBackgroundSourceSize(legacy);
     migrateLegacyPackageTuning(legacy);
     delete legacy.luxuryMaterialDebug;
     delete legacy.luxuryMaterial;
@@ -402,6 +540,115 @@ function loadSavedTuning() {
   } catch (error) {
     console.warn('Saved scene tuning could not be loaded.', error);
   }
+  restoreSelectedLevelTuning();
+  // Saved editor tuning merges over the snapshot taken at load, so refresh afterwards.
+  refreshDefaultStoreLinks();
+}
+
+function readLevelTuningProfiles() {
+  if (!EDITOR_ENABLED) return {};
+  try {
+    const source = localStorage.getItem(LEVEL_TUNING_STORAGE_KEY);
+    const parsed = source ? JSON.parse(source) : {};
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return {};
+    const profiles = parsed.profiles ?? parsed;
+    if (!profiles || typeof profiles !== 'object' || Array.isArray(profiles)) return {};
+    return profiles;
+  } catch (error) {
+    console.warn('Per-level scene tuning could not be loaded.', error);
+    return {};
+  }
+}
+
+function writeLevelTuningProfiles(profiles) {
+  if (!EDITOR_ENABLED) return;
+  try {
+    localStorage.setItem(LEVEL_TUNING_STORAGE_KEY, JSON.stringify({ version: 1, profiles }));
+  } catch (error) {
+    console.warn('Per-level scene tuning could not be saved.', error);
+  }
+}
+
+function isLevelTuningProfile(value) {
+  return Boolean(value?.tuning)
+    && typeof value.tuning === 'object'
+    && !Array.isArray(value.tuning);
+}
+
+function saveLevelTuningProfile(value) {
+  if (!EDITOR_ENABLED) return;
+  const levelKey = String(value?.level?.selected ?? '').trim();
+  if (!levelKey) return;
+  const profiles = readLevelTuningProfiles();
+  const previous = profiles[levelKey];
+  profiles[levelKey] = {
+    tuning: structuredClone(value),
+    installThresholdCustom: isLevelTuningProfile(previous)
+      ? Boolean(previous.installThresholdCustom)
+      : localStorage.getItem(INSTALL_THRESHOLD_CUSTOM_STORAGE_KEY) === '1'
+  };
+  writeLevelTuningProfiles(profiles);
+}
+
+function restoreSelectedLevelTuning() {
+  if (!EDITOR_ENABLED) return;
+  const levelKey = String(SCENE_TUNING.level?.selected ?? '').trim();
+  if (!levelKey) return;
+  const profiles = readLevelTuningProfiles();
+  const profile = profiles[levelKey];
+  if (isLevelTuningProfile(profile)) {
+    deepMerge(SCENE_TUNING, structuredClone(profile.tuning));
+    SCENE_TUNING.level.selected = levelKey;
+    if (profile.installThresholdCustom) {
+      localStorage.setItem(INSTALL_THRESHOLD_CUSTOM_STORAGE_KEY, '1');
+    } else {
+      localStorage.removeItem(INSTALL_THRESHOLD_CUSTOM_STORAGE_KEY);
+    }
+    return;
+  }
+  saveLevelTuningProfile(SCENE_TUNING);
+}
+
+function setLevelInstallThresholdCustom(levelKey, custom) {
+  if (!EDITOR_ENABLED) return;
+  const profiles = readLevelTuningProfiles();
+  const profile = profiles[levelKey];
+  if (!isLevelTuningProfile(profile)) return;
+  profile.installThresholdCustom = Boolean(custom);
+  profiles[levelKey] = profile;
+  writeLevelTuningProfiles(profiles);
+  if (custom) localStorage.setItem(INSTALL_THRESHOLD_CUSTOM_STORAGE_KEY, '1');
+  else localStorage.removeItem(INSTALL_THRESHOLD_CUSTOM_STORAGE_KEY);
+}
+
+function getLevelTuningForSelection(levelKey) {
+  const profiles = readLevelTuningProfiles();
+  const profile = profiles[String(levelKey ?? '').trim()];
+  if (isLevelTuningProfile(profile)) {
+    const tuning = structuredClone(profile.tuning);
+    tuning.level ??= {};
+    tuning.level.selected = levelKey;
+    return tuning;
+  }
+  const tuning = structuredClone(DEFAULT_SCENE_TUNING);
+  tuning.level ??= {};
+  tuning.level.selected = levelKey;
+  return tuning;
+}
+
+function activateLevelTuning(levelKey) {
+  flushTuningSave();
+  writeTuning(SCENE_TUNING);
+  const profiles = readLevelTuningProfiles();
+  const profile = profiles[String(levelKey ?? '').trim()];
+  const tuning = getLevelTuningForSelection(levelKey);
+  if (profile?.installThresholdCustom) {
+    localStorage.setItem(INSTALL_THRESHOLD_CUSTOM_STORAGE_KEY, '1');
+  } else {
+    localStorage.removeItem(INSTALL_THRESHOLD_CUSTOM_STORAGE_KEY);
+  }
+  writeTuning(tuning);
+  return tuning;
 }
 
 let pendingTuningSave = null;
@@ -411,6 +658,7 @@ function writeTuning(value) {
   if (!EDITOR_ENABLED) return;
   try {
     localStorage.setItem(TUNING_STORAGE_KEY, JSON.stringify(value));
+    saveLevelTuningProfile(value);
   } catch (error) {
     console.warn('Scene tuning could not be saved.', error);
   }
@@ -567,6 +815,7 @@ function durationCss(value, fallbackSpeed) {
 }
 
 let audio = null;
+let preRollController = null;
 let lastStoreOpenAt = 0;
 let storeOpenAttempts = 0;
 
@@ -611,6 +860,174 @@ function applyCtaTuning() {
   ctaButton.style.setProperty('--game-over-cta-appear-duration', durationCss(cta.appearSpeed, 1.45));
   ctaButton.style.left = `${left}px`;
   ctaButton.style.top = `${top}px`;
+}
+
+const screenshotImageCache = new Map();
+
+async function loadScreenshotImage(source) {
+  const url = new URL(source, window.location.href).href;
+  const cached = screenshotImageCache.get(url);
+  if (cached?.complete && cached.naturalWidth > 0) return cached;
+  const image = new Image();
+  image.decoding = 'async';
+  image.src = url;
+  screenshotImageCache.set(url, image);
+  if (!image.complete) {
+    await image.decode().catch((error) => {
+      if (image.complete && image.naturalWidth > 0) return;
+      throw error;
+    });
+  }
+  return image;
+}
+
+function captureMetrics(width, height) {
+  const designWidth = Math.max(1, Number(SCENE_TUNING.preview?.width) || 1080);
+  const designHeight = Math.max(1, Number(SCENE_TUNING.preview?.height) || 2160);
+  const positionScaleX = width / designWidth;
+  const positionScaleY = height / designHeight;
+  return {
+    designWidth,
+    designHeight,
+    positionScaleX,
+    positionScaleY,
+    uiScale: Math.max(0.01, Math.min(1, positionScaleX, positionScaleY))
+  };
+}
+
+function drawContainImage(context, image, centerX, centerY, width, height) {
+  const sourceWidth = image.naturalWidth || image.videoWidth || image.width;
+  const sourceHeight = image.naturalHeight || image.videoHeight || image.height;
+  if (!sourceWidth || !sourceHeight || width <= 0 || height <= 0) return;
+  const scale = Math.min(width / sourceWidth, height / sourceHeight);
+  const drawWidth = sourceWidth * scale;
+  const drawHeight = sourceHeight * scale;
+  context.drawImage(image, centerX - drawWidth / 2, centerY - drawHeight / 2, drawWidth, drawHeight);
+}
+
+async function drawScreenshotBranding(context, metrics, width) {
+  for (const key of ['icon', 'logo']) {
+    const config = SCENE_TUNING.branding?.[key] ?? {};
+    if (!Boolean(config.enabled ?? 1)) continue;
+    const source = key === 'icon' ? config.asset : brandingItems.logo?.getAttribute('src');
+    if (!source) continue;
+    const image = await loadScreenshotImage(source).catch(() => null);
+    if (!image) continue;
+    const renderedWidth = Math.max(1, Number(config.width) || 180) * metrics.uiScale;
+    const renderedHeight = Math.max(1, Number(config.height) || renderedWidth) * metrics.uiScale;
+    const centerX = clampConfigNumber(
+      (Number.isFinite(Number(config.x)) ? Number(config.x) : metrics.designWidth / 2) * metrics.positionScaleX,
+      renderedWidth / 2,
+      width - renderedWidth / 2,
+      width / 2
+    );
+    const centerY = (Number.isFinite(Number(config.y)) ? Number(config.y) : metrics.designHeight / 2)
+      * metrics.positionScaleY;
+    drawContainImage(context, image, centerX, centerY, renderedWidth, renderedHeight);
+  }
+
+  const textConfig = SCENE_TUNING.branding?.text ?? {};
+  if (!Boolean(textConfig.enabled ?? 1)) return;
+  const content = String(textConfig.content ?? 'Bus Fever Party!');
+  const boxWidth = Math.max(1, Number(textConfig.width) || 800) * metrics.uiScale;
+  const boxHeight = Math.max(1, Number(textConfig.height) || 100) * metrics.uiScale;
+  const centerX = (Number.isFinite(Number(textConfig.x)) ? Number(textConfig.x) : metrics.designWidth / 2)
+    * metrics.positionScaleX;
+  const centerY = (Number.isFinite(Number(textConfig.y)) ? Number(textConfig.y) : metrics.designHeight / 2)
+    * metrics.positionScaleY;
+  let fontSize = Math.max(1, boxHeight * 0.62);
+  context.save();
+  context.textAlign = 'center';
+  context.textBaseline = 'middle';
+  context.font = `700 ${fontSize}px 'Poppins Branding', Arial, sans-serif`;
+  const measuredWidth = context.measureText(content).width;
+  if (measuredWidth > boxWidth) {
+    fontSize = Math.max(1, fontSize * boxWidth / measuredWidth * 0.98);
+    context.font = `700 ${fontSize}px 'Poppins Branding', Arial, sans-serif`;
+  }
+  context.fillStyle = '#fff';
+  context.shadowColor = 'rgba(14, 33, 51, .72)';
+  context.shadowBlur = 5 * metrics.uiScale;
+  context.shadowOffsetY = 3 * metrics.uiScale;
+  context.fillText(content, centerX, centerY);
+  context.shadowColor = 'rgba(14, 33, 51, .95)';
+  context.shadowBlur = 1 * metrics.uiScale;
+  context.shadowOffsetY = 1 * metrics.uiScale;
+  context.fillText(content, centerX, centerY);
+  context.restore();
+}
+
+async function drawScreenshotCta(context, metrics, width, height) {
+  const cta = SCENE_TUNING.cta ?? {};
+  if (!Boolean(cta.enabled ?? 1)) return;
+  const buttonHeight = Math.max(1, Number(cta.height) || 68);
+  const buttonWidth = Math.max(1, buttonHeight * (Number(cta.stretchX) || 2.75));
+  const renderedWidth = buttonWidth * metrics.uiScale;
+  const renderedHeight = buttonHeight * metrics.uiScale;
+  const centerX = clampConfigNumber(
+    (Number.isFinite(Number(cta.x)) ? Number(cta.x) : metrics.designWidth / 2) * metrics.positionScaleX,
+    renderedWidth / 2,
+    width - renderedWidth / 2,
+    width / 2
+  );
+  const centerY = clampConfigNumber(
+    (Number.isFinite(Number(cta.y)) ? Number(cta.y) : metrics.designHeight - buttonHeight / 2)
+      * metrics.positionScaleY,
+    renderedHeight / 2,
+    height - renderedHeight / 2,
+    height - renderedHeight / 2
+  );
+  const button = await loadScreenshotImage('/assets/unity/ui/Main_Prop_GreenBtn.png').catch(() => null);
+  if (button) drawContainImage(context, button, centerX, centerY, renderedWidth, renderedHeight);
+
+  const fontSize = Math.max(1, Number(cta.fontSize) || 28) * metrics.uiScale;
+  const strokeWidth = Math.max(0, Number(cta.strokeWidth) || 0) * metrics.uiScale;
+  context.save();
+  context.textAlign = 'center';
+  context.textBaseline = 'middle';
+  context.font = `900 ${fontSize}px 'Poppins Branding', Arial, sans-serif`;
+  context.lineJoin = 'round';
+  context.lineWidth = Math.max(1, strokeWidth * 2);
+  context.strokeStyle = formatHexColor(cta.strokeColor, 0x196b07);
+  context.fillStyle = '#fff';
+  context.shadowColor = 'rgba(20, 86, 4, .35)';
+  context.shadowBlur = 4 * metrics.uiScale;
+  context.shadowOffsetY = 3 * metrics.uiScale;
+  context.strokeText('Play Now', centerX, centerY);
+  context.fillText('Play Now', centerX, centerY);
+  context.restore();
+}
+
+async function composeScreenshotBlob(baseBlob, { width, height }) {
+  const output = document.createElement('canvas');
+  output.width = width;
+  output.height = height;
+  const context = output.getContext('2d');
+  const baseImage = await createImageBitmap(baseBlob);
+  context.drawImage(baseImage, 0, 0, width, height);
+  baseImage.close?.();
+  const metrics = captureMetrics(width, height);
+  if (document.fonts?.ready) await document.fonts.ready.catch(() => {});
+  await drawScreenshotBranding(context, metrics, width);
+  await drawScreenshotCta(context, metrics, width, height);
+  return new Promise((resolve, reject) => {
+    output.toBlob((blob) => {
+      if (blob) resolve(blob);
+      else reject(new Error('截图生成失败'));
+    }, 'image/png');
+  });
+}
+
+function downloadBlob(filename, blob) {
+  const objectUrl = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = objectUrl;
+  link.download = filename;
+  link.hidden = true;
+  document.body.append(link);
+  link.click();
+  link.remove();
+  setTimeout(() => URL.revokeObjectURL(objectUrl), 0);
 }
 
 function applyGameOverTuning() {
@@ -677,7 +1094,13 @@ function InstallFullGame() {
 
 function getSuccessfulOperationThreshold() {
   const configuredThreshold = Number(SCENE_TUNING.installGate?.successfulOperationThreshold);
-  return Number.isFinite(configuredThreshold) ? Math.max(1, Math.floor(configuredThreshold)) : 40;
+  const hasCustomThreshold = !EDITOR_ENABLED
+    || localStorage.getItem(INSTALL_THRESHOLD_CUSTOM_STORAGE_KEY) === '1';
+  if (!hasCustomThreshold) return Math.max(1, LEVEL_1.vehicles?.length ?? 40);
+  if (Number.isFinite(configuredThreshold) && configuredThreshold > 0) {
+    return Math.max(1, Math.floor(configuredThreshold));
+  }
+  return Math.max(1, LEVEL_1.vehicles?.length ?? 40);
 }
 
 function flushTuningSave() {
@@ -705,7 +1128,14 @@ function clearSavedTuning() {
   pendingTuningSave = null;
   clearTimeout(tuningSaveTimer);
   tuningSaveTimer = 0;
+  const levelKey = String(SCENE_TUNING.level?.selected ?? '').trim();
+  const profiles = readLevelTuningProfiles();
+  if (levelKey && profiles[levelKey]) {
+    delete profiles[levelKey];
+    writeLevelTuningProfiles(profiles);
+  }
   localStorage.removeItem(TUNING_STORAGE_KEY);
+  localStorage.removeItem(INSTALL_THRESHOLD_CUSTOM_STORAGE_KEY);
 }
 
 function readLevelEditorPreviewDocument() {
@@ -723,6 +1153,20 @@ function readLevelEditorPreviewDocument() {
     console.warn('Authored level preview could not be restored.', error);
     return null;
   }
+}
+
+function getPlayableExportPayload() {
+  const selectedKey = String(SCENE_TUNING.level?.selected ?? '');
+  const previewEntry = readLevelEditorPreviewDocument();
+  return {
+    tuning: SCENE_TUNING,
+    ...(previewEntry?.mode === 'draft' && previewEntry.document.key === selectedKey
+      ? {
+          levelDocument: previewEntry.document,
+          levelDocumentBaseRevision: previewEntry.baseRevision
+        }
+      : {})
+  };
 }
 
 function writeLevelEditorPreviewDocument(document, mode = 'saved', baseRevision = null) {
@@ -745,10 +1189,47 @@ async function readSavedWebLevelEntry(levelKey) {
   };
 }
 
+async function resolveSelectedLevel(levelKey, getLevelDefinition) {
+  const catalogLevel = getLevelDefinition(levelKey);
+  const savedEntry = await readSavedWebLevelEntry(levelKey);
+  if (!savedEntry?.document) {
+    return {
+      level: catalogLevel,
+      savedEntry: null,
+      exact: catalogLevel?.key === levelKey
+    };
+  }
+  const { levelDocumentToRuntime } = await import('./level-editor-model.js');
+  return {
+    level: levelDocumentToRuntime(savedEntry.document, catalogLevel),
+    savedEntry,
+    exact: true
+  };
+}
+
+async function readLevelEditorBase(levelKey, getLevelDefinition) {
+  const resolved = await resolveSelectedLevel(levelKey, getLevelDefinition);
+  if (resolved.exact) return resolved;
+  throw new Error(`未找到当前关卡 ${levelKey} 的可编辑文件，请重新选择关卡。`);
+}
+
 async function startRuntime() {
+  // Exported builds drop the editor branch entirely, so the fallback refresh has to run
+  // outside it or the baked branding variant never reaches the store link fallback.
+  refreshDefaultStoreLinks();
   if (EDITOR_ENABLED) {
     loadSavedTuning();
     for (const key of LEGACY_LEVEL_EDITOR_PREVIEW_STORAGE_KEYS) localStorage.removeItem(key);
+  }
+  let revealPlayable = () => {};
+  if (preRollOverlay && preRollVideo) {
+    preRollController?.destroy();
+    preRollController = createPreRollController({
+      root: preRollOverlay,
+      video: preRollVideo,
+      onReveal: () => revealPlayable()
+    });
+    void preRollController.play(SCENE_TUNING.preRoll);
   }
   let sessionLevels = PLAYABLE_LEVEL_SEQUENCE;
   if (EDITOR_ENABLED) {
@@ -757,22 +1238,29 @@ async function startRuntime() {
       console.warn('Spatial conveyor packages could not be loaded.', error);
     });
     const selectedKey = SCENE_TUNING.level?.selected;
-    let selectedLevel = getLevelDefinition(selectedKey);
+    const resolvedLevel = await resolveSelectedLevel(selectedKey, getLevelDefinition);
+    let selectedLevel = resolvedLevel.level;
     const previewEntry = readLevelEditorPreviewDocument();
-    const savedEntry = await readSavedWebLevelEntry(selectedKey);
+    const savedEntry = resolvedLevel.savedEntry;
     const savedRevision = savedEntry?.revision ?? null;
     const useDraft = previewEntry?.mode === 'draft'
       && previewEntry.document.key === selectedKey
       && previewEntry.baseRevision === savedRevision;
     const previewDocument = useDraft ? previewEntry.document : savedEntry?.document;
     if (!useDraft) localStorage.removeItem(LEVEL_EDITOR_PREVIEW_STORAGE_KEY);
-    if (previewDocument) {
+    if (useDraft && previewDocument) {
       const { levelDocumentToRuntime } = await import('./level-editor-model.js');
       selectedLevel = levelDocumentToRuntime(previewDocument, selectedLevel);
-      if (SCENE_TUNING.level?.selected !== previewDocument.key) {
-        SCENE_TUNING.level.selected = previewDocument.key;
-        saveTuning(SCENE_TUNING, { immediate: true });
-      }
+    }
+    if (localStorage.getItem(INSTALL_THRESHOLD_CUSTOM_STORAGE_KEY) !== '1') {
+      const vehicleCount = Math.max(1, selectedLevel.vehicles?.length ?? 0);
+      SCENE_TUNING.installGate.successfulOperationThreshold = vehicleCount;
+      DEFAULT_SCENE_TUNING.installGate.successfulOperationThreshold = vehicleCount;
+      saveTuning(SCENE_TUNING, { immediate: true });
+    }
+    if (previewDocument && SCENE_TUNING.level?.selected !== previewDocument.key) {
+      SCENE_TUNING.level.selected = previewDocument.key;
+      saveTuning(SCENE_TUNING, { immediate: true });
     }
     sessionLevels = selectedLevel.key === 'level9'
       ? [selectedLevel, getLevelDefinition('level7')]
@@ -814,25 +1302,46 @@ async function startRuntime() {
 
   let view;
   const handleVehicleClick = (vehicleId) => {
+    if (view?.isVehicleInputLocked?.()) return { ok: false, reason: 'opening-guide' };
     view?.recordGuideInteraction();
     const result = game.clickVehicle(vehicleId);
     if (result?.ok && markInstallVehicle(vehicleId)) InstallFullGame();
     return result;
   };
 
-  view = new SceneView(
-    canvas,
-    handleVehicleClick,
-    {
-      onPassengerAboard: () => audio.playPassengerUp(),
-      onLoadingProgress: updateLoadingProgress
-    }
-  );
+  try {
+    view = new SceneView(
+      canvas,
+      handleVehicleClick,
+      {
+        onPassengerAboard: () => audio.playPassengerUp(),
+        onLoadingProgress: updateLoadingProgress
+      }
+    );
+  } catch (error) {
+    if (!EDITOR_ENABLED) throw error;
+    console.warn('WebGL 场景初始化失败，已切换到仅编辑器模式。', error);
+    view = createEditorFallbackView(levelSession.currentLevel(), error);
+  }
   const updateCtaPosition = () => {
     view.resize();
     applyGameOverTuning();
     applyCtaTuning();
     applyBrandingTuning(view.getBackgroundCanvasBounds());
+  };
+  const getCameraPreset = (action) => {
+    if (action === 'default') return structuredClone(DEFAULT_SCENE_TUNING.camera);
+    const scope = action === 'vehicles' || action === 'conveyor' ? action : 'all';
+    const bounds = view.getCameraContentBounds?.({ scope });
+    if (!bounds) return null;
+    return {
+      ...SCENE_TUNING.camera,
+      ...calculateAutoCameraFit({
+        bounds,
+        camera: SCENE_TUNING.camera,
+        margin: scope === 'vehicles' ? 0.85 : 0.7
+      })
+    };
   };
   updateCtaPosition();
   if (__PLAYABLE_PLATFORM__ !== 'mintegral' && 'ResizeObserver' in window && stage) {
@@ -843,8 +1352,10 @@ async function startRuntime() {
   view.ready?.finally(() => {
     updateLoadingProgress(1);
     loadingScreen?.classList.add('is-hidden');
-    view.showEntryBanner?.();
     window.setTimeout(() => loadingScreen?.remove(), 360);
+    revealPlayable = () => view.showEntryBanner?.();
+    if (preRollController) preRollController.setGameReady();
+    else revealPlayable();
     platformBridge?.ready();
   });
   function initializeGameQueues({ resetSlots = false } = {}) {
@@ -941,10 +1452,14 @@ async function startRuntime() {
         import('./level-layout-editor.js'),
         import('./level-catalog.js')
       ]);
-      let baseLevel = getLevelDefinition(SCENE_TUNING.level?.selected);
+      const selectedKey = SCENE_TUNING.level?.selected;
+      const resolvedLevel = await readLevelEditorBase(selectedKey, getLevelDefinition);
+      let baseLevel = resolvedLevel.level;
       const previewEntry = readLevelEditorPreviewDocument();
+      const savedRevision = resolvedLevel.savedEntry?.revision ?? null;
       const previewDocument = previewEntry?.mode === 'draft'
-        && previewEntry.document.key === SCENE_TUNING.level?.selected
+        && previewEntry.document.key === selectedKey
+        && previewEntry.baseRevision === savedRevision
         ? previewEntry.document
         : null;
       if (previewDocument) {
@@ -974,19 +1489,20 @@ async function startRuntime() {
     if (path === 'level.selected') {
       void (async () => {
         try {
-          const webEntry = await readSavedWebLevelEntry(next.level.selected);
+          const selectedLevelKey = next.level.selected;
+          const webEntry = await readSavedWebLevelEntry(selectedLevelKey);
           if (webEntry?.document) {
             writeLevelEditorPreviewDocument(webEntry.document, 'saved', webEntry.revision);
           } else {
             const response = await fetch('/__playable-level', {
               method: 'POST',
               headers: { 'Content-Type': 'text/plain' },
-              body: next.level.selected
+              body: selectedLevelKey
             });
             if (!response.ok) throw new Error(`HTTP ${response.status}`);
             localStorage.removeItem(LEVEL_EDITOR_PREVIEW_STORAGE_KEY);
           }
-          saveTuning(next, { immediate: true });
+          activateLevelTuning(selectedLevelKey);
           window.location.reload();
         } catch (error) {
           console.warn('Could not load the selected playable level.', error);
@@ -1006,6 +1522,9 @@ async function startRuntime() {
       if (syncEditor) editor.sync();
       return SCENE_TUNING;
     }
+    if (path === 'installGate.successfulOperationThreshold') {
+      setLevelInstallThresholdCustom(SCENE_TUNING.level?.selected, true);
+    }
     if (path?.startsWith('branding.')) {
       deepMerge(SCENE_TUNING, next);
       applyBrandingTuning(view.getBackgroundCanvasBounds());
@@ -1016,6 +1535,9 @@ async function startRuntime() {
     const materialOnly = isPassengerMaterialTuningPath(path);
     const restartOpeningGuide = path?.startsWith('firstClickGuide.')
       && Boolean(Number(next.firstClickGuide?.enabled));
+    const restartEntryBanner = path?.startsWith('entryBanner.')
+      && Boolean(Number(next.entryBanner?.enabled));
+    const restartPreRoll = path?.startsWith('preRoll.');
     const restartVehicleGuide = path?.startsWith('vehicleGuideHand.');
     const conveyorStructureChanged = !materialOnly && (
       path === 'conveyorLayout.selected'
@@ -1036,6 +1558,8 @@ async function startRuntime() {
     }
     saveTuning(tuning, { immediate: conveyorStructureChanged });
     if (restartOpeningGuide) reset();
+    if (restartEntryBanner) view.showEntryBanner?.();
+    if (restartPreRoll) void preRollController?.play(tuning.preRoll);
     if (restartVehicleGuide) view.resetGuideHandActivity();
     if (syncEditor) editor.sync();
     return tuning;
@@ -1052,15 +1576,34 @@ async function startRuntime() {
     }
   }
 
+  async function capturePlayableScreenshot({ width = 720, height = 1280 } = {}) {
+    const captureWidth = Math.max(1, Math.round(Number(width) || 720));
+    const captureHeight = Math.max(1, Math.round(Number(height) || 1280));
+    await view.ready;
+    const baseBlob = await view.captureFrame({ width: captureWidth, height: captureHeight });
+    const imageBlob = await composeScreenshotBlob(baseBlob, {
+      width: captureWidth,
+      height: captureHeight
+    });
+    const selectedLevel = String(SCENE_TUNING.level?.selected ?? 'level');
+    const filename = `bus-loop-${selectedLevel}-${captureWidth}x${captureHeight}.png`;
+    downloadBlob(filename, imageBlob);
+    return { filename, width: captureWidth, height: captureHeight };
+  }
+
   if (EDITOR_ENABLED && sceneEditorRoot) {
     import('./scene-editor.js').then(({ createSceneEditor }) => {
       editor = createSceneEditor(sceneEditorRoot, {
         getTuning: () => SCENE_TUNING,
         defaultTuning: DEFAULT_SCENE_TUNING,
         setTuning: applyTuningPatch,
+        getPlayableExportPayload,
         clearSavedTuning,
+        captureScreenshot: capturePlayableScreenshot,
+        previewPreRoll: () => preRollController?.play(SCENE_TUNING.preRoll),
         openSpatialPointEditor,
-        openLevelLayoutEditor
+        openLevelLayoutEditor,
+        getCameraPreset
       });
     }).catch((error) => {
       console.warn('Scene editor could not be loaded.', error);
@@ -1209,7 +1752,7 @@ async function startRuntime() {
   function frame(now) {
     const delta = (now - previous) / 1000;
     previous = now;
-    if (platformVisible && !spatialEditorActive) game.update(delta);
+    if (platformVisible && !spatialEditorActive && !preRollController?.isActive()) game.update(delta);
     const renderState = isSpatialOptimizationEnabled('liveRenderState')
       ? game.renderState()
       : game.snapshot();
@@ -1242,6 +1785,8 @@ async function startRuntime() {
       setTuning: (patch, { path } = {}) => applyTuningPatch(patch, { path, syncEditor: true }),
       exportTuning: () => JSON.stringify(SCENE_TUNING, null, 2),
       saveTuning: () => saveTuning(SCENE_TUNING, { immediate: true }),
+      captureScreenshot: capturePlayableScreenshot,
+      playPreRoll: () => preRollController?.play(SCENE_TUNING.preRoll),
       clearSavedTuning
     } : {})
   };
@@ -1252,6 +1797,7 @@ platformBridge = createPlatformBridge({
   onVisibilityChange: (visible) => {
     platformVisible = visible;
     audio?.setVisible(visible);
+    preRollController?.setVisible(visible);
   },
   onSizeChange: () => window.dispatchEvent(new Event('resize')),
   onRetry: () => window.__busLoop?.reset?.()

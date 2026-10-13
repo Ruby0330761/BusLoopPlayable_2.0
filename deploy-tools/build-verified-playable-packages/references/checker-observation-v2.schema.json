@@ -1,0 +1,158 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "playable-checker-observation-v2",
+  "title": "Playable Checker structured browser observation v2",
+  "type": "object",
+  "required": [
+    "schemaVersion", "attemptId", "capturedAt", "checkerUrl", "platform", "deliveryKey",
+    "pageIdentity", "activeTab", "visibleTabs", "artifact", "resultsStable", "staticNodes",
+    "runtimeNodes", "bridgeCalls", "lifecycleCalls", "inputEvents", "visibleText", "visibleRects", "screenshot"
+  ],
+  "properties": {
+    "schemaVersion": {"const": "playable-checker-observation-v2"},
+    "attemptId": {"type": "string", "minLength": 1},
+    "capturedAt": {"type": "string", "minLength": 1},
+    "checkerUrl": {"type": "string", "pattern": "^https?://"},
+    "platform": {"enum": ["applovin", "google-ads", "meta", "unityads", "mintegral", "moloco", "tiktok"]},
+    "deliveryKey": {"type": "string", "minLength": 1},
+    "pageIdentity": {
+      "type": "object",
+      "required": ["title", "visibleMarker"],
+      "properties": {"title": {"type": "string"}, "visibleMarker": {"type": "string"}}
+    },
+    "activeTab": {
+      "type": "object",
+      "required": ["status"],
+      "properties": {"status": {"enum": ["AVAILABLE", "UNAVAILABLE"]}, "platform": {"type": "string"}, "label": {"type": "string"}, "reason": {"type": "string"}}
+    },
+    "visibleTabs": {"type": "array", "items": {"type": "string"}},
+    "currentFile": {"type": ["object", "null"]},
+    "artifact": {"$ref": "#/$defs/fileRef"},
+    "resultsStable": {"type": "boolean"},
+    "staticNodes": {"$ref": "#/$defs/nodes"},
+    "runtimeNodes": {"$ref": "#/$defs/nodes"},
+    "bridgeCalls": {"type": "array", "items": {"type": "object"}},
+    "lifecycleCalls": {"type": "array", "items": {"type": "object"}},
+    "inputEvents": {"type": "array", "items": {"type": "object"}},
+    "visibleText": {"type": "string", "minLength": 1},
+    "visibleRects": {"type": "object"},
+    "screenshot": {"$ref": "#/$defs/fileRef"},
+    "externalProvenance": {"$ref": "#/$defs/externalProvenance"},
+    "externalProvenanceFile": {"$ref": "#/$defs/fileRef"}
+  },
+  "not": {
+    "anyOf": [
+      {"required": ["ctaCaptured"]},
+      {"required": ["lifecycleCaptured"]},
+      {"required": ["static"]},
+      {"required": ["runtime"]},
+      {"required": ["acceptedNotice"]},
+      {"required": ["acceptedNotices"]}
+    ]
+  },
+  "$defs": {
+    "fileRef": {
+      "type": "object",
+      "required": ["path", "bytes", "sha256"],
+      "properties": {
+        "path": {"type": "string", "minLength": 1},
+        "bytes": {"type": "integer", "minimum": 1},
+        "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+      }
+    },
+    "nodes": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "status", "message"],
+        "properties": {
+          "id": {"type": "string", "minLength": 1},
+          "status": {"enum": ["PASS", "WARNING", "FAIL"]},
+          "message": {"type": "string", "minLength": 1}
+        }
+      }
+    },
+    "externalProvenance": {
+      "type": "object",
+      "required": [
+        "schemaVersion", "collectorVersion", "status", "attemptId", "checkerUrl",
+        "platform", "deliveryKey", "artifact", "observationSha256", "capture"
+      ],
+      "properties": {
+        "schemaVersion": {"const": "playable-checker-external-browser-provenance-v1"},
+        "collectorVersion": {"const": "checker-browser-cdp-collector@2"},
+        "status": {"const": "verified"},
+        "attemptId": {"type": "string", "minLength": 1},
+        "checkerUrl": {"type": "string", "pattern": "^https?://"},
+        "platform": {"type": "string", "minLength": 1},
+        "deliveryKey": {"type": "string", "minLength": 1},
+        "artifact": {"$ref": "#/$defs/fileRef"},
+        "observationSha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+        "capture": {"$ref": "#/$defs/externalCapture"}
+      },
+      "additionalProperties": false
+    },
+    "externalCapture": {
+      "type": "object",
+      "required": ["schemaVersion", "captureId", "capturedAt", "checkerUrl", "platform", "deliveryKey", "attemptId", "artifact", "browser", "page", "resultNodes", "screenshot", "runner"],
+      "additionalProperties": false,
+      "properties": {
+        "schemaVersion": {"const": "playable-checker-cdp-capture-v1"},
+        "captureId": {"type": "string", "minLength": 1},
+        "capturedAt": {"type": "string", "minLength": 1},
+        "checkerUrl": {"type": "string", "pattern": "^https?://"},
+        "platform": {"type": "string", "minLength": 1},
+        "deliveryKey": {"type": "string", "minLength": 1},
+        "attemptId": {"type": "string", "minLength": 1},
+        "artifact": {"$ref": "#/$defs/fileRef"},
+        "browser": {
+          "type": "object",
+          "required": ["product", "protocolVersion", "targetId", "sessionId"],
+          "properties": {
+            "product": {"type": "string", "minLength": 1}, "protocolVersion": {"type": "string", "minLength": 1},
+            "targetId": {"type": "string", "minLength": 1}, "sessionId": {"type": "string", "minLength": 1}
+          },
+          "additionalProperties": false
+        },
+        "page": {
+          "type": "object",
+          "required": ["url", "title", "visibleTextSha256"],
+          "properties": {
+            "url": {"type": "string", "pattern": "^https?://"}, "title": {"type": "string"},
+            "visibleTextSha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+          },
+          "additionalProperties": false
+        },
+        "resultNodes": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["group", "id", "status", "text", "rect"],
+            "properties": {
+              "group": {"enum": ["static", "runtime"]}, "id": {"type": "string", "minLength": 1},
+              "status": {"enum": ["PASS", "WARNING", "FAIL"]}, "text": {"type": "string"},
+              "rect": {
+                "type": "object", "required": ["x", "y", "width", "height"],
+                "properties": {
+                  "x": {"type": "number"}, "y": {"type": "number"},
+                  "width": {"type": "number", "exclusiveMinimum": 0}, "height": {"type": "number", "exclusiveMinimum": 0}
+                },
+                "additionalProperties": false
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "screenshot": {"$ref": "#/$defs/fileRef"},
+        "runner": {
+          "type": "object", "required": ["version", "externalBrowserUsed", "replayNonce"],
+          "properties": {
+            "version": {"const": "checker-browser-cdp-collector@2"}, "externalBrowserUsed": {"const": true},
+            "replayNonce": {"type": "string", "minLength": 1}
+          },
+          "additionalProperties": false
+        }
+      }
+    }
+  }
+}

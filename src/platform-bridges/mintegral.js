@@ -1,3 +1,5 @@
+import { openBrowserStorePreview } from './basic.js';
+
 export const PLAYABLE_PLATFORM = 'mintegral';
 
 export function createPlatformBridge({ onStart, onVisibilityChange = () => {}, onRetry = () => {} } = {}) {
@@ -56,9 +58,12 @@ export function createPlatformBridge({ onStart, onVisibilityChange = () => {}, o
       window.gameEnd();
     },
     retry() { ended = false; },
-    openStore() {
-      window.install();
-      return true;
+    openStore({ ios, android } = {}) {
+      if (typeof host.install === 'function') {
+        window.install();
+        return true;
+      }
+      return openBrowserStorePreview(ios || android);
     }
   });
 }

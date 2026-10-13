@@ -1,0 +1,91 @@
+{
+  "schemaVersion": "playable-platform-rules-v1",
+  "platform": "moloco",
+  "rules": [
+    {
+      "id": "MOLOCO-ART-001",
+      "title": "交付单个 HTML",
+      "stage": "artifact",
+      "severity": "blocker",
+      "sourceClass": "checker-parity",
+      "sourceVersion": "playable_check@86d58e33d293a0a095b574407a2d6c7d191d510f",
+      "check": {
+        "type": "artifact_kind",
+        "value": "html"
+      },
+      "repairHint": "使用 Moloco 单 HTML 构建入口。",
+      "autoRepair": false
+    },
+    {
+      "id": "MOLOCO-ART-002",
+      "title": "HTML 完全自包含",
+      "stage": "artifact",
+      "severity": "blocker",
+      "sourceClass": "checker-parity",
+      "sourceVersion": "playable_check@86d58e33d293a0a095b574407a2d6c7d191d510f",
+      "check": {
+        "type": "self_contained_html",
+        "allow": []
+      },
+      "repairHint": "内联脚本、样式和全部资源。",
+      "autoRepair": false
+    },
+    {
+      "id": "MOLOCO-STA-001",
+      "title": "CTA 使用 FbPlayableAd.onCTAClick",
+      "stage": "static",
+      "severity": "blocker",
+      "sourceClass": "checker-parity",
+      "sourceVersion": "playable_check@86d58e33d293a0a095b574407a2d6c7d191d510f",
+      "check": {
+        "type": "regex_present",
+        "pattern": "FbPlayableAd\\s*\\.\\s*onCTAClick\\s*\\("
+      },
+      "repairHint": "连接真实 CTA 到 FbPlayableAd.onCTAClick()。",
+      "autoRepair": false
+    },
+    {
+      "id": "MOLOCO-STA-002",
+      "title": "禁止 mraid.js",
+      "stage": "static",
+      "severity": "blocker",
+      "sourceClass": "checker-parity",
+      "sourceVersion": "playable_check@86d58e33d293a0a095b574407a2d6c7d191d510f",
+      "check": {
+        "type": "regex_absent",
+        "pattern": "mraid\\.js"
+      },
+      "repairHint": "从 Moloco 模板移除 mraid.js。",
+      "autoRepair": false
+    },
+    {
+      "id": "MOLOCO-STA-003",
+      "title": "禁止动态网络 API",
+      "stage": "static",
+      "severity": "blocker",
+      "sourceClass": "checker-parity",
+      "sourceVersion": "playable_check@86d58e33d293a0a095b574407a2d6c7d191d510f",
+      "check": {
+        "type": "regex_absent",
+        "pattern": "\\bXMLHttpRequest\\b|\\bfetch\\s*\\(|\\bWebSocket\\s*\\(|navigator\\.sendBeacon\\s*\\("
+      },
+      "repairHint": "剥离投放态不需要的网络分支并内联资源。",
+      "autoRepair": false
+    },
+    {
+      "id": "MOLOCO-MAN-001",
+      "title": "Moloco Ads Manager 预览",
+      "stage": "manual",
+      "severity": "manual",
+      "sourceClass": "checker-parity",
+      "sourceVersion": "playable_check@86d58e33d293a0a095b574407a2d6c7d191d510f",
+      "check": {
+        "type": "manual"
+      },
+      "repairHint": "在 Moloco 预览核对安全区和 CTA 成功提示。",
+      "autoRepair": false,
+      "manualGate": "确认顶部/底部安全区无遮挡且 CTA 成功。"
+    }
+  ]
+}
+

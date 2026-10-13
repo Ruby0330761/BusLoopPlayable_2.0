@@ -1,0 +1,1662 @@
+{
+  "format": "bus-loop-web-level-v1",
+  "key": "level14",
+  "displayName": "Q9V2（叶子） (1)",
+  "unityId": 1000,
+  "mapScale": 1,
+  "difficulty": "Normal",
+  "conveyorBeltName": "GameSceneDualQueue2",
+  "background": null,
+  "passengerMethod": "FixedSequence",
+  "vehicles": [
+    {
+      "id": 1,
+      "seats": 4,
+      "colorIndex": 4,
+      "colorOverrides": {
+        "body": "#bc0609"
+      },
+      "x": 0.007492673127756644,
+      "z": 2.13541946264577,
+      "yaw": 0,
+      "isHidden": false,
+      "isTurnVehicle": false,
+      "containerType": 1,
+      "containerId": 0,
+      "elevatorLayer": 0,
+      "mechanism": {
+        "type": "normal",
+        "pairVehicleId": null,
+        "distance": 0.25,
+        "wrenchColor": 0,
+        "secondColorIndex": 0,
+        "stepLimit": 35,
+        "timeLimit": 30
+      }
+    },
+    {
+      "id": 2,
+      "seats": 10,
+      "colorIndex": 5,
+      "colorOverrides": {},
+      "x": 0.008849140674427016,
+      "z": 1.4438026310630105,
+      "yaw": 0,
+      "isHidden": false,
+      "isTurnVehicle": false,
+      "containerType": 1,
+      "containerId": 0,
+      "elevatorLayer": 0,
+      "mechanism": {
+        "type": "normal",
+        "pairVehicleId": null,
+        "distance": 0.25,
+        "wrenchColor": 0,
+        "secondColorIndex": 0,
+        "stepLimit": 35,
+        "timeLimit": 30
+      }
+    },
+    {
+      "id": 3,
+      "seats": 4,
+      "colorIndex": 4,
+      "colorOverrides": {
+        "body": "#bc0609"
+      },
+      "x": 0.005574573150558718,
+      "z": 0.7691510604309987,
+      "yaw": 0,
+      "isHidden": false,
+      "isTurnVehicle": false,
+      "containerType": 1,
+      "containerId": 0,
+      "elevatorLayer": 0,
+      "mechanism": {
+        "type": "normal",
+        "pairVehicleId": null,
+        "distance": 0.25,
+        "wrenchColor": 0,
+        "secondColorIndex": 0,
+        "stepLimit": 35,
+        "timeLimit": 30
+      }
+    },
+    {
+      "id": 4,
+      "seats": 4,
+      "colorIndex": 6,
+      "colorOverrides": {
+        "body": "#df560c"
+      },
+      "x": 0.00036700263206188716,
+      "z": 0.19599073214157942,
+      "yaw": 0,
+      "isHidden": false,
+      "isTurnVehicle": false,
+      "containerType": 1,
+      "containerId": 0,
+      "elevatorLayer": 0,
+      "mechanism": {
+        "type": "normal",
+        "pairVehicleId": null,
+        "distance": 0.25,
+        "wrenchColor": 0,
+        "secondColorIndex": 0,
+        "stepLimit": 35,
+        "timeLimit": 30
+      }
+    },
+    {
+      "id": 5,
+      "seats": 10,
+      "colorIndex": 5,
+      "colorOverrides": {},
+      "x": 0.004937289845983475,
+      "z": -0.45245425113872545,
+      "yaw": 0,
+      "isHidden": false,
+      "isTurnVehicle": false,
+      "containerType": 1,
+      "containerId": 0,
+      "elevatorLayer": 0,
+      "mechanism": {
+        "type": "normal",
+        "pairVehicleId": null,
+        "distance": 0.25,
+        "wrenchColor": 0,
+        "secondColorIndex": 0,
+        "stepLimit": 35,
+        "timeLimit": 30
+      }
+    },
+    {
+      "id": 6,
+      "seats": 4,
+      "colorIndex": 4,
+      "colorOverrides": {
+        "body": "#bc0609"
+      },
+      "x": 0.004362867608312435,
+      "z": -1.102226200537073,
+      "yaw": 0,
+      "isHidden": false,
+      "isTurnVehicle": false,
+      "containerType": 1,
+      "containerId": 0,
+      "elevatorLayer": 0,
+      "mechanism": {
+        "type": "normal",
+        "pairVehicleId": null,
+        "distance": 0.25,
+        "wrenchColor": 0,
+        "secondColorIndex": 0,
+        "stepLimit": 35,
+        "timeLimit": 30
+      }
+    },
+    {
+      "id": 7,
+      "seats": 4,
+      "colorIndex": 5,
+      "colorOverrides": {},
+      "x": 0.002934674785132768,
+      "z": -1.6293172808928031,
+      "yaw": 180,
+      "isHidden": false,
+      "isTurnVehicle": false,
+      "containerType": 1,
+      "containerId": 0,
+      "elevatorLayer": 0,
+      "mechanism": {
+        "type": "normal",
+        "pairVehicleId": null,
+        "distance": 0.25,
+        "wrenchColor": 0,
+        "secondColorIndex": 0,
+        "stepLimit": 35,
+        "timeLimit": 30
+      }
+    },
+    {
+      "id": 8,
+      "seats": 4,
+      "colorIndex": 8,
+      "colorOverrides": {},
+      "x": 0.012741294171418428,
+      "z": -2.190502429568566,
+      "yaw": 180,
+      "isHidden": false,
+      "isTurnVehicle": false,
+      "containerType": 1,
+      "containerId": 0,
+      "elevatorLayer": 0,
+      "mechanism": {
+        "type": "normal",
+        "pairVehicleId": null,
+        "distance": 0.25,
+        "wrenchColor": 0,
+        "secondColorIndex": 0,
+        "stepLimit": 35,
+        "timeLimit": 30
+      }
+    },
+    {
+      "id": 10,
+      "seats": 4,
+      "colorIndex": 4,
+      "colorOverrides": {
+        "body": "#bc0609"
+      },
+      "x": -0.40998255065482936,
+      "z": -0.004414786304405852,
+      "yaw": 315,
+      "isHidden": false,
+      "isTurnVehicle": false,
+      "containerType": 1,
+      "containerId": 0,
+      "elevatorLayer": 0,
+      "mechanism": {
+        "type": "normal",
+        "pairVehicleId": null,
+        "distance": 0.25,
+        "wrenchColor": 0,
+        "secondColorIndex": 0,
+        "stepLimit": 35,
+        "timeLimit": 30
+      }
+    },
+    {
+      "id": 11,
+      "seats": 4,
+      "colorIndex": 5,
+      "colorOverrides": {},
+      "x": -0.8204601729333101,
+      "z": 0.3992793155075075,
+      "yaw": 315,
+      "isHidden": false,
+      "isTurnVehicle": false,
+      "containerType": 1,
+      "containerId": 0,
+      "elevatorLayer": 0,
+      "mechanism": {
+        "type": "normal",
+        "pairVehicleId": null,
+        "distance": 0.25,
+        "wrenchColor": 0,
+        "secondColorIndex": 0,
+        "stepLimit": 35,
+        "timeLimit": 30
+      }
+    },
+    {
+      "id": 12,
+      "seats": 4,
+      "colorIndex": 4,
+      "colorOverrides": {
+        "body": "#bc0609"
+      },
+      "x": 0.4457448238962463,
+      "z": -0.023040673048541484,
+      "yaw": 45,
+      "isHidden": false,
+      "isTurnVehicle": false,
+      "containerType": 1,
+      "containerId": 0,
+      "elevatorLayer": 0,
+      "mechanism": {
+        "type": "normal",
+        "pairVehicleId": null,
+        "distance": 0.25,
+        "wrenchColor": 0,
+        "secondColorIndex": 0,
+        "stepLimit": 35,
+        "timeLimit": 30
+      }
+    },
+    {
+      "id": 13,
+      "seats": 4,
+      "colorIndex": 5,
+      "colorOverrides": {},
+      "x": 0.8886043092534925,
+      "z": 0.35608076347116613,
+      "yaw": 45,
+      "isHidden": false,
+      "isTurnVehicle": false,
+      "containerType": 1,
+      "containerId": 0,
+      "elevatorLayer": 0,
+      "mechanism": {
+        "type": "normal",
+        "pairVehicleId": null,
+        "distance": 0.25,
+        "wrenchColor": 0,
+        "secondColorIndex": 0,
+        "stepLimit": 35,
+        "timeLimit": 30
+      }
+    },
+    {
+      "id": 14,
+      "seats": 4,
+      "colorIndex": 6,
+      "colorOverrides": {
+        "body": "#df560c"
+      },
+      "x": -1.348522887246886,
+      "z": 0.7500886594752723,
+      "yaw": 345,
+      "isHidden": false,
+      "isTurnVehicle": false,
+      "containerType": 1,
+      "containerId": 0,
+      "elevatorLayer": 0,
+      "mechanism": {
+        "type": "normal",
+        "pairVehicleId": null,
+        "distance": 0.25,
+        "wrenchColor": 0,
+        "secondColorIndex": 0,
+        "stepLimit": 35,
+        "timeLimit": 30
+      }
+    },
+    {
+      "id": 15,
+      "seats": 4,
+      "colorIndex": 4,
+      "colorOverrides": {
+        "body": "#bc0609"
+      },
+      "x": -1.269053507922241,
+      "z": 1.2442493413950684,
+      "yaw": 300,
+      "isHidden": false,
+      "isTurnVehicle": false,
+      "containerType": 1,
+      "containerId": 0,
+      "elevatorLayer": 0,
+      "mechanism": {
+        "type": "normal",
+        "pairVehicleId": null,
+        "distance": 0.25,
+        "wrenchColor": 0,
+        "secondColorIndex": 0,
+        "stepLimit": 35,
+        "timeLimit": 30
+      }
+    },
+    {
+      "id": 16,
+      "seats": 4,
+      "colorIndex": 6,
+      "colorOverrides": {
+        "body": "#df560c"
+      },
+      "x": 1.4549502042516713,
+      "z": 0.7623637043645702,
+      "yaw": 15,
+      "isHidden": false,
+      "isTurnVehicle": false,
+      "containerType": 1,
+      "containerId": 0,
+      "elevatorLayer": 0,
+      "mechanism": {
+        "type": "normal",
+        "pairVehicleId": null,
+        "distance": 0.25,
+        "wrenchColor": 0,
+        "secondColorIndex": 0,
+        "stepLimit": 35,
+        "timeLimit": 30
+      }
+    },
+    {
+      "id": 17,
+      "seats": 4,
+      "colorIndex": 4,
+      "colorOverrides": {
+        "body": "#bc0609"
+      },
+      "x": 1.2509543028918872,
+      "z": 1.1842263185494681,
+      "yaw": 60,
+      "isHidden": false,
+      "isTurnVehicle": false,
+      "containerType": 1,
+      "containerId": 0,
+      "elevatorLayer": 0,
+      "mechanism": {
+        "type": "normal",
+        "pairVehicleId": null,
+        "distance": 0.25,
+        "wrenchColor": 0,
+        "secondColorIndex": 0,
+        "stepLimit": 35,
+        "timeLimit": 30
+      }
+    },
+    {
+      "id": 18,
+      "seats": 4,
+      "colorIndex": 5,
+      "colorOverrides": {},
+      "x": -0.4156218762261507,
+      "z": 1.8371633722662917,
+      "yaw": 30,
+      "isHidden": false,
+      "isTurnVehicle": false,
+      "containerType": 1,
+      "containerId": 0,
+      "elevatorLayer": 0,
+      "mechanism": {
+        "type": "normal",
+        "pairVehicleId": null,
+        "distance": 0.25,
+        "wrenchColor": 0,
+        "secondColorIndex": 0,
+        "stepLimit": 35,
+        "timeLimit": 30
+      }
+    },
+    {
+      "id": 19,
+      "seats": 4,
+      "colorIndex": 4,
+      "colorOverrides": {
+        "body": "#bc0609"
+      },
+      "x": -0.6669969513863461,
+      "z": 1.4055802794648389,
+      "yaw": 30,
+      "isHidden": false,
+      "isTurnVehicle": false,
+      "containerType": 1,
+      "containerId": 0,
+      "elevatorLayer": 0,
+      "mechanism": {
+        "type": "normal",
+        "pairVehicleId": null,
+        "distance": 0.25,
+        "wrenchColor": 0,
+        "secondColorIndex": 0,
+        "stepLimit": 35,
+        "timeLimit": 30
+      }
+    },
+    {
+      "id": 20,
+      "seats": 4,
+      "colorIndex": 5,
+      "colorOverrides": {},
+      "x": 0.452223254253989,
+      "z": 1.832827153911845,
+      "yaw": 330,
+      "isHidden": false,
+      "isTurnVehicle": false,
+      "containerType": 1,
+      "containerId": 0,
+      "elevatorLayer": 0,
+      "mechanism": {
+        "type": "normal",
+        "pairVehicleId": null,
+        "distance": 0.25,
+        "wrenchColor": 0,
+        "secondColorIndex": 0,
+        "stepLimit": 35,
+        "timeLimit": 30
+      }
+    },
+    {
+      "id": 21,
+      "seats": 4,
+      "colorIndex": 4,
+      "colorOverrides": {
+        "body": "#bc0609"
+      },
+      "x": 0.7099921251570507,
+      "z": 1.3850046774563618,
+      "yaw": 330,
+      "isHidden": false,
+      "isTurnVehicle": false,
+      "containerType": 1,
+      "containerId": 0,
+      "elevatorLayer": 0,
+      "mechanism": {
+        "type": "normal",
+        "pairVehicleId": null,
+        "distance": 0.25,
+        "wrenchColor": 0,
+        "secondColorIndex": 0,
+        "stepLimit": 35,
+        "timeLimit": 30
+      }
+    },
+    {
+      "id": 22,
+      "seats": 4,
+      "colorIndex": 4,
+      "colorOverrides": {
+        "body": "#bc0609"
+      },
+      "x": -0.4898907605373651,
+      "z": -1.3264412011326934,
+      "yaw": 135,
+      "isHidden": false,
+      "isTurnVehicle": false,
+      "containerType": 1,
+      "containerId": 0,
+      "elevatorLayer": 0,
+      "mechanism": {
+        "type": "normal",
+        "pairVehicleId": null,
+        "distance": 0.25,
+        "wrenchColor": 0,
+        "secondColorIndex": 0,
+        "stepLimit": 35,
+        "timeLimit": 30
+      }
+    },
+    {
+      "id": 23,
+      "seats": 4,
+      "colorIndex": 5,
+      "colorOverrides": {},
+      "x": -0.8987294762876584,
+      "z": -0.9323172361998575,
+      "yaw": 315,
+      "isHidden": false,
+      "isTurnVehicle": false,
+      "containerType": 1,
+      "containerId": 0,
+      "elevatorLayer": 0,
+      "mechanism": {
+        "type": "normal",
+        "pairVehicleId": null,
+        "distance": 0.25,
+        "wrenchColor": 0,
+        "secondColorIndex": 0,
+        "stepLimit": 35,
+        "timeLimit": 30
+      }
+    },
+    {
+      "id": 24,
+      "seats": 4,
+      "colorIndex": 4,
+      "colorOverrides": {
+        "body": "#bc0609"
+      },
+      "x": -1.2472485409551768,
+      "z": -0.44514660535624256,
+      "yaw": 330,
+      "isHidden": false,
+      "isTurnVehicle": false,
+      "containerType": 1,
+      "containerId": 0,
+      "elevatorLayer": 0,
+      "mechanism": {
+        "type": "normal",
+        "pairVehicleId": null,
+        "distance": 0.25,
+        "wrenchColor": 0,
+        "secondColorIndex": 0,
+        "stepLimit": 35,
+        "timeLimit": 30
+      }
+    },
+    {
+      "id": 25,
+      "seats": 4,
+      "colorIndex": 5,
+      "colorOverrides": {},
+      "x": -1.8340746215110162,
+      "z": 0.25477408733680296,
+      "yaw": 285,
+      "isHidden": false,
+      "isTurnVehicle": false,
+      "containerType": 1,
+      "containerId": 0,
+      "elevatorLayer": 0,
+      "mechanism": {
+        "type": "normal",
+        "pairVehicleId": null,
+        "distance": 0.25,
+        "wrenchColor": 0,
+        "secondColorIndex": 0,
+        "stepLimit": 35,
+        "timeLimit": 30
+      }
+    },
+    {
+      "id": 26,
+      "seats": 4,
+      "colorIndex": 4,
+      "colorOverrides": {
+        "body": "#bc0609"
+      },
+      "x": -2.4266179449757996,
+      "z": 0.4326122377772541,
+      "yaw": 285,
+      "isHidden": false,
+      "isTurnVehicle": false,
+      "containerType": 1,
+      "containerId": 0,
+      "elevatorLayer": 0,
+      "mechanism": {
+        "type": "normal",
+        "pairVehicleId": null,
+        "distance": 0.25,
+        "wrenchColor": 0,
+        "secondColorIndex": 0,
+        "stepLimit": 35,
+        "timeLimit": 30
+      }
+    },
+    {
+      "id": 27,
+      "seats": 4,
+      "colorIndex": 6,
+      "colorOverrides": {
+        "body": "#df560c"
+      },
+      "x": -2.4625888687974915,
+      "z": -0.04922662355940307,
+      "yaw": 330,
+      "isHidden": false,
+      "isTurnVehicle": false,
+      "containerType": 1,
+      "containerId": 0,
+      "elevatorLayer": 0,
+      "mechanism": {
+        "type": "normal",
+        "pairVehicleId": null,
+        "distance": 0.25,
+        "wrenchColor": 0,
+        "secondColorIndex": 0,
+        "stepLimit": 35,
+        "timeLimit": 30
+      }
+    },
+    {
+      "id": 28,
+      "seats": 10,
+      "colorIndex": 4,
+      "colorOverrides": {
+        "body": "#bc0609"
+      },
+      "x": -2.532340776068283,
+      "z": -0.6478159454905085,
+      "yaw": 60,
+      "isHidden": false,
+      "isTurnVehicle": false,
+      "containerType": 1,
+      "containerId": 0,
+      "elevatorLayer": 0,
+      "mechanism": {
+        "type": "normal",
+        "pairVehicleId": null,
+        "distance": 0.25,
+        "wrenchColor": 0,
+        "secondColorIndex": 0,
+        "stepLimit": 35,
+        "timeLimit": 30
+      }
+    },
+    {
+      "id": 29,
+      "seats": 4,
+      "colorIndex": 5,
+      "colorOverrides": {},
+      "x": -2.3808578501453406,
+      "z": -1.120410774304217,
+      "yaw": 300,
+      "isHidden": false,
+      "isTurnVehicle": false,
+      "containerType": 1,
+      "containerId": 0,
+      "elevatorLayer": 0,
+      "mechanism": {
+        "type": "normal",
+        "pairVehicleId": null,
+        "distance": 0.25,
+        "wrenchColor": 0,
+        "secondColorIndex": 0,
+        "stepLimit": 35,
+        "timeLimit": 30
+      }
+    },
+    {
+      "id": 30,
+      "seats": 4,
+      "colorIndex": 4,
+      "colorOverrides": {
+        "body": "#bc0609"
+      },
+      "x": -1.894709612448593,
+      "z": -1.4077778566198305,
+      "yaw": 300,
+      "isHidden": false,
+      "isTurnVehicle": false,
+      "containerType": 1,
+      "containerId": 0,
+      "elevatorLayer": 0,
+      "mechanism": {
+        "type": "normal",
+        "pairVehicleId": null,
+        "distance": 0.25,
+        "wrenchColor": 0,
+        "secondColorIndex": 0,
+        "stepLimit": 35,
+        "timeLimit": 30
+      }
+    },
+    {
+      "id": 31,
+      "seats": 4,
+      "colorIndex": 6,
+      "colorOverrides": {
+        "body": "#df560c"
+      },
+      "x": -1.5482640408214559,
+      "z": -1.7186527083251921,
+      "yaw": 30,
+      "isHidden": false,
+      "isTurnVehicle": false,
+      "containerType": 1,
+      "containerId": 0,
+      "elevatorLayer": 0,
+      "mechanism": {
+        "type": "normal",
+        "pairVehicleId": null,
+        "distance": 0.25,
+        "wrenchColor": 0,
+        "secondColorIndex": 0,
+        "stepLimit": 35,
+        "timeLimit": 30
+      }
+    },
+    {
+      "id": 32,
+      "seats": 4,
+      "colorIndex": 4,
+      "colorOverrides": {
+        "body": "#bc0609"
+      },
+      "x": -1.7867097585731202,
+      "z": -2.3007033116481166,
+      "yaw": 225,
+      "isHidden": false,
+      "isTurnVehicle": false,
+      "containerType": 1,
+      "containerId": 0,
+      "elevatorLayer": 0,
+      "mechanism": {
+        "type": "normal",
+        "pairVehicleId": null,
+        "distance": 0.25,
+        "wrenchColor": 0,
+        "secondColorIndex": 0,
+        "stepLimit": 35,
+        "timeLimit": 30
+      }
+    },
+    {
+      "id": 33,
+      "seats": 4,
+      "colorIndex": 6,
+      "colorOverrides": {
+        "body": "#df560c"
+      },
+      "x": -1.1165673180031843,
+      "z": -2.0615075199647523,
+      "yaw": 75,
+      "isHidden": false,
+      "isTurnVehicle": false,
+      "containerType": 1,
+      "containerId": 0,
+      "elevatorLayer": 0,
+      "mechanism": {
+        "type": "normal",
+        "pairVehicleId": null,
+        "distance": 0.25,
+        "wrenchColor": 0,
+        "secondColorIndex": 0,
+        "stepLimit": 35,
+        "timeLimit": 30
+      }
+    },
+    {
+      "id": 34,
+      "seats": 4,
+      "colorIndex": 6,
+      "colorOverrides": {
+        "body": "#df560c"
+      },
+      "x": -0.41750620595101834,
+      "z": -2.0816169141218936,
+      "yaw": 150,
+      "isHidden": false,
+      "isTurnVehicle": false,
+      "containerType": 1,
+      "containerId": 0,
+      "elevatorLayer": 0,
+      "mechanism": {
+        "type": "normal",
+        "pairVehicleId": null,
+        "distance": 0.25,
+        "wrenchColor": 0,
+        "secondColorIndex": 0,
+        "stepLimit": 35,
+        "timeLimit": 30
+      }
+    },
+    {
+      "id": 35,
+      "seats": 4,
+      "colorIndex": 6,
+      "colorOverrides": {
+        "body": "#df560c"
+      },
+      "x": 0.47388239308083213,
+      "z": -2.092254373126968,
+      "yaw": 210,
+      "isHidden": false,
+      "isTurnVehicle": false,
+      "containerType": 1,
+      "containerId": 0,
+      "elevatorLayer": 0,
+      "mechanism": {
+        "type": "normal",
+        "pairVehicleId": null,
+        "distance": 0.25,
+        "wrenchColor": 0,
+        "secondColorIndex": 0,
+        "stepLimit": 35,
+        "timeLimit": 30
+      }
+    },
+    {
+      "id": 36,
+      "seats": 4,
+      "colorIndex": 6,
+      "colorOverrides": {
+        "body": "#df560c"
+      },
+      "x": 1.1130739367821711,
+      "z": -2.050053115020813,
+      "yaw": 105,
+      "isHidden": false,
+      "isTurnVehicle": false,
+      "containerType": 1,
+      "containerId": 0,
+      "elevatorLayer": 0,
+      "mechanism": {
+        "type": "normal",
+        "pairVehicleId": null,
+        "distance": 0.25,
+        "wrenchColor": 0,
+        "secondColorIndex": 0,
+        "stepLimit": 35,
+        "timeLimit": 30
+      }
+    },
+    {
+      "id": 37,
+      "seats": 4,
+      "colorIndex": 4,
+      "colorOverrides": {
+        "body": "#bc0609"
+      },
+      "x": 0.5141964164343205,
+      "z": -1.3136640054320623,
+      "yaw": 225,
+      "isHidden": false,
+      "isTurnVehicle": false,
+      "containerType": 1,
+      "containerId": 0,
+      "elevatorLayer": 0,
+      "mechanism": {
+        "type": "normal",
+        "pairVehicleId": null,
+        "distance": 0.25,
+        "wrenchColor": 0,
+        "secondColorIndex": 0,
+        "stepLimit": 35,
+        "timeLimit": 30
+      }
+    },
+    {
+      "id": 38,
+      "seats": 4,
+      "colorIndex": 5,
+      "colorOverrides": {},
+      "x": 0.9239180744959895,
+      "z": -0.9363469515797365,
+      "yaw": 45,
+      "isHidden": false,
+      "isTurnVehicle": false,
+      "containerType": 1,
+      "containerId": 0,
+      "elevatorLayer": 0,
+      "mechanism": {
+        "type": "normal",
+        "pairVehicleId": null,
+        "distance": 0.25,
+        "wrenchColor": 0,
+        "secondColorIndex": 0,
+        "stepLimit": 35,
+        "timeLimit": 30
+      }
+    },
+    {
+      "id": 39,
+      "seats": 4,
+      "colorIndex": 4,
+      "colorOverrides": {
+        "body": "#bc0609"
+      },
+      "x": 1.2737451509715927,
+      "z": -0.47091769604848743,
+      "yaw": 30,
+      "isHidden": false,
+      "isTurnVehicle": false,
+      "containerType": 1,
+      "containerId": 0,
+      "elevatorLayer": 0,
+      "mechanism": {
+        "type": "normal",
+        "pairVehicleId": null,
+        "distance": 0.25,
+        "wrenchColor": 0,
+        "secondColorIndex": 0,
+        "stepLimit": 35,
+        "timeLimit": 30
+      }
+    },
+    {
+      "id": 40,
+      "seats": 4,
+      "colorIndex": 5,
+      "colorOverrides": {},
+      "x": 1.8956787168785558,
+      "z": 0.2509810148538173,
+      "yaw": 75,
+      "isHidden": false,
+      "isTurnVehicle": false,
+      "containerType": 1,
+      "containerId": 0,
+      "elevatorLayer": 0,
+      "mechanism": {
+        "type": "normal",
+        "pairVehicleId": null,
+        "distance": 0.25,
+        "wrenchColor": 0,
+        "secondColorIndex": 0,
+        "stepLimit": 35,
+        "timeLimit": 30
+      }
+    },
+    {
+      "id": 41,
+      "seats": 4,
+      "colorIndex": 4,
+      "colorOverrides": {
+        "body": "#bc0609"
+      },
+      "x": 2.4532377530222282,
+      "z": 0.4132136478936441,
+      "yaw": 75,
+      "isHidden": false,
+      "isTurnVehicle": false,
+      "containerType": 1,
+      "containerId": 0,
+      "elevatorLayer": 0,
+      "mechanism": {
+        "type": "normal",
+        "pairVehicleId": null,
+        "distance": 0.25,
+        "wrenchColor": 0,
+        "secondColorIndex": 0,
+        "stepLimit": 35,
+        "timeLimit": 30
+      }
+    },
+    {
+      "id": 42,
+      "seats": 4,
+      "colorIndex": 6,
+      "colorOverrides": {
+        "body": "#df560c"
+      },
+      "x": 2.488849614149582,
+      "z": -0.08174721142581813,
+      "yaw": 30,
+      "isHidden": false,
+      "isTurnVehicle": false,
+      "containerType": 1,
+      "containerId": 0,
+      "elevatorLayer": 0,
+      "mechanism": {
+        "type": "normal",
+        "pairVehicleId": null,
+        "distance": 0.25,
+        "wrenchColor": 0,
+        "secondColorIndex": 0,
+        "stepLimit": 35,
+        "timeLimit": 30
+      }
+    },
+    {
+      "id": 43,
+      "seats": 10,
+      "colorIndex": 4,
+      "colorOverrides": {
+        "body": "#bc0609"
+      },
+      "x": 2.524669884413254,
+      "z": -0.6662377145174677,
+      "yaw": 120,
+      "isHidden": false,
+      "isTurnVehicle": false,
+      "containerType": 1,
+      "containerId": 0,
+      "elevatorLayer": 0,
+      "mechanism": {
+        "type": "normal",
+        "pairVehicleId": null,
+        "distance": 0.25,
+        "wrenchColor": 0,
+        "secondColorIndex": 0,
+        "stepLimit": 35,
+        "timeLimit": 30
+      }
+    },
+    {
+      "id": 44,
+      "seats": 4,
+      "colorIndex": 5,
+      "colorOverrides": {},
+      "x": 2.3496363500607425,
+      "z": -1.1332616789876695,
+      "yaw": 60,
+      "isHidden": false,
+      "isTurnVehicle": false,
+      "containerType": 1,
+      "containerId": 0,
+      "elevatorLayer": 0,
+      "mechanism": {
+        "type": "normal",
+        "pairVehicleId": null,
+        "distance": 0.25,
+        "wrenchColor": 0,
+        "secondColorIndex": 0,
+        "stepLimit": 35,
+        "timeLimit": 30
+      }
+    },
+    {
+      "id": 45,
+      "seats": 4,
+      "colorIndex": 4,
+      "colorOverrides": {
+        "body": "#bc0609"
+      },
+      "x": 1.87362205855481,
+      "z": -1.4010018202215238,
+      "yaw": 60,
+      "isHidden": false,
+      "isTurnVehicle": false,
+      "containerType": 1,
+      "containerId": 0,
+      "elevatorLayer": 0,
+      "mechanism": {
+        "type": "normal",
+        "pairVehicleId": null,
+        "distance": 0.25,
+        "wrenchColor": 0,
+        "secondColorIndex": 0,
+        "stepLimit": 35,
+        "timeLimit": 30
+      }
+    },
+    {
+      "id": 46,
+      "seats": 4,
+      "colorIndex": 5,
+      "colorOverrides": {},
+      "x": 1.5538114259726583,
+      "z": -1.7389468832825716,
+      "yaw": 330,
+      "isHidden": false,
+      "isTurnVehicle": false,
+      "containerType": 1,
+      "containerId": 0,
+      "elevatorLayer": 0,
+      "mechanism": {
+        "type": "normal",
+        "pairVehicleId": null,
+        "distance": 0.25,
+        "wrenchColor": 0,
+        "secondColorIndex": 0,
+        "stepLimit": 35,
+        "timeLimit": 30
+      }
+    },
+    {
+      "id": 47,
+      "seats": 4,
+      "colorIndex": 4,
+      "colorOverrides": {
+        "body": "#bc0609"
+      },
+      "x": 1.8432655892982834,
+      "z": -2.286332972374849,
+      "yaw": 135,
+      "isHidden": false,
+      "isTurnVehicle": false,
+      "containerType": 1,
+      "containerId": 0,
+      "elevatorLayer": 0,
+      "mechanism": {
+        "type": "normal",
+        "pairVehicleId": null,
+        "distance": 0.25,
+        "wrenchColor": 0,
+        "secondColorIndex": 0,
+        "stepLimit": 35,
+        "timeLimit": 30
+      }
+    },
+    {
+      "id": 48,
+      "seats": 4,
+      "colorIndex": 8,
+      "colorOverrides": {},
+      "x": 0.013082887595897597,
+      "z": -2.7433639298440067,
+      "yaw": 180,
+      "isHidden": false,
+      "isTurnVehicle": false,
+      "containerType": 1,
+      "containerId": 0,
+      "elevatorLayer": 0,
+      "mechanism": {
+        "type": "normal",
+        "pairVehicleId": null,
+        "distance": 0.25,
+        "wrenchColor": 0,
+        "secondColorIndex": 0,
+        "stepLimit": 35,
+        "timeLimit": 30
+      }
+    },
+    {
+      "id": 49,
+      "seats": 4,
+      "colorIndex": 6,
+      "colorOverrides": {
+        "body": "#df560c"
+      },
+      "x": -1.2818211097971721,
+      "z": 0.14190872690374762,
+      "yaw": 345,
+      "isHidden": false,
+      "isTurnVehicle": false,
+      "containerType": 1,
+      "containerId": 0,
+      "elevatorLayer": 0,
+      "mechanism": {
+        "type": "normal",
+        "pairVehicleId": null,
+        "distance": 0.25,
+        "wrenchColor": 0,
+        "secondColorIndex": 0,
+        "stepLimit": 35,
+        "timeLimit": 30
+      }
+    },
+    {
+      "id": 50,
+      "seats": 4,
+      "colorIndex": 6,
+      "colorOverrides": {
+        "body": "#df560c"
+      },
+      "x": 1.3221632652028277,
+      "z": 0.143679560237081,
+      "yaw": 15,
+      "isHidden": false,
+      "isTurnVehicle": false,
+      "containerType": 1,
+      "containerId": 0,
+      "elevatorLayer": 0,
+      "mechanism": {
+        "type": "normal",
+        "pairVehicleId": null,
+        "distance": 0.25,
+        "wrenchColor": 0,
+        "secondColorIndex": 0,
+        "stepLimit": 35,
+        "timeLimit": 30
+      }
+    }
+  ],
+  "containers": [
+    {
+      "id": 0,
+      "type": 1,
+      "x": 0,
+      "z": 0,
+      "yaw": 0,
+      "width": 1.1,
+      "length": 0.8,
+      "conveyorWidth": 3.8,
+      "gateQueuePathShape": 0,
+      "gateQueueLocked": true,
+      "gateQueueGap": 0.1,
+      "gateQueueShowCurveHandles": false,
+      "gateQueueTangents": [],
+      "gateQueueTangentOverrides": [],
+      "gateQueuePathPoints": [],
+      "elevatorEditingLayer": 0
+    }
+  ],
+  "passengerQueues": [
+    [
+      4,
+      4,
+      4,
+      4,
+      4,
+      4,
+      4,
+      4,
+      4,
+      4,
+      4,
+      4,
+      6,
+      6,
+      6,
+      6,
+      4,
+      4,
+      4,
+      4,
+      4,
+      4,
+      4,
+      4,
+      4,
+      4,
+      4,
+      4,
+      4,
+      4,
+      4,
+      4,
+      4,
+      4,
+      4,
+      4,
+      4,
+      4,
+      4,
+      4,
+      5,
+      5,
+      5,
+      5,
+      5,
+      5,
+      4,
+      4,
+      4,
+      4,
+      5,
+      5,
+      5,
+      5,
+      5,
+      5,
+      4,
+      4,
+      4,
+      4,
+      4,
+      4,
+      4,
+      4,
+      4,
+      4,
+      5,
+      5,
+      5,
+      5,
+      5,
+      5,
+      5,
+      5,
+      5,
+      5,
+      5,
+      5,
+      5,
+      5,
+      5,
+      5,
+      5,
+      5,
+      6,
+      6,
+      6,
+      6,
+      5,
+      5,
+      5,
+      5,
+      5,
+      5,
+      5,
+      5,
+      5,
+      5,
+      5,
+      5,
+      5,
+      5,
+      5,
+      5,
+      5,
+      5,
+      5,
+      5,
+      6,
+      6,
+      6,
+      6,
+      6,
+      6,
+      4,
+      4,
+      4,
+      4,
+      5,
+      5,
+      5,
+      5,
+      5,
+      5,
+      6,
+      6,
+      6,
+      6,
+      6,
+      6,
+      5,
+      5,
+      5,
+      5,
+      5,
+      5,
+      4,
+      4,
+      4,
+      4,
+      4,
+      4,
+      4,
+      4,
+      4,
+      4,
+      4,
+      4,
+      4
+    ],
+    [
+      4,
+      4,
+      4,
+      4,
+      4,
+      4,
+      4,
+      4,
+      4,
+      4,
+      4,
+      4,
+      4,
+      4,
+      4,
+      4,
+      4,
+      4,
+      4,
+      6,
+      6,
+      6,
+      6,
+      4,
+      4,
+      4,
+      4,
+      6,
+      6,
+      6,
+      6,
+      6,
+      6,
+      6,
+      6,
+      6,
+      6,
+      6,
+      6,
+      4,
+      4,
+      4,
+      4,
+      5,
+      5,
+      5,
+      5,
+      5,
+      5,
+      4,
+      4,
+      6,
+      6,
+      6,
+      6,
+      6,
+      6,
+      6,
+      6,
+      6,
+      6,
+      6,
+      6,
+      8,
+      8,
+      8,
+      8,
+      8,
+      8,
+      8,
+      8
+    ]
+  ],
+  "passengerColorOverrides": {
+    "4": {
+      "body": "#bc0609"
+    },
+    "6": {
+      "body": "#df560c"
+    }
+  },
+  "vehicleDepthes": {
+    "1": [],
+    "2": [
+      1
+    ],
+    "3": [
+      1,
+      2
+    ],
+    "4": [
+      1,
+      2,
+      3
+    ],
+    "5": [
+      1,
+      2,
+      3,
+      4
+    ],
+    "6": [
+      1,
+      2,
+      3,
+      4,
+      5
+    ],
+    "7": [
+      1,
+      2,
+      3,
+      4,
+      5,
+      6
+    ],
+    "8": [
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7
+    ],
+    "9": [
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8
+    ],
+    "10": [
+      11,
+      14
+    ],
+    "11": [
+      14
+    ],
+    "12": [
+      13,
+      16
+    ],
+    "13": [
+      16
+    ],
+    "14": [
+      15
+    ],
+    "15": [],
+    "16": [],
+    "17": [],
+    "18": [
+      1
+    ],
+    "19": [
+      1,
+      18
+    ],
+    "20": [
+      1
+    ],
+    "21": [
+      1,
+      20
+    ],
+    "22": [
+      23,
+      24,
+      25
+    ],
+    "23": [
+      24
+    ],
+    "24": [],
+    "25": [
+      26
+    ],
+    "26": [],
+    "27": [
+      26
+    ],
+    "28": [
+      3,
+      11,
+      21,
+      24
+    ],
+    "29": [],
+    "30": [
+      29
+    ],
+    "31": [
+      2,
+      3,
+      10,
+      20,
+      23
+    ],
+    "32": [
+      5,
+      12,
+      13,
+      16,
+      22,
+      31
+    ],
+    "33": [
+      7,
+      34,
+      44,
+      45
+    ],
+    "34": [
+      23,
+      24,
+      25
+    ],
+    "35": [
+      38,
+      39,
+      40
+    ],
+    "36": [
+      7,
+      29,
+      30,
+      35
+    ],
+    "37": [
+      38,
+      39,
+      40
+    ],
+    "38": [
+      39
+    ],
+    "39": [],
+    "40": [],
+    "41": [],
+    "42": [
+      41
+    ],
+    "43": [
+      3,
+      13,
+      15,
+      19,
+      39
+    ],
+    "44": [
+      43
+    ],
+    "45": [
+      43,
+      44
+    ],
+    "46": [
+      2,
+      3,
+      12,
+      18,
+      38
+    ],
+    "47": [
+      5,
+      10,
+      11,
+      14,
+      37,
+      46
+    ]
+  },
+  "editor": {
+    "gridGap": 0.27,
+    "gridRotation": 0,
+    "gridSnap": false,
+    "vehicleSnap": false,
+    "alignmentGuides": true
+  }
+}

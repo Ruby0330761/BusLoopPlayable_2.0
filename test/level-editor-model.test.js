@@ -11,7 +11,9 @@ import {
   GARAGE_VEHICLE_SPACING,
   LevelEditorModel,
   VEHICLE_COLOR_OPTIONS,
+  VEHICLE_PAINT_COLOR_OPTIONS,
   createLevelDocument,
+  getVehicleColorOption,
   exportLevelCsv,
   exportLevelExcelXml,
   exportUnityLevelAsset,
@@ -19,28 +21,45 @@ import {
   getGateQueueBounds,
   getGateQueuePath,
   levelDocumentToRuntime,
+  retargetLevelDocument,
   sortPassengerQueuesByVehicleDepth,
   validateLevelDocument
 } from '../src/level-editor-model.js';
 
 test('uses the complete Unity LevelEditor color map', () => {
   assert.deepEqual(VEHICLE_COLOR_OPTIONS.map(({ id, name, css }) => ({ id, name, css })), [
-    { id: 0, name: 'Blue', css: '#0000FF' },
-    { id: 1, name: 'Green', css: '#00FF00' },
-    { id: 2, name: 'Pink', css: '#FF7DCF' },
-    { id: 3, name: 'Purple', css: '#9400FF' },
-    { id: 4, name: 'Red', css: '#FF0000' },
-    { id: 5, name: 'Yellow', css: '#FFEB04' },
-    { id: 6, name: 'Orange', css: '#FF8C00' },
-    { id: 7, name: 'LightBlue', css: '#00FFFF' },
-    { id: 8, name: 'Brown', css: '#8DAB8B' },
-    { id: 9, name: 'DarkGreen', css: '#B9B9B9' },
-    { id: 10, name: 'DarkBlue', css: '#555598' },
+    { id: 0, name: 'Blue', css: '#0061E8' },
+    { id: 1, name: 'Green', css: '#118024' },
+    { id: 2, name: 'Pink', css: '#F338AF' },
+    { id: 3, name: 'Purple', css: '#9725CD' },
+    { id: 4, name: 'Red', css: '#B10F11' },
+    { id: 5, name: 'Yellow', css: '#C68000' },
+    { id: 6, name: 'Orange', css: '#C24300' },
+    { id: 7, name: 'LightBlue', css: '#014853' },
+    { id: 8, name: 'Brown', css: '#542C16' },
+    { id: 9, name: 'DarkGreen', css: '#206D53' },
+    { id: 10, name: 'DarkBlue', css: '#15209E' },
     { id: 11, name: 'PoliceCar', css: '#000000' },
     { id: 12, name: 'FireTruck', css: '#196D87' },
     { id: 13, name: 'Ambulance', css: '#9A0040' },
     { id: 14, name: 'Vip', css: '#FFDFCE' },
-    { id: 15, name: 'Luxury', css: '#FFF7A5' }
+    { id: 15, name: 'Luxury', css: '#FFF7A5' },
+    { id: 17, name: 'Black', css: '#2D2D30' },
+    { id: 18, name: 'White', css: '#EBEBE8' },
+    { id: 19, name: 'DarkRed', css: '#8C1010' },
+    { id: 20, name: 'DarkYellow', css: '#C89808' },
+    { id: 21, name: 'Cream', css: '#EEDEBE' },
+    { id: 22, name: 'MintGreen', css: '#69C8AA' },
+    { id: 23, name: 'MatchaGreen', css: '#96C882' },
+    { id: 24, name: 'LightPink', css: '#F698C4' },
+    { id: 25, name: 'Gray', css: '#96989B' }
+  ]);
+  // Colour ids are not array positions once the supplement ids are present.
+  assert.equal(getVehicleColorOption(23).name, 'MatchaGreen');
+  assert.equal(getVehicleColorOption(23).css, '#96C882');
+  assert.equal(getVehicleColorOption(16).id, 0);
+  assert.deepEqual(VEHICLE_PAINT_COLOR_OPTIONS.map(({ id }) => id), [
+    0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 17, 18, 19, 20, 21, 22, 23, 24, 25
   ]);
 });
 
@@ -56,12 +75,77 @@ function makeDocument() {
   });
 }
 
+function passengerCount(document, colorIndex) {
+  return document.passengerQueues.flat().filter((color) => color === colorIndex).length;
+}
+
 test('normalizes imported runtime levels without losing authoring fields', () => {
   const document = makeDocument();
   assert.equal(document.format, 'bus-loop-web-level-v1');
   assert.equal(document.vehicles[0].mechanism.type, 'normal');
   assert.equal(document.containers[0].type, CONTAINER_TYPES.PARKING);
   assert.deepEqual(document.passengerQueues.map((queue) => queue.length), [4, 4]);
+});
+
+test('preserves valid per-vehicle colour-region overrides in runtime conversion', () => {
+  const document = createLevelDocument({
+    vehicles: [{
+      id: 4,
+      seats: 4,
+      colorIndex: 0,
+      colorOverrides: { body: '#FF00AA', shadow: '#123456', ignored: '#fff' }
+    }]
+  });
+  assert.deepEqual(document.vehicles[0].colorOverrides, { body: '#ff00aa', shadow: '#123456' });
+  assert.deepEqual(levelDocumentToRuntime(document).vehicles[0].colorOverrides, { body: '#ff00aa', shadow: '#123456' });
+  const model = new LevelEditorModel(document);
+  model.select('vehicle:4');
+  assert.equal(model.resetSelectedVehicleColors(), true);
+  assert.deepEqual(model.document.vehicles[0].colorOverrides, {});
+});
+
+test('keeps passenger colour-region overrides bound to matching vehicle colours', () => {
+  const document = createLevelDocument({
+    vehicles: [{ id: 1, seats: 4, colorIndex: 6, colorOverrides: { body: '#9a431a' } }],
+    passengerQueues: [[6, 6, 6, 6]]
+  });
+  assert.deepEqual(document.passengerColorOverrides, { '6': { body: '#9a431a' } });
+  const model = new LevelEditorModel(document);
+  model.select('vehicle:1');
+  assert.equal(model.setPassengerColorOverride(6, 'highlight', '#f2b36a'), true);
+  assert.equal(model.document.passengerColorOverrides['6'].highlight, '#f2b36a');
+  assert.equal(model.document.vehicles[0].colorOverrides.highlight, '#f2b36a');
+  const runtime = levelDocumentToRuntime(model.document);
+  assert.equal(runtime.passengerColorOverrides['6'].highlight, '#f2b36a');
+  assert.equal(validateLevelDocument(model.document).valid, true);
+});
+
+test('vehicle body colour edits update the matching passenger override', () => {
+  const model = new LevelEditorModel(createLevelDocument({
+    vehicles: [{ id: 1, seats: 4, colorIndex: 6 }, { id: 2, seats: 4, colorIndex: 6 }],
+    passengerQueues: [[6, 6, 6, 6, 6, 6, 6, 6]]
+  }));
+  model.select('vehicle:1');
+  model.setSelectedField('colorOverrides.body', '#9a431a');
+  assert.equal(model.document.passengerColorOverrides['6'].body, '#9a431a');
+  assert.equal(model.document.vehicles[1].colorOverrides.body, '#9a431a');
+});
+
+test('retargets an imported JSON document to the current level identity', () => {
+  const source = createLevelDocument({
+    key: 'level99', unityId: 99, displayName: 'Source level',
+    vehicles: [{ id: 1, seats: 4, colorIndex: 2, x: 1, z: 2 }],
+    containers: [{ id: 0, type: CONTAINER_TYPES.PARKING }],
+    passengerQueues: [[], [2, 2, 2, 2]]
+  });
+  const target = retargetLevelDocument(source, {
+    key: 'level20', unityId: 20, displayName: 'Current level'
+  });
+  assert.equal(target.key, 'level20');
+  assert.equal(target.unityId, 20);
+  assert.equal(target.displayName, 'Current level');
+  assert.deepEqual(target.vehicles, source.vehicles);
+  assert.deepEqual(target.passengerQueues, source.passengerQueues);
 });
 
 test('supports selection transforms, clipboard, undo, and redo', () => {
@@ -79,6 +163,115 @@ test('supports selection transforms, clipboard, undo, and redo', () => {
   assert.equal(model.document.vehicles.length, 2);
   assert.equal(model.redo(), true);
   assert.equal(model.document.vehicles.length, 3);
+});
+
+test('keeps passenger counts in sync when vehicles are added or removed', () => {
+  const model = new LevelEditorModel(makeDocument());
+  const added = model.addVehicle({ colorIndex: 2, seats: 4 });
+  assert.equal(passengerCount(model.document, 2), 8);
+  assert.equal(validateLevelDocument(model.document).valid, true);
+
+  model.select(`vehicle:${added.id}`);
+  model.removeSelected();
+  assert.equal(passengerCount(model.document, 2), 4);
+  assert.equal(validateLevelDocument(model.document).valid, true);
+
+  assert.equal(model.undo(), true);
+  assert.equal(passengerCount(model.document, 2), 8);
+});
+
+test('keeps passenger counts in sync when vehicle capacity fields change', () => {
+  const model = new LevelEditorModel(makeDocument());
+  model.select('vehicle:1');
+  model.setSelectedField('seats', 6);
+  assert.equal(passengerCount(model.document, 2), 6);
+  assert.equal(validateLevelDocument(model.document).valid, true);
+
+  model.setSelectedField('colorIndex', 3);
+  assert.equal(passengerCount(model.document, 2), 0);
+  assert.equal(passengerCount(model.document, 3), 10);
+  assert.equal(validateLevelDocument(model.document).valid, true);
+});
+
+test('special vehicle mechanisms own their fixed vehicle colours', () => {
+  const model = new LevelEditorModel(createLevelDocument({
+    vehicles: [{ id: 1, seats: 4, colorIndex: 2 }],
+    passengerQueues: [[2, 2, 2, 2]]
+  }));
+  model.select('vehicle:1');
+
+  model.setSelectedField('mechanism.type', 'police');
+  assert.equal(model.document.vehicles[0].colorIndex, 11);
+  assert.deepEqual(model.document.passengerQueues, [[11, 11, 11, 11]]);
+
+  model.setSelectedField('mechanism.type', 'firetruck');
+  assert.equal(model.document.vehicles[0].colorIndex, 12);
+  assert.deepEqual(model.document.passengerQueues, [[12, 12, 12, 12]]);
+
+  model.setSelectedField('mechanism.type', 'ambulance');
+  assert.equal(model.document.vehicles[0].colorIndex, 13);
+  assert.deepEqual(model.document.passengerQueues, [[13, 13, 13, 13]]);
+
+  model.setSelectedField('colorIndex', 4);
+  assert.equal(model.document.vehicles[0].colorIndex, 13);
+});
+
+test('binds edited vehicle colours to its passenger seats without reordering queues', () => {
+  const model = new LevelEditorModel(createLevelDocument({
+    vehicles: [
+      { id: 1, seats: 4, colorIndex: 2 },
+      { id: 2, seats: 4, colorIndex: 2 },
+      { id: 3, seats: 4, colorIndex: 3 }
+    ],
+    passengerQueues: [
+      [3, 2, 2, 3, 2, 2],
+      [3, 3, 2, 2, 2, 2]
+    ]
+  }));
+  const beforeLengths = model.document.passengerQueues.map((queue) => queue.length);
+
+  model.select('vehicle:1');
+  model.setSelectedField('colorIndex', 3);
+  assert.deepEqual(model.document.passengerQueues, [
+    [3, 3, 3, 3, 3, 3],
+    [3, 3, 2, 2, 2, 2]
+  ]);
+  assert.deepEqual(model.document.passengerQueues.map((queue) => queue.length), beforeLengths);
+  assert.equal(validateLevelDocument(model.document).valid, true);
+
+  model.select('vehicle:2');
+  model.setSelectedField('colorIndex', 4);
+  assert.deepEqual(model.document.passengerQueues, [
+    [3, 3, 3, 3, 3, 3],
+    [3, 3, 4, 4, 4, 4]
+  ]);
+  assert.equal(validateLevelDocument(model.document).valid, true);
+  assert.equal(model.undo(), true);
+  assert.equal(model.document.vehicles.find((vehicle) => vehicle.id === 2).colorIndex, 2);
+  assert.deepEqual(model.document.passengerQueues, [
+    [3, 3, 3, 3, 3, 3],
+    [3, 3, 2, 2, 2, 2]
+  ]);
+});
+
+test('binds each colour slot of a combination vehicle independently', () => {
+  const model = new LevelEditorModel(createLevelDocument({
+    vehicles: [
+      { id: 1, seats: 10, colorIndex: 2, mechanism: { type: 'combination', secondColorIndex: 3 } },
+      { id: 2, seats: 4, colorIndex: 2 }
+    ],
+    passengerQueues: [
+      [2, 3, 2, 3, 2, 3, 2, 2],
+      [2, 3, 2, 2, 2, 2, 3, 3]
+    ]
+  }));
+  model.select('vehicle:1');
+  model.setSelectedField('mechanism.secondColorIndex', 4);
+  assert.deepEqual(model.document.passengerQueues, [
+    [2, 4, 2, 4, 2, 4, 2, 2],
+    [2, 4, 2, 2, 2, 2, 4, 4]
+  ]);
+  assert.equal(validateLevelDocument(model.document).valid, true);
 });
 
 test('matches Unity garage dimensions, vehicle layout, and exit selection', () => {
@@ -411,4 +604,44 @@ test('exports Unity vehicle depth to CSV and Excel', () => {
   const excel = exportLevelExcelXml(document);
   assert.match(excel, /<Data ss:Type="String">depth<\/Data>/);
   assert.match(excel, /<Data ss:Type="String">2<\/Data>/);
+});
+
+test('applies recognized reference-image vehicles and resyncs queues and depth', () => {
+  const model = new LevelEditorModel(createLevelDocument({ key: 'levelImage', unityId: 91 }));
+  const created = model.applyDetectedVehicles([
+    { colorIndex: 4, x: 1, z: 2, yaw: 0, seats: 4 },
+    { colorIndex: 4, x: 2, z: 2, yaw: 90, seats: 10 },
+    { colorIndex: 1, x: 3, z: 2, yaw: 0, seats: 4 }
+  ]);
+
+  assert.deepEqual(created.map((vehicle) => [vehicle.id, vehicle.colorIndex, vehicle.seats]), [[1, 4, 4], [2, 4, 10], [3, 1, 4]]);
+  assert.equal(model.document.vehicles.length, 3);
+  assert.deepEqual([...model.selection].sort(), ['vehicle:1', 'vehicle:2', 'vehicle:3']);
+  assert.deepEqual(Object.keys(model.document.vehicleDepthes), ['1', '2', '3']);
+  assert.equal(validateLevelDocument(model.document).valid, true);
+
+  // Passenger queues follow the recognized seat totals: 14 red, 4 green.
+  const totals = model.document.passengerQueues.flat().reduce((counts, color) => {
+    counts[color] = (counts[color] ?? 0) + 1;
+    return counts;
+  }, {});
+  assert.deepEqual(totals, { 1: 4, 4: 14 });
+
+  model.undo();
+  assert.equal(model.document.vehicles.length, 0);
+});
+
+test('recognized vehicles replace only the target container by default', () => {
+  const document = createLevelDocument({ key: 'levelImage2', unityId: 92 });
+  const model = new LevelEditorModel(document);
+  const conveyor = model.addContainer(CONTAINER_TYPES.CONVEYOR, { x: 5, z: 5 });
+  model.addVehicle({ colorIndex: 0, seats: 4, containerId: conveyor.id, containerType: CONTAINER_TYPES.CONVEYOR });
+  model.applyDetectedVehicles([{ colorIndex: 5, x: 0, z: 0, yaw: 0, seats: 4 }], { mode: 'replace' });
+
+  assert.equal(model.document.vehicles.filter((vehicle) => vehicle.containerId === conveyor.id).length, 1);
+  assert.equal(model.document.vehicles.filter((vehicle) => vehicle.containerId === 0).length, 1);
+
+  model.applyDetectedVehicles([{ colorIndex: 6, x: 1, z: 1, yaw: 0, seats: 4 }], { mode: 'append' });
+  assert.equal(model.document.vehicles.filter((vehicle) => vehicle.containerId === 0).length, 2);
+  assert.equal(model.document.vehicles.filter((vehicle) => vehicle.containerId === conveyor.id).length, 1);
 });

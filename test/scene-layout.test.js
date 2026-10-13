@@ -1,11 +1,15 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
+  calculateAutoCameraFit,
   calculateDesignCoverHalfHeight,
   calculateOrthographicHalfHeight,
   calculatePerspectiveDistance,
   clampCenteredRectX,
+  createSceneBounds,
   evaluateDreamteckClosedBSpline,
+  extendSceneBounds,
+  normalizeSceneBounds,
   resolveCameraFit,
   resolveResponsiveCropFit,
   transformCurveCoordinates
@@ -139,6 +143,54 @@ test('camera fit ignores responsive crop when preserving authored content bounds
   assert.equal(fit.fitWidth, CAMERA.fitWidth);
   assert.equal(fit.fitHeight, CAMERA.fitHeight);
   assert.ok(fit.fitHeight > shortScreenCrop.fitHeight);
+});
+
+test('scene bounds collect points and recover a deterministic fallback', () => {
+  const bounds = createSceneBounds();
+  extendSceneBounds(bounds, { x: -2, z: 3 }, 0.5);
+  extendSceneBounds(bounds, { x: 4, z: -1 }, 0.25);
+  assert.deepEqual(normalizeSceneBounds(bounds), {
+    minX: -2.5,
+    maxX: 4.25,
+    minZ: -1.25,
+    maxZ: 3.5
+  });
+  assert.deepEqual(normalizeSceneBounds(createSceneBounds(), {
+    centerX: 2,
+    centerZ: -3,
+    halfWidth: 1,
+    halfDepth: 2
+  }), {
+    minX: 1,
+    maxX: 3,
+    minZ: -5,
+    maxZ: -1
+  });
+});
+
+test('auto camera fit centers content and projects ground depth by elevation', () => {
+  const fit = calculateAutoCameraFit({
+    bounds: { minX: -3, maxX: 5, minZ: -4, maxZ: 12 },
+    camera: { elevationDegrees: 60 },
+    margin: 0.5,
+    minFitWidth: 1,
+    minFitHeight: 1
+  });
+  assert.equal(fit.targetX, 1);
+  assert.equal(fit.targetZ, 4);
+  assertClose(fit.fitWidth, 9);
+  assertClose(fit.fitHeight, 14.856406460551018);
+});
+
+test('auto camera fit keeps small layouts inside the configured minimum frame', () => {
+  const fit = calculateAutoCameraFit({
+    bounds: { minX: 0, maxX: 1, minZ: 0, maxZ: 1 },
+    camera: { elevationDegrees: 0 },
+    minFitWidth: 8,
+    minFitHeight: 8
+  });
+  assert.equal(fit.fitWidth, 8);
+  assert.equal(fit.fitHeight, 8);
 });
 
 test('responsive crop keeps tall screens on the authored baseline crop', () => {

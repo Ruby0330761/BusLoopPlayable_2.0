@@ -3,9 +3,11 @@ import path from 'node:path';
 import { transformWithEsbuild } from 'vite';
 
 const ROOT = process.cwd();
-const DIST_DIR = path.join(ROOT, 'dist');
-const OUTPUT_DIR = path.join(ROOT, 'artifacts', 'applovin');
-const OUTPUT_FILE = path.join(OUTPUT_DIR, 'index.html');
+const DIST_DIR = path.resolve(process.env.PLAYABLE_DIST_DIR || path.join(ROOT, 'dist'));
+const OUTPUT_FILE = path.resolve(
+  process.env.PLAYABLE_INLINE_OUTPUT_FILE || path.join(ROOT, 'artifacts', 'applovin', 'index.html')
+);
+const OUTPUT_DIR = path.dirname(OUTPUT_FILE);
 const PLAYABLE_PLATFORM = process.env.PLAYABLE_PLATFORM || 'applovin';
 const OFFLINE_REQUEST_PLATFORMS = new Set([
   'applovin',
@@ -57,6 +59,7 @@ const MIME_TYPES = new Map([
   ['.jpg', 'image/jpeg'],
   ['.js', 'text/javascript'],
   ['.mp3', 'audio/mpeg'],
+  ['.mp4', 'video/mp4'],
   ['.wav', 'audio/wav'],
   ['.png', 'image/png'],
   ['.rgba16f', 'application/octet-stream'],
@@ -217,12 +220,14 @@ function stripEditorMount(html) {
 async function main() {
   const [{ PLAYABLE_LEVEL_SEQUENCE }, { SCENE_TUNING }, {
     BASE_RUNTIME_ASSET_PATHS,
+    PRE_ROLL_ASSET_PATHS,
     getMechanismResourcePaths,
     getMechanismTypesForLevels
-  }] = await Promise.all([
+  }, { isPreRollAssetPath }] = await Promise.all([
     import('../src/generated-active-level.js'),
     import('../src/scene-tuning.js'),
-    import('../src/mechanism-resources.js')
+    import('../src/mechanism-resources.js'),
+    import('../src/pre-roll.js')
   ]);
   const htmlPath = path.join(DIST_DIR, 'index.html');
   const html = stripEditorMount(await readFile(htmlPath, 'utf8'));
@@ -243,6 +248,12 @@ async function main() {
     entryBannerEnabled: Boolean(SCENE_TUNING.entryBanner?.enabled)
   });
   const realAssetUrls = new Set(BASE_RUNTIME_ASSET_PATHS);
+  if (SCENE_TUNING.preRoll?.enabled && (
+    PRE_ROLL_ASSET_PATHS.includes(SCENE_TUNING.preRoll?.asset)
+    || isPreRollAssetPath(SCENE_TUNING.preRoll?.asset)
+  )) {
+    realAssetUrls.add(SCENE_TUNING.preRoll.asset);
+  }
   for (const level of PLAYABLE_LEVEL_SEQUENCE) collectAssetUrls(level, realAssetUrls);
   collectAssetUrls(html, realAssetUrls);
   collectAssetUrls(packagedCssSource, realAssetUrls);

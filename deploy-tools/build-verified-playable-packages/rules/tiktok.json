@@ -1,0 +1,185 @@
+{
+  "schemaVersion": "playable-platform-rules-v1",
+  "platform": "tiktok",
+  "rules": [
+    {
+      "id": "TIKTOK-ART-001",
+      "title": "交付 ZIP",
+      "stage": "artifact",
+      "severity": "blocker",
+      "sourceClass": "checker-parity",
+      "sourceVersion": "playable_check@86d58e33d293a0a095b574407a2d6c7d191d510f",
+      "check": {
+        "type": "artifact_kind",
+        "value": "zip"
+      },
+      "repairHint": "使用 TikTok ZIP 构建入口。",
+      "autoRepair": false
+    },
+    {
+      "id": "TIKTOK-ART-002",
+      "title": "ZIP 文件数不超过 100",
+      "stage": "artifact",
+      "severity": "blocker",
+      "sourceClass": "checker-parity",
+      "sourceVersion": "playable_check@86d58e33d293a0a095b574407a2d6c7d191d510f",
+      "check": {
+        "type": "max_file_count",
+        "value": 100
+      },
+      "repairHint": "在当前候选清单排除非交付文件；不得删除项目资源。",
+      "autoRepair": false
+    },
+    {
+      "id": "TIKTOK-ART-003",
+      "title": "根目录文件齐全",
+      "stage": "artifact",
+      "severity": "blocker",
+      "sourceClass": "checker-parity",
+      "sourceVersion": "playable_check@86d58e33d293a0a095b574407a2d6c7d191d510f",
+      "check": {
+        "type": "required_root_files",
+        "values": [
+          "index.html",
+          "index.js",
+          "style.css",
+          "config.json"
+        ]
+      },
+      "repairHint": "修正 TikTok 模板和 ZIP 根目录。",
+      "autoRepair": false
+    },
+    {
+      "id": "TIKTOK-ART-004",
+      "title": "config.json 方向字段合法",
+      "stage": "artifact",
+      "severity": "blocker",
+      "sourceClass": "checker-parity",
+      "sourceVersion": "playable_check@86d58e33d293a0a095b574407a2d6c7d191d510f",
+      "check": {
+        "type": "json_fields_enum",
+        "file": "config.json",
+        "fields": {
+          "orientation": [
+            0,
+            1,
+            2
+          ],
+          "playable_orientation": [
+            0,
+            1,
+            2
+          ]
+        }
+      },
+      "repairHint": "生成包含合法 orientation 与 playable_orientation 的 config.json。",
+      "autoRepair": false
+    },
+    {
+      "id": "TIKTOK-ART-005",
+      "title": "资源引用完整",
+      "stage": "artifact",
+      "severity": "blocker",
+      "sourceClass": "delivery-contract",
+      "sourceVersion": "game_playable-playbook@8e26d3b61d52c7540809a3a56fb6821472cc14673c4943ca71ef97f851c8401b",
+      "check": {
+        "type": "resource_references_exist",
+        "allow": [
+          "https://sf16-muse-va.ibytedtos.com/obj/union-fe-nc-i18n/playable/sdk/playable-sdk.js"
+        ]
+      },
+      "repairHint": "修复相对路径或补齐 ZIP 文件。",
+      "autoRepair": false
+    },
+    {
+      "id": "TIKTOK-STA-001",
+      "title": "注入官方 playable SDK",
+      "stage": "static",
+      "severity": "blocker",
+      "sourceClass": "checker-parity",
+      "sourceVersion": "playable_check@86d58e33d293a0a095b574407a2d6c7d191d510f",
+      "check": {
+        "type": "regex_present",
+        "pattern": "https://sf16-muse-va\\.ibytedtos\\.com/obj/union-fe-nc-i18n/playable/sdk/playable-sdk\\.js"
+      },
+      "repairHint": "使用官方 TikTok playable SDK URL。",
+      "autoRepair": false
+    },
+    {
+      "id": "TIKTOK-STA-002",
+      "title": "CTA 使用 openAppStore",
+      "stage": "static",
+      "severity": "blocker",
+      "sourceClass": "checker-parity",
+      "sourceVersion": "playable_check@86d58e33d293a0a095b574407a2d6c7d191d510f",
+      "check": {
+        "type": "regex_present",
+        "pattern": "(?:playableSDK\\s*\\.\\s*)?openAppStore\\s*\\("
+      },
+      "repairHint": "连接真实 CTA 到 openAppStore。",
+      "autoRepair": false
+    },
+    {
+      "id": "TIKTOK-STA-003",
+      "title": "禁止 mraid.js",
+      "stage": "static",
+      "severity": "blocker",
+      "sourceClass": "checker-parity",
+      "sourceVersion": "playable_check@86d58e33d293a0a095b574407a2d6c7d191d510f",
+      "check": {
+        "type": "regex_absent",
+        "pattern": "mraid\\.js"
+      },
+      "repairHint": "从 TikTok 模板移除 mraid.js。",
+      "autoRepair": false
+    },
+    {
+      "id": "TIKTOK-STA-004",
+      "title": "仅允许官方 SDK 外链",
+      "stage": "static",
+      "severity": "blocker",
+      "sourceClass": "checker-parity",
+      "sourceVersion": "playable_check@86d58e33d293a0a095b574407a2d6c7d191d510f",
+      "check": {
+        "type": "external_urls_allowlist",
+        "allow": [
+          "^https://sf16-muse-va\\.ibytedtos\\.com/obj/union-fe-nc-i18n/playable/sdk/playable-sdk\\.js$"
+        ]
+      },
+      "repairHint": "内联其他资源，禁止非白名单网络请求。",
+      "autoRepair": false
+    },
+    {
+      "id": "TIKTOK-STA-005",
+      "title": "Both 方向配置",
+      "stage": "static",
+      "severity": "warning",
+      "sourceClass": "checker-parity",
+      "sourceVersion": "playable_check@86d58e33d293a0a095b574407a2d6c7d191d510f",
+      "check": {
+        "type": "json_fields_equal",
+        "file": "config.json",
+        "values": {
+          "orientation": 0,
+          "playable_orientation": 0
+        }
+      },
+      "repairHint": "除非投放明确要求固定方向，否则使用 Both 配置。",
+      "autoRepair": false
+    },
+    {
+      "id": "TIKTOK-MAN-001",
+      "title": "TikTok 正式后台测试",
+      "stage": "manual",
+      "severity": "manual",
+      "sourceClass": "delivery-contract",
+      "sourceVersion": "game_playable-playbook@8e26d3b61d52c7540809a3a56fb6821472cc14673c4943ca71ef97f851c8401b",
+      "check": {
+        "type": "manual"
+      },
+      "repairHint": "在正式广告后台上传最终 ZIP 并测试。",
+      "autoRepair": false,
+      "manualGate": "TikTok 无公开 Preview 时使用正式后台完成人工测试。"
+    }
+  ]
+}

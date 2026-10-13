@@ -130,6 +130,47 @@ test('mechanism metadata can be derived from imported level fields', () => {
   ]);
 });
 
+test('firetruck and police resources are discoverable and classified from level data', () => {
+  const metadata = deriveLevelMechanics({
+    vehicles: [
+      { mechanism: { type: 'firetruck' } },
+      { mechanism: { type: 'police' } }
+    ]
+  });
+  assert.deepEqual(metadata.types, [
+    'ordinaryConveyor', 'firetruck', 'police'
+  ]);
+  assert.equal(metadata.counts.firetruck, 1);
+  assert.equal(metadata.counts.police, 1);
+  for (const type of ['firetruck', 'police']) {
+    assert.ok(MECHANISM_RESOURCE_MANIFEST[type].length > 0);
+    assert.ok(MECHANISM_RESOURCE_MANIFEST[type].every((asset) => asset.includes(`/mechanisms/${type}/`)));
+  }
+});
+
+test('firetruck and police passengers use their dedicated visuals', () => {
+  const sceneSource = readFileSync('src/scene-view.js', 'utf8');
+  assert.match(sceneSource, /firetruckPassengerTemplate/);
+  assert.match(sceneSource, /firetruckPassengerTexture/);
+  assert.match(sceneSource, /firetruckPassengerVat/);
+  assert.match(sceneSource, /loadVatGeometry\(FIRETRUCK_ASSETS\.passengerVatMesh/);
+  assert.match(sceneSource, /loadPackedVatTexture\(FIRETRUCK_ASSETS\.passengerVatTexture/);
+  assert.match(sceneSource, /key: 'firetruck-passenger-rgba8-packed'/);
+  assert.match(sceneSource, /const version = view\.getUint32\(4, true\)/);
+  assert.match(sceneSource, /\[1, 2\]\.includes\(version\)/);
+  assert.match(sceneSource, /policePassengerTemplate/);
+  assert.match(sceneSource, /policePassengerTexture/);
+  assert.match(sceneSource, /key: 'police-passenger-rgba8-packed'/);
+  assert.match(sceneSource, /policePassengerVat/);
+  assert.match(sceneSource, /createSpecialPassengerAnimation/);
+  assert.match(sceneSource, /specialPassengerType/);
+  assert.doesNotMatch(sceneSource, /Firefighter Visual Badge|addFirefighterVisualBadge/);
+  assert.match(sceneSource, /!root\.userData\.specialPassengerType/);
+  assert.match(sceneSource, /visualRoot\?\.userData\.specialPassengerType/);
+  assert.match(sceneSource, /!this\.hasFiretruckVehicles\(\)/);
+  assert.match(sceneSource, /!this\.hasPoliceVehicles\(\)/);
+});
+
 test('mechanism audio config includes only mechanisms used by the session', () => {
   assert.deepEqual(getMechanismAudioConfig([MECHANISM_TYPES.ordinaryConveyor]), {});
 

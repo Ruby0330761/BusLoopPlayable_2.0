@@ -33,8 +33,12 @@ function openBrowserPreview(url) {
   ) return false;
   const link = document.createElement('a');
   link.href = url;
+  link.target = '_blank';
   link.rel = 'noopener noreferrer';
+  link.hidden = true;
+  document.body?.append(link);
   link.click();
+  setTimeout(() => link.remove?.(), 0);
   return true;
 }
 

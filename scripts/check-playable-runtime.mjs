@@ -12,6 +12,18 @@ import { inflateRawSync, inflateSync } from 'node:zlib';
 
 const DEFAULT_TIMEOUT_MS = 15_000;
 const DEFAULT_VIEWPORT = Object.freeze({ width: 390, height: 844 });
+// Branding variants ship both valid store links. The normal smoke uses each variant's target UA;
+// opposite-UA previews must remain valid as well because runtime selection follows the device.
+const DEVICE_PROFILES = Object.freeze({
+  ios: Object.freeze({
+    userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Mobile/15E148 Safari/604.1',
+    platform: 'iPhone'
+  }),
+  android: Object.freeze({
+    userAgent: 'Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.6478.122 Mobile Safari/537.36',
+    platform: 'Linux armv8l'
+  })
+});
 const SUPPORTED_PLATFORMS = new Set([
   'applovin',
   'google-ads',
@@ -471,8 +483,21 @@ function probeBootstrap(platform, configuredImageAssets = []) {
     window.ALPlayableAnalytics = { trackEvent() {} };
     if (window.HTMLMediaElement?.prototype) {
       window.HTMLMediaElement.prototype.play = function() {
-        if (!interacted) audioBeforeInteraction.push({ type: 'HTMLMediaElement.play', atMs: now() });
+        if (!interacted) {
+          audioBeforeInteraction.push({ type: 'HTMLMediaElement.play', atMs: now() });
+        }
+        if (this.tagName === 'VIDEO' && !this.loop) {
+          setTimeout(() => this.dispatchEvent(new Event('ended')), 120);
+        }
         return Promise.resolve();
+      };
+      // Model a successful muted native autoplay without requiring the app to
+      // call HTMLMediaElement.play(), which external checkers may report as
+      // AUDIO_PLAY even when the video is silent.
+      window.HTMLMediaElement.prototype.load = function() {
+        if (this.tagName === 'VIDEO' && this.autoplay && this.muted && !this.loop) {
+          setTimeout(() => this.dispatchEvent(new Event('ended')), 120);
+        }
       };
     }
     const AudioContextClass = window.AudioContext || window.webkitAudioContext;
@@ -572,6 +597,12 @@ function readinessExpression() {
     const loadingHidden = !loading || loading.hidden || loadingStyle.display === 'none' ||
       loadingStyle.visibility === 'hidden' || Number(loadingStyle.opacity) <= 0.01 ||
       loadingRect.width < 2 || loadingRect.height < 2;
+    const preRoll = document.querySelector('#pre-roll-overlay');
+    const preRollStyle = preRoll ? getComputedStyle(preRoll) : null;
+    const preRollRect = preRoll ? preRoll.getBoundingClientRect() : null;
+    const preRollFinished = !preRoll || preRoll.hidden || preRollStyle.display === 'none' ||
+      preRollStyle.visibility === 'hidden' || Number(preRollStyle.opacity) <= 0.01 ||
+      preRollRect.width < 2 || preRollRect.height < 2;
     const progressNode = document.querySelector('#loading-progress-value');
     const progress = Number.parseFloat(progressNode && progressNode.textContent || '0');
     const canvas = document.querySelector('#game-canvas') || document.querySelector('canvas');
@@ -595,6 +626,8 @@ function readinessExpression() {
       loadingPresent: !!loading,
       loadingHidden,
       loadingProgress: Number.isFinite(progress) ? progress : null,
+      preRollPresent: !!preRoll,
+      preRollFinished,
       canvasPresent: !!canvas,
       canvasWidth: canvas ? canvas.width : 0,
       canvasHeight: canvas ? canvas.height : 0,
@@ -739,9 +772,14 @@ async function evaluate(client, expression) {
   return result.result?.value;
 }
 
-async function waitForDebugger(port, timeoutMs) {
+async function waitForDebugger(port, timeoutMs, signal, isExited = () => false, getStderr = () => '') {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
+    if (signal?.aborted) throw Object.assign(new Error('试玩运行时检测被中止。'), { name: 'AbortError' });
+    if (isExited()) {
+      const detail = getStderr().trim();
+      throw new Error(`Chrome 进程在 DevTools 端口启动前退出${detail ? `：${detail.slice(-500)}` : '。'}`);
+    }
     try {
       const response = await fetch(`http://127.0.0.1:${port}/json/list`);
       if (response.ok) {
@@ -1014,7 +1052,9 @@ async function runBrowser({
   ctaSelector = null,
   exerciseCta = true,
   screenshotFormat = 'png',
-  screenshotQuality
+  screenshotQuality,
+  device = null,
+  signal = null
 }) {
   const port = await freePort();
   const args = [
@@ -1039,9 +1079,24 @@ async function runBrowser({
     `--window-size=${viewport.width},${viewport.height}`,
     'about:blank'
   ];
-  const browser = spawn(chrome, args, { stdio: ['ignore', 'ignore', 'pipe'] });
+  const browser = spawn(chrome, args, {
+    stdio: ['ignore', 'ignore', 'pipe'],
+    detached: process.platform !== 'win32'
+  });
   let browserExited = false;
   browser.once('exit', () => { browserExited = true; });
+  const signalBrowserTree = (signal) => {
+    if (!browser.pid) return;
+    try {
+      if (process.platform === 'win32') browser.kill(signal);
+      else process.kill(-browser.pid, signal);
+    } catch (error) {
+      if (error?.code !== 'ESRCH') browser.kill(signal);
+    }
+  };
+  let abortBrowser = () => { if (!browserExited) signalBrowserTree('SIGTERM'); };
+  if (signal?.aborted) abortBrowser();
+  else signal?.addEventListener('abort', abortBrowser, { once: true });
   let stderr = '';
   browser.stderr.setEncoding('utf8');
   browser.stderr.on('data', (chunk) => { stderr = `${stderr}${chunk}`.slice(-8_000); });
@@ -1053,7 +1108,13 @@ async function runBrowser({
   let readiness = null;
   let screenshot = null;
   try {
-    client = new CdpClient(await waitForDebugger(port, Math.min(timeoutMs, 7_000)));
+    client = new CdpClient(await waitForDebugger(
+      port,
+      Math.min(timeoutMs, 15_000),
+      signal,
+      () => browserExited,
+      () => stderr
+    ));
     await client.connect();
     client.on('Runtime.consoleAPICalled', (event) => {
       if (!['error', 'assert'].includes(event.type)) return;
@@ -1117,7 +1178,10 @@ async function runBrowser({
         height: viewport.height,
         deviceScaleFactor: 1,
         mobile: true
-      })
+      }),
+      device
+        ? client.send('Emulation.setUserAgentOverride', { userAgent: device.userAgent, platform: device.platform })
+        : Promise.resolve()
     ]);
     await client.send('Page.addScriptToEvaluateOnNewDocument', {
       source: probeBootstrap(platform, configuredImageAssets)
@@ -1125,12 +1189,14 @@ async function runBrowser({
     await client.send('Page.navigate', { url });
     const deadline = Date.now() + timeoutMs;
     while (Date.now() < deadline) {
+      if (signal?.aborted) break;
       await delay(250);
       readiness = await evaluate(client, readinessExpression()).catch((error) => {
         exceptions.push({ text: error.message, url });
         return null;
       });
-      if (readiness?.documentReady && readiness.runtimeReady && readiness.loadingHidden && readiness.canvasVisible) break;
+      if (readiness?.documentReady && readiness.runtimeReady && readiness.loadingHidden
+        && readiness.preRollFinished && readiness.canvasVisible) break;
     }
     await delay(500);
     readiness = await evaluate(client, readinessExpression()) ?? readiness;
@@ -1164,12 +1230,17 @@ async function runBrowser({
       readiness = await evaluate(client, readinessExpression()) ?? readiness;
     }
   } finally {
+    if (abortBrowser) signal?.removeEventListener('abort', abortBrowser);
     client?.close();
-    if (!browserExited) browser.kill('SIGTERM');
+    if (!browserExited) signalBrowserTree('SIGTERM');
+    if (signal?.aborted) return { readiness: null, screenshot: null, consoleErrors, exceptions, resourceFailures, stderr, aborted: true };
     await Promise.race([
-      new Promise((resolve) => browser.once('exit', resolve)),
-      delay(1_000).then(() => { if (!browserExited) browser.kill('SIGKILL'); })
+      browserExited ? Promise.resolve() : new Promise((resolve) => browser.once('exit', resolve)),
+      delay(1_000)
     ]);
+    // Chromium can let renderer/zygote children outlive the debug-process
+    // parent. Kill the detached group so repeated platform checks stay bounded.
+    if (process.platform !== 'win32' || !browserExited) signalBrowserTree('SIGKILL');
   }
   return { readiness, screenshot, consoleErrors, exceptions, resourceFailures, stderr };
 }
@@ -1216,6 +1287,7 @@ export async function capturePlayableBackupImage({
       readiness.documentReady !== true
       || readiness.runtimeReady !== true
       || readiness.loadingHidden !== true
+      || readiness.preRollFinished !== true
       || readiness.canvasVisible !== true
       || readiness.hostProbe?.canvasPixels?.nonBlank !== true
       || hostErrors.length > 0
@@ -1248,7 +1320,9 @@ export async function checkPlayableRuntimeArtifact({
   viewport = DEFAULT_VIEWPORT,
   outputPath,
   checkBatchId = null,
-  ctaSelector = null
+  ctaSelector = null,
+  device = null,
+  signal = null
 } = {}) {
   if (!artifactPath) throw new TypeError('artifactPath is required.');
   if (!SUPPORTED_PLATFORMS.has(platform)) throw new TypeError(`Unsupported playable platform: ${platform ?? '<missing>'}.`);
@@ -1275,8 +1349,15 @@ export async function checkPlayableRuntimeArtifact({
       timeoutMs: Math.max(3_000, Number(timeoutMs) || DEFAULT_TIMEOUT_MS),
       viewport,
       configuredImageAssets,
-      ctaSelector
+      ctaSelector,
+      device: DEVICE_PROFILES[device] ?? null,
+      signal
     });
+    if (result.aborted) {
+      const aborted = new Error('试玩运行时检测被中止。');
+      aborted.name = 'AbortError';
+      throw aborted;
+    }
     const hostErrors = result.readiness?.hostProbe?.errors ?? [];
     const hostConsoleErrors = (result.readiness?.hostProbe?.consoleErrors ?? []).map((text) => ({ type: 'error', text, url: '' }));
     const runtimeErrors = uniqueRecords([...result.exceptions, ...hostErrors]);
@@ -1302,6 +1383,10 @@ export async function checkPlayableRuntimeArtifact({
         loadingPresent: readiness.loadingPresent,
         loadingHidden: readiness.loadingHidden,
         loadingProgress: readiness.loadingProgress
+      }),
+      check('RUNTIME-PREROLL-001', '前贴视频已平滑进入试玩', readiness.preRollFinished === true, {
+        preRollPresent: readiness.preRollPresent,
+        preRollFinished: readiness.preRollFinished
       }),
       check('RUNTIME-CANVAS-001', 'Canvas 尺寸有效且可见', readiness.canvasPresent === true
         && readiness.canvasWidth > 0 && readiness.canvasHeight > 0 && readiness.canvasVisible === true, {

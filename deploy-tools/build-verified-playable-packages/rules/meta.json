@@ -1,0 +1,167 @@
+{
+  "schemaVersion": "playable-platform-rules-v1",
+  "platform": "meta",
+  "rules": [
+    {
+      "id": "META-ART-001",
+      "title": "交付 ZIP",
+      "stage": "artifact",
+      "severity": "blocker",
+      "sourceClass": "checker-parity",
+      "sourceVersion": "playable_check@86d58e33d293a0a095b574407a2d6c7d191d510f",
+      "check": {
+        "type": "artifact_kind",
+        "value": "zip"
+      },
+      "repairHint": "使用 Meta ZIP 构建入口。",
+      "autoRepair": false
+    },
+    {
+      "id": "META-ART-002",
+      "title": "ZIP 文件数不超过 100",
+      "stage": "artifact",
+      "severity": "blocker",
+      "sourceClass": "checker-parity",
+      "sourceVersion": "playable_check@86d58e33d293a0a095b574407a2d6c7d191d510f",
+      "check": {
+        "type": "max_file_count",
+        "value": 100
+      },
+      "repairHint": "在打包器中限制当前候选 allowlist；未引用项目资源只从本次候选排除，不得删除。",
+      "autoRepair": false
+    },
+    {
+      "id": "META-ART-003",
+      "title": "根目录包含 index.html",
+      "stage": "artifact",
+      "severity": "blocker",
+      "sourceClass": "checker-parity",
+      "sourceVersion": "playable_check@86d58e33d293a0a095b574407a2d6c7d191d510f",
+      "check": {
+        "type": "required_root_files",
+        "values": [
+          "index.html"
+        ]
+      },
+      "repairHint": "修正 ZIP 根目录结构。",
+      "autoRepair": false
+    },
+    {
+      "id": "META-ART-004",
+      "title": "ZIP 解压后不超过 5MB",
+      "stage": "artifact",
+      "severity": "blocker",
+      "sourceClass": "checker-parity",
+      "sourceVersion": "playable_check@86d58e33d293a0a095b574407a2d6c7d191d510f",
+      "check": {
+        "type": "max_uncompressed_bytes",
+        "value": 5242880
+      },
+      "repairHint": "优化已引用资源，或从当前候选载荷排除未引用资源；不得删除项目资源。",
+      "autoRepair": false
+    },
+    {
+      "id": "META-ART-005",
+      "title": "index.html 小于 2MB",
+      "stage": "artifact",
+      "severity": "blocker",
+      "sourceClass": "delivery-contract",
+      "sourceVersion": "game_playable-playbook@8e26d3b61d52c7540809a3a56fb6821472cc14673c4943ca71ef97f851c8401b",
+      "check": {
+        "type": "max_main_html_bytes",
+        "value": 2097151
+      },
+      "repairHint": "把可打包资源留在 ZIP 内或优化内联内容，确保 index.html 严格小于 2MB。",
+      "autoRepair": false
+    },
+    {
+      "id": "META-ART-006",
+      "title": "资源引用完整",
+      "stage": "artifact",
+      "severity": "blocker",
+      "sourceClass": "delivery-contract",
+      "sourceVersion": "game_playable-playbook@8e26d3b61d52c7540809a3a56fb6821472cc14673c4943ca71ef97f851c8401b",
+      "check": {
+        "type": "resource_references_exist",
+        "allow": []
+      },
+      "repairHint": "修复相对路径或将缺失资源加入 ZIP。",
+      "autoRepair": false
+    },
+    {
+      "id": "META-STA-001",
+      "title": "CTA 使用 FbPlayableAd.onCTAClick",
+      "stage": "static",
+      "severity": "blocker",
+      "sourceClass": "checker-parity",
+      "sourceVersion": "playable_check@86d58e33d293a0a095b574407a2d6c7d191d510f",
+      "check": {
+        "type": "regex_present",
+        "pattern": "FbPlayableAd\\s*\\.\\s*onCTAClick\\s*\\("
+      },
+      "repairHint": "连接真实 CTA 到 Meta 桥接。",
+      "autoRepair": false
+    },
+    {
+      "id": "META-STA-002",
+      "title": "禁止外部 URL",
+      "stage": "static",
+      "severity": "blocker",
+      "sourceClass": "checker-parity",
+      "sourceVersion": "playable_check@86d58e33d293a0a095b574407a2d6c7d191d510f",
+      "check": {
+        "type": "external_urls_allowlist",
+        "allow": []
+      },
+      "repairHint": "把外部资源内联或加入 ZIP。",
+      "autoRepair": false
+    },
+    {
+      "id": "META-STA-003",
+      "title": "声明方向或响应式策略",
+      "stage": "static",
+      "severity": "warning",
+      "sourceClass": "delivery-contract",
+      "sourceVersion": "game_playable-playbook@8e26d3b61d52c7540809a3a56fb6821472cc14673c4943ca71ef97f851c8401b",
+      "check": {
+        "type": "any_regex_present",
+        "target": "main_html",
+        "patterns": [
+          "name\\s*=\\s*['\\\"]ad\\.orientation['\\\"]",
+          "orientationchange",
+          "matchMedia\\s*\\(",
+          "resize"
+        ]
+      },
+      "repairHint": "补齐方向 meta 或真实响应式监听。",
+      "autoRepair": false
+    },
+    {
+      "id": "META-STA-004",
+      "title": "运行时图片资源使用容器安全映射",
+      "stage": "static",
+      "severity": "blocker",
+      "sourceClass": "delivery-contract",
+      "sourceVersion": "bw-real-checker-regression@2026-08-06",
+      "check": {
+        "type": "dynamic_image_assets_embedded"
+      },
+      "repairHint": "在真实 Meta adapter 或资源 projector 中把 imageAsset 动态图片映射为 data URI 或可证明的 Blob URL，完整重建；不要手改 ZIP。",
+      "autoRepair": false
+    },
+    {
+      "id": "META-MAN-001",
+      "title": "Meta Playable Preview 复验",
+      "stage": "manual",
+      "severity": "manual",
+      "sourceClass": "delivery-contract",
+      "sourceVersion": "game_playable-playbook@8e26d3b61d52c7540809a3a56fb6821472cc14673c4943ca71ef97f851c8401b",
+      "check": {
+        "type": "manual"
+      },
+      "repairHint": "上传最终 ZIP，点击 CTA 并观察图片、音频和 iframe 行为。",
+      "autoRepair": false,
+      "manualGate": "在 Meta Playable Preview 验证最终 ZIP。"
+    }
+  ]
+}
