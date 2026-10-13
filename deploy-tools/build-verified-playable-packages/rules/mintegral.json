@@ -136,6 +136,21 @@
       "autoRepair": false
     },
     {
+      "id": "MINTEGRAL-STA-006",
+      "title": "除 js/html 外不得以文件形式加载",
+      "stage": "static",
+      "severity": "blocker",
+      "sourceClass": "checker-parity",
+      "sourceVersion": "preview-util@mmp-cdn.rayjump.com/pt-scripts/preview-util.js",
+      "check": {
+        "type": "regex_absent",
+        "target": "main_html",
+        "pattern": "<(?:link|img|video|audio|source|track)\\b[^>]*\\b(?:href|src)\\s*=\\s*[\\\"'](?!data:)"
+      },
+      "repairHint": "把样式/图片/音视频内联进 HTML 或转成 data: URI；Mindworks 检查器把任何单独加载的非 js 文件判为外链资源。",
+      "autoRepair": false
+    },
+    {
       "id": "MINTEGRAL-MAN-001",
       "title": "Mindworks 完整生命周期复验",
       "stage": "manual",

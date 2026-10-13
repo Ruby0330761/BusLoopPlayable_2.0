@@ -1,5 +1,13 @@
 # Findings
 
+## 2026-10-13 Mindworks 检查器「素材依赖代码的存储要求」不允许单独加载 CSS
+
+- 该检查项（内部 prop `outer_chain`）由 Mindworks 注入页面的 `https://mmp-cdn.rayjump.com/pt-scripts/preview-util.js` 判定：加载 1 秒后扫描 `performance.getEntries()`，只放行**同域加载的 script** 与 HTML 文档本身；任何其他单独加载的文件（`link`/`img`/`fetch` 等）都被记为「外链资源」并判失败。检测器上传后把 ZIP 解到 `mmp-cdn.rayjump.com` 再以 iframe（`?preview=true&loading=0&review=1`）运行，console 会打印 `=======外链资源` 及被标记的条目。
+- 复现/验证方法：本地把 `preview-util.js` 以同样的 `<script id="preview-util">` 注入解包后的 HTML，用 Chrome 打开 `?review=1` 并监听 `previewer:review` postMessage，即可离线复刻该项判定（脚本在 `/tmp/preview-util.js`，复刻脚本 `/tmp/repro.mjs`）。
+- 修复：Mintegral 打包分支把 `style.css` 内联为 `<style>`，ZIP 只保留「同名 HTML + index.js」两个文件；内联后同一份资源实测 `outer_chain` 从 0（不通过）变 1（通过），且官方 `creative-api.mintegral.com/openapi/examine` 返回 `素材依赖 Done`。
+- 防回归：本地 Mintegral 规则集新增 `MINTEGRAL-STA-006`（regex_absent，杜绝 `<link|img|video|audio|source|track>` 引用非 `data:` 地址），`test/playable-export.test.js` 增加导出器与规则契约测试。
+- 附录：检测器上传接口为 `creative-api.mintegral.com/openapi/examine/upload`（无需登录），`check` 接口逐项返回状态（`install/game_end/game_ready/code/...`），可直接用于离线复核。
+
 ## 2026-10-13 Mintegral 检测失败来自 FBX 内部贴图引用与 data URI 目录拼接
 
 - Mindworks/PlayTurbo 的「素材依赖代码的存储要求」(`outer_chain`) 和「代码报错」(`code`) 在这批 Mintegral 包上同时失败，根因是**所有 Unity FBX 内部仍写着 Windows 相对贴图路径**（如 `..\Textures\Car_0307\Car_P2.png`、`Fire Engine.png`）。three 的 `FBXLoader.loadTexture` 会把这类引用归一成裸文件名，再拼接到「模型所在目录」。打包后模型 URL 是 `data:application/octet-stream;base64,<gzip>`，`loadPackedFbx` 原先用 `url.lastIndexOf('/')` 推导目录，斜杠落在 base64 数据里，于是拼出 `data:...base64,<数据>/Car_P2.png` 这种非法地址 → WebView 报 `net::ERR_INVALID_URL` → 检测器判「代码报错」；同一批「素材以非内嵌方式被代码引用」触发 `outer_chain`。

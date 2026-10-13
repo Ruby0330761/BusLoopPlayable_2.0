@@ -702,13 +702,17 @@ async function writePlatformArtifact({
   const base = path.parse(fileName).name;
   const mintegralRoot = path.join(packageRoot, base);
   await mkdir(mintegralRoot, { recursive: true });
-  split.html = split.html
-    .replace('href="style.css"', 'href="style.css"')
-    .replace('src="index.js"', 'src="index.js"');
+  // Mindworks' review checker flags every separately loaded file other than
+  // same-host scripts as an "external chain" resource, so only js and html may
+  // ship as their own files. Inline the stylesheet instead of linking it.
+  const stylesheetTag = '<link rel="stylesheet" href="style.css">';
+  if (!split.html.includes(stylesheetTag)) {
+    throw new Error('Mintegral split HTML is missing the stylesheet link tag.');
+  }
+  split.html = split.html.replace(stylesheetTag, `<style>${split.css}</style>`);
   await Promise.all([
     writeFile(path.join(mintegralRoot, `${base}.html`), split.html, 'utf8'),
-    writeFile(path.join(mintegralRoot, 'index.js'), split.js, 'utf8'),
-    writeFile(path.join(mintegralRoot, 'style.css'), split.css, 'utf8')
+    writeFile(path.join(mintegralRoot, 'index.js'), split.js, 'utf8')
   ]);
   await deterministicZip(zipTool, packageRoot, artifactPath, [base], signal, zipTimestamp);
   return artifactPath;

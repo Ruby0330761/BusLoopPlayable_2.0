@@ -1,5 +1,12 @@
 # Playable Project Progress
 
+## Completed On 2026-10-13 - Mintegral packages inline CSS, checker storage item passes
+
+- Mindworks「素材依赖代码的存储要求」的真实判定被离线复刻：检查器只放行同域 js 与 HTML，任何单独加载的 `style.css` 都被判为外链资源。Mintegral 打包分支现在把样式内联进 HTML，ZIP 只含同名 HTML 与 index.js。
+- 官方检测器实测：用修复后的包直传 `playturbo.cn/review`，`素材依赖代码的存储要求` 由红叉变为 Done；新增本地规则 `MINTEGRAL-STA-006` 与导出器契约测试防止回退。
+- Changed: `scripts/export-playable-package.mjs`（Mintegral 分支内联样式）、`deploy-tools/build-verified-playable-packages/rules/mintegral.json`（STA-006）、`test/playable-export.test.js`。
+- Verification: `node --test` 293/293；`--all` 导出 14/14 PASS；离线复刻（检测器 `preview-util.js` + Chrome）`outer_chain` 通过、无外链标记。
+
 ## Completed On 2026-10-13 - Mintegral checker failures fixed (FBX internal texture requests)
 
 - Mindworks 检测的「素材依赖代码的存储要求」与「代码报错」实测根因：Unity FBX 内部引用的相对贴图名被拼到模型 data URI 目录上，产生 `ERR_INVALID_URL` 请求。修复后 `AC_2607141_Q1V1` 同参数 14 个平台产物全部 PASS（35/37 本地检查，2 项官方人工门），浏览器探测 0 处坏请求。

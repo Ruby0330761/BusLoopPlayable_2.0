@@ -301,6 +301,25 @@ test('Mintegral compatibility is enforced during source build without artifact s
   assert.match(vite, /FILE_LOADER_BLOB_RESPONSE[\s\S]*matches !== 1[\s\S]*FILE_LOADER_UNSUPPORTED_RESPONSE/);
 });
 
+test('Mintegral packages inline their stylesheet and ship only html and js files', async () => {
+  const exporter = await readFile(new URL('../scripts/export-playable-package.mjs', import.meta.url), 'utf8');
+  // Mindworks' review checker flags separately loaded non-js files (style.css)
+  // as an external-chain resource, so the Mintegral branch must inline CSS.
+  assert.match(exporter, /const stylesheetTag = '<link rel="stylesheet" href="style\.css">'/);
+  assert.match(exporter, /split\.html = split\.html\.replace\(stylesheetTag, `<style>\$\{split\.css\}<\/style>`\)/);
+  assert.match(exporter, /writeFile\(path\.join\(mintegralRoot, `\$\{base\}\.html`\), split\.html, 'utf8'\)/);
+  assert.doesNotMatch(exporter, /writeFile\(path\.join\(mintegralRoot, 'style\.css'\)/);
+  const rules = JSON.parse(await readFile(new URL(
+    '../deploy-tools/build-verified-playable-packages/rules/mintegral.json',
+    import.meta.url
+  ), 'utf8'));
+  const rule = rules.rules.find((entry) => entry.id === 'MINTEGRAL-STA-006');
+  assert.ok(rule, 'MINTEGRAL-STA-006 must guard against separately loaded non-js assets');
+  const pattern = new RegExp(rule.check.pattern, 'i');
+  assert.ok(pattern.test('<link rel="stylesheet" href="style.css">'));
+  assert.ok(!pattern.test('<img src="data:image/png;base64,AAAA"><script defer src="index.js"></script>'));
+});
+
 test('published artifacts are checked against the exact staged bytes', async () => {
   const exporter = await readFile(new URL('../scripts/export-playable-package.mjs', import.meta.url), 'utf8');
   assert.match(exporter, /verifyPublishedArtifact\(filePath, result, `\$\{platform\} artifact`\)/);
