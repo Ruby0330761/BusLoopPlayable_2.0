@@ -445,20 +445,22 @@ function migrateCustomBackgroundSourceSize(source) {
 
 function migrateExportNamingTuning(savedTuning) {
   // Browsers that already saved the old delivery defaults keep overriding the
-  // new ones, so realign the fields this project unified (BUS / WXJ / TJW,
+  // new ones, so realign the fields this project unified (BL / WXJ / TJW,
   // steps and stamina cleared). Values an operator typed themselves stay.
+  // Each entry lists the shipped defaults this project used before the current
+  // one, so caches written between shipments are migrated too.
   const naming = savedTuning?.exportNaming;
   if (!naming || typeof naming !== 'object') return false;
   const replacements = [
-    ['requirementCode', 'AC-2607141', 'BUS'],
-    ['designer', 'NLY', 'WXJ'],
-    ['requester', 'ZZN', 'TJW'],
-    ['steps', '5moves', '0'],
-    ['stamina', '5hp', '0']
+    ['requirementCode', ['AC-2607141', 'BUS'], 'BL'],
+    ['designer', ['NLY'], 'WXJ'],
+    ['requester', ['ZZN'], 'TJW'],
+    ['steps', ['5moves'], '0'],
+    ['stamina', ['5hp'], '0']
   ];
   let changed = false;
-  for (const [key, previous, next] of replacements) {
-    if (naming[key] === previous) {
+  for (const [key, previousValues, next] of replacements) {
+    if (previousValues.includes(naming[key])) {
       naming[key] = next;
       changed = true;
     }
