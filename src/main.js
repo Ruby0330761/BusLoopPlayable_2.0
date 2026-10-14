@@ -466,6 +466,20 @@ function migrateExportNamingTuning(savedTuning) {
   return changed;
 }
 
+function migrateExportNamingProfiles() {
+  // Per-level profiles snapshot the whole tuning object and are merged back over
+  // SCENE_TUNING after the global migration, so they need the same treatment or
+  // the old delivery defaults reappear.
+  const profiles = readLevelTuningProfiles();
+  let changed = false;
+  for (const profile of Object.values(profiles)) {
+    if (!isLevelTuningProfile(profile)) continue;
+    if (migrateExportNamingTuning(profile.tuning)) changed = true;
+  }
+  if (changed) writeLevelTuningProfiles(profiles);
+  return changed;
+}
+
 function applyPreviewFrame() {
   const preview = SCENE_TUNING.preview;
   app?.classList.toggle('is-phone-preview', EDITOR_ENABLED && Boolean(preview?.enabled));
@@ -618,6 +632,7 @@ function saveLevelTuningProfile(value) {
 
 function restoreSelectedLevelTuning() {
   if (!EDITOR_ENABLED) return;
+  migrateExportNamingProfiles();
   const levelKey = String(SCENE_TUNING.level?.selected ?? '').trim();
   if (!levelKey) return;
   const profiles = readLevelTuningProfiles();
