@@ -1,5 +1,12 @@
 # Playable Project Progress
 
+## Completed On 2026-10-14 - Legacy artifact repair verified (local + NAS)
+
+- 旧产物批量修复已由 QA 复测确认通过（本地预览验证 Q17V2 Mintegral 包：94 辆车正常渲染、玩法可交互、控制台无 `ERR_INVALID_URL`）。
+- 覆盖范围：本地 `试玩成品/BUS` 276 个文件；NAS `BL/试玩` 659 个文件（六个日期目录 385、专题目录含中间构建文件 44、老命名试玩 246）。备份保留在 `试玩成品/.backup-before-fix-20261013`、`.backup-nas-special-20261013`、`.backup-nas-legacy-20261014`。
+- 修复内容：全平台 FBX 内部贴图坏引用（含旧版 Three.js `extractUrlBase` 形态）；Mintegral 包内联样式表。工具与说明见 `scripts/repair-legacy-playables.py` 与 findings 相应条目。
+- Verification: NAS 抽样下载 MD5 比对 4/4；修复后全量复扫无残留 bug 特征；QA 本地试玩复测通过。
+
 ## Completed On 2026-10-13 - Legacy artifacts batch-repaired and NAS updated
 
 - 用 `scripts/repair-legacy-playables.py` 对 `试玩成品/BUS` 下 276 个旧产物（Q1V1–Q17V2 全部平台）就地修复：注入 LoadingManager URL 映射（FBX 坏引用）并对 Mintegral 包内联 CSS；修复前全量备份到 `试玩成品/.backup-before-fix-20261013`（547 MB）。
