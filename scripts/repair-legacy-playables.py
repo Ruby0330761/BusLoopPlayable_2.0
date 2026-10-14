@@ -38,6 +38,12 @@ MANAGER_RE = re.compile(r"(loadingManager=new [A-Za-z0-9_$.]+),")
 RESOURCE_RE = re.compile(
     r',([A-Za-z0-9_$]+)(\?\?|\|\|)([A-Za-z0-9_$]+)\.slice\(0,\3\.lastIndexOf\((["\'])/(["\'])\)\+1\)\)'
 )
+# Older builds (pre-2026-09 exports) derive the FBX resource path through the
+# stock Three.js `LoaderUtils.extractUrlBase`, minified as:
+#   static extractUrlBase(e){const t=e.lastIndexOf("/");return t===-1?"./":e.slice(0,t+1)}
+LEGACY_EXTRACT_RE = re.compile(
+    r'(static extractUrlBase\((\w+)\)\{)(const \w+=\2\.lastIndexOf\("/"\);return)'
+)
 MANAGER_INJECTION = (
     'this.loadingManager.setURLModifier(function(u){{return String(u).indexOf("{marker}:")===0?"{placeholder}":u}}),'
 )
@@ -49,18 +55,31 @@ def patch_text(text: str):
     """Patch a JS/HTML text blob. Returns (status, new_text, detail)."""
     if FIX_MARKER in text:
         return ("already-fixed", text, "")
-    resource = RESOURCE_RE.search(text)
-    if not resource:
-        return ("no-bug", text, "no resource-path fallback pattern")
-    manager = MANAGER_RE.search(text)
-    if not manager:
-        return ("anchor-missing", text, "resource path found but loadingManager anchor missing")
     injection = MANAGER_INJECTION.format(marker=FIX_MARKER, placeholder=PLACEHOLDER)
-    patched = MANAGER_RE.sub(lambda m: f"{m.group(1)},{injection}", text, count=1)
-    patched = RESOURCE_RE.sub(lambda m: f',{m.group(1)}{m.group(2)}"{FIX_MARKER}:")', patched, count=1)
-    if FIX_MARKER not in patched or RESOURCE_RE.search(patched):
-        return ("patch-failed", text, "verification after patch failed")
-    return ("patched", patched, "")
+    resource = RESOURCE_RE.search(text)
+    if resource:
+        manager = MANAGER_RE.search(text)
+        if not manager:
+            return ("anchor-missing", text, "resource path found but loadingManager anchor missing")
+        patched = MANAGER_RE.sub(lambda m: f"{m.group(1)},{injection}", text, count=1)
+        patched = RESOURCE_RE.sub(lambda m: f',{m.group(1)}{m.group(2)}"{FIX_MARKER}:")', patched, count=1)
+        if FIX_MARKER not in patched or RESOURCE_RE.search(patched):
+            return ("patch-failed", text, "verification after patch failed")
+        return ("patched", patched, "")
+    legacy = LEGACY_EXTRACT_RE.search(text)
+    if legacy:
+        manager = MANAGER_RE.search(text)
+        if not manager:
+            return ("anchor-missing", text, "legacy extractUrlBase found but loadingManager anchor missing")
+        patched = LEGACY_EXTRACT_RE.sub(
+            lambda m: f'{m.group(1)}if({m.group(2)}.indexOf("data:")===0)return"{FIX_MARKER}:";{m.group(3)}',
+            text, count=1
+        )
+        patched = MANAGER_RE.sub(lambda m: f"{m.group(1)},{injection}", patched, count=1)
+        if FIX_MARKER not in patched or LEGACY_EXTRACT_RE.search(patched):
+            return ("patch-failed", text, "verification after legacy patch failed")
+        return ("patched", patched, "")
+    return ("no-bug", text, "no resource-path fallback pattern")
 
 
 TEXT_EXTS = (".js", ".html", ".css")
