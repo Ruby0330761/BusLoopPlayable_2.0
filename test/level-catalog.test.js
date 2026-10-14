@@ -21,6 +21,8 @@ const IMPORTED_EXPECTATIONS = {
   level16: { vehicles: 37, queues: [139, 79] },
   level17: { vehicles: 107, queues: [300, 258] },
   level18: { vehicles: 68, queues: [200, 228] },
+  level20: { vehicles: 84, queues: [323, 311] },
+  level21: { vehicles: 50, queues: [178, 202] },
   level26: { vehicles: 70, queues: [244, 182] },
   level28: { vehicles: 60, queues: [245, 241] },
   level33: { vehicles: 84, queues: [323, 311] },

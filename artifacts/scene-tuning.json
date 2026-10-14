@@ -22,13 +22,13 @@
     "ios": "https://apps.apple.com/us/app/bus-fever-party/id6746743297"
   },
   "exportNaming": {
-    "requirementCode": "AC-2607141",
+    "requirementCode": "BUS",
     "materialCode": "Q1V1",
     "iterationCode": "N",
     "language": "EN",
     "format": "PL",
-    "designer": "NLY",
-    "requester": "ZZN",
+    "designer": "WXJ",
+    "requester": "TJW",
     "channels": {
       "applovin": "AL",
       "google-ads": "GG",
@@ -38,8 +38,8 @@
       "tiktok": "TT",
       "unityads": "UN"
     },
-    "steps": "5moves",
-    "stamina": "5hp"
+    "steps": "0",
+    "stamina": "0"
   },
   "branding": {
     "icon": {

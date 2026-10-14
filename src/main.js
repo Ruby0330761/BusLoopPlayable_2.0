@@ -443,6 +443,29 @@ function migrateCustomBackgroundSourceSize(source) {
   return changed;
 }
 
+function migrateExportNamingTuning(savedTuning) {
+  // Browsers that already saved the old delivery defaults keep overriding the
+  // new ones, so realign the fields this project unified (BUS / WXJ / TJW,
+  // steps and stamina cleared). Values an operator typed themselves stay.
+  const naming = savedTuning?.exportNaming;
+  if (!naming || typeof naming !== 'object') return false;
+  const replacements = [
+    ['requirementCode', 'AC-2607141', 'BUS'],
+    ['designer', 'NLY', 'WXJ'],
+    ['requester', 'ZZN', 'TJW'],
+    ['steps', '5moves', '0'],
+    ['stamina', '5hp', '0']
+  ];
+  let changed = false;
+  for (const [key, previous, next] of replacements) {
+    if (naming[key] === previous) {
+      naming[key] = next;
+      changed = true;
+    }
+  }
+  return changed;
+}
+
 function applyPreviewFrame() {
   const preview = SCENE_TUNING.preview;
   app?.classList.toggle('is-phone-preview', EDITOR_ENABLED && Boolean(preview?.enabled));
@@ -475,6 +498,7 @@ function loadSavedTuning() {
       const spatialSpeedMigrated = migrateSpatialSpeedTuning(savedTuning);
       const ctaScreenPositionMigrated = migrateCtaScreenPositionTuning(savedTuning);
       const customBackgroundSourceMigrated = migrateCustomBackgroundSourceSize(savedTuning);
+      const exportNamingMigrated = migrateExportNamingTuning(savedTuning);
       const luxuryPassengerRotationRemoved = delete savedTuning.luxuryPassengerRotation;
       const luxuryPassengerOffsetRemoved = delete savedTuning.luxuryPassengerOffset;
       const luxuryMaterialDebugRemoved = delete savedTuning.luxuryMaterialDebug;
@@ -498,6 +522,7 @@ function loadSavedTuning() {
         || spatialSpeedMigrated
         || ctaScreenPositionMigrated
         || customBackgroundSourceMigrated
+        || exportNamingMigrated
         || luxuryPassengerRotationRemoved
         || luxuryPassengerOffsetRemoved
         || luxuryMaterialDebugRemoved
@@ -526,6 +551,7 @@ function loadSavedTuning() {
     migrateSpatialSpeedTuning(legacy);
     migrateCtaScreenPositionTuning(legacy);
     migrateCustomBackgroundSourceSize(legacy);
+    migrateExportNamingTuning(legacy);
     migrateLegacyPackageTuning(legacy);
     delete legacy.luxuryMaterialDebug;
     delete legacy.luxuryMaterial;

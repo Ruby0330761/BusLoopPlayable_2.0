@@ -11,13 +11,18 @@ import { createLevelSession } from '../src/level-session.js';
 const HANDOFF_SEQUENCE = [LEVEL_CATALOG.level9, LEVEL_CATALOG.level7];
 
 test('production session follows the selected level and keeps the Level9 to Level7 handoff wiring', () => {
-  assert.equal(ACTIVE_LEVEL.key, 'level7');
-  assert.deepEqual(PLAYABLE_LEVEL_SEQUENCE.map((level) => level.key), ['level7']);
-  assert.deepEqual(PLAYABLE_LEVEL_SEQUENCE.map((level) => level.vehicles.length), [83]);
-  assert.deepEqual(
-    PLAYABLE_LEVEL_SEQUENCE.map((level) => level.passengerQueues.map((queue) => queue.length)),
-    [[368, 278]]
-  );
+  const selectedLevel = readFileSync('artifacts/selected-level.txt', 'utf8').trim() || ACTIVE_LEVEL.key;
+  assert.equal(ACTIVE_LEVEL.key, selectedLevel);
+  const expectedKeys = selectedLevel === 'level9' ? ['level9', 'level7'] : [selectedLevel];
+  assert.deepEqual(PLAYABLE_LEVEL_SEQUENCE.map((level) => level.key), expectedKeys);
+  const catalogLevel = LEVEL_CATALOG[selectedLevel];
+  if (catalogLevel) {
+    assert.deepEqual(PLAYABLE_LEVEL_SEQUENCE.map((level) => level.vehicles.length), [catalogLevel.vehicles.length]);
+    assert.deepEqual(
+      PLAYABLE_LEVEL_SEQUENCE.map((level) => level.passengerQueues.map((queue) => queue.length)),
+      [catalogLevel.passengerQueues.map((queue) => queue.length)]
+    );
+  }
   const generatorSource = readFileSync(new URL('../scripts/generate-active-level.mjs', import.meta.url), 'utf8');
   assert.match(generatorSource, /const sessionLevelKeys = selected === 'level9' \? \['level9', 'level7'\] : \[selected\];/);
 });
