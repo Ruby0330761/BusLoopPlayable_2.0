@@ -19,6 +19,10 @@ import {
   PRE_ROLL_MAX_COMPRESSED_BYTES,
   compressPreRollBuffer
 } from './scripts/pre-roll-transcoder.mjs';
+import {
+  findLevelNameConflict,
+  normalizeLevelDisplayName
+} from './scripts/level-name-registry.mjs';
 
 const BUILTIN_LEVEL_IDS = new Set([
   'level5', 'level7', 'level8', 'level9', 'level10', 'level12', 'level13', 'level15',
@@ -182,10 +186,9 @@ async function readWebLevelDocument(levelId) {
   return { document, revision: spatialRevision(source) };
 }
 
-function normalizeLevelDisplayName(value) {
-  return String(value ?? '').normalize('NFKC').trim().toLocaleLowerCase();
-}
-
+// Duplicate detection collapses two decorations that describe the same level
+// rather than a new one: Finder-style copy suffixes (" (1)") and the
+// auto-generated import labels (" (level12.asset)"); see level-name-registry.
 async function readImportedLevelIdentities() {
   let levels = [];
   try {
@@ -222,6 +225,37 @@ async function readWebLevelIdentities() {
     }))).filter(Boolean);
 }
 
+async function readImportedUnityLevelDefinition(levelKey) {
+  try {
+    const artifact = JSON.parse(await readFile(LEVEL_ARTIFACT_PATH, 'utf8'));
+    return artifact.levels?.find((level) => level?.key === levelKey) ?? null;
+  } catch (error) {
+    if (error.code === 'ENOENT') return null;
+    throw error;
+  }
+}
+
+async function readImportedArtifactKeys() {
+  try {
+    const artifact = JSON.parse(await readFile(LEVEL_ARTIFACT_PATH, 'utf8'));
+    return new Set((Array.isArray(artifact.levels) ? artifact.levels : []).map((level) => level?.key));
+  } catch (error) {
+    if (error.code !== 'ENOENT') throw error;
+    return new Set();
+  }
+}
+
+// The remote editor is served from a prebuilt bundle, so its catalog cannot
+// contain levels imported after the build. List the data-volume artifact too;
+// web documents keep precedence on key conflicts, matching runtime resolution.
+async function readEditableLevelIdentities() {
+  const merged = new Map();
+  for (const level of [...(await readWebLevelIdentities()), ...(await readImportedLevelIdentities())]) {
+    if (!merged.has(level.key)) merged.set(level.key, level);
+  }
+  return [...merged.values()];
+}
+
 async function getWebLevelAvailability(levelId, displayName) {
   validateWebLevelId(levelId);
   const normalizedName = normalizeLevelDisplayName(displayName);
@@ -249,6 +283,18 @@ async function saveWebLevelDocument(levelId, { document, baseRevision, createOnl
     if (!availability.available) {
       const field = availability.reason === 'name' ? 'name' : 'id';
       const error = new Error(`A level with this ${field} already exists. Choose another ${field}.`);
+      error.statusCode = 409;
+      throw error;
+    }
+  } else {
+    // Renames must not collide with another level either; the merged list is
+    // the editor's single source of truth for names.
+    const conflict = findLevelNameConflict(
+      [...(await readWebLevelIdentities()), ...(await readImportedLevelIdentities())],
+      { levelId, displayName: document.displayName }
+    );
+    if (conflict) {
+      const error = new Error(`关卡名称「${document.displayName}」已被 ${conflict.key} 使用，请改用其他名称。`);
       error.statusCode = 409;
       throw error;
     }
@@ -1337,7 +1383,7 @@ export default defineConfig({
         }
         if (pathname === '/__level-authoring' && request.method === 'GET') {
           try {
-            const items = (await readWebLevelIdentities())
+            const items = (await readEditableLevelIdentities())
               .filter((level) => level.displayName)
               .sort((first, second) => Number(first.key.slice(5)) - Number(second.key.slice(5)));
             sendJson(response, 200, { items });
@@ -1448,12 +1494,38 @@ export default defineConfig({
           try {
             const filename = decodeLevelFilename(request);
             const source = await readRequestBody(request, MAX_UNITY_LEVEL_BYTES, 'Unity level');
-            const targetKey = await nextAvailableLevelId();
+            const displayName = path.basename(filename, path.extname(filename));
+            const [webLevels, importedLevels] = await Promise.all([
+              readWebLevelIdentities(),
+              readImportedLevelIdentities()
+            ]);
+            const webConflict = findLevelNameConflict(webLevels, { levelId: null, displayName });
+            if (webConflict) {
+              const error = new Error(`关卡名称「${displayName}」已被网页关卡 ${webConflict.key} 使用。请先删除或重命名该关卡，再导入。`);
+              error.statusCode = 409;
+              throw error;
+            }
+            const importedConflict = findLevelNameConflict(importedLevels, { levelId: null, displayName });
+            if (importedConflict && BUILTIN_LEVEL_IDS.has(importedConflict.key)) {
+              // A bundled level with no imported source of its own cannot be
+              // refreshed in place; importing a same-named asset would silently
+              // shadow the bundle, so ask for a renamed file instead.
+              const artifactKeys = await readImportedArtifactKeys();
+              if (!artifactKeys.has(importedConflict.key)) {
+                const error = new Error(`内置关卡 ${importedConflict.key} 已使用名称「${displayName}」，请重命名 .asset 文件后再导入。`);
+                error.statusCode = 409;
+                throw error;
+              }
+            }
+            // Re-importing a file that matches an existing imported level's
+            // name refreshes that level in place instead of stacking another
+            // copy beside it (the level20/level35 pile-up).
+            const targetKey = importedConflict?.key ?? await nextAvailableLevelId();
             const result = await importUnityLevelAsset({
               filename,
               source,
               targetKey,
-              displayName: path.basename(filename, path.extname(filename))
+              displayName
             });
             sendJson(response, 201, {
               level: { ...result.level, displayName: result.level.displayName || filename.replace(/\.asset$/i, '') },
@@ -1466,6 +1538,19 @@ export default defineConfig({
           return;
         }
         const unityDeleteMatch = pathname.match(/^\/__unity-levels\/(level[1-9]\d*)$/);
+        if (unityDeleteMatch && request.method === 'GET') {
+          try {
+            const level = await readImportedUnityLevelDefinition(unityDeleteMatch[1]);
+            if (!level) {
+              sendJson(response, 404, { error: '导入关卡不存在，请重新导入。' });
+              return;
+            }
+            sendJson(response, 200, { level });
+          } catch (error) {
+            sendJson(response, 500, { error: error.message });
+          }
+          return;
+        }
         if (unityDeleteMatch && request.method === 'DELETE') {
           try {
             if (BUILTIN_LEVEL_IDS.has(unityDeleteMatch[1])) {

@@ -1,5 +1,35 @@
 # Playable Project Progress
 
+## Completed On 2026-10-15 - Editor level naming standardized (no duplicate names in the level list)
+
+- 现象：编辑器关卡下拉框出现两类重名——「不同关卡同名」（level20 显示为 level35、level21 显示为 level154、level33 显示为 level33 (level33.asset)）与「同一关卡多名」（level35 同时以 `level35` 和 `level35 (level35.asset)` 两条出现、level30 与 level21 都叫 `level154`、`level6`/`level11` 都叫「Q9V2（南瓜）」）。
+- 根因有两个：① 下拉框选项从不刷新——构建内 catalog 的静态标签先渲染，之后只追加缺失 key、从不更新已有标签，改名/覆盖后旧标签残留（每条重名都能对上这一条）；② `src/scene-editor.js` 的 `LEVEL_EDITOR_OPTIONS` 里还钉着早已删除的 `level56/Q9V5` 幽灵项。
+- 修复：`refreshWebLevelOptions` 改为按 `/__level-authoring` 合并结果**整体重建**两个关卡下拉框（当前关卡 + 引导关卡），标签永远跟随服务端真实数据；删除 `LEVEL_EDITOR_OPTIONS` 与幽灵 level56。新增 `scripts/level-name-registry.mjs`：名称归一化把 ` (1)` 拷贝后缀与 ` (level12.asset)` 自动标签折叠回本名，保存改名与导入都会对合并列表查重。
+- 防重复导入：Unity 导入命中已有导入关卡名时**原地更新该关卡**（不再堆叠副本，level20/level35、level27/30/31 就是堆叠产物）；命中网页关卡名或纯内建关卡名时给明确报错而不是静默遮蔽。
+- 数据清理：本地 `artifacts/unity-levels.json` 删除重复的 level20（与 level35 同内容，MD5 相同）及其孤儿源文件；本地网页关卡 level1/6/11/14 由 `level7`/`Q9V2（南瓜） (1)`/` (2)`/`Q9V2（叶子） (1)` 改名 `level7-1`/`Q9V2（南瓜）-6`/`-11`/`Q9V2（叶子）-14`。远端数据卷本身无归一化重名（43 项全部唯一），无需改动。
+- 部署 `busloop-editor-levelnames-20261015c.zip`（http://10.0.0.6:8081/c3/c31090cc17a1237f9037631d89829b0f.zip）后远端验证：两个关卡下拉框 43 项同步、零重复、无 Q9V5；改名成已有名称（`level35` 与 ` (level35.asset)` 两种形态）均 409 且数据不变；同一文件重复导入返回 `replaced=true` 原地更新；远端 chunk 与本地 `PLAYABLE_REMOTE_EDITOR=1 npm run build` 一致。
+- 打包教训：第一次部署包按目录名全局排除，误删了 `public/assets/applovin`（33 个贴图目录），远端 `npm run build` 失败；排除项必须限定在 `artifacts/` 具体路径下。修正包 b/c 均通过。
+- Verification: `node --test` 298/298（新增 `test/level-name-registry.test.js` 4 条）；远端接口 + 浏览器端到端复检通过。
+
+## Completed On 2026-10-14 - Remote Unity level import fixed (imported levels were invisible after import)
+
+- 线上「导入关卡」选择 `.asset` 后表现为“导入失败”：状态栏先显示成功，但刷新后关卡下拉框里找不到、盘面加载成别的关卡。浏览器实测复现并定位到三段断链：
+  1. 远端是预构建包，导入写进数据卷（`artifacts/unity-levels.json`），但 `/__level-authoring` 列表只列网页关卡，**导入的 Unity 关卡从来不会出现在下拉框**；
+  2. 运行时 `resolveSelectedLevel` 也只有「网页文档 → 构建内 catalog」两条通道，选中导入关卡时回落到 catalog 兜底（实际加载 level5）；
+  3. 没有按 key 读取单个导入关卡定义的接口，前端补不了这个空洞。
+- 用户实际已反复导入同一份 level154 素材 3 次（远端留下 `level27/30/31` 三条记录，MD5 相同），每次都“成功但看不到”，与根因吻合。
+- 修复（`vite.config.js` + `src/main.js` + `test/unity-level-importer.test.js`）：新增 `GET /__unity-levels/<key>` 返回单个导入关卡定义；新增 `readEditableLevelIdentities()` 让关卡列表合并数据卷导入关卡（网页文档优先，与运行时一致）；运行时新增导入关卡解析通道（catalog 未命中时走新接口）。
+- 部署修复包 `http://10.0.0.6:8081/bu/busloop-editor-importfix-20261014.zip` 后浏览器验证：导入关卡进入下拉框、选中后正确加载 lv154（50 辆车）；选中导入关卡导出 AppLovin 产物 200 且运行时门禁 13/13 PASS，产物内嵌 50 辆车。已清理重复导入（删除 level27/31，保留 level30）。
+- Verification: `node --test` 294/294（新增 1 条 wiring 回归）；远端接口与浏览器端到端流程实测通过。
+
+## Completed On 2026-10-14 - Remote editor fully synced to latest build; export gate 14/14 PASS
+
+- 远端 `bus-loop-playable-editor`（http://10.0.0.54:12142/）此前仍是 9/30 的旧构建，10/13 起的全部修复都没有部署进去。实测旧构建导出确认了两个真实回归：AppLovin 产物运行时有 2 个 `data:application/octet-stream;base64,.../贴图` 形态的 `ERR_INVALID_URL` 坏请求（Runtime gate 11/13），Mintegral ZIP 仍是「HTML + index.js + 外链 style.css」旧结构（Mindworks「素材依赖代码的存储要求」会打红叉）。
+- 已部署两轮：第一轮带 `051e22b` FBX 修复与 `9246d39` Mintegral 内联样式（`http://10.0.0.6:8081/bu/busloop-deploy-20261014.zip`）；第二轮补齐今天的新提交（lv154 素材导入、exportNaming 新默认值 BUS/WXJ/TJW/0/0、选中关卡 level21），最终包 `http://10.0.0.6:8081/bu/busloop-editor-sync-20261014.zip`（27 MB）。当前远端 `index-D61JDNlv.js` 与本地 `PLAYABLE_REMOTE_EDITOR=1 npm run build` 产物 chunk 名一致。
+- 部署后在远端最新构建上做全平台导出体检：`__playable-export`（AppLovin/Mintegral）与 `__playable-export-all` 均 200；聚合 14 个产物全部拆出并用项目运行时门禁逐个人工复检：**14/14 PASS**（AppLovin/Moloco/TikTok/UnityAds 各 13 项、Meta/Google 各 14 项、Mintegral 15 项）。产物命名已按新默认值（如 `BUS-Q1V1-N-EN-PL-WXJ-TJW-AL-0-0-Android.html`）。
+- `node --test` 293/293。本地 CLI 导出（mintegral/applovin）静态规则含 MINTEGRAL-STA-006 全部 PASS、0 警告。
+- NAS 上传踩坑：`files-to-nas`（10.0.1.167:8900）上传到 `/home/AI/ads_materials/videos/<前两位>/`，旧的两位前缀目录（如 `72/`、`3c/`）属主为 `admin`、对上传账号只读，会报 553 Permission denied（HTTP 503）；换一个新文件名（新前缀目录可自动创建）即可成功。
+
 ## Completed On 2026-10-14 - Legacy artifact repair verified (local + NAS)
 
 - 旧产物批量修复已由 QA 复测确认通过（本地预览验证 Q17V2 Mintegral 包：94 辆车正常渲染、玩法可交互、控制台无 `ERR_INVALID_URL`）。

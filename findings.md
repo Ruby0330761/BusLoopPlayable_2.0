@@ -1,5 +1,14 @@
 # Findings
 
+## 2026-10-15 关卡重名来自「下拉框标签不刷新」+「同内容导入堆叠」两条独立链路
+
+- 编辑器关卡下拉框的重名有两个互相独立的来源，排查时不要混为一谈：
+  1. **静态标签残留**：选项先用构建内 catalog 渲染一次，之后 `refreshWebLevelOptions` 只往 select 里追加缺失 key、从不更新已存在选项的标签，也不删除已消失的关卡。于是关卡被覆盖/改名后，下拉框一直显示旧名：level20 实际是「Q9V3（幽灵）」却显示 `level35`（与真正的 level35 同名）、level21 实际「Q9V2（叶子）」显示 `level154`、level33 实际 `BL-Q1` 显示 `level33 (level33.asset)`。修复方式是按服务端合并列表整体重建选项，而不是增量补丁。两个关卡下拉框（当前关卡、引导关卡）共用同一个刷新函数。
+  2. **同内容重复导入堆叠**：旧导入按最小可用数字分配 key、不查名称，同一份素材反复导入就留下多条同内容记录（远端 level27/30/31 都是 level154 素材、本地 level20 与 level35 MD5 相同）。新规则：导入命中已有导入关卡名时原地更新该 key（`replaced=true`），命中网页关卡名时拒绝并提示，命中纯内建关卡名（bundle 无导入源）时要求重命名文件。
+- 名称等价规则（`scripts/level-name-registry.mjs`）：NFKC + trim + 小写之后，折叠结尾的 Finder 拷贝后缀 ` (1)`/` (2)` 与自动导入标签 ` (level12.asset)`。这样 `level35`、`level35 (level35.asset)`、`level35 (1)` 视为同一名称；真实名称里的括号（如「level36 - 参考图密集车阵」不含结尾括号）不受影响。保存改名的查重也要跑同一条规则，否则用户可以把 level20 改名成 `level35 (level35.asset)` 再次制造重名。
+- 关卡数据分三层命名空间（web 卷 > 导入 artifact > 构建内 catalog），且远端数据卷只在首次部署播种（`start.sh` 的 `.seeded-v1` 标记），之后部署不覆盖——清理本地 artifacts 不会影响线上已有数据，反之亦然。
+- 打包部署包时排除大产物目录必须限定在 `artifacts/` 路径下：按目录名全局排除会误删 `public/assets/applovin`，远端 Docker 构建会因缺贴图失败（本次首轮部署踩坑）。
+
 ## 2026-10-13 旧产物批量修复：FBX 坏引用与 Mintegral CSS 可离线打补丁
 
 - 2026-10-13 之前导出的所有产物都带同一个 FBX 坏引用问题（`data:...base64,<gzip>/file.png` → `ERR_INVALID_URL`），Mintegral 产物还缺 CSS 内联。因为它们和现在的导出器只差两处可静态识别的代码形状，可以在产物内直接打补丁，不用重新导出：`loadingManager=new X,` 后面注入 `setURLModifier`，FBX 资源路径兜底 `e??t.slice(0,t.lastIndexOf("/")+1)` 改为 `e??"playable-fbx-internal:"`。

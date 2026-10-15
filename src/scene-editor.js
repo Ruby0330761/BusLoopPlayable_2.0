@@ -18,14 +18,6 @@ const CONVEYOR_LAYOUT_OPTIONS = [
   ['dualQueue10', 'GameSceneDualQueue10']
 ];
 
-// Web-authored levels live beside the generated Unity catalog. Keep the
-// currently selected authored level available in the editor even though it has
-// no Unity source entry.
-const LEVEL_EDITOR_OPTIONS = Object.freeze([
-  ...LEVEL_OPTIONS,
-  ['level56', 'Q9V5']
-]);
-
 const BACKGROUND_OPTIONS = [
   ['/assets/applovin/textures/BG01_split01_q60.jpg', 'BG01 \u51ac\u5b63'],
   ['/assets/applovin/textures/BG02_split01_winter_q60.jpg', 'BG02 \u51ac\u5b63'],
@@ -355,7 +347,7 @@ const FIELD_GROUPS = [
     // behind a collapsed disclosure makes it look as if the editor is broken.
     defaultOpen: true,
     fields: [
-      ['\u5f53\u524d\u5173\u5361', 'level.selected', 0, 0, 1, LEVEL_EDITOR_OPTIONS]
+      ['\u5f53\u524d\u5173\u5361', 'level.selected', 0, 0, 1, LEVEL_OPTIONS]
     ]
   },
   {
@@ -727,7 +719,7 @@ const FIELD_GROUPS = [
       ['\u63d0\u793a\u5f00\u542f', 'vehicleGuideHand.enabled', 0, 1, 1, null, 'toggle'],
       ['\u5f00\u573a\u7acb\u5373\u663e\u793a', 'vehicleGuideHand.showAtStart', 0, 1, 1, null, 'toggle'],
       ['\u65e0\u64cd\u4f5c\u7b49\u5f85\uff08\u79d2\uff09', 'vehicleGuideHand.idleDelaySeconds', 1, 30, 0.5],
-      ['\u5f15\u5bfc\u5173\u5361', 'vehicleGuideHand.levelKey', 0, 0, 1, LEVEL_EDITOR_OPTIONS],
+      ['\u5f15\u5bfc\u5173\u5361', 'vehicleGuideHand.levelKey', 0, 0, 1, LEVEL_OPTIONS],
       ['\u5f15\u5bfc\u8f66 ID', 'vehicleGuideHand.vehicleId', 1, 200, 1],
       ['\u5c0f\u624b X', 'vehicleGuideHand.offsetX', -3, 3, 0.01],
       ['\u5c0f\u624b\u9ad8\u5ea6', 'vehicleGuideHand.offsetY', 0, 3, 0.01],
@@ -1730,23 +1722,39 @@ export function createSceneEditor(root, {
     levelOpenFolderButton.disabled = busy;
   }
 
+  function levelOptionRank(key) {
+    const match = /^level(\d+)$/.exec(key);
+    return match ? Number(match[1]) : Number.MAX_SAFE_INTEGER;
+  }
+
+  // Level names come from three layers (baked catalog, imported definitions,
+  // and the web volume), and only the server knows the merged result. Rebuild
+  // the selects from that merged list so a renamed or replaced level can never
+  // leave a stale or duplicated label behind.
   async function refreshWebLevelOptions() {
     const controls = inputs.get('level.selected');
     if (!controls?.select) return [];
     const response = await fetch('/__level-authoring', { cache: 'no-store' });
     const payload = await response.json().catch(() => ({}));
     if (!response.ok) throw new Error(payload.error || `HTTP ${response.status}`);
-    for (const option of controls.select.querySelectorAll('[data-web-level]')) option.remove();
-    for (const item of payload.items ?? []) {
-      if (!item?.key || !item.displayName || controls.select.querySelector(`option[value="${CSS.escape(item.key)}"]`)) continue;
-      const option = document.createElement('option');
-      option.value = item.key;
-      option.textContent = item.displayName;
-      option.dataset.webLevel = 'true';
-      controls.select.append(option);
+    const items = (payload.items ?? [])
+      .filter((item) => item?.key && item.displayName)
+      .sort((a, b) => levelOptionRank(a.key) - levelOptionRank(b.key) || a.key.localeCompare(b.key));
+    const tuning = getTuning();
+    for (const path of ['level.selected', 'vehicleGuideHand.levelKey']) {
+      const select = inputs.get(path)?.select;
+      if (!select) continue;
+      for (const option of [...select.options]) option.remove();
+      for (const item of items) {
+        const option = document.createElement('option');
+        option.value = item.key;
+        option.textContent = item.displayName;
+        select.append(option);
+      }
+      const selectedKey = getAtPath(tuning, path);
+      select.value = items.some((item) => item.key === selectedKey) ? selectedKey : '';
     }
-    controls.select.value = getTuning().level?.selected ?? '';
-    return payload.items ?? [];
+    return items;
   }
 
   levelEditButton.addEventListener('click', async () => {

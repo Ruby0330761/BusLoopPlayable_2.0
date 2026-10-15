@@ -1232,10 +1232,25 @@ async function readSavedWebLevelEntry(levelKey) {
   };
 }
 
+// Imported Unity levels are stored in the shared data volume. A prebuilt
+// editor bundle cannot contain them in its catalog, so fetch the runtime
+// definition from the level service when the bundled catalog has no match.
+async function readImportedUnityLevelDefinition(levelKey) {
+  const response = await fetch(`/__unity-levels/${encodeURIComponent(levelKey)}`, { cache: 'no-store' });
+  if (response.status === 404) return null;
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(payload.error || `HTTP ${response.status}`);
+  return payload.level ?? null;
+}
+
 async function resolveSelectedLevel(levelKey, getLevelDefinition) {
   const catalogLevel = getLevelDefinition(levelKey);
   const savedEntry = await readSavedWebLevelEntry(levelKey);
   if (!savedEntry?.document) {
+    if (catalogLevel?.key !== levelKey) {
+      const importedLevel = await readImportedUnityLevelDefinition(levelKey).catch(() => null);
+      if (importedLevel) return { level: importedLevel, savedEntry: null, exact: true };
+    }
     return {
       level: catalogLevel,
       savedEntry: null,

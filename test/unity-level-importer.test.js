@@ -408,3 +408,20 @@ test('editor and Vite service expose Unity level import controls', () => {
   assert.match(viteSource, /__unity-levels\/open-folder/);
   assert.match(viteSource, /importUnityLevelAsset/);
 });
+
+test('imported Unity levels stay selectable and resolvable after a prebuilt deploy', () => {
+  const viteSource = readFileSync('vite.config.js', 'utf8');
+  const mainSource = readFileSync('src/main.js', 'utf8');
+  // The remote editor is served from a prebuilt bundle, so the level list must
+  // merge the data-volume artifact with web documents; otherwise imported
+  // levels disappear from the selector on the next reload.
+  assert.match(viteSource, /async function readEditableLevelIdentities/);
+  assert.match(viteSource, /const items = \(await readEditableLevelIdentities\(\)\)/);
+  assert.match(viteSource, /async function readImportedUnityLevelDefinition/);
+  // Reading one imported definition back powers both the runtime and the
+  // layout editor without a rebuild of the served catalog chunk.
+  assert.match(viteSource, /if \(unityDeleteMatch && request\.method === 'GET'\)/);
+  assert.match(mainSource, /async function readImportedUnityLevelDefinition/);
+  assert.match(mainSource, /\/__unity-levels\/\$\{encodeURIComponent\(levelKey\)\}/);
+  assert.match(mainSource, /if \(catalogLevel\?\.key !== levelKey\)/);
+});

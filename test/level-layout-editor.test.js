@@ -12,6 +12,9 @@ test('scene editor and main runtime expose the full level layout workspace', () 
   assert.match(sceneEditor, /openLevelLayoutEditor/);
   assert.match(sceneEditor, /refreshWebLevelOptions/);
   assert.match(sceneEditor, /fetch\('\/__level-authoring'/);
+  assert.doesNotMatch(sceneEditor, /Q9V5/);
+  assert.match(sceneEditor, /const items = \(payload\.items \?\? \[\]\)/);
+  assert.match(sceneEditor, /for \(const path of \['level\.selected', 'vehicleGuideHand\.levelKey'\]\)/);
   assert.match(sceneEditor, /editor-level-delete/);
   assert.match(sceneEditor, /editor-level-export/);
   assert.match(sceneEditor, /__level-authoring-export/);
@@ -191,10 +194,12 @@ test('development service saves versioned level documents with backups', () => {
   assert.match(vite, /normalizedDocument = \{ \.\.\.document, key: targetLevelId \}/);
   assert.match(vite, /Web level JSON/);
   assert.match(vite, /sendJson\(response, 200, \{ items \}\)/);
-  assert.match(vite, /normalize\('NFKC'\)\.trim\(\)\.toLocaleLowerCase\(\)/);
   assert.match(vite, /readImportedLevelIdentities/);
   assert.match(vite, /readWebLevelIdentities/);
   assert.match(vite, /availability\.reason === 'name'/);
+  assert.match(vite, /findLevelNameConflict/);
+  const registry = readFileSync('scripts/level-name-registry.mjs', 'utf8');
+  assert.match(registry, /normalize\('NFKC'\)[\s\S]*\.trim\(\)[\s\S]*\.toLocaleLowerCase\(\)/);
   assert.match(vite, /createOnly && currentSource/);
   assert.match(vite, /result\.created \? 201 : 200/);
 });
