@@ -1022,6 +1022,14 @@ export function createSceneEditor(root, {
     exportAllButton.setAttribute('aria-busy', 'true');
     exportStatus.dataset.state = 'busy';
     exportStatus.textContent = `\u6b63\u5728\u6253\u5305 ${platformLabel}...`;
+    // The first export of a setup rebuilds every platform (about two minutes
+    // on the one-CPU server) while a repeat of the same setup is much faster.
+    // A live counter keeps that wait legible instead of looking hung.
+    const exportStartedAt = Date.now();
+    const exportElapsedTimer = setInterval(() => {
+      const seconds = Math.round((Date.now() - exportStartedAt) / 1000);
+      exportStatus.textContent = `\u6b63\u5728\u6253\u5305 ${platformLabel}...\uff08\u5df2\u7528 ${seconds} \u79d2\uff09`;
+    }, 1000);
     try {
       const exportPayload = getPlayableExportPayload() ?? { tuning: getTuning() };
       const response = await fetch(all ? '/__playable-export-all' : '/__playable-export', {
@@ -1061,11 +1069,14 @@ export function createSceneEditor(root, {
       setTimeout(() => URL.revokeObjectURL(objectUrl), 0);
 
       const check = response.headers.get('X-Playable-Check');
+      const serverMs = Number(response.headers.get('X-Playable-Export-Duration-Ms'));
+      const totalSeconds = Math.max(1, Math.round((Date.now() - exportStartedAt) / 1000));
+      const timingMessage = `\uff08\u8017\u65f6 ${Number.isFinite(serverMs) && serverMs > 0 ? Math.round(serverMs / 1000) : totalSeconds} \u79d2\uff09`;
       exportStatus.dataset.state = 'success';
       const checkMessage = check?.startsWith('skipped;')
         ? '\uff08\u672a\u6267\u884c\u672c\u5730\u68c0\u6d4b\uff09'
         : check ? `\uff08\u672c\u5730\u68c0\u6d4b ${check}\uff09` : '';
-      exportStatus.textContent = `\u5df2\u4e0b\u8f7d ${filename}${checkMessage}\uff0c\u5f85\u5e73\u53f0\u9a8c\u6536`;
+      exportStatus.textContent = `\u5df2\u4e0b\u8f7d ${filename}${checkMessage}${timingMessage}\uff0c\u5f85\u5e73\u53f0\u9a8c\u6536`;
     } catch (error) {
       exportStatus.dataset.state = 'error';
       const message = error instanceof TypeError && /fetch|network|failed to fetch/i.test(error.message)
@@ -1073,6 +1084,7 @@ export function createSceneEditor(root, {
         : error.message;
       exportStatus.textContent = `\u5bfc\u51fa\u5931\u8d25\uff1a${message}`;
     } finally {
+      clearInterval(exportElapsedTimer);
       exportSelect.disabled = false;
       exportButton.disabled = false;
       exportAllButton.disabled = false;
@@ -1813,7 +1825,14 @@ export function createSceneEditor(root, {
     const payload = await response.json().catch(() => ({}));
     if (!response.ok) throw new Error(payload.error || `HTTP ${response.status}`);
     levelOptionItems = (payload.items ?? []).filter((item) => item?.key && item.displayName);
-    return applyLevelOptionSort();
+    const items = applyLevelOptionSort();
+    // A stale selection (level deleted, or a key that never had data) would
+    // make every export fail, so say so instead of leaving an empty picker.
+    const selectedKey = String(getTuning().level?.selected ?? '');
+    if (selectedKey && !items.some((item) => item.key === selectedKey)) {
+      levelStatus.textContent = `当前关卡 ${selectedKey} 没有关卡数据，请重新选择关卡，否则导出会失败`;
+    }
+    return items;
   }
 
   levelEditButton.addEventListener('click', async () => {

@@ -1,5 +1,19 @@
 # Findings
 
+## 2026-10-15 导出耗时的真实分布：冷启动每平台一次 Vite 构建，约 2 分钟；重复导出约 15 秒
+
+- 远端（1 核容器）实测：`__playable-export-all` 冷启动 103–119 秒，同参数第二次 13–21 秒（`X-Playable-Source-Cache: miss → hit`）。单平台导出**不吃**源码缓存，每次都会重建该平台；只有「一键导出全部」在第二次起复用已构建 HTML（只按变体重写图标/商店链接）。本地对照（并发 1，同 env）：cold 20.4s / warm 5.3s。
+- 每个平台的构建 = 一次完整 `vite build` + `package-applovin-single-html` 内联，约 12–15 秒/平台；7 个平台串行（容器 1 CPU，并发无收益）。所以「第一次慢」是预期成本，「每次都慢」才是异常——异常来源见下条（非法关卡选择让导出直接失败）。
+- 对照数字：本地 8 核并发 3 时 cold 14.6s / warm 5.0s，说明并发只在多核上有效；不要把容器的 `PLAYABLE_EXPORT_CONCURRENCY=1` 当成慢的原因去调大。
+- UI 侧改进：导出中显示实时计时，完成后显示服务端耗时；这不是性能修复，只是让等待可解释。
+
+## 2026-10-15 幻影关卡：保护名单里的 id 被合成进下拉框，选中即写坏导出选中关卡
+
+- `BUILTIN_LEVEL_IDS`（vite.config.js）是「不允许删除」的保护名单，历史上按 `level-catalog.js` 的导入关卡写成；但 catalog 后来重新生成，`level22/29/39` 只剩名单里的 id，**web 卷、数据卷、烘焙 catalog 三处都没有它们的定义**。
+- 旧的 `readImportedLevelIdentities` 会给名单里未命中的 id 合成 `levelN (levelN.asset)` 展示名，于是这三个 key 出现在编辑器下拉框。用户选中后 `POST /__playable-level` 通过（旧守卫只看名单），`selected-level.txt` 被写成 `level29`，之后**每一次导出**都在 `generate-active-level.mjs` 抛 `Unknown SCENE_TUNING.level.selected value: level29`。
+- 修复原则：列表和守卫都必须以「三层真实数据」为准（web 文件 → 数据卷 artifact → 烘焙 catalog，远端 catalog 路径受 `PLAYABLE_LEVEL_CATALOG_PATH` 控制），保护名单只能用于「禁止删除」，不能用于「存在性判断」。导入自动分配 key 也要跳过保留 id，否则新导入会落在不可删除的 key 上。
+- 排查提示：见到「导出失败：Unknown SCENE_TUNING.level.selected value」先看 `artifacts/selected-level.txt` 与编辑器 localStorage 的 `level.selected` 是否指向一个没有任何定义的 key。
+
 ## 2026-10-15 关卡重名来自「下拉框标签不刷新」+「同内容导入堆叠」两条独立链路
 
 - 编辑器关卡下拉框的重名有两个互相独立的来源，排查时不要混为一谈：

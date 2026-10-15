@@ -56,4 +56,37 @@ test('editor level selects rebuild from the merged server list without stale opt
   // an old label, and must repopulate the guide-hand select as well.
   assert.match(sceneEditor, /for \(const option of \[\.\.\.select\.options\]\) option\.remove\(\)/);
   assert.match(sceneEditor, /for \(const path of \['level\.selected', 'vehicleGuideHand\.levelKey'\]\)/);
+  // A selection with no level data would make every export fail; the editor
+  // has to say so rather than leave the picker empty.
+  assert.match(sceneEditor, /没有关卡数据，请重新选择关卡/);
+  // Long exports show a live counter plus the server-reported duration.
+  assert.match(sceneEditor, /X-Playable-Export-Duration-Ms/);
+  assert.match(sceneEditor, /\\u5df2\\u7528 \$\{seconds\} \\u79d2/);
+});
+
+test('the level picker only lists levels that actually have data', () => {
+  const vite = readFileSync('vite.config.js', 'utf8');
+  // Phantom keys used to be synthesized from BUILTIN_LEVEL_IDS alone, so
+  // level22/29/39 appeared in the picker and selecting one broke every export.
+  const identities = vite.slice(
+    vite.indexOf('async function readImportedLevelIdentities'),
+    vite.indexOf('async function readLevelSourceMtime')
+  );
+  assert.doesNotMatch(identities, /BUILTIN_LEVEL_IDS/);
+  assert.doesNotMatch(identities, /\((?:\$\{key\}|level)\S*\.asset\)/);
+
+  // Selection guard checks the three real data layers instead of the reserved
+  // id list.
+  const guard = vite.slice(
+    vite.indexOf('async function isKnownPlayableLevel'),
+    vite.indexOf('function decodePrefabFilename')
+  );
+  assert.doesNotMatch(guard, /BUILTIN_LEVEL_IDS/);
+  assert.match(guard, /WEB_LEVEL_ROOT, `\$\{levelId\}\.json`/);
+  assert.match(guard, /readImportedArtifactKeys/);
+  assert.match(guard, /readBakedLevelKeys/);
+
+  // Auto-assigned import ids skip reserved builtin ids so a refresh can never
+  // land on a key the delete guard protects.
+  assert.match(vite, /while \(used\.has\(`level\$\{number\}`\) \|\| BUILTIN_LEVEL_IDS\.has\(`level\$\{number\}`\)\) number \+= 1;/);
 });

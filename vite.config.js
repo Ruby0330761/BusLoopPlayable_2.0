@@ -3,6 +3,7 @@ import { createHash } from 'node:crypto';
 import { copyFile, mkdir, mkdtemp, readdir, readFile, rename, rm, stat, unlink, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { defineConfig } from 'vite';
 import {
   DEFAULT_OUTPUT_ROOT,
@@ -186,9 +187,9 @@ async function readWebLevelDocument(levelId) {
   return { document, revision: spatialRevision(source) };
 }
 
-// Duplicate detection collapses two decorations that describe the same level
-// rather than a new one: Finder-style copy suffixes (" (1)") and the
-// auto-generated import labels (" (level12.asset)"); see level-name-registry.
+// Only levels with a real definition belong in the picker. Listing a key that
+// merely appears in BUILTIN_LEVEL_IDS is how phantom levels (level22/29/39,
+// which exist nowhere) got selectable and made every export fail afterwards.
 async function readImportedLevelIdentities() {
   let levels = [];
   try {
@@ -205,9 +206,6 @@ async function readImportedLevelIdentities() {
       source: 'catalog',
       updatedAt: await readLevelSourceMtime(path.join(DEFAULT_UNITY_LEVEL_SOURCE_ROOT, `${level.key}.asset`))
     });
-  }
-  for (const key of BUILTIN_LEVEL_IDS) {
-    if (!identities.has(key)) identities.set(key, { key, displayName: `${key} (${key}.asset)`, source: 'catalog', updatedAt: null });
   }
   return [...identities.values()];
 }
@@ -258,6 +256,20 @@ async function readImportedArtifactKeys() {
     if (error.code !== 'ENOENT') throw error;
     return new Set();
   }
+}
+
+// The baked catalog is a build-time snapshot (the container points this at the
+// copied artifacts/level-catalog.js). It answers "can the runtime load this
+// key", which is broader than what the picker offers.
+const LEVEL_CATALOG_PATH = process.env.PLAYABLE_LEVEL_CATALOG_PATH
+  ? path.resolve(process.env.PLAYABLE_LEVEL_CATALOG_PATH)
+  : path.resolve('src', 'level-catalog.js');
+let bakedLevelKeysPromise = null;
+function readBakedLevelKeys() {
+  bakedLevelKeysPromise ??= import(`${pathToFileURL(LEVEL_CATALOG_PATH).href}?levels=${Date.now()}`)
+    .then((module) => new Set(Object.keys(module.LEVEL_CATALOG ?? {})))
+    .catch(() => new Set());
+  return bakedLevelKeysPromise;
 }
 
 // The remote editor is served from a prebuilt bundle, so its catalog cannot
@@ -369,7 +381,9 @@ async function nextAvailableLevelId() {
   ];
   const used = new Set(identities.map((item) => item.key));
   let number = 1;
-  while (used.has(`level${number}`)) number += 1;
+  // Reserved builtin ids stay off the allocation list so an import can never
+  // land on a key the delete guard refuses to remove.
+  while (used.has(`level${number}`) || BUILTIN_LEVEL_IDS.has(`level${number}`)) number += 1;
   return `level${number}`;
 }
 
@@ -943,13 +957,17 @@ async function openFolder(folderRoot) {
 
 async function isKnownPlayableLevel(levelId) {
   if (!/^level[1-9]\d*$/.test(levelId)) return false;
-  if (BUILTIN_LEVEL_IDS.has(levelId)) return true;
+  // The runtime resolves a selection through the same three layers, so any key
+  // with data in one of them is loadable even when the build-time catalog is
+  // the only place that has it.
   try {
-    const artifact = JSON.parse(await readFile(LEVEL_ARTIFACT_PATH, 'utf8'));
-    return artifact.levels?.some((level) => level?.key === levelId) ?? false;
+    await stat(path.join(WEB_LEVEL_ROOT, `${levelId}.json`));
+    return true;
   } catch {
-    return false;
+    // Fall through to the data volume and baked catalog.
   }
+  if ((await readImportedArtifactKeys()).has(levelId)) return true;
+  return (await readBakedLevelKeys()).has(levelId);
 }
 
 function decodePrefabFilename(request) {

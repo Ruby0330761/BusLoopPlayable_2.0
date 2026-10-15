@@ -1,5 +1,13 @@
 # Playable Project Progress
 
+## Completed On 2026-10-15 - Export slowness measured; phantom level fixed
+
+- 用户反馈线上导出很慢。远端实测（1 核容器）：全平台**冷启动 103–119 秒**、同参数重复**13–21 秒**。原因是每次导出对 7 个平台各跑一次完整 Vite 构建（打包 + 内联），源码缓存只对「一键导出全部」生效；单平台导出每次都重建。本地同配置对照：冷 20.4s → 热 5.3s，比例一致。结论：首次导出属于预期成本，不能靠调并发解决（容器只有 1 CPU）；已在编辑器导出状态栏加实时计时（「正在打包…（已用 N 秒）」）并在完成提示里附服务端耗时，避免看起来像卡死。
+- 同时发现真正的 bug：`level22/29/39` 只挂在 `BUILTIN_LEVEL_IDS` 保护名单里、**任何一层都没有关卡数据**，却因为 `readImportedLevelIdentities` 会给未命中的内置 id 合成展示名而出现在下拉框。用户选中 level29 后 `selected-level.txt` 被写成 level29，此后**每次导出都在生成活动关卡时失败**（`Unknown SCENE_TUNING.level.selected value: level29`）。
+- 修复：下拉列表只列真实有数据的关卡（web 卷 ∪ 数据卷）；`isKnownPlayableLevel` 改为按三层真实数据判定（web 文件 / 数据卷 / 烘焙 catalog，含远端 `PLAYABLE_LEVEL_CATALOG_PATH` 那份），不再单看保护名单；导入自动分配 key 时跳过保留 id 防止再次落坑；编辑器在「当前选中关卡没有数据」时在关卡状态栏给出明确提示。
+- 部署 `busloop-editor-exportperf-20261015.zip`（http://10.0.0.6:8081/7e/7ebbc970bf434ad45668dbf7924b78e3.zip）后线上复验：列表 43 → 42（level29 消失，level22/39 本来就不在）、`POST /__playable-level level29` 返回 400、level30 返回 204；导出按钮实测显示计时并在完成后显示「耗时 12 秒」；冷/热导出耗时与修复前一致（该成本未改）。
+- Verification: `node --test` 299/299；远端接口 + 浏览器端到端复检通过。
+
 ## Completed On 2026-10-15 - Editor level list gains operator-selectable sorting
 
 - 【关卡】区域新增【关卡排序】下拉栏，三种方式：编号（默认）、名称、创建时间（最近保存/导入的排最前，纯内置关卡沉底）。选择保存在 `localStorage`（`bus-loop-level-sort-v1`），刷新后保持，且不进入 scene tuning / 导出包。
