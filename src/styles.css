@@ -608,6 +608,14 @@ button:hover { transform: translateY(-1px); background: #fff; }
 .editor-level-edit { grid-column: 1 / -1; }
 .editor-spatial-edit-points,
 .editor-spatial-open-folder { grid-column: 1 / -1; }
+.editor-level-sort {
+  display: flex; align-items: center; gap: 8px; margin-top: 8px;
+  color: #62788c; font-size: 11px;
+}
+.editor-level-sort select {
+  flex: 1; min-width: 0; padding: 6px 8px; border-radius: 8px;
+  border: 1px solid rgba(16,35,61,.18); background: #fff; color: #21323f; font-size: 11px;
+}
 .editor-level-status,
 .editor-spatial-status {
   margin: 8px 0 0; overflow-wrap: anywhere; color: #62788c; font-size: 10px; line-height: 1.4;

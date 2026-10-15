@@ -11,6 +11,11 @@ import { LEVEL_1 } from './level-data.js';
 import { isValidStoreLink } from './store-links.js';
 import { BUILD_VERSION } from './build-version.js';
 
+// Operator preference for the level dropdown order; kept out of scene tuning
+// so it never leaks into exported playable packages.
+const LEVEL_SORT_STORAGE_KEY = 'bus-loop-level-sort-v1';
+const LEVEL_SORT_MODES = Object.freeze(['number', 'name', 'created']);
+
 const CONVEYOR_LAYOUT_OPTIONS = [
   ['dualQueue2', 'GameSceneDualQueue2'],
   ['dualQueue3', 'GameSceneDualQueue3'],
@@ -1698,6 +1703,14 @@ export function createSceneEditor(root, {
       <button class="editor-level-export" type="button">导出关卡</button>
       <button class="editor-level-open-folder" type="button">\u6253\u5f00\u5173\u5361\u6587\u4ef6\u5939</button>
     </div>
+    <label class="editor-level-sort">
+      <span>关卡排序</span>
+      <select class="editor-level-sort-select">
+        <option value="number">\u7f16\u53f7</option>
+        <option value="name">\u540d\u79f0</option>
+        <option value="created">\u521b\u5efa\u65f6\u95f4</option>
+      </select>
+    </label>
     <input class="editor-level-file" type="file" accept=".asset,.json,application/json" hidden>
     <p class="editor-level-status" aria-live="polite">\u5c31\u7eea</p>
   `;
@@ -1713,6 +1726,18 @@ export function createSceneEditor(root, {
   const levelOpenFolderButton = levelActions.querySelector('.editor-level-open-folder');
   const levelFileInput = levelActions.querySelector('.editor-level-file');
   const levelStatus = levelActions.querySelector('.editor-level-status');
+  const levelSortSelect = levelActions.querySelector('.editor-level-sort-select');
+  levelSortSelect.value = readLevelSortMode();
+  levelSortSelect.addEventListener('change', () => {
+    try {
+      localStorage.setItem(LEVEL_SORT_STORAGE_KEY, levelSortSelect.value);
+    } catch {
+      // Keep the order for this session even when storage is unavailable.
+    }
+    applyLevelOptionSort();
+    const labels = { number: '编号', name: '名称', created: '创建时间' };
+    levelStatus.textContent = `关卡列表已按${labels[levelSortSelect.value] ?? '编号'}排序`;
+  });
 
   function setLevelBusy(busy) {
     levelEditButton.disabled = busy;
@@ -1727,19 +1752,43 @@ export function createSceneEditor(root, {
     return match ? Number(match[1]) : Number.MAX_SAFE_INTEGER;
   }
 
+  function readLevelSortMode() {
+    try {
+      const saved = localStorage.getItem(LEVEL_SORT_STORAGE_KEY);
+      if (LEVEL_SORT_MODES.includes(saved)) return saved;
+    } catch {
+      // Private-mode storage failures fall back to the default order.
+    }
+    return 'number';
+  }
+
+  function compareLevelOptions(first, second, mode) {
+    if (mode === 'name') {
+      const byName = String(first.displayName ?? '').localeCompare(
+        String(second.displayName ?? ''), 'zh-Hans-CN', { numeric: true, sensitivity: 'base' }
+      );
+      if (byName !== 0) return byName;
+    }
+    if (mode === 'created') {
+      // Levels written most recently come first; entries without a file time
+      // (bundled-only levels) sink below every real timestamp.
+      const firstTime = Number(first.updatedAt) || 0;
+      const secondTime = Number(second.updatedAt) || 0;
+      if (firstTime !== secondTime) return secondTime - firstTime;
+    }
+    return levelOptionRank(first.key) - levelOptionRank(second.key) || first.key.localeCompare(second.key);
+  }
+
+  let levelOptionItems = [];
+
   // Level names come from three layers (baked catalog, imported definitions,
   // and the web volume), and only the server knows the merged result. Rebuild
   // the selects from that merged list so a renamed or replaced level can never
-  // leave a stale or duplicated label behind.
-  async function refreshWebLevelOptions() {
-    const controls = inputs.get('level.selected');
-    if (!controls?.select) return [];
-    const response = await fetch('/__level-authoring', { cache: 'no-store' });
-    const payload = await response.json().catch(() => ({}));
-    if (!response.ok) throw new Error(payload.error || `HTTP ${response.status}`);
-    const items = (payload.items ?? [])
-      .filter((item) => item?.key && item.displayName)
-      .sort((a, b) => levelOptionRank(a.key) - levelOptionRank(b.key) || a.key.localeCompare(b.key));
+  // leave a stale or duplicated label behind, and order them the way the
+  // operator chose (level number, name, or most recently written).
+  function applyLevelOptionSort() {
+    const mode = readLevelSortMode();
+    const items = [...levelOptionItems].sort((first, second) => compareLevelOptions(first, second, mode));
     const tuning = getTuning();
     for (const path of ['level.selected', 'vehicleGuideHand.levelKey']) {
       const select = inputs.get(path)?.select;
@@ -1755,6 +1804,16 @@ export function createSceneEditor(root, {
       select.value = items.some((item) => item.key === selectedKey) ? selectedKey : '';
     }
     return items;
+  }
+
+  async function refreshWebLevelOptions() {
+    const controls = inputs.get('level.selected');
+    if (!controls?.select) return [];
+    const response = await fetch('/__level-authoring', { cache: 'no-store' });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(payload.error || `HTTP ${response.status}`);
+    levelOptionItems = (payload.items ?? []).filter((item) => item?.key && item.displayName);
+    return applyLevelOptionSort();
   }
 
   levelEditButton.addEventListener('click', async () => {
@@ -1797,6 +1856,7 @@ export function createSceneEditor(root, {
     const next = structuredClone(getTuning());
     next.level.selected = payload.level.key;
     commitTuning(next, { path: 'level.selected' });
+    refreshWebLevelOptions().catch(() => {});
   }
 
   async function importWebLevel(file) {

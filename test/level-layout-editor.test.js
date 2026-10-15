@@ -13,8 +13,15 @@ test('scene editor and main runtime expose the full level layout workspace', () 
   assert.match(sceneEditor, /refreshWebLevelOptions/);
   assert.match(sceneEditor, /fetch\('\/__level-authoring'/);
   assert.doesNotMatch(sceneEditor, /Q9V5/);
-  assert.match(sceneEditor, /const items = \(payload\.items \?\? \[\]\)/);
+  assert.match(sceneEditor, /levelOptionItems = \(payload\.items \?\? \[\]\)\.filter/);
   assert.match(sceneEditor, /for \(const path of \['level\.selected', 'vehicleGuideHand\.levelKey'\]\)/);
+  // Level list ordering: operator-selectable, persisted, and re-applied from
+  // the stored merged list without a refetch.
+  assert.match(sceneEditor, /editor-level-sort-select/);
+  assert.match(sceneEditor, /bus-loop-level-sort-v1/);
+  assert.match(sceneEditor, /applyLevelOptionSort/);
+  assert.match(sceneEditor, /secondTime - firstTime/);
+  assert.match(sceneEditor, /numeric: true, sensitivity: 'base'/);
   assert.match(sceneEditor, /editor-level-delete/);
   assert.match(sceneEditor, /editor-level-export/);
   assert.match(sceneEditor, /__level-authoring-export/);

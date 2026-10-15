@@ -1,5 +1,13 @@
 # Playable Project Progress
 
+## Completed On 2026-10-15 - Editor level list gains operator-selectable sorting
+
+- 【关卡】区域新增【关卡排序】下拉栏，三种方式：编号（默认）、名称、创建时间（最近保存/导入的排最前，纯内置关卡沉底）。选择保存在 `localStorage`（`bus-loop-level-sort-v1`），刷新后保持，且不进入 scene tuning / 导出包。
+- 服务端 `/__level-authoring` 列表项新增 `updatedAt`（网页关卡取文件 mtime、导入关卡取 `artifacts/unity-level-sources/<key>.asset` 的 mtime；纯内建关卡为 `null`）。
+- 排序在「当前关卡」与「引导关卡」两个下拉框同步应用，各自保留当前选中项；导入完成后自动按当前排序重排。
+- 部署 `busloop-editor-levelsort-20261015.zip`（http://10.0.0.6:8081/14/14b74a032fc57d7d64feacf8c8d2cafa.zip），线上实测三种排序顺序互不相同、两下拉框同步、选中项保持、偏好刷新后保留。
+- Verification: `node --test` 298/298；本地与线上浏览器端到端复检通过。
+
 ## Completed On 2026-10-15 - Editor level naming standardized (no duplicate names in the level list)
 
 - 现象：编辑器关卡下拉框出现两类重名——「不同关卡同名」（level20 显示为 level35、level21 显示为 level154、level33 显示为 level33 (level33.asset)）与「同一关卡多名」（level35 同时以 `level35` 和 `level35 (level35.asset)` 两条出现、level30 与 level21 都叫 `level154`、`level6`/`level11` 都叫「Q9V2（南瓜）」）。

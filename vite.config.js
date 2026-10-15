@@ -197,15 +197,29 @@ async function readImportedLevelIdentities() {
   } catch (error) {
     if (error.code !== 'ENOENT') throw error;
   }
-  const identities = new Map(levels.map((level) => [level.key, {
-    key: level.key,
-    displayName: String(level.displayName ?? level.key ?? '').trim(),
-    source: 'catalog'
-  }]));
+  const identities = new Map();
+  for (const level of levels) {
+    identities.set(level.key, {
+      key: level.key,
+      displayName: String(level.displayName ?? level.key ?? '').trim(),
+      source: 'catalog',
+      updatedAt: await readLevelSourceMtime(path.join(DEFAULT_UNITY_LEVEL_SOURCE_ROOT, `${level.key}.asset`))
+    });
+  }
   for (const key of BUILTIN_LEVEL_IDS) {
-    if (!identities.has(key)) identities.set(key, { key, displayName: `${key} (${key}.asset)`, source: 'catalog' });
+    if (!identities.has(key)) identities.set(key, { key, displayName: `${key} (${key}.asset)`, source: 'catalog', updatedAt: null });
   }
   return [...identities.values()];
+}
+
+// Levels carry no stored creation timestamp; the editor sorts by file time
+// instead, which is when the level was last written (saved or imported).
+async function readLevelSourceMtime(filePath) {
+  try {
+    return (await stat(filePath)).mtimeMs;
+  } catch {
+    return null;
+  }
 }
 
 async function readWebLevelIdentities() {
@@ -216,11 +230,12 @@ async function readWebLevelIdentities() {
     .filter((entry) => entry.isFile() && /^level[1-9]\d*\.json$/.test(entry.name))
     .map(async (entry) => {
       const key = entry.name.slice(0, -5);
+      const updatedAt = await readLevelSourceMtime(path.join(WEB_LEVEL_ROOT, entry.name));
       try {
         const document = JSON.parse(await readFile(path.join(WEB_LEVEL_ROOT, entry.name), 'utf8'));
-        return { key, displayName: String(document.displayName ?? '').trim(), source: 'web' };
+        return { key, displayName: String(document.displayName ?? '').trim(), source: 'web', updatedAt };
       } catch {
-        return { key, displayName: '', source: 'web' };
+        return { key, displayName: '', source: 'web', updatedAt };
       }
     }))).filter(Boolean);
 }
