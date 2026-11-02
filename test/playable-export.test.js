@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { execFile } from 'node:child_process';
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
@@ -12,10 +12,14 @@ import { runInNewContext } from 'node:vm';
 const execFileAsync = promisify(execFile);
 import {
   buildPlayableArtifactName,
+  CROWD_STORE_LINKS,
   createBrandingVariantTuning,
+  DEFAULT_PLAYABLE_BRANDING_SET,
   EXPORT_RESOURCE_MODE,
+  PLAYABLE_BRANDING_SETS,
   PLAYABLE_BRANDING_VARIANTS,
   PLAYABLE_NAMING_PATTERN,
+  resolveBrandingSetVariants,
   SUPPORTED_PLATFORMS,
   prepareMolocoHtml,
   retargetBrandingVariantHtml,
@@ -48,8 +52,6 @@ const EXPORT_NAMING = Object.freeze({
     tiktok: 'TT',
     unityads: 'UN'
   }),
-  steps: '5moves',
-  stamina: '5hp'
 });
 
 test('export is package-only and does not opt into resource optimization', () => {
@@ -71,7 +73,7 @@ test('exporter exposes every supported delivery platform', () => {
 test('artifact names follow the playable request naming rule for every platform', () => {
   assert.equal(
     PLAYABLE_NAMING_PATTERN,
-    'requirement-material-iteration-language-format-designer-requester-channel-steps-stamina'
+    'requirement-material-iteration-N-language-format-designer-requester-channel-steps-stamina'
   );
   const extensions = {
     applovin: 'html',
@@ -83,7 +85,7 @@ test('artifact names follow the playable request naming rule for every platform'
     tiktok: 'zip'
   };
   for (const platform of SUPPORTED_PLATFORMS) {
-    const businessBaseName = `AC-2607141-Q1V1-N-EN-PL-NLY-ZZN-${EXPORT_NAMING.channels[platform]}-5moves-5hp`;
+    const businessBaseName = `AC-2607141-Q1V1-N-N-EN-PL-NLY-ZZN-${EXPORT_NAMING.channels[platform]}-N-N`;
     const baseName = platform === 'mintegral' ? businessBaseName.replaceAll('-', '_') : businessBaseName;
     assert.equal(
       buildPlayableArtifactName({ exportNaming: EXPORT_NAMING }, platform),
@@ -100,7 +102,7 @@ test('artifact naming rejects unsafe paths and Google Ads names over 50 characte
   }
   assert.throws(
     () => buildPlayableArtifactName({
-      exportNaming: { ...EXPORT_NAMING, requirementCode: 'A'.repeat(20) }
+      exportNaming: { ...EXPORT_NAMING, requirementCode: 'A'.repeat(28) }
     }, 'google-ads'),
     /must not exceed 50 characters/
   );
@@ -113,26 +115,33 @@ test('artifact naming omits blank fields and keeps platform names distinct', () 
       channels: Object.fromEntries(SUPPORTED_PLATFORMS.map((platform) => [platform, '']))
     }
   };
-  assert.equal(buildPlayableArtifactName(tuning, 'applovin'), 'Q4V1-applovin.html');
-  assert.equal(buildPlayableArtifactName(tuning, 'google-ads'), 'Q4V1-google-ads.zip');
-  assert.equal(buildPlayableArtifactName(tuning, 'mintegral'), 'Q4V1_mintegral.zip');
+  // Blank fields drop out, but the two fixed segments survive: the `N` after the
+  // pre-roll slot and the steps/stamina tail both always print.
+  assert.equal(buildPlayableArtifactName(tuning, 'applovin'), 'Q4V1-N-applovin-N-N.html');
+  assert.equal(buildPlayableArtifactName(tuning, 'google-ads'), 'Q4V1-N-google-ads-N-N.zip');
+  assert.equal(buildPlayableArtifactName(tuning, 'mintegral'), 'Q4V1_N_mintegral_N_N.zip');
 });
 
-test('all-platform branding variants select distinct icons and suffix every artifact', () => {
-  assert.deepEqual(PLAYABLE_BRANDING_VARIANTS.map(({ id }) => id), ['android', 'ios']);
-  const android = createBrandingVariantTuning({ branding: { icon: { asset: '/assets/old.png' } } }, 'android');
-  const ios = createBrandingVariantTuning({ branding: { icon: { asset: '/assets/old.png' } } }, 'ios');
-  assert.equal(android.branding.icon.asset, '/assets/icon-android.jpg');
-  assert.equal(ios.branding.icon.asset, '/assets/icon-ios.png');
-  assert.equal(android.branding.icon.asset === ios.branding.icon.asset, false);
+test('one Bus package serves both stores and carries both icons', () => {
+  // Android and iOS used to be two downloads that differed by one image. They are
+  // now one artifact: both icons ship inside it and the runtime picks by UA, the
+  // same way it already picked the store link.
+  assert.deepEqual(PLAYABLE_BRANDING_VARIANTS.map(({ id }) => id), ['bus']);
+  const bus = createBrandingVariantTuning({ branding: { icon: { asset: '/assets/old.png' } } }, 'bus');
+  assert.equal(bus.branding.icon.asset, '/assets/icon-android.jpg');
+  assert.deepEqual(bus.branding.icon.deviceAssets, {
+    android: '/assets/icon-android.jpg',
+    ios: '/assets/icon-ios.png'
+  });
+  // Crowd keeps a single icon and must not inherit the Bus device map.
+  const crowd = createBrandingVariantTuning({ branding: { icon: { deviceAssets: { android: '/a.jpg', ios: '/b.png' } } } }, 'crowd');
+  assert.equal(crowd.branding.icon.asset, '/assets/icon-crowd.jpg');
+  assert.equal(crowd.branding.icon.deviceAssets, undefined);
   // Both slots stay valid because a platform preview can run with the other device UA.
   const storeTuning = { storeLinks: { ...STORE_LINKS } };
-  const androidStores = createBrandingVariantTuning(storeTuning, 'android').storeLinks;
-  const iosStores = createBrandingVariantTuning(storeTuning, 'ios').storeLinks;
-  assert.equal(androidStores.android, STORE_LINKS.android);
-  assert.equal(androidStores.ios, STORE_LINKS.ios);
-  assert.equal(iosStores.android, STORE_LINKS.android);
-  assert.equal(iosStores.ios, STORE_LINKS.ios);
+  const busStores = createBrandingVariantTuning(storeTuning, 'bus').storeLinks;
+  assert.equal(busStores.android, STORE_LINKS.android);
+  assert.equal(busStores.ios, STORE_LINKS.ios);
   assert.deepEqual(storeTuning.storeLinks, STORE_LINKS);
   // The baked fallback is captured once at load, so it must track the live tuning.
   // The refresh has to be reachable from a call site that survives production builds:
@@ -140,22 +149,27 @@ test('all-platform branding variants select distinct icons and suffix every arti
   const runtime = readFileSync(new URL('../src/main.js', import.meta.url), 'utf8');
   assert.match(runtime, /function refreshDefaultStoreLinks\(\) \{[\s\S]*?DEFAULT_STORE_LINKS\[platform\] = SCENE_TUNING\.storeLinks\?\.\[platform\]/);
   assert.match(runtime, /async function startRuntime\(\) \{[^}]*?refreshDefaultStoreLinks\(\);/);
-  assert.equal(buildPlayableArtifactName({ exportNaming: EXPORT_NAMING }, 'applovin', '-Android'), 'AC-2607141-Q1V1-N-EN-PL-NLY-ZZN-AL-5moves-5hp-Android.html');
-  assert.equal(buildPlayableArtifactName({ exportNaming: EXPORT_NAMING }, 'applovin', '-iOS'), 'AC-2607141-Q1V1-N-EN-PL-NLY-ZZN-AL-5moves-5hp-iOS.html');
+  assert.equal(buildPlayableArtifactName({ exportNaming: EXPORT_NAMING }, 'applovin', '-Crowd'), 'AC-2607141-Q1V1-N-N-EN-PL-NLY-ZZN-AL-N-N-Crowd.html');
   // Mintegral delivery names may contain only letters, digits, and underscores, so the
   // branding suffix has to follow the same hyphen replacement as the business base name.
-  assert.equal(buildPlayableArtifactName({ exportNaming: EXPORT_NAMING }, 'mintegral', '-Android'), 'AC_2607141_Q1V1_N_EN_PL_NLY_ZZN_MT_5moves_5hp_Android.zip');
-  assert.equal(buildPlayableArtifactName({ exportNaming: EXPORT_NAMING }, 'mintegral', '-iOS'), 'AC_2607141_Q1V1_N_EN_PL_NLY_ZZN_MT_5moves_5hp_iOS.zip');
+  assert.equal(buildPlayableArtifactName({ exportNaming: EXPORT_NAMING }, 'mintegral', '-Crowd'), 'AC_2607141_Q1V1_N_N_EN_PL_NLY_ZZN_MT_N_N_Crowd.zip');
+  // Both tail segments are always present: an empty steps/stamina field falls back to N
+  // so a delivery name never silently loses the last two segments.
+  assert.equal(buildPlayableArtifactName({ exportNaming: { ...EXPORT_NAMING, steps: '', stamina: '' } }, 'applovin'), 'AC-2607141-Q1V1-N-N-EN-PL-NLY-ZZN-AL-N-N.html');
   assert.match(buildPlayableArtifactName({ exportNaming: EXPORT_NAMING }, 'mintegral', '-Android'), /^[A-Za-z0-9_]+\.zip$/u);
+  // Google Ads caps the delivery name at 50 chars; the naming rule still has to
+  // reject a name that overruns it now that steps/stamina are not emitted.
   assert.throws(
-    () => buildPlayableArtifactName({ exportNaming: EXPORT_NAMING }, 'google-ads', '-Android'),
+    () => buildPlayableArtifactName({
+      exportNaming: { ...EXPORT_NAMING, materialCode: 'Q1V1'.repeat(4) }
+    }, 'google-ads', '-Android'),
     /must not exceed 50 characters/
   );
 });
 
 test('branding variants reuse platform builds by retargeting only the embedded icon', () => {
-  const android = createBrandingVariantTuning({ storeLinks: STORE_LINKS }, 'android');
-  const ios = createBrandingVariantTuning({ storeLinks: STORE_LINKS }, 'ios');
+  const android = createBrandingVariantTuning({ storeLinks: STORE_LINKS }, 'bus');
+  const ios = createBrandingVariantTuning({ storeLinks: STORE_LINKS }, 'crowd');
   const androidIcon = 'data:image/jpeg;base64,YW5kcm9pZA==';
   const iosIcon = 'data:image/png;base64,aW9z';
   const source = `<html><img id="branding-icon" src="${androidIcon}"><script>`
@@ -164,16 +178,20 @@ test('branding variants reuse platform builds by retargeting only the embedded i
   const result = retargetBrandingVariantHtml(source, android, ios, iosIcon);
   assert.doesNotMatch(result, /YW5kcm9pZA/);
   assert.equal(result.split(iosIcon).length - 1, 1);
-  assert.equal(result.split(STORE_LINKS.android).length - 1, 1);
-  assert.equal(result.split(STORE_LINKS.ios).length - 1, 1);
+  // Bus and Crowd advertise different stores, so both links are swapped.
+  assert.equal(result.split(STORE_LINKS.android).length - 1, 0);
+  assert.equal(result.split(STORE_LINKS.ios).length - 1, 0);
+  assert.equal(result.split(CROWD_STORE_LINKS.android).length - 1, 1);
+  assert.equal(result.split(CROWD_STORE_LINKS.ios).length - 1, 1);
 });
 
 test('all-platform export builds both branding variants and records them in the manifest', async () => {
   const exporter = await readFile(new URL('../scripts/export-playable-package.mjs', import.meta.url), 'utf8');
-  assert.match(exporter, /variants:\s*PLAYABLE_BRANDING_VARIANTS\.map/);
+  assert.match(exporter, /variants:\s*brandingVariants\.map/);
+  assert.match(exporter, /resolveBrandingSetVariants\(brandingSet\)/);
   assert.match(exporter, /createBrandingVariantTuning\(safeTuning, variant\.id\)/);
   assert.match(exporter, /assertEmbeddedStoreLinks\(sourceHtml, variantTuning\)/);
-  assert.match(exporter, /brandingDeviceProfiles\(device\)/);
+  assert.match(exporter, /brandingDeviceProfiles\(devices\)/);
   assert.match(exporter, /device: runtimeDevices\[1\]/);
   assert.match(exporter, /applyWorkspaceBrandingIcon\(workRoot, tuning\)/);
   assert.match(exporter, /brandingVariant:\s*brandingVariant \?\? null/);
@@ -181,6 +199,91 @@ test('all-platform export builds both branding variants and records them in the 
   assert.doesNotMatch(exporter, /skipRuntime: process\.env\.PLAYABLE_EXPORT_REMOTE_FAST === '1'/);
   assert.match(exporter, /brandingVariant,\s*format,\s*fileName/);
   assert.match(exporter, /results\.length/);
+});
+
+test('Crowd exports one shared Android/iOS package with its own icon and logo', async () => {
+  assert.equal(DEFAULT_PLAYABLE_BRANDING_SET, 'bus');
+  assert.deepEqual(
+    PLAYABLE_BRANDING_SETS.bus.map(({ id }) => id),
+    ['bus']
+  );
+  assert.deepEqual(
+    PLAYABLE_BRANDING_SETS.crowd.map(({ id }) => id),
+    ['crowd']
+  );
+  assert.throws(() => resolveBrandingSetVariants('nope'), /Unsupported playable branding set/);
+  assert.equal(resolveBrandingSetVariants().length, 1);
+
+  const crowd = createBrandingVariantTuning(
+    { branding: { icon: { asset: '/assets/icon-android.jpg' }, logo: { asset: '/assets/main-loading-icon-small.png' } } },
+    'crowd'
+  );
+  assert.equal(crowd.branding.icon.asset, '/assets/icon-crowd.jpg');
+  assert.equal(crowd.branding.logo.asset, '/assets/main-loading-icon-crowd.webp');
+  // An untouched Bus default text must not survive into a Crowd package.
+  assert.equal(crowd.branding.text.content, 'Bus Crowd');
+  assert.equal(crowd.branding.loading.title, 'Bus Crowd');
+  assert.equal(crowd.branding.loading.icon, '');
+  // The Crowd wordmark must sit centred even when a saved editor session left
+  // the draggable x a few pixels off (a 534 shipped once and looked off-centre).
+  const dragged = createBrandingVariantTuning(
+    { preview: { width: 1080, height: 2160 }, branding: { text: { x: 534, content: 'Bus Crowd' } } },
+    'crowd'
+  );
+  assert.equal(dragged.branding.text.x, 540);
+  assert.equal(dragged.branding.text.content, 'Bus Crowd');
+  // A different authoring canvas centres on that canvas instead of assuming 1080.
+  const wideCanvas = createBrandingVariantTuning(
+    { preview: { width: 900, height: 1600 }, branding: { text: { x: 120 } } },
+    'crowd'
+  );
+  assert.equal(wideCanvas.branding.text.x, 450);
+  // The Bus variants keep the position the operator set.
+  const busText = createBrandingVariantTuning(
+    { preview: { width: 1080, height: 2160 }, branding: { text: { x: 700 } } },
+    'bus'
+  );
+  assert.equal(busText.branding.text.x, 700);
+
+  const custom = createBrandingVariantTuning(
+    { branding: { text: { content: 'Download now' } } },
+    'crowd'
+  );
+  assert.equal(custom.branding.text.content, 'Download now');
+  assert.equal(existsSync('public/assets/icon-crowd.jpg'), true);
+  assert.equal(existsSync('public/assets/main-loading-icon-crowd.webp'), true);
+
+  // A Crowd package must not send players to the Bus Fever store listings: the
+  // editor tuning still carries those, so the set has to override them.
+  const busTunedCrowd = createBrandingVariantTuning({ storeLinks: { ...STORE_LINKS } }, 'crowd');
+  assert.equal(busTunedCrowd.storeLinks.android, CROWD_STORE_LINKS.android);
+  assert.equal(busTunedCrowd.storeLinks.ios, CROWD_STORE_LINKS.ios);
+  assert.notEqual(CROWD_STORE_LINKS.android, STORE_LINKS.android);
+  assert.notEqual(CROWD_STORE_LINKS.ios, STORE_LINKS.ios);
+  // Bus variants keep whatever the editor saved.
+  const busVariant = createBrandingVariantTuning({ storeLinks: { ...STORE_LINKS } }, 'bus');
+  assert.equal(busVariant.storeLinks.android, STORE_LINKS.android);
+  assert.equal(busVariant.storeLinks.ios, STORE_LINKS.ios);
+  assert.match(CROWD_STORE_LINKS.android, /id=busflow\.traffic\.puzzle/u);
+  assert.match(CROWD_STORE_LINKS.ios, /id6754059516/u);
+
+  assert.equal(
+    buildPlayableArtifactName({ exportNaming: EXPORT_NAMING }, 'applovin', '-Crowd'),
+    'AC-2607141-Q1V1-N-N-EN-PL-NLY-ZZN-AL-N-N-Crowd.html'
+  );
+
+  const [exporter, vite, editor] = await Promise.all([
+    readFile(new URL('../scripts/export-playable-package.mjs', import.meta.url), 'utf8'),
+    readFile(new URL('../vite.config.js', import.meta.url), 'utf8'),
+    readFile(new URL('../src/scene-editor.js', import.meta.url), 'utf8')
+  ]);
+  assert.match(exporter, /brandingSet === DEFAULT_PLAYABLE_BRANDING_SET\s*\?\s*null/);
+  assert.match(exporter, /`bus-loop-\$\{brandingSet\}-all-platforms\.zip`/);
+  assert.match(exporter, /logoAsset: '\/assets\/main-loading-icon-crowd\.webp'/);
+  assert.match(vite, /PLAYABLE_BRANDING_SETS = new Set\(\['bus', 'crowd'\]\)/);
+  assert.match(vite, /brandingSet,/);
+  assert.match(editor, /editor-export-set-select/);
+  assert.match(editor, /brandingSet/);
 });
 
 test('tuning validation accepts known finite values without mutating input', () => {
@@ -331,18 +434,34 @@ test('inliner reuses the initial branding image instead of embedding it again in
   const inliner = await readFile(new URL('../scripts/package-applovin-single-html.mjs', import.meta.url), 'utf8');
   assert.match(inliner, /function reuseDocumentImageAsset\(html, js, assetMap, elementId\)/);
   assert.match(inliner, /document\.getElementById\(\$\{JSON\.stringify\(elementId\)\}\)\.src/);
-  assert.match(inliner, /reuseDocumentImageAsset\(html, jsWithAssets, assetMap, 'branding-icon'\)/);
+  // The branding Icon/Logo and the loading icon are all inlined in the document
+  // already, so each tuning literal must reuse the element instead of embedding
+  // the same bytes twice. The loading icon is compared against its own src at
+  // runtime, so its literal has to come from the document as well.
+  // `stage-choice-hand` is the same sprite the 3D guide hand loads by URL, so it
+  // has to reuse the document copy too or the payload scan sees the blob twice.
+  assert.match(inliner, /\['branding-icon', 'branding-logo', 'loading-icon', 'stage-choice-hand'\]/);
+  assert.match(inliner, /reuseDocumentImageAsset\(html, source, assetMap, elementId\)/);
 });
 
-test('packaging and checks include EntryBanner resources only when the tuning enables it', async () => {
+test('packaging and checks include EntryBanner resources only when the tuning or a stage enables it', async () => {
   const [inliner, checker, sceneView] = await Promise.all([
     readFile(new URL('../scripts/package-applovin-single-html.mjs', import.meta.url), 'utf8'),
     readFile(new URL('../scripts/check-applovin-package.mjs', import.meta.url), 'utf8'),
     readFile(new URL('../src/scene-view.js', import.meta.url), 'utf8')
   ]);
-  const selection = /entryBannerEnabled:\s*Boolean\(SCENE_TUNING\.entryBanner\?\.enabled\)/;
-  assert.match(inliner, selection);
-  assert.match(checker, selection);
+  // A later stage can enable the banner while the global toggle stays off. Both
+  // consumers must consider every request source: the fixed stage sequence, the
+  // map picker, and the global toggle.
+  assert.match(inliner, /const stageBannerEnabled = PLAYABLE_STAGES\.some\(/u);
+  assert.match(inliner, /const choiceBannerEnabled = PLAYABLE_STAGE_CHOICES\.some\(/u);
+  assert.match(inliner, /SCENE_TUNING\.entryBanner\?\.enabled \|\| stageBannerEnabled \|\| choiceBannerEnabled/u);
+  assert.match(checker, /PLAYABLE_STAGE_CHOICES/);
+  // Assets follow the reachable set, not just the fixed order, or a picked map
+  // would ship with placeholder bytes.
+  assert.match(inliner, /PLAYABLE_STAGE_CHOICES, PLAYABLE_ALL_LEVELS/);
+  assert.match(checker, /PLAYABLE_STAGE_CHOICES, PLAYABLE_ALL_LEVELS/);
+  assert.match(inliner, /for \(const option of choiceOptions\) realAssetUrls\.add\(option\.image\)/);
   assert.match(sceneView, /this\.entryBanner = SCENE_TUNING\.entryBanner\?\.enabled \? this\.createEntryBanner\(\) : null/);
 });
 
@@ -394,7 +513,7 @@ test('editor and server expose production-only single-platform and all-platform 
   assert.match(editor, /editor-export-all-button/);
   assert.match(editor, /\/__playable-export-all/);
   assert.match(editor, /\\u6b63\\u5728\\u6253\\u5305/);
-  assert.match(editor, /getPlayableExportPayload\(\)[\s\S]*?JSON\.stringify\(all \? exportPayload : \{ \.\.\.exportPayload, platform \}/);
+  assert.match(editor, /getPlayableExportPayload\(\)[\s\S]*?JSON\.stringify\(all[\s\S]*?\.\.\.exportPayload, platform, brandingSet/);
   assert.match(mainSource, /function getPlayableExportPayload\(\)[\s\S]*?levelDocumentBaseRevision/);
   assert.match(mainSource, /getPlayableExportPayload,/);
   assert.match(editor, /payload\.detail/);
@@ -460,7 +579,7 @@ test('editor exposes every request naming component and platform channel code', 
   const editor = await readFile(new URL('../src/scene-editor.js', import.meta.url), 'utf8');
   for (const path of [
     'requirementCode', 'materialCode', 'iterationCode', 'language', 'format',
-    'designer', 'requester', 'steps', 'stamina'
+    'designer', 'requester'
   ]) {
     assert.match(editor, new RegExp(`exportNaming\\.${path}`));
   }
@@ -562,4 +681,115 @@ test('applying export tuning rewrites only tuning data and leaves runtime helper
   } finally {
     await rm(root, { recursive: true, force: true });
   }
+});
+
+test('AppLovin challenge funnel instrumentation stays wired end to end', async () => {
+  const [bridge, main, rulesSource] = await Promise.all([
+    readFile(new URL('../src/platform-bridge.js', import.meta.url), 'utf8'),
+    readFile(new URL('../src/main.js', import.meta.url), 'utf8'),
+    readFile(new URL(
+      '../deploy-tools/build-verified-playable-packages/rules/applovin.json',
+      import.meta.url
+    ), 'utf8')
+  ]);
+  // The gate must require the full Axon funnel so an uninstrumented build fails export.
+  const rules = JSON.parse(rulesSource);
+  const rule = rules.rules.find((entry) => entry.id === 'APL-STA-004');
+  assert.ok(rule, 'APL-STA-004 must guard the AppLovin event chain');
+  for (const eventName of [
+    'LOADING', 'LOADED', 'DISPLAYED', 'CHALLENGE_STARTED',
+    'CHALLENGE_PASS_25', 'CHALLENGE_PASS_50', 'CHALLENGE_PASS_75',
+    'CHALLENGE_SOLVED', 'CHALLENGE_FAILED', 'CHALLENGE_RETRY',
+    'ENDCARD_SHOWN', 'CTA_CLICKED'
+  ]) {
+    assert.ok(rule.check.patterns.includes(eventName), `APL-STA-004 must require ${eventName}`);
+  }
+  // The bridge owns the funnel semantics: progress milestones, solved suppression, CTA backfill.
+  assert.match(bridge, /challengeProgress\(percent\)/);
+  assert.match(bridge, /challengeSolved\(\)/);
+  assert.match(bridge, /challengeFailed\(\)/);
+  assert.match(bridge, /SOLVED_SUPPRESSED/);
+  // The runtime must feed progress, solve, fail, and retry from real gameplay moments.
+  assert.match(main, /platformBridge\?\.challengeProgress\?\.\(\(successfulOperationCount \/ threshold\) \* 100\)/);
+  assert.match(main, /platformBridge\?\.challengeSolved\?\.\(\)/);
+  assert.match(main, /platformBridge\?\.challengeFailed\?\.\(\)/);
+  assert.match(main, /platformBridge\?\.retry\(\)/);
+});
+
+test('packages carry no build stamp anywhere on screen', async () => {
+  const packager = await readFile(new URL('../scripts/package-applovin-single-html.mjs', import.meta.url), 'utf8');
+  const indexHtml = await readFile(new URL('../index.html', import.meta.url), 'utf8');
+  const styles = await readFile(new URL('../src/styles.css', import.meta.url), 'utf8');
+  const main = await readFile(new URL('../src/main.js', import.meta.url), 'utf8');
+
+  // A timestamp used to sit in the top-left corner of every build. It shipped on
+  // screen by mistake and had to be stripped, so pin its absence: no DOM slot,
+  // no injected text, no leftover styling, no editor-only class that only
+  // existed to hide it.
+  assert.doesNotMatch(indexHtml, /build-stamp/u);
+  assert.doesNotMatch(packager, /build-stamp|BuildStamp/u);
+  assert.doesNotMatch(styles, /build-stamp/u);
+  assert.doesNotMatch(main, /build-stamp|buildStamp|is-editor/u);
+});
+
+test('UnityAds packages carry no AppLovin marker, even from shared asset paths', async () => {
+  const packager = await readFile(new URL('../scripts/export-playable-package.mjs', import.meta.url), 'utf8');
+  const encoder = packager.slice(
+    packager.indexOf('function encodeUnityStaticFalsePositives'),
+    packager.indexOf('export function prepareMolocoHtml')
+  );
+  // The colour-atlas table hard-codes "/assets/applovin/textures". UNITY-STA-004
+  // reads that word as a leftover AppLovin API call and fails the whole package,
+  // which is exactly what happened once the atlas table moved into code.
+  assert.match(encoder, /applovin\(\?=\\\/textures\)/u, 'the atlas prefix rewrite must stay in the Unity transform');
+
+  const transformed = runInNewContext(
+    `${encoder}; encodeUnityStaticFalsePositives('const ROOT = "/assets/applovin/textures";')`,
+    { encodeCheckerOnlyUrls: (source) => source }
+  );
+  assert.doesNotMatch(transformed, /applovin/iu, 'no literal applovin marker may survive');
+  // The runtime must still resolve the real directory after JS decodes the escape.
+  assert.equal(
+    JSON.parse(transformed.slice(transformed.indexOf('"'), transformed.lastIndexOf('"') + 1).replaceAll('\\u0069', 'i')),
+    '/assets/applovin/textures'
+  );
+});
+
+test('Crowd packages use the BFT product code while Bus keeps BL', async () => {
+  const { createBrandingVariantTuning } = await import('../scripts/export-playable-package.mjs');
+  const { SCENE_TUNING } = await import('../src/scene-tuning.js');
+  const bus = createBrandingVariantTuning(SCENE_TUNING, 'bus');
+  assert.equal(bus.exportNaming.requirementCode, SCENE_TUNING.exportNaming.requirementCode);
+  const crowd = createBrandingVariantTuning(SCENE_TUNING, 'crowd');
+  // Crowd is a separate product; its delivery sheets use BFT and ZZN.
+  assert.equal(crowd.exportNaming.requirementCode, 'BFT');
+  assert.equal(crowd.exportNaming.requester, 'ZZN');
+  // The rest of the naming stays whatever the editor holds.
+  assert.equal(crowd.exportNaming.materialCode, SCENE_TUNING.exportNaming.materialCode);
+  assert.equal(crowd.exportNaming.designer, SCENE_TUNING.exportNaming.designer);
+  // Bus must not pick up the Crowd identity.
+  assert.equal(bus.exportNaming.requester, SCENE_TUNING.exportNaming.requester);
+  assert.notEqual(bus.exportNaming.requester, 'ZZN');
+});
+
+test('the bottom caption is centred on the CTA', async () => {
+  const { SCENE_TUNING } = await import('../src/scene-tuning.js');
+  // The caption sat at x=534 while the CTA was at 540, so the two looked
+  // offset by a few pixels on every build. Both must share the design centre.
+  const designCentre = SCENE_TUNING.preview.width / 2;
+  assert.equal(SCENE_TUNING.cta.x, designCentre);
+  assert.equal(SCENE_TUNING.branding.text.x, designCentre);
+});
+
+
+test('a fixed stage sequence that enables the entry banner still ships its art', async () => {
+  const packager = await readFile(new URL('../scripts/package-applovin-single-html.mjs', import.meta.url), 'utf8');
+  // The banner is requested per stage. A fixed sequence keeps its stages in
+  // PLAYABLE_STAGES while a map picker keeps them in PLAYABLE_STAGE_CHOICES;
+  // checking only one of them shipped the six banner sprites as 1-byte
+  // octet-stream placeholders, so the banner collapsed to a line of text.
+  assert.match(packager, /PLAYABLE_STAGES, PLAYABLE_STAGE_CHOICES, PLAYABLE_ALL_LEVELS/u);
+  assert.match(packager, /PLAYABLE_STAGES\.some\(\(stage\) => stage\?\.opening\?\.entryBanner\?\.enabled\)/u);
+  assert.match(packager, /PLAYABLE_STAGE_CHOICES\.some\(/u);
+  assert.match(packager, /SCENE_TUNING\.entryBanner\?\.enabled \|\| stageBannerEnabled \|\| choiceBannerEnabled/u);
 });

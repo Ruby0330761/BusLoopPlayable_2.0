@@ -19,8 +19,8 @@
           <div id="branding-text" class="branding-item branding-text">Bus Fever Party!</div>
         </div>
         <div id="loading-screen" class="loading-screen" role="status" aria-live="polite">
-          <img src="/assets/applovin/icon_q75.jpg" alt="Bus Fever Party! icon" />
-          <h1>Bus Fever Party!</h1>
+          <img id="loading-icon" src="/assets/applovin/icon_q75.jpg" alt="Bus Fever Party! icon" />
+          <h1 id="loading-title">Bus Fever Party!</h1>
           <div class="loading-progress" role="progressbar" aria-label="Loading progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
             <div id="loading-progress-bar" class="loading-progress-bar"></div>
           </div>
@@ -34,7 +34,16 @@
           <div id="game-over-title" class="game-over-title">Game Over</div>
           <img id="game-over-logo" class="game-over-logo" alt="Bus Fever Party! logo" />
         </div>
+        <div id="stage-choice-overlay" class="stage-choice-overlay" hidden>
+          <h2 id="stage-choice-title" class="stage-choice-title">Please Choose a Stage</h2>
+          <div id="stage-choice-grid" class="stage-choice-grid" role="group" aria-label="Choose a stage"></div>
+          <img id="stage-choice-hand" class="stage-choice-hand" src="/assets/applovin/main-guide-hand_q80.webp" alt="" aria-hidden="true" draggable="false" />
+        </div>
         <button id="cta-button" class="cta-button" type="button" aria-label="Play Now" hidden>Play Now</button>
+        <button id="speed-toggle" class="speed-toggle" type="button" aria-label="Playback speed" aria-pressed="false" hidden>
+          <img id="speed-toggle-icon" class="speed-toggle-icon" src="/assets/applovin/speed-toggle-icon-normal.png" alt="" draggable="false" />
+          <span id="speed-toggle-label" class="speed-toggle-label">x1</span>
+        </button>
       </main>
       <aside id="scene-editor" class="scene-editor" aria-label="Scene editor"></aside>
     </div>

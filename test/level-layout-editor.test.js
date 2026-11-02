@@ -35,7 +35,9 @@ test('scene editor and main runtime expose the full level layout workspace', () 
   assert.match(sceneEditor, /validateLevelDocument\(document\)/);
   assert.match(sceneEditor, /只能导入关卡编辑器导出的 JSON 文件/);
   assert.match(sceneEditor, /filename: file\.name/);
-  assert.match(sceneEditor, /option\.textContent = item\.displayName/);
+  // The option label now also names the owning operator, so a level that
+  // belongs to someone else is visible in the picker.
+  assert.match(sceneEditor, /option\.textContent = item\.owner \?/);
   assert.match(sceneEditor, /editor-background-rename/);
   assert.match(sceneEditor, /editor-background-download/);
   assert.match(sceneEditor, /CUSTOM_BACKGROUND_ENDPOINT\}\/rename/);
@@ -90,6 +92,16 @@ test('scene editor and main runtime expose the full level layout workspace', () 
   assert.match(workspace, /data-action="elevator-upper"/);
   assert.match(workspace, /data-action="elevator-lower"/);
   assert.match(workspace, /data-action="center-elevator"/);
+  // Vehicle renumbering: a manual palette button plus the delete-time compaction
+  // switch, and the editor has to forward the id remap to the live tuning.
+  assert.match(workspace, /data-action="renumber-vehicles"/);
+  assert.match(workspace, /车辆序号重排/);
+  assert.match(workspace, /model\.renumberVehicles\(\)/);
+  assert.match(workspace, /document\.editor\.autoRenumberVehicles/);
+  assert.match(workspace, /onVehiclesRenumbered/);
+  assert.match(workspace, /consumeRenumber\(\)/);
+  assert.match(main, /onVehiclesRenumbered: \(\{ idMap, document \}\)/);
+  assert.match(main, /idMap\.get\(Number\(guide\.vehicleId\)\)/);
   assert.match(workspace, /上层车辆/);
   assert.match(workspace, /舱外车辆/);
   assert.match(workspace, /model\.enterContainer\(hit\.id\)/);
@@ -200,7 +212,9 @@ test('development service saves versioned level documents with backups', () => {
   assert.match(vite, /targetLevelKey/);
   assert.match(vite, /normalizedDocument = \{ \.\.\.document, key: targetLevelId \}/);
   assert.match(vite, /Web level JSON/);
-  assert.match(vite, /sendJson\(response, 200, \{ items \}\)/);
+  // The list now also returns per-level ownership, so "why can I not save this
+  // level" is answerable before the save is refused.
+  assert.match(vite, /sendJson\(response, 200, \{ items, currentOwner/);
   assert.match(vite, /readImportedLevelIdentities/);
   assert.match(vite, /readWebLevelIdentities/);
   assert.match(vite, /availability\.reason === 'name'/);
@@ -224,4 +238,28 @@ test('workspace styles preserve stable desktop and narrow-screen columns', () =>
   assert.match(css, /level-layout-new-dialog/);
   assert.match(css, /level-image-dialog/);
   assert.match(css, /level-image-colors/);
+});
+
+test('level export carries scene tuning and import restores it for the new key', () => {
+  const sceneEditor = readFileSync('src/scene-editor.js', 'utf8');
+  const main = readFileSync('src/main.js', 'utf8');
+  const vite = readFileSync('vite.config.js', 'utf8');
+
+  // The server only ever sees the layout file; the tuning lives in this
+  // browser's per-level profile, so the export handler has to attach it.
+  assert.match(sceneEditor, /attachTuningToExportedLevel\(raw, key, getTuning\(\)\)/);
+  assert.match(sceneEditor, /export function attachTuningToExportedLevel/);
+  assert.match(sceneEditor, /document\?\.format !== 'bus-loop-web-level-v1' \|\| document\?\.key !== levelKey/);
+  assert.match(sceneEditor, /delete sceneTuning\.level\.selected/);
+
+  // Importing allocates a new level key, so the file's tuning must be written
+  // for that key before the level switch reads the profile.
+  assert.match(sceneEditor, /saveImportedLevelTuning\(payload\.level\.key, source\.tuning\)/);
+  assert.match(sceneEditor, /saveImportedLevelTuning = \(\) => false/);
+  assert.match(main, /saveImportedLevelTuning/);
+  assert.match(main, /function saveImportedLevelTuning\(levelKey, tuning\)/);
+  assert.match(main, /merged\.level\.selected = key/);
+
+  // Older level files predate the field, so it must stay optional end to end.
+  assert.match(vite, /document\.tuning !== undefined/);
 });

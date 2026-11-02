@@ -1,0 +1,1194 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: e40b6c9a941244a49037a51f0dac6d7f, type: 3}
+  m_Name: level79
+  m_EditorClassIdentifier: 
+  id: 79
+  mapScale: 1.33
+  difficulty: 1
+  conveyorBeltName: ConveyorBelt17
+  bgMaterial: {fileID: 2100000, guid: 710019de37aa274438d81c8db481c15f, type: 2}
+  passengerMethod: 4
+  vehicles:
+  - id: 53
+    seats: 4
+    isHidden: 0
+    isTurnVehicle: 0
+    colorIndex: 2
+    position: {x: 1.73909, y: 0, z: 0.29307303}
+    rotation: {x: 0, y: 0.7071067, z: 0, w: 0.7071068}
+    containerType: 1
+    containerId: 0
+    elevatorLayer: 0
+  - id: 54
+    seats: 4
+    isHidden: 0
+    isTurnVehicle: 0
+    colorIndex: 7
+    position: {x: -0.23352876, y: 0, z: -0.8302281}
+    rotation: {x: 0, y: 1, z: 0, w: -0.00000004371139}
+    containerType: 1
+    containerId: 0
+    elevatorLayer: 0
+  - id: 55
+    seats: 4
+    isHidden: 0
+    isTurnVehicle: 0
+    colorIndex: 6
+    position: {x: 1.0969965, y: 0, z: -1.7638056}
+    rotation: {x: 0, y: 0.90630776, z: 0, w: -0.42261833}
+    containerType: 1
+    containerId: 0
+    elevatorLayer: 0
+  - id: 56
+    seats: 4
+    isHidden: 0
+    isTurnVehicle: 0
+    colorIndex: 6
+    position: {x: 0.5502712, y: 0, z: -2.070492}
+    rotation: {x: 0, y: 0.819152, z: 0, w: -0.57357645}
+    containerType: 1
+    containerId: 0
+    elevatorLayer: 0
+  - id: 57
+    seats: 4
+    isHidden: 0
+    isTurnVehicle: 0
+    colorIndex: 4
+    position: {x: 0.03725308, y: 0, z: 2.0422058}
+    rotation: {x: 0, y: 0.00000008742278, z: 0, w: 1}
+    containerType: 1
+    containerId: 0
+    elevatorLayer: 0
+  - id: 58
+    seats: 4
+    isHidden: 0
+    isTurnVehicle: 0
+    colorIndex: 4
+    position: {x: 0.037250534, y: 0, z: 1.4922161}
+    rotation: {x: 0, y: 0.00000008742278, z: 0, w: 1}
+    containerType: 1
+    containerId: 0
+    elevatorLayer: 0
+  - id: 59
+    seats: 4
+    isHidden: 0
+    isTurnVehicle: 0
+    colorIndex: 5
+    position: {x: -0.5176133, y: 0, z: 1.4162605}
+    rotation: {x: 0, y: 0.70710677, z: 0, w: -0.70710677}
+    containerType: 1
+    containerId: 0
+    elevatorLayer: 0
+  - id: 60
+    seats: 4
+    isHidden: 0
+    isTurnVehicle: 0
+    colorIndex: 5
+    position: {x: -0.51223177, y: 0, z: 1.7192419}
+    rotation: {x: 0, y: 0.70710677, z: 0, w: -0.70710677}
+    containerType: 1
+    containerId: 0
+    elevatorLayer: 0
+  - id: 61
+    seats: 4
+    isHidden: 0
+    isTurnVehicle: 0
+    colorIndex: 8
+    position: {x: -1.0764141, y: 0, z: 1.6004379}
+    rotation: {x: 0, y: 0.00000008742278, z: 0, w: 1}
+    containerType: 1
+    containerId: 0
+    elevatorLayer: 0
+  - id: 62
+    seats: 4
+    isHidden: 0
+    isTurnVehicle: 0
+    colorIndex: 3
+    position: {x: -1.3449829, y: 0, z: 2.0023198}
+    rotation: {x: 0, y: 0.8660254, z: 0, w: -0.50000006}
+    containerType: 1
+    containerId: 0
+    elevatorLayer: 0
+  - id: 63
+    seats: 4
+    isHidden: 0
+    isTurnVehicle: 0
+    colorIndex: 8
+    position: {x: -0.39523888, y: 0, z: 0.97978}
+    rotation: {x: 0, y: 0.70710677, z: 0, w: -0.70710677}
+    containerType: 1
+    containerId: 0
+    elevatorLayer: 0
+  - id: 64
+    seats: 4
+    isHidden: 0
+    isTurnVehicle: 0
+    colorIndex: 7
+    position: {x: -0.32481164, y: 0, z: 0.4290404}
+    rotation: {x: 0, y: 0.00000008742278, z: 0, w: 1}
+    containerType: 1
+    containerId: 0
+    elevatorLayer: 0
+  - id: 65
+    seats: 4
+    isHidden: 0
+    isTurnVehicle: 0
+    colorIndex: 6
+    position: {x: -0.6727443, y: 0, z: 0.43722224}
+    rotation: {x: 0, y: 0.00000008742278, z: 0, w: 1}
+    containerType: 1
+    containerId: 0
+    elevatorLayer: 0
+  - id: 66
+    seats: 4
+    isHidden: 0
+    isTurnVehicle: 0
+    colorIndex: 7
+    position: {x: 0.9761123, y: 0, z: -0.6982885}
+    rotation: {x: 0, y: 1, z: 0, w: -0.00000004371139}
+    containerType: 1
+    containerId: 0
+    elevatorLayer: 0
+  - id: 67
+    seats: 4
+    isHidden: 0
+    isTurnVehicle: 0
+    colorIndex: 2
+    position: {x: 1.2942255, y: 0, z: -0.719924}
+    rotation: {x: 0, y: 1, z: 0, w: -0.00000004371139}
+    containerType: 1
+    containerId: 0
+    elevatorLayer: 0
+  - id: 68
+    seats: 6
+    isHidden: 0
+    isTurnVehicle: 0
+    colorIndex: 4
+    position: {x: 1.7433743, y: 0, z: 0.6330721}
+    rotation: {x: 0, y: 0.7071067, z: 0, w: 0.7071068}
+    containerType: 1
+    containerId: 0
+    elevatorLayer: 0
+  - id: 69
+    seats: 6
+    isHidden: 0
+    isTurnVehicle: 0
+    colorIndex: 5
+    position: {x: 0.10120281, y: 0, z: -0.8509356}
+    rotation: {x: 0, y: 0, z: 0, w: 1}
+    containerType: 1
+    containerId: 0
+    elevatorLayer: 0
+  - id: 70
+    seats: 10
+    isHidden: 0
+    isTurnVehicle: 0
+    colorIndex: 2
+    position: {x: -0.24655294, y: 0, z: -0.19658622}
+    rotation: {x: 0, y: 1, z: 0, w: -0.00000004371139}
+    containerType: 1
+    containerId: 0
+    elevatorLayer: 0
+  - id: 71
+    seats: 6
+    isHidden: 0
+    isTurnVehicle: 0
+    colorIndex: 6
+    position: {x: 1.2771823, y: 0, z: -1.2194183}
+    rotation: {x: 0, y: 1, z: 0, w: -0.00000004371139}
+    containerType: 1
+    containerId: 0
+    elevatorLayer: 0
+  - id: 72
+    seats: 6
+    isHidden: 0
+    isTurnVehicle: 0
+    colorIndex: 6
+    position: {x: 0.9708297, y: 0, z: -1.2079096}
+    rotation: {x: 0, y: 1, z: 0, w: -0.00000004371139}
+    containerType: 1
+    containerId: 0
+    elevatorLayer: 0
+  - id: 73
+    seats: 6
+    isHidden: 0
+    isTurnVehicle: 0
+    colorIndex: 7
+    position: {x: 0.027252905, y: 0, z: 0.962212}
+    rotation: {x: 0, y: 0.00000008742278, z: 0, w: 1}
+    containerType: 1
+    containerId: 0
+    elevatorLayer: 0
+  - id: 74
+    seats: 6
+    isHidden: 0
+    isTurnVehicle: 0
+    colorIndex: 0
+    position: {x: 0.010847867, y: 0, z: 0.43348718}
+    rotation: {x: 0, y: 0.00000008742278, z: 0, w: 1}
+    containerType: 1
+    containerId: 0
+    elevatorLayer: 0
+  - id: 75
+    seats: 6
+    isHidden: 0
+    isTurnVehicle: 0
+    colorIndex: 3
+    position: {x: -0.8164153, y: 0, z: 0.9933004}
+    rotation: {x: 0, y: 0.00000008742278, z: 0, w: 1}
+    containerType: 1
+    containerId: 0
+    elevatorLayer: 0
+  - id: 76
+    seats: 6
+    isHidden: 0
+    isTurnVehicle: 0
+    colorIndex: 8
+    position: {x: -1.1392701, y: 0, z: 1.0004389}
+    rotation: {x: 0, y: 0, z: 0, w: 1}
+    containerType: 1
+    containerId: 0
+    elevatorLayer: 0
+  - id: 77
+    seats: 6
+    isHidden: 0
+    isTurnVehicle: 0
+    colorIndex: 5
+    position: {x: -1.5064127, y: 0, z: 1.0132972}
+    rotation: {x: 0, y: 0.00000008742278, z: 0, w: 1}
+    containerType: 1
+    containerId: 0
+    elevatorLayer: 0
+  - id: 78
+    seats: 6
+    isHidden: 0
+    isTurnVehicle: 0
+    colorIndex: 4
+    position: {x: -1.7364097, y: 0, z: 1.5837477}
+    rotation: {x: 0, y: 0.95371693, z: 0, w: -0.3007058}
+    containerType: 1
+    containerId: 0
+    elevatorLayer: 0
+  - id: 79
+    seats: 6
+    isHidden: 0
+    isTurnVehicle: 0
+    colorIndex: 4
+    position: {x: -1.1159599, y: 0, z: -1.1936363}
+    rotation: {x: 0, y: 1, z: 0, w: -0.00000004371139}
+    containerType: 1
+    containerId: 0
+    elevatorLayer: 0
+  - id: 80
+    seats: 6
+    isHidden: 0
+    isTurnVehicle: 0
+    colorIndex: 8
+    position: {x: -1.1256001, y: 0, z: 0.45579174}
+    rotation: {x: 0, y: 1, z: 0, w: -0.00000004371139}
+    containerType: 1
+    containerId: 0
+    elevatorLayer: 0
+  - id: 81
+    seats: 6
+    isHidden: 0
+    isTurnVehicle: 0
+    colorIndex: 4
+    position: {x: -1.1169884, y: 0, z: -0.63697076}
+    rotation: {x: 0, y: 1, z: 0, w: -0.00000004371139}
+    containerType: 1
+    containerId: 0
+    elevatorLayer: 0
+  - id: 82
+    seats: 6
+    isHidden: 0
+    isTurnVehicle: 0
+    colorIndex: 5
+    position: {x: -1.13556, y: 0, z: -0.11125603}
+    rotation: {x: 0, y: 1, z: 0, w: -0.00000004371139}
+    containerType: 1
+    containerId: 0
+    elevatorLayer: 0
+  - id: 83
+    seats: 6
+    isHidden: 0
+    isTurnVehicle: 0
+    colorIndex: 2
+    position: {x: 0.09056335, y: 0, z: -1.410183}
+    rotation: {x: 0, y: 0, z: 0, w: 1}
+    containerType: 1
+    containerId: 0
+    elevatorLayer: 0
+  - id: 84
+    seats: 6
+    isHidden: 0
+    isTurnVehicle: 0
+    colorIndex: 3
+    position: {x: 0.08056245, y: 0, z: -1.9530399}
+    rotation: {x: 0, y: 0, z: 0, w: 1}
+    containerType: 1
+    containerId: 0
+    elevatorLayer: 0
+  - id: 85
+    seats: 6
+    isHidden: 0
+    isTurnVehicle: 0
+    colorIndex: 5
+    position: {x: 0.44627738, y: 0, z: -0.19161347}
+    rotation: {x: 0, y: 0, z: 0, w: 1}
+    containerType: 1
+    containerId: 0
+    elevatorLayer: 0
+  - id: 86
+    seats: 6
+    isHidden: 0
+    isTurnVehicle: 0
+    colorIndex: 7
+    position: {x: 0.45627636, y: 0, z: -0.73161244}
+    rotation: {x: 0, y: 0, z: 0, w: 1}
+    containerType: 1
+    containerId: 0
+    elevatorLayer: 0
+  - id: 87
+    seats: 10
+    isHidden: 0
+    isTurnVehicle: 0
+    colorIndex: 8
+    position: {x: 0.6129766, y: 0, z: 0.28017086}
+    rotation: {x: 0, y: 0.7071067, z: 0, w: 0.7071068}
+    containerType: 1
+    containerId: 0
+    elevatorLayer: 0
+  - id: 88
+    seats: 10
+    isHidden: 0
+    isTurnVehicle: 0
+    colorIndex: 4
+    position: {x: 0.6206914, y: 0, z: 0.63335186}
+    rotation: {x: 0, y: 0.7071067, z: 0, w: 0.7071068}
+    containerType: 1
+    containerId: 0
+    elevatorLayer: 0
+  - id: 89
+    seats: 10
+    isHidden: 1
+    isTurnVehicle: 0
+    colorIndex: 2
+    position: {x: -0.66417056, y: 0, z: -0.20849288}
+    rotation: {x: 0, y: 0.00000008742278, z: 0, w: 1}
+    containerType: 1
+    containerId: 0
+    elevatorLayer: 0
+  - id: 90
+    seats: 10
+    isHidden: 1
+    isTurnVehicle: 0
+    colorIndex: 3
+    position: {x: 1.1261737, y: 0, z: -0.07850836}
+    rotation: {x: 0, y: 1, z: 0, w: -0.00000004371139}
+    containerType: 1
+    containerId: 0
+    elevatorLayer: 0
+  - id: 91
+    seats: 10
+    isHidden: 0
+    isTurnVehicle: 0
+    colorIndex: 1
+    position: {x: 0.0724172, y: 0, z: -0.20045075}
+    rotation: {x: 0, y: 0.00000008742278, z: 0, w: 1}
+    containerType: 1
+    containerId: 0
+    elevatorLayer: 0
+  - id: 92
+    seats: 10
+    isHidden: 0
+    isTurnVehicle: 0
+    colorIndex: 10
+    position: {x: 2.108467, y: 0, z: -0.078004}
+    rotation: {x: 0, y: 1, z: 0, w: -0.00000004371139}
+    containerType: 2
+    containerId: 1
+    elevatorLayer: 0
+  - id: 96
+    seats: 6
+    isHidden: 0
+    isTurnVehicle: 0
+    colorIndex: 2
+    position: {x: 1.5684671, y: 0, z: -0.07800396}
+    rotation: {x: 0, y: 1, z: 0, w: -0.00000004371139}
+    containerType: 2
+    containerId: 1
+    elevatorLayer: 0
+  - id: 95
+    seats: 10
+    isHidden: 0
+    isTurnVehicle: 0
+    colorIndex: 8
+    position: {x: 1.0284672, y: 0, z: -0.07800391}
+    rotation: {x: 0, y: 1, z: 0, w: -0.00000004371139}
+    containerType: 2
+    containerId: 1
+    elevatorLayer: 0
+  - id: 94
+    seats: 10
+    isHidden: 0
+    isTurnVehicle: 0
+    colorIndex: 7
+    position: {x: 0.48846716, y: 0, z: -0.07800387}
+    rotation: {x: 0, y: 1, z: 0, w: -0.00000004371139}
+    containerType: 2
+    containerId: 1
+    elevatorLayer: 0
+  - id: 93
+    seats: 10
+    isHidden: 0
+    isTurnVehicle: 0
+    colorIndex: 3
+    position: {x: -0.051532865, y: 0, z: -0.078003824}
+    rotation: {x: 0, y: 1, z: 0, w: -0.00000004371139}
+    containerType: 2
+    containerId: 1
+    elevatorLayer: 0
+  - id: 98
+    seats: 10
+    isHidden: 0
+    isTurnVehicle: 0
+    colorIndex: 4
+    position: {x: -0.4799999, y: 0, z: -0.7523706}
+    rotation: {x: 0, y: 0, z: 0, w: 1}
+    containerType: 2
+    containerId: 2
+    elevatorLayer: 0
+  - id: 99
+    seats: 10
+    isHidden: 0
+    isTurnVehicle: 0
+    colorIndex: 10
+    position: {x: 0.06000012, y: 0, z: -0.7523706}
+    rotation: {x: 0, y: 0, z: 0, w: 1}
+    containerType: 2
+    containerId: 2
+    elevatorLayer: 0
+  - id: 100
+    seats: 10
+    isHidden: 0
+    isTurnVehicle: 0
+    colorIndex: 10
+    position: {x: 0.60000014, y: 0, z: -0.7523706}
+    rotation: {x: 0, y: 0, z: 0, w: 1}
+    containerType: 2
+    containerId: 2
+    elevatorLayer: 0
+  - id: 101
+    seats: 10
+    isHidden: 0
+    isTurnVehicle: 0
+    colorIndex: 10
+    position: {x: 1.1400001, y: 0, z: -0.7523706}
+    rotation: {x: 0, y: 0, z: 0, w: 1}
+    containerType: 2
+    containerId: 2
+    elevatorLayer: 0
+  - id: 102
+    seats: 10
+    isHidden: 0
+    isTurnVehicle: 0
+    colorIndex: 0
+    position: {x: 1.6800001, y: 0, z: -0.7523706}
+    rotation: {x: 0, y: 0, z: 0, w: 1}
+    containerType: 2
+    containerId: 2
+    elevatorLayer: 0
+  vehicleLinkages: []
+  vehicleWrenches: []
+  vehicleCombinations: []
+  vehicleAmbulances: []
+  vehicleFiretrucks: []
+  containers:
+  - id: 0
+    type: 1
+    position: {x: 0, y: 0, z: 0}
+    rotation: {x: 0, y: 0, z: 0, w: 1}
+    gateQueuePathShape: 0
+    gateQueueLocked: 1
+    gateQueueGap: 0
+    gateQueuePathPoints: []
+    elevatorSize: {x: 0, y: 0}
+  - id: 1
+    type: 2
+    position: {x: 1.1461742, y: 0, z: 1.3832419}
+    rotation: {x: 0, y: 1, z: 0, w: -0.00000004371139}
+    gateQueuePathShape: 0
+    gateQueueLocked: 1
+    gateQueueGap: 0
+    gateQueuePathPoints: []
+    elevatorSize: {x: 0, y: 0}
+  - id: 2
+    type: 2
+    position: {x: -0.6741707, y: 0, z: -1.6902432}
+    rotation: {x: 0, y: 0.00000008742278, z: 0, w: 1}
+    gateQueuePathShape: 0
+    gateQueueLocked: 1
+    gateQueueGap: 0
+    gateQueuePathPoints: []
+    elevatorSize: {x: 0, y: 0}
+  conveyorBelts: []
+  fixedPassengerSequence:
+  - queueId: 0
+    colorIndex: 5
+  - queueId: 0
+    colorIndex: 5
+  - queueId: 0
+    colorIndex: 5
+  - queueId: 0
+    colorIndex: 5
+  - queueId: 0
+    colorIndex: 5
+  - queueId: 0
+    colorIndex: 5
+  - queueId: 0
+    colorIndex: 5
+  - queueId: 0
+    colorIndex: 4
+  - queueId: 0
+    colorIndex: 4
+  - queueId: 0
+    colorIndex: 4
+  - queueId: 0
+    colorIndex: 4
+  - queueId: 0
+    colorIndex: 4
+  - queueId: 0
+    colorIndex: 4
+  - queueId: 0
+    colorIndex: 4
+  - queueId: 0
+    colorIndex: 8
+  - queueId: 0
+    colorIndex: 8
+  - queueId: 0
+    colorIndex: 8
+  - queueId: 0
+    colorIndex: 8
+  - queueId: 0
+    colorIndex: 8
+  - queueId: 0
+    colorIndex: 8
+  - queueId: 0
+    colorIndex: 8
+  - queueId: 0
+    colorIndex: 2
+  - queueId: 0
+    colorIndex: 2
+  - queueId: 0
+    colorIndex: 2
+  - queueId: 0
+    colorIndex: 2
+  - queueId: 0
+    colorIndex: 2
+  - queueId: 0
+    colorIndex: 2
+  - queueId: 0
+    colorIndex: 2
+  - queueId: 0
+    colorIndex: 7
+  - queueId: 0
+    colorIndex: 7
+  - queueId: 0
+    colorIndex: 7
+  - queueId: 0
+    colorIndex: 7
+  - queueId: 0
+    colorIndex: 7
+  - queueId: 0
+    colorIndex: 7
+  - queueId: 0
+    colorIndex: 7
+  - queueId: 0
+    colorIndex: 6
+  - queueId: 0
+    colorIndex: 6
+  - queueId: 0
+    colorIndex: 6
+  - queueId: 0
+    colorIndex: 6
+  - queueId: 0
+    colorIndex: 6
+  - queueId: 0
+    colorIndex: 6
+  - queueId: 0
+    colorIndex: 6
+  - queueId: 0
+    colorIndex: 3
+  - queueId: 0
+    colorIndex: 3
+  - queueId: 0
+    colorIndex: 3
+  - queueId: 0
+    colorIndex: 3
+  - queueId: 0
+    colorIndex: 3
+  - queueId: 0
+    colorIndex: 3
+  - queueId: 0
+    colorIndex: 3
+  - queueId: 0
+    colorIndex: 0
+  - queueId: 0
+    colorIndex: 0
+  - queueId: 0
+    colorIndex: 0
+  - queueId: 0
+    colorIndex: 0
+  - queueId: 0
+    colorIndex: 0
+  - queueId: 0
+    colorIndex: 0
+  - queueId: 0
+    colorIndex: 5
+  - queueId: 0
+    colorIndex: 5
+  - queueId: 0
+    colorIndex: 5
+  - queueId: 0
+    colorIndex: 4
+  - queueId: 0
+    colorIndex: 4
+  - queueId: 0
+    colorIndex: 4
+  - queueId: 0
+    colorIndex: 8
+  - queueId: 0
+    colorIndex: 8
+  - queueId: 0
+    colorIndex: 8
+  - queueId: 0
+    colorIndex: 8
+  - queueId: 0
+    colorIndex: 8
+  - queueId: 0
+    colorIndex: 8
+  - queueId: 0
+    colorIndex: 8
+  - queueId: 0
+    colorIndex: 8
+  - queueId: 0
+    colorIndex: 5
+  - queueId: 0
+    colorIndex: 5
+  - queueId: 0
+    colorIndex: 5
+  - queueId: 0
+    colorIndex: 5
+  - queueId: 0
+    colorIndex: 5
+  - queueId: 0
+    colorIndex: 5
+  - queueId: 0
+    colorIndex: 5
+  - queueId: 0
+    colorIndex: 3
+  - queueId: 0
+    colorIndex: 3
+  - queueId: 0
+    colorIndex: 3
+  - queueId: 0
+    colorIndex: 3
+  - queueId: 0
+    colorIndex: 3
+  - queueId: 0
+    colorIndex: 3
+  - queueId: 0
+    colorIndex: 7
+  - queueId: 0
+    colorIndex: 7
+  - queueId: 0
+    colorIndex: 7
+  - queueId: 0
+    colorIndex: 7
+  - queueId: 0
+    colorIndex: 7
+  - queueId: 0
+    colorIndex: 7
+  - queueId: 0
+    colorIndex: 2
+  - queueId: 0
+    colorIndex: 2
+  - queueId: 0
+    colorIndex: 2
+  - queueId: 0
+    colorIndex: 2
+  - queueId: 0
+    colorIndex: 2
+  - queueId: 0
+    colorIndex: 2
+  - queueId: 0
+    colorIndex: 2
+  - queueId: 0
+    colorIndex: 2
+  - queueId: 0
+    colorIndex: 4
+  - queueId: 0
+    colorIndex: 4
+  - queueId: 0
+    colorIndex: 4
+  - queueId: 0
+    colorIndex: 4
+  - queueId: 0
+    colorIndex: 4
+  - queueId: 1
+    colorIndex: 1
+  - queueId: 1
+    colorIndex: 1
+  - queueId: 1
+    colorIndex: 1
+  - queueId: 1
+    colorIndex: 1
+  - queueId: 1
+    colorIndex: 1
+  - queueId: 1
+    colorIndex: 1
+  - queueId: 1
+    colorIndex: 1
+  - queueId: 1
+    colorIndex: 1
+  - queueId: 1
+    colorIndex: 1
+  - queueId: 1
+    colorIndex: 1
+  - queueId: 1
+    colorIndex: 10
+  - queueId: 1
+    colorIndex: 10
+  - queueId: 1
+    colorIndex: 10
+  - queueId: 1
+    colorIndex: 10
+  - queueId: 1
+    colorIndex: 10
+  - queueId: 1
+    colorIndex: 10
+  - queueId: 1
+    colorIndex: 10
+  - queueId: 1
+    colorIndex: 10
+  - queueId: 1
+    colorIndex: 10
+  - queueId: 1
+    colorIndex: 10
+  - queueId: 1
+    colorIndex: 10
+  - queueId: 1
+    colorIndex: 10
+  - queueId: 1
+    colorIndex: 10
+  - queueId: 1
+    colorIndex: 10
+  - queueId: 1
+    colorIndex: 10
+  - queueId: 1
+    colorIndex: 10
+  - queueId: 1
+    colorIndex: 10
+  - queueId: 1
+    colorIndex: 10
+  - queueId: 1
+    colorIndex: 10
+  - queueId: 1
+    colorIndex: 10
+  - queueId: 1
+    colorIndex: 10
+  - queueId: 1
+    colorIndex: 10
+  - queueId: 1
+    colorIndex: 10
+  - queueId: 1
+    colorIndex: 10
+  - queueId: 1
+    colorIndex: 10
+  - queueId: 1
+    colorIndex: 10
+  - queueId: 1
+    colorIndex: 10
+  - queueId: 1
+    colorIndex: 10
+  - queueId: 1
+    colorIndex: 10
+  - queueId: 1
+    colorIndex: 10
+  - queueId: 1
+    colorIndex: 5
+  - queueId: 1
+    colorIndex: 5
+  - queueId: 1
+    colorIndex: 5
+  - queueId: 1
+    colorIndex: 5
+  - queueId: 1
+    colorIndex: 5
+  - queueId: 1
+    colorIndex: 5
+  - queueId: 1
+    colorIndex: 5
+  - queueId: 1
+    colorIndex: 6
+  - queueId: 1
+    colorIndex: 6
+  - queueId: 1
+    colorIndex: 6
+  - queueId: 1
+    colorIndex: 6
+  - queueId: 1
+    colorIndex: 6
+  - queueId: 1
+    colorIndex: 6
+  - queueId: 1
+    colorIndex: 7
+  - queueId: 1
+    colorIndex: 7
+  - queueId: 1
+    colorIndex: 7
+  - queueId: 1
+    colorIndex: 7
+  - queueId: 1
+    colorIndex: 7
+  - queueId: 1
+    colorIndex: 7
+  - queueId: 1
+    colorIndex: 2
+  - queueId: 1
+    colorIndex: 2
+  - queueId: 1
+    colorIndex: 2
+  - queueId: 1
+    colorIndex: 2
+  - queueId: 1
+    colorIndex: 2
+  - queueId: 1
+    colorIndex: 2
+  - queueId: 1
+    colorIndex: 8
+  - queueId: 1
+    colorIndex: 8
+  - queueId: 1
+    colorIndex: 8
+  - queueId: 1
+    colorIndex: 8
+  - queueId: 1
+    colorIndex: 8
+  - queueId: 1
+    colorIndex: 8
+  - queueId: 1
+    colorIndex: 4
+  - queueId: 1
+    colorIndex: 4
+  - queueId: 1
+    colorIndex: 4
+  - queueId: 1
+    colorIndex: 4
+  - queueId: 1
+    colorIndex: 4
+  - queueId: 1
+    colorIndex: 4
+  - queueId: 1
+    colorIndex: 6
+  - queueId: 1
+    colorIndex: 6
+  - queueId: 1
+    colorIndex: 6
+  - queueId: 1
+    colorIndex: 6
+  - queueId: 1
+    colorIndex: 6
+  - queueId: 1
+    colorIndex: 6
+  - queueId: 1
+    colorIndex: 6
+  - queueId: 1
+    colorIndex: 6
+  - queueId: 1
+    colorIndex: 6
+  - queueId: 1
+    colorIndex: 6
+  - queueId: 1
+    colorIndex: 6
+  - queueId: 1
+    colorIndex: 7
+  - queueId: 1
+    colorIndex: 7
+  - queueId: 1
+    colorIndex: 7
+  - queueId: 1
+    colorIndex: 7
+  - queueId: 1
+    colorIndex: 7
+  - queueId: 1
+    colorIndex: 2
+  - queueId: 1
+    colorIndex: 2
+  - queueId: 1
+    colorIndex: 2
+  - queueId: 1
+    colorIndex: 2
+  - queueId: 1
+    colorIndex: 2
+  - queueId: 1
+    colorIndex: 2
+  - queueId: 1
+    colorIndex: 2
+  - queueId: 1
+    colorIndex: 2
+  - queueId: 1
+    colorIndex: 2
+  - queueId: 1
+    colorIndex: 5
+  - queueId: 1
+    colorIndex: 5
+  - queueId: 1
+    colorIndex: 5
+  - queueId: 1
+    colorIndex: 5
+  - queueId: 1
+    colorIndex: 5
+  - queueId: 1
+    colorIndex: 5
+  - queueId: 1
+    colorIndex: 5
+  - queueId: 1
+    colorIndex: 5
+  - queueId: 1
+    colorIndex: 8
+  - queueId: 1
+    colorIndex: 8
+  - queueId: 1
+    colorIndex: 8
+  - queueId: 1
+    colorIndex: 8
+  - queueId: 1
+    colorIndex: 8
+  - queueId: 1
+    colorIndex: 8
+  - queueId: 1
+    colorIndex: 8
+  - queueId: 1
+    colorIndex: 8
+  - queueId: 1
+    colorIndex: 8
+  - queueId: 1
+    colorIndex: 10
+  - queueId: 1
+    colorIndex: 10
+  - queueId: 1
+    colorIndex: 10
+  - queueId: 1
+    colorIndex: 10
+  - queueId: 1
+    colorIndex: 10
+  - queueId: 1
+    colorIndex: 10
+  - queueId: 1
+    colorIndex: 10
+  - queueId: 1
+    colorIndex: 10
+  - queueId: 1
+    colorIndex: 10
+  - queueId: 1
+    colorIndex: 10
+  - queueId: 1
+    colorIndex: 0
+  - queueId: 1
+    colorIndex: 0
+  - queueId: 1
+    colorIndex: 0
+  - queueId: 1
+    colorIndex: 0
+  - queueId: 1
+    colorIndex: 0
+  - queueId: 1
+    colorIndex: 0
+  - queueId: 1
+    colorIndex: 0
+  - queueId: 1
+    colorIndex: 0
+  - queueId: 1
+    colorIndex: 0
+  - queueId: 1
+    colorIndex: 0
+  - queueId: 1
+    colorIndex: 4
+  - queueId: 1
+    colorIndex: 4
+  - queueId: 1
+    colorIndex: 4
+  - queueId: 1
+    colorIndex: 4
+  - queueId: 1
+    colorIndex: 4
+  - queueId: 1
+    colorIndex: 4
+  - queueId: 1
+    colorIndex: 4
+  - queueId: 1
+    colorIndex: 4
+  - queueId: 1
+    colorIndex: 4
+  - queueId: 1
+    colorIndex: 4
+  - queueId: 1
+    colorIndex: 3
+  - queueId: 1
+    colorIndex: 3
+  - queueId: 1
+    colorIndex: 3
+  - queueId: 1
+    colorIndex: 3
+  - queueId: 1
+    colorIndex: 3
+  - queueId: 1
+    colorIndex: 3
+  - queueId: 1
+    colorIndex: 3
+  - queueId: 1
+    colorIndex: 3
+  - queueId: 1
+    colorIndex: 3
+  - queueId: 1
+    colorIndex: 7
+  - queueId: 1
+    colorIndex: 7
+  - queueId: 1
+    colorIndex: 7
+  - queueId: 1
+    colorIndex: 7
+  - queueId: 1
+    colorIndex: 7
+  - queueId: 1
+    colorIndex: 7
+  - queueId: 1
+    colorIndex: 7
+  - queueId: 1
+    colorIndex: 7
+  - queueId: 1
+    colorIndex: 7
+  - queueId: 1
+    colorIndex: 7
+  - queueId: 1
+    colorIndex: 2
+  - queueId: 1
+    colorIndex: 2
+  - queueId: 1
+    colorIndex: 2
+  - queueId: 1
+    colorIndex: 2
+  - queueId: 1
+    colorIndex: 2
+  - queueId: 1
+    colorIndex: 2
+  - queueId: 1
+    colorIndex: 2
+  - queueId: 1
+    colorIndex: 2
+  - queueId: 1
+    colorIndex: 2
+  - queueId: 1
+    colorIndex: 2
+  - queueId: 1
+    colorIndex: 8
+  - queueId: 1
+    colorIndex: 8
+  - queueId: 1
+    colorIndex: 8
+  - queueId: 1
+    colorIndex: 8
+  - queueId: 1
+    colorIndex: 8
+  - queueId: 1
+    colorIndex: 8
+  - queueId: 1
+    colorIndex: 8
+  - queueId: 1
+    colorIndex: 8
+  - queueId: 1
+    colorIndex: 8
+  - queueId: 1
+    colorIndex: 8
+  - queueId: 1
+    colorIndex: 4
+  - queueId: 1
+    colorIndex: 4
+  - queueId: 1
+    colorIndex: 4
+  - queueId: 1
+    colorIndex: 4
+  - queueId: 1
+    colorIndex: 4
+  - queueId: 1
+    colorIndex: 4
+  - queueId: 1
+    colorIndex: 4
+  - queueId: 1
+    colorIndex: 4
+  - queueId: 1
+    colorIndex: 4
+  - queueId: 1
+    colorIndex: 4
+  - queueId: 1
+    colorIndex: 4
+  - queueId: 1
+    colorIndex: 3
+  - queueId: 1
+    colorIndex: 3
+  - queueId: 1
+    colorIndex: 3
+  - queueId: 1
+    colorIndex: 3
+  - queueId: 1
+    colorIndex: 3
+  - queueId: 1
+    colorIndex: 3
+  - queueId: 1
+    colorIndex: 3
+  - queueId: 1
+    colorIndex: 3
+  - queueId: 1
+    colorIndex: 3
+  - queueId: 1
+    colorIndex: 3
+  - queueId: 1
+    colorIndex: 3
+  - queueId: 1
+    colorIndex: 3
+  - queueId: 1
+    colorIndex: 3
+  - queueId: 1
+    colorIndex: 3
+  - queueId: 1
+    colorIndex: 4
+  - queueId: 1
+    colorIndex: 4
+  - queueId: 1
+    colorIndex: 4
+  - queueId: 1
+    colorIndex: 4
+  - queueId: 1
+    colorIndex: 4
+  - queueId: 1
+    colorIndex: 4
+  - queueId: 1
+    colorIndex: 4
+  - queueId: 1
+    colorIndex: 4
+  - queueId: 1
+    colorIndex: 4
+  - queueId: 1
+    colorIndex: 4

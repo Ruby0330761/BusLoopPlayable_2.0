@@ -26,6 +26,9 @@ import {
   createImageWorldMapping,
   recognizeLevelFromImage
 } from './level-image-recognizer.js';
+// The workspace saves through the same authoring endpoint as the scene editor,
+// so it needs the same operator identity attached to its writes.
+import { levelOwnerHeaders, readStoredLevelOwner } from './level-owner.js';
 import './level-layout-editor.css';
 
 const TYPE_NAMES = Object.freeze({
@@ -34,7 +37,7 @@ const TYPE_NAMES = Object.freeze({
 const MECHANISM_NAMES = Object.freeze({
   normal: '普通车辆', hidden: '隐藏车辆', combination: '双色组合',
   linkHead: '联动车头', linkTail: '联动车尾', wrench: '扳手车', gear: '齿轮车',
-  ambulance: '救护车', firetruck: '消防车', police: '警车'
+  ambulance: '救护车', firetruck: '消防车', police: '警车', christmas: '圣诞雪橇'
 });
 const WORLD_SCALE = 78;
 const GARAGE_TEXTURE_URL = '/assets/unity/mechanisms/garage/textures/garage-2d.png';
@@ -42,7 +45,10 @@ const CONVEYOR_TEXTURE_URL = '/assets/unity/level-editor/conveyor-belt-2d.png';
 const PASSENGER_QUEUE_COLORS = Object.freeze([
   '#0061E8', '#118024', '#F338AF', '#9725CD', '#B10F11', '#C68000',
   '#C24300', '#014853', '#542C16', '#206D53', '#15209E', '#26262E',
-  '#F22E14', '#F2F2F2', '#FADB2E', '#D1A861', '#8A8A8A',
+  '#F22E14', '#F2F2F2', '#FADB2E', '#D1A861',
+  // Index 16 is the Christmas sled: its authored texture replaces the paint
+  // atlas, so this swatch is only the authoring preview colour.
+  '#C62828',
   '#2D2D30', '#EBEBE8', '#8C1010', '#C89808', '#EEDEBE', '#69C8AA',
   '#96C882', '#F698C4', '#96989B'
 ]);
@@ -986,6 +992,8 @@ function renderInspector(root, model) {
       ${toggleField('网格吸附', 'document.editor.gridSnap', model.document.editor.gridSnap)}
       ${toggleField('载具吸附', 'document.editor.vehicleSnap', model.document.editor.vehicleSnap)}
       ${toggleField('辅助线', 'document.editor.alignmentGuides', model.document.editor.alignmentGuides)}
+      ${toggleField('删除后自动重排车辆序号', 'document.editor.autoRenumberVehicles', model.document.editor.autoRenumberVehicles)}
+      <p class="level-layout-hint">关闭后删除会留下空号，可用「排列 → 车辆序号重排」手动补齐；两种方式都可撤销。</p>
       <h3>乘客队列</h3>
       <dl class="level-layout-stats">${model.document.passengerQueues.map((queue, index) => `<dt>队列 ${index}</dt><dd>${queue.length}</dd>`).join('')}</dl>
       <button type="button" data-action="open-passenger-queue">打开队列编辑器</button>`;
@@ -1020,7 +1028,8 @@ function renderInspector(root, model) {
       ${['linkHead', 'linkTail'].includes(item.mechanism.type) ? numberField('连接距离', 'mechanism.distance', item.mechanism.distance, { min: 0.15, max: 0.5, step: 0.01 }) : ''}
       ${['wrench', 'gear'].includes(item.mechanism.type) ? selectField('扳手颜色', 'mechanism.wrenchColor', item.mechanism.wrenchColor, [[0,'粉'],[1,'蓝'],[2,'紫'],[3,'绿'],[4,'黄']]) : ''}
       ${item.mechanism.type === 'combination' ? vehicleColorField('组合颜色（同步小人）', 'mechanism.secondColorIndex', item.mechanism.secondColorIndex) : ''}
-      ${item.mechanism.type === 'ambulance' ? numberField('步数限制', 'mechanism.stepLimit', item.mechanism.stepLimit, { min: 1, step: 1 }) : ''}
+      ${item.mechanism.type === 'christmas' ? toggleField('限制步数（红心倒计时）', 'mechanism.stepLimited', item.mechanism.stepLimited) : ''}
+      ${item.mechanism.type === 'ambulance' || item.mechanism.stepLimited ? numberField('步数限制', 'mechanism.stepLimit', item.mechanism.stepLimit, { min: 1, step: 1 }) : ''}
       ${item.mechanism.type === 'firetruck' ? numberField('倒计时', 'mechanism.timeLimit', item.mechanism.timeLimit, { min: 1, step: 1 }) : ''}
       <div class="level-layout-inspector-actions"><button type="button" data-action="rotate-left" title="Q：左转 15°；Alt+Q：绕选区中心左转">左转 15°</button><button type="button" data-action="rotate-right" title="E：右转 15°；Alt+E：绕选区中心右转">右转 15°</button></div>
       <button class="is-danger" type="button" data-action="delete">删除选中对象</button>`;
@@ -1061,7 +1070,8 @@ export async function createLevelLayoutEditor({
   initialDocument = null,
   initialRevision = null,
   onClose = () => {},
-  onPreview = () => {}
+  onPreview = () => {},
+  onVehiclesRenumbered = () => {}
 }) {
   clearPersistedReferenceLayersOnce();
   const loaded = initialDocument
@@ -1108,7 +1118,7 @@ export async function createLevelLayoutEditor({
     <div class="level-layout-toolbar-group"><button type="button" data-action="close" aria-label="关闭">×</button></div>
   </header>
   <div class="level-layout-body">
-    <aside class="level-layout-palette"><h3>添加元素</h3><button data-add="vehicle">添加车辆</button><button data-add="vehicle-firetruck">添加消防车</button><button data-add="vehicle-ambulance">添加救护车</button><button data-add="vehicle-police">添加警车</button><h3>地图机制</h3><button data-add="garage">添加车库</button><button data-add="conveyor">添加运输带</button><button data-add="gate">添加闸门</button><button data-add="elevator">添加升降舱</button><h3>排列</h3><button data-action="align-horizontal">水平等距</button><button data-action="align-vertical">垂直等距</button><button data-action="align-line">连线等距</button><button data-action="center">全部居中</button><button data-action="to-gate">转为闸门队列</button><h3>辅助</h3><button data-action="import-reference-image">导入垫图</button><button data-action="clear-reference-image">清除垫图</button><button data-action="recognize-image">识图摆放</button><h3>定位</h3><label class="level-layout-locate"><input type="number" min="1" placeholder="车辆 ID"><button data-action="locate">定位</button></label></aside>
+    <aside class="level-layout-palette"><h3>添加元素</h3><button data-add="vehicle">添加车辆</button><button data-add="vehicle-firetruck">添加消防车</button><button data-add="vehicle-ambulance">添加救护车</button><button data-add="vehicle-police">添加警车</button><button data-add="vehicle-christmas">添加圣诞雪橇</button><h3>地图机制</h3><button data-add="garage">添加车库</button><button data-add="conveyor">添加运输带</button><button data-add="gate">添加闸门</button><button data-add="elevator">添加升降舱</button><h3>排列</h3><button data-action="align-horizontal">水平等距</button><button data-action="align-vertical">垂直等距</button><button data-action="align-line">连线等距</button><button data-action="center">全部居中</button><button data-action="to-gate">转为闸门队列</button><button data-action="renumber-vehicles" title="把车辆 ID 重排为从头连续的 1..N，并同步深度与引导车">车辆序号重排</button><h3>辅助</h3><button data-action="import-reference-image">导入垫图</button><button data-action="clear-reference-image">清除垫图</button><button data-action="recognize-image">识图摆放</button><h3>定位</h3><label class="level-layout-locate"><input type="number" min="1" placeholder="车辆 ID"><button data-action="locate">定位</button></label></aside>
     <main class="level-layout-canvas-wrap"><canvas class="level-layout-canvas"></canvas><button type="button" class="level-layout-breadcrumb" data-action="exit-container" hidden>返回关卡</button><div class="level-layout-status" aria-live="polite">就绪</div></main>
     <aside class="level-layout-inspector"></aside>
   </div>
@@ -1205,6 +1215,10 @@ export async function createLevelLayoutEditor({
   conveyorTexture.addEventListener('load', redrawCanvas);
 
   function render() {
+    // Every path that can rewrite ids ends in a render: delete, cut, undo/redo,
+    // and the manual renumber button. Flushing here keeps the live scene tuning
+    // and the saved guide targets pointing at the same car as the document.
+    flushRenumberedIds();
     toolbarTitle.textContent = `${model.document.key} 关卡编辑器`;
     drawCanvas(canvas, model, camera, gesture, garageTexture, conveyorTexture, referenceLayer, recognitionPreview());
     renderInspector(inspector, model);
@@ -1216,6 +1230,16 @@ export async function createLevelLayoutEditor({
     overlay.classList.toggle('is-dirty', persistentDocumentSource(model.document) !== savedDocumentSource);
     overlay.classList.toggle('is-reference-unlocked', referenceLayerReady(referenceLayer) && referenceLayer.visible && !referenceLayer.locked);
     if (passengerQueueState.open) renderPassengerQueueEditor();
+  }
+
+  // Ids change behind the editor's back when a delete compacts the numbering, and
+  // the live scene tuning names a guide car by id. Forward the rewrite once per
+  // change so the runtime and the saved profile keep pointing at the same car.
+  function flushRenumberedIds() {
+    const pending = model.consumeRenumber();
+    if (!pending) return null;
+    onVehiclesRenumbered({ idMap: pending.idMap, document: model.document });
+    return pending;
   }
 
   function trimEditorHistory(stack) {
@@ -1722,8 +1746,14 @@ export async function createLevelLayoutEditor({
   async function save() {
     const validation = validateLevelDocument(model.document);
     if (!validation.valid) { setStatus(`保存前需修复 ${validation.errors.length} 个错误`, 'error'); render(); return false; }
+    const owner = readStoredLevelOwner();
+    if (!owner) {
+      setStatus('请先在场景编辑器“关卡”面板填写操作用户，再保存关卡', 'error');
+      return false;
+    }
     const response = await fetch(`/__level-authoring/${encodeURIComponent(model.document.key)}`, {
-      method: 'PUT', headers: { 'Content-Type': 'application/json' },
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json', ...levelOwnerHeaders(owner) },
       body: JSON.stringify({ document: model.document, baseRevision: revision, createOnly })
     });
     const payload = await response.json().catch(() => ({}));
@@ -1803,7 +1833,19 @@ export async function createLevelLayoutEditor({
     const selected = model.selected()[0];
     if (action === 'undo') await undoEditorAction();
     else if (action === 'redo') await redoEditorAction();
-    else if (action === 'delete') model.removeSelected();
+    else if (action === 'delete') {
+      const renumber = model.removeSelected();
+      if (renumber?.changed) setStatus(`已删除并重排车辆序号（现 ${model.document.vehicles.length} 辆）`, 'success');
+    }
+    else if (action === 'renumber-vehicles') {
+      if (!model.document.vehicles.length) setStatus('当前关卡没有车辆', 'error');
+      else {
+        const result = model.renumberVehicles();
+        setStatus(result?.changed
+          ? `车辆序号已重排为 1-${model.document.vehicles.length}`
+          : '车辆序号已经是连续的，无需重排', 'success');
+      }
+    }
     else if (action === 'reset-vehicle-colors') model.resetSelectedVehicleColors();
     else if (action === 'align-horizontal') model.align('horizontal');
     else if (action === 'align-vertical') model.align('vertical');
@@ -1836,7 +1878,8 @@ export async function createLevelLayoutEditor({
       const specialVehicle = {
         'vehicle-firetruck': { colorIndex: 12, mechanism: { type: 'firetruck' } },
         'vehicle-ambulance': { colorIndex: 13, mechanism: { type: 'ambulance' } },
-        'vehicle-police': { colorIndex: 11, mechanism: { type: 'police' } }
+        'vehicle-police': { colorIndex: 11, mechanism: { type: 'police' } },
+        'vehicle-christmas': { colorIndex: 16, mechanism: { type: 'christmas' } }
       }[add];
       if (add === 'vehicle' || specialVehicle) {
         model.addVehicle({
@@ -2277,7 +2320,7 @@ export async function createLevelLayoutEditor({
     else if (command && event.key.toLowerCase() === 'v') { model.paste(); render(); }
     else if (command && event.key.toLowerCase() === 'd') { event.preventDefault(); model.duplicate(); render(); }
     else if (command && event.key.toLowerCase() === 'm') { event.preventDefault(); model.mirror(event.shiftKey ? 'z' : 'x'); render(); }
-    else if (event.key === 'Delete' || event.key === 'Backspace') { event.preventDefault(); model.removeSelected(); render(); }
+    else if (event.key === 'Delete' || event.key === 'Backspace') { event.preventDefault(); await runAction('delete'); }
     else if (event.key === ' ') { event.preventDefault(); Object.assign(camera, { x: 0, z: 0, zoom: 1 }); render(); }
     else if (event.code === 'KeyQ' || event.code === 'KeyE') {
       event.preventDefault();

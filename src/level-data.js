@@ -1,4 +1,6 @@
 import { ACTIVE_LEVEL } from './generated-active-level.js';
+import { isColorAtlasTableComplete, resolveColorAtlasPaths } from './color-atlases.js';
+import { isLevelAudioConfigComplete, resolveLevelAudioConfig } from './level-audio-config.js';
 
 export const COLORS = Object.freeze({
   0: { name: 'Blue', hex: 0x0061e8, css: '#0061e8' },
@@ -20,6 +22,10 @@ export const COLORS = Object.freeze({
   13: { name: 'Ambulance', hex: 0xffffff, css: '#ffffff' },
   14: { name: 'Vip', hex: 0xffd8c8, css: '#ffd8c8' },
   15: { name: 'Luxury', hex: 0xd7b477, css: '#d7b477' },
+  // Supplied Christmas set (sled vehicle + vertex-animated Santa passenger).
+  // Its authored texture replaces the paint atlas, so this entry exists only as
+  // a placeholder colour for boards and pre-load fallbacks.
+  16: { name: 'Christmas', hex: 0xc62828, css: '#c62828' },
   // Supplied colour supplement (Unity indices 17-25). Swatches match the
   // derived delivery atlases in public/assets/unity/textures/color_<id>_*.png.
   17: { name: 'Black', hex: 0x2d2d30, css: '#2d2d30' },
@@ -47,6 +53,7 @@ export const PASSENGER_COUNT_BOARD_COLORS = Object.freeze({
   10: { background: 0x3e45ff, outline: '#161b6f' },
   13: { background: 0xf04449, outline: '#8a171b' },
   15: { background: 0xd8ad6a, outline: '#6d421f' },
+  16: { background: 0xc62828, outline: '#5c1010' },
   17: { background: 0x767678, outline: '#131314' },
   18: { background: 0xf2f2f0, outline: '#636361' },
   19: { background: 0xb46464, outline: '#3b0707' },
@@ -58,12 +65,37 @@ export const PASSENGER_COUNT_BOARD_COLORS = Object.freeze({
   25: { background: 0xbbbcbe, outline: '#3f4041' }
 });
 
-export let LEVEL_1 = ACTIVE_LEVEL;
+export let LEVEL_1 = withCompleteLevelAssets(ACTIVE_LEVEL);
+
+// Colour slots and the sound list are completed here as well as in the
+// generator: a web level can reach the runtime through the editor preview
+// without passing the production build, and the catalog on disk may predate
+// either table. An empty colour slot paints black and white cars blue; a missing
+// sound name makes the controller drop that event without logging anything, so
+// no level is allowed to activate with a partial asset table.
+function withCompleteLevelAssets(level) {
+  if (!level?.assets) return level;
+  const colorTextures = isColorAtlasTableComplete(level.assets.colorTextures)
+    ? level.assets.colorTextures
+    : resolveColorAtlasPaths(level.assets.colorTextures);
+  const audio = isLevelAudioConfigComplete(level.assets.audio)
+    ? level.assets.audio
+    : resolveLevelAudioConfig(level.assets.audio);
+  if (colorTextures === level.assets.colorTextures && audio === level.assets.audio) return level;
+  return {
+    ...level,
+    assets: {
+      ...level.assets,
+      colorTextures,
+      audio
+    }
+  };
+}
 
 export function setActiveLevel(level) {
   if (!level?.vehicles || !level?.passengerQueues) {
     throw new TypeError('Active level must include vehicles and passengerQueues.');
   }
-  LEVEL_1 = level;
+  LEVEL_1 = withCompleteLevelAssets(level);
   return LEVEL_1;
 }

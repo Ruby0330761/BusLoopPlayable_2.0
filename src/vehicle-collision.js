@@ -292,6 +292,18 @@ function isForwardObstacle(attackerBox, candidateBox) {
   return nearestForward >= attackerBox.size.length * 0.5 - EPSILON;
 }
 
+// True when any part of the candidate sits past the attacker's front face.
+// Unlike `isForwardObstacle` this tolerates a box that also overlaps the car's
+// own footprint, which happens with the tightly packed authored formations:
+// such a box is still the thing the car bumps into, whereas a garage body
+// beside or behind the car does not reach past the nose at all.
+function reachesAheadOfNose(attackerBox, candidateBox) {
+  const delta = subtract(candidateBox.position, attackerBox.position);
+  const farthestForward = dot(delta, attackerBox.forward)
+    + projectedRadius(candidateBox, attackerBox.forward);
+  return farthestForward > attackerBox.size.length * 0.5 + EPSILON;
+}
+
 // Close a narrow lateral gap only for a conveyor vehicle's forward exit
 // sweep. The returned box is transient; the real vehicle geometry is left
 // unchanged for rendering and all ordinary collision paths.
@@ -334,6 +346,28 @@ function projectedFallbackContact(attackerBox, candidateBox) {
   };
 }
 
+// Zero-distance contact on whichever front corner faces the blocker. Used when
+// the car is blocked by a volume that never reaches past its nose (a garage
+// body hugging it, or a diagonal neighbour grazing a front corner): the impact
+// still has to appear at the front of the car the player just tapped.
+function noseCornerContact(attackerBox, candidateBox) {
+  const delta = subtract(candidateBox.position, attackerBox.position);
+  const halfLength = attackerBox.size.length * 0.5;
+  const halfWidth = attackerBox.size.width * 0.5;
+  const forward = dot(delta, attackerBox.forward);
+  const lateral = dot(delta, attackerBox.right);
+  // Sit on the front edge, as close to the blocker as that edge allows, so a
+  // diagonal blocker reports a corner instead of the centre of the bumper.
+  const contactForward = halfLength;  const contactLateral = Math.max(-halfWidth, Math.min(halfWidth, lateral));
+  return {
+    distance: 0,
+    position: add(
+      add(attackerBox.position, scale(attackerBox.forward, contactForward)),
+      scale(attackerBox.right, contactLateral)
+    )
+  };
+}
+
 function corners(box) {
   const halfRight = scale(box.right, box.size.width * 0.5);
   const halfForward = scale(box.forward, box.size.length * 0.5);
@@ -356,7 +390,17 @@ export function findCollisionContact(level, attacker, candidates) {
     - dot(subtract(b.box.position, attackerBox.position), attackerBox.forward)
   ));
   let best = null;
+  let nearestSide = null;
   for (const candidate of sorted) {
+    // A volume that only hugs the car from the side or behind (typically a
+    // garage body) still has edges whose lines cross the forward rays, and
+    // the clipped distance bottoms out at zero. Such a contact would outrank
+    // every genuine forward blocker and put the impact behind the car, so the
+    // candidate has to actually reach past the car's front face.
+    if (!reachesAheadOfNose(attackerBox, candidate.box)) {
+      if (!nearestSide) nearestSide = candidate;
+      continue;
+    }
     const candidateCorners = corners(candidate.box);
     for (let index = 0; index < candidateCorners.length; index += 1) {
       const contact = contactAgainstEdge(
@@ -368,14 +412,25 @@ export function findCollisionContact(level, attacker, candidates) {
       );
       if (contact && (!best || contact.distance < best.distance)) best = { ...contact, candidate };
     }
-    if (!best || best.candidate !== candidate) {
-      const fallback = projectedFallbackContact(attackerBox, candidate.box);
-      if (fallback && (!best || fallback.distance < best.distance)) {
-        best = { ...fallback, candidate };
-      }
+    const fallback = projectedFallbackContact(attackerBox, candidate.box);
+    // Only fill in for a candidate with no edge contact: the projection is a
+    // coarse estimate and must not replace a real edge hit.
+    if ((!best || best.candidate !== candidate)
+      && fallback && (!best || fallback.distance < best.distance)) {
+      best = { ...fallback, candidate };
     }
   }
-  return best;
+  if (best) return best;
+  // Blocked, but no forward edge contact resolved — a garage body hugging the
+  // car, or a diagonal neighbour that only grazes past a front corner. The
+  // click must still show feedback, so land the impact on the front edge
+  // facing the nearest blocker instead of leaving the effect behind the car
+  // (or dropping it entirely).
+  const fallbackTarget = nearestSide ?? sorted[0] ?? null;
+  if (fallbackTarget) {
+    return { ...noseCornerContact(attackerBox, fallbackTarget.box), candidate: fallbackTarget };
+  }
+  return null;
 }
 
 export class VehicleCollisionContext {

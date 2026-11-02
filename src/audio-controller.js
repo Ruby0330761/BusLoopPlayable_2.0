@@ -10,6 +10,9 @@ function getEventKeys(event, time = '') {
   if (event.type === 'vehicle-collision-contact') {
     keys.push({ name: 'bus_hit', key: `${event.type}:${event.vehicleId}:${event.targetId}:${timeKey}` });
   }
+  if (event.type === 'vehicle-dispatched') {
+    keys.push({ name: 'vehicle_tap', key: `${event.type}:${event.vehicleId}:${timeKey}` });
+  }
   if (event.type === 'vehicle-full') {
     // lastEvent remains visible while the vehicle is driving away. The event
     // identity must therefore be independent of the frame time.
@@ -51,8 +54,13 @@ function getEventKeys(event, time = '') {
 }
 
 export class GameAudioController {
-  constructor(audioConfig = {}) {
+  constructor(audioConfig = {}, { getDelay = null, getVolumeScale = null } = {}) {
     this.audioConfig = audioConfig;
+    this.getDelay = typeof getDelay === 'function' ? getDelay : null;
+    // Per-sound volume control from the editor. It scales the level baked into
+    // the level's audio config instead of replacing it, so the Unity-authored
+    // balance still applies when the editor slider sits at 1.
+    this.getVolumeScale = typeof getVolumeScale === 'function' ? getVolumeScale : null;
     this.context = null;
     this.unlocked = false;
     this.visible = true;
@@ -60,6 +68,8 @@ export class GameAudioController {
     this.playedGameEventKeys = new Set();
     this.queuedPlays = [];
     this.activeSources = new Set();
+    // The looping music source is tracked separately from the effect pool.
+    this.bgm = null;
   }
 
   getContext() {
@@ -128,7 +138,8 @@ export class GameAudioController {
       if (context?.state === 'suspended') void context.resume().then(() => this.flushQueuedPlays());
       return;
     }
-    this.startPlayback(name, clip, data, context);
+    const delay = Math.max(0, Number(this.getDelay?.(name)) || 0);
+    this.startPlayback(name, clip, data, context, delay);
   }
 
   setVisible(visible) {
@@ -150,18 +161,24 @@ export class GameAudioController {
     for (const { name, clip } of pending) this.play(name, clip);
   }
 
-  startPlayback(name, clip, data, context) {
+  startPlayback(name, clip, data, context, delaySeconds = 0) {
     void this.loadClip(clip)
       .then((buffer) => {
         if (!buffer || context.state !== 'running') return;
         const source = context.createBufferSource();
         const gain = context.createGain();
         source.buffer = buffer;
-        gain.gain.value = data.volume ?? 1;
+        // A missing or non-numeric scale keeps the authored volume: Number()
+        // turns undefined into NaN, which would otherwise silence the clip.
+        const scale = Number(this.getVolumeScale?.(name));
+        const baseVolume = Number(data.volume ?? 1);
+        gain.gain.value = Math.max(0, baseVolume * (Number.isFinite(scale) ? scale : 1));
         source.connect(gain).connect(context.destination);
         this.activeSources.add(source);
         source.onended = () => this.activeSources.delete(source);
-        source.start();
+        // A positive delay schedules the start slightly ahead on the audio
+        // clock so a sound can be lined up with its animation.
+        source.start(delaySeconds > 0 ? context.currentTime + delaySeconds : 0);
       })
       .catch((error) => console.warn(`Unable to play audio "${name}".`, error));
   }
@@ -188,8 +205,73 @@ export class GameAudioController {
   playPassengerUp() {
     this.play('passenger_up');
   }
+
+  /**
+   * Starts the looping background track.
+   *
+   * The track is kept out of `audioConfig` on purpose: that table is preloaded
+   * and decoded on unlock for the one-shot effects, and a ~120 KB music file has
+   * no business being decoded before the player has tapped anything. It is also
+   * a separate source from the effect pool so `resetEventHistory` (retry, stage
+   * advance) does not restart or kill it.
+   *
+   * Returns false when nothing started (no asset, audio still locked, or the
+   * context is not running). Callers should not retry in a loop; the next tap
+   * calls it again.
+   */
+  playBgm({ asset, volume = 0.5, fadeInSeconds = 0.8 } = {}) {
+    if (!asset) return false;
+    if (this.bgm?.asset === asset) return true;
+    if (!this.unlocked || !this.visible) return false;
+    const context = this.getContext();
+    if (!context || context.state !== 'running') return false;
+    this.stopBgm();
+    const gain = context.createGain();
+    const target = Math.max(0, Math.min(1, Number(volume) || 0));
+    const fade = Math.max(0, Number(fadeInSeconds) || 0);
+    gain.gain.value = fade > 0 ? 0 : target;
+    gain.connect(context.destination);
+    const source = context.createBufferSource();
+    source.loop = true;
+    const entry = { asset, source, gain, volume: target };
+    // Registered before the buffer resolves so stopBgm can cancel a track that
+    // is still decoding.
+    this.bgm = entry;
+    void this.loadClip(asset)
+      .then((buffer) => {
+        if (!buffer || this.bgm !== entry) return;
+        source.buffer = buffer;
+        source.connect(gain);
+        source.start();
+        if (fade > 0) {
+          const now = context.currentTime;
+          gain.gain.setValueAtTime(0, now);
+          gain.gain.linearRampToValueAtTime(target, now + fade);
+        }
+      })
+      .catch((error) => {
+        console.warn('Unable to start background music.', error);
+        if (this.bgm === entry) this.bgm = null;
+      });
+    return true;
+  }
+
+  stopBgm() {
+    const entry = this.bgm;
+    if (!entry) return;
+    this.bgm = null;
+    try { entry.source.stop(); } catch {}
+    try {
+      entry.source.disconnect();
+      entry.gain.disconnect();
+    } catch {}
+  }
+
+  get isBgmPlaying() {
+    return Boolean(this.bgm);
+  }
 }
 
-export function createGameAudioController(audioConfig) {
-  return new GameAudioController(audioConfig);
+export function createGameAudioController(audioConfig, options) {
+  return new GameAudioController(audioConfig, options);
 }

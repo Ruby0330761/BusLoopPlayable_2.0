@@ -44,6 +44,7 @@ test('uses the complete Unity LevelEditor color map', () => {
     { id: 13, name: 'Ambulance', css: '#9A0040' },
     { id: 14, name: 'Vip', css: '#FFDFCE' },
     { id: 15, name: 'Luxury', css: '#FFF7A5' },
+    { id: 16, name: 'Christmas', css: '#C62828' },
     { id: 17, name: 'Black', css: '#2D2D30' },
     { id: 18, name: 'White', css: '#EBEBE8' },
     { id: 19, name: 'DarkRed', css: '#8C1010' },
@@ -57,7 +58,7 @@ test('uses the complete Unity LevelEditor color map', () => {
   // Colour ids are not array positions once the supplement ids are present.
   assert.equal(getVehicleColorOption(23).name, 'MatchaGreen');
   assert.equal(getVehicleColorOption(23).css, '#96C882');
-  assert.equal(getVehicleColorOption(16).id, 0);
+  assert.equal(getVehicleColorOption(16).name, 'Christmas');
   assert.deepEqual(VEHICLE_PAINT_COLOR_OPTIONS.map(({ id }) => id), [
     0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 17, 18, 19, 20, 21, 22, 23, 24, 25
   ]);
@@ -644,4 +645,145 @@ test('recognized vehicles replace only the target container by default', () => {
   model.applyDetectedVehicles([{ colorIndex: 6, x: 1, z: 1, yaw: 0, seats: 4 }], { mode: 'append' });
   assert.equal(model.document.vehicles.filter((vehicle) => vehicle.containerId === 0).length, 2);
   assert.equal(model.document.vehicles.filter((vehicle) => vehicle.containerId === conveyor.id).length, 1);
+});
+
+test('scene tuning survives document normalization and retargeting', () => {
+  const tuning = {
+    parkingSpots: { count: 5, startX: -1.8, spacing: 0.92 },
+    vehicleArea: { y: 0.041, modelScale: 0.72 },
+    camera: { fovDegrees: 2.35 }
+  };
+  const document = createLevelDocument({ key: 'level41', unityId: 41, tuning });
+  assert.deepEqual(document.tuning, tuning);
+
+  // Importing assigns a new key; the tuning must ride along so it can be
+  // written for that key instead of falling back to the defaults.
+  const retargeted = retargetLevelDocument(document, { key: 'level42', displayName: 'Copy', unityId: 42 });
+  assert.equal(retargeted.key, 'level42');
+  assert.deepEqual(retargeted.tuning, tuning);
+});
+
+test('level documents without scene tuning stay valid for older files', () => {
+  const document = createLevelDocument({ key: 'level43', unityId: 43 });
+  assert.equal('tuning' in document, false);
+  // An imported file from before tuning was carried must still validate, and a
+  // non-object tuning must not be smuggled into the document.
+  assert.equal(createLevelDocument({ key: 'level44', unityId: 44, tuning: 'nope' }).tuning, undefined);
+  assert.equal(createLevelDocument({ key: 'level45', unityId: 45, tuning: [1, 2] }).tuning, undefined);
+});
+
+test('deleting a vehicle compacts the numbering and moves every id reference', () => {
+  const model = new LevelEditorModel(createLevelDocument({
+    key: 'level46', unityId: 46,
+    vehicles: [
+      { id: 1, seats: 4, colorIndex: 0 },
+      { id: 3, seats: 4, colorIndex: 1 },
+      { id: 5, seats: 4, colorIndex: 2 }
+    ],
+    passengerQueues: [[0, 0, 0, 0], [1, 1, 1, 1], [2, 2, 2, 2]],
+    vehicleDepthes: { 1: [3, 5], 3: [5], 5: [] }
+  }));
+
+  model.select('vehicle:3');
+  const result = model.removeSelected();
+
+  // The hole at #3 is closed: #5 shifts into the slot and #1 keeps its number.
+  assert.deepEqual(model.document.vehicles.map((vehicle) => vehicle.id), [1, 2]);
+  assert.deepEqual(model.document.vehicleDepthes, { 1: [2], 2: [] });
+  assert.deepEqual(result.idMap, new Map([[1, 1], [5, 2]]));
+  assert.deepEqual(validateLevelDocument(model.document).valid, true);
+
+  // Undo restores the previous numbering and reports the inverse mapping so the
+  // editor can walk its own id references back.
+  assert.equal(model.undo(), true);
+  assert.deepEqual(model.document.vehicles.map((vehicle) => vehicle.id), [1, 3, 5]);
+  assert.deepEqual(model.document.vehicleDepthes, { 1: [3, 5], 3: [5], 5: [] });
+  assert.deepEqual(
+    [...model.consumeRenumber().idMap].filter(([from, to]) => from !== to),
+    [[2, 5]]
+  );
+});
+
+test('renumbering keeps mechanism partners, container depth refs, and guide targets aligned', () => {
+  const model = new LevelEditorModel(createLevelDocument({
+    key: 'level47', unityId: 47,
+    containers: [
+      { id: 0, type: CONTAINER_TYPES.PARKING },
+      { id: 2, type: CONTAINER_TYPES.GARAGE, x: 3, z: 0 }
+    ],
+    vehicles: [
+      { id: 5, seats: 4, colorIndex: 0, mechanism: { type: 'linkHead', pairVehicleId: 9 } },
+      { id: 9, seats: 4, colorIndex: 1, mechanism: { type: 'linkTail', pairVehicleId: 5 } },
+      { id: 11, seats: 4, colorIndex: 2 }
+    ],
+    passengerQueues: [[0, 0, 0, 0], [1, 1, 1, 1], [2, 2, 2, 2]],
+    // Container 2 is not a vehicle id here, so it must survive untouched while
+    // the vehicle reference in the same list is remapped.
+    vehicleDepthes: { 5: [9, 2], 9: [2], 11: [] },
+    tuning: {
+      vehicleGuideHand: { levelKey: 'level47', vehicleId: 9 },
+      firstClickGuide: { levelKey: 'levelOther', vehicleId: 9 }
+    }
+  }));
+
+  const result = model.renumberVehicles();
+  assert.equal(result.changed, true);
+  assert.deepEqual(model.document.vehicles.map((vehicle) => vehicle.id), [1, 2, 3]);
+  assert.deepEqual(model.document.vehicles.map((vehicle) => vehicle.mechanism.pairVehicleId), [2, 1, null]);
+  assert.deepEqual(model.document.vehicleDepthes, { 1: [2, 2], 2: [2], 3: [] });
+  // The guide for this level follows the car; the other level's number is its own.
+  assert.equal(model.document.tuning.vehicleGuideHand.vehicleId, 2);
+  assert.equal(model.document.tuning.firstClickGuide.vehicleId, 9);
+});
+
+test('renumbering is a no-op for an already compact level and stays undoable', () => {
+  const model = new LevelEditorModel(makeDocument());
+  const before = model.snapshot();
+  const result = model.renumberVehicles();
+  assert.equal(result.changed, false);
+  assert.deepEqual(model.document.vehicles.map((vehicle) => vehicle.id), [1, 2]);
+  assert.equal(model.undo(), true);
+  assert.deepEqual(model.document, before);
+});
+
+test('auto renumber can be disabled so deletes keep the existing numbers', () => {
+  const model = new LevelEditorModel(createLevelDocument({
+    key: 'level48', unityId: 48,
+    vehicles: [
+      { id: 1, seats: 4, colorIndex: 0 },
+      { id: 2, seats: 4, colorIndex: 1 },
+      { id: 3, seats: 4, colorIndex: 2 }
+    ],
+    passengerQueues: [[0, 0, 0, 0], [1, 1, 1, 1], [2, 2, 2, 2]],
+    editor: { autoRenumberVehicles: false }
+  }));
+
+  model.select('vehicle:2');
+  model.removeSelected();
+  assert.deepEqual(model.document.vehicles.map((vehicle) => vehicle.id), [1, 3]);
+
+  // The manual button still compacts on demand.
+  assert.equal(model.renumberVehicles().changed, true);
+  assert.deepEqual(model.document.vehicles.map((vehicle) => vehicle.id), [1, 2]);
+});
+
+test('deleting a container also clears the depth entries that pointed at it', () => {
+  const model = new LevelEditorModel(createLevelDocument({
+    key: 'level49', unityId: 49,
+    containers: [
+      { id: 0, type: CONTAINER_TYPES.PARKING },
+      { id: 7, type: CONTAINER_TYPES.ELEVATOR, x: 3, z: 0 }
+    ],
+    vehicles: [
+      { id: 1, seats: 4, colorIndex: 0 },
+      { id: 2, seats: 4, colorIndex: 1, containerType: CONTAINER_TYPES.ELEVATOR, containerId: 7 }
+    ],
+    passengerQueues: [[0, 0, 0, 0], [1, 1, 1, 1]],
+    vehicleDepthes: { 1: [2, 7], 2: [7] }
+  }));
+
+  model.select('container:7');
+  model.removeSelected();
+  assert.deepEqual(model.document.vehicles.map((vehicle) => vehicle.id), [1]);
+  assert.deepEqual(model.document.vehicleDepthes, { 1: [] });
 });

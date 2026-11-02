@@ -197,6 +197,20 @@ export function buildOutStationPoints(spot, motion = UNITY_VEHICLE_MOTION) {
   return [start, boxPosition, add(boxPosition, point(turnOffsetX, 0))];
 }
 
+// The exit run is authored in visual terms: `exitTargetZOffset` moves the
+// endpoint further away from the camera (down the screen) for positive values.
+// Source-space Z runs the opposite way once `vehicleArea.mirrorZ` is applied,
+// so the offset is negated here. Both the actual departure and the editor's
+// preview line must call this so they can never drift apart.
+export function buildDepartureForwardPoints(forwardStart, motion = UNITY_VEHICLE_MOTION) {
+  const targetX = motion.exitTargetX ?? 4.2;
+  const visualDown = motion.exitTargetZOffset ?? 0;
+  return [
+    forwardStart,
+    { x: targetX, z: forwardStart.z - visualDown }
+  ];
+}
+
 export function buildRoundedPath(points, motion = UNITY_VEHICLE_MOTION) {
   const segments = [];
   let start = points[0];

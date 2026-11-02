@@ -9,6 +9,14 @@ import {
   getConveyorLayout
 } from './conveyor-layouts.js';
 import { SCENE_TUNING } from './scene-tuning.js';
+import { resolveBackgroundOffsetY } from './background-alignment.js';
+import { mergeStageTuning } from './playable-session-config.js';
+import {
+  getActiveStageScene,
+  resolveParkingSpots,
+  resolveParkingStartX,
+  setActiveStageScene
+} from './stage-scene.js';
 import { getVehicleAreaPivot, mapVehicleAreaBasePoint } from './vehicle-area.js';
 import {
   SPATIAL_CONVEYOR_DISPLAY,
@@ -44,7 +52,8 @@ import {
   sampleHitClip,
   buildRoundedPath,
   buildToStationPoints,
-  buildOutStationPoints
+  buildOutStationPoints,
+  buildDepartureForwardPoints
 } from './vehicle-motion.js';
 
 const ease = (t) => 1 - Math.pow(1 - t, 3);
@@ -70,6 +79,23 @@ const HIDDEN_QUESTION_MARK_FORWARD_FACTOR = 0.45;
 const FBX_INTERNAL_TEXTURE_ROOT = 'playable-fbx-internal:';
 const FBX_INTERNAL_TEXTURE_PLACEHOLDER = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=';
 const HIDDEN_VEHICLE_BODY_COLOR = 0x606060;
+// Parking outline decal: flattened to this fraction of its authored thickness
+// and kept this far below the vehicle layer, so parked cars cover the line.
+const SPOT_OUTLINE_FLATTEN_Y_SCALE = 0.02;
+const SPOT_OUTLINE_CLEARANCE_Y = 0.004;
+// Ground decals draw before every vehicle and passenger and never write depth.
+// The camera is a long-focus perspective hundreds of units out, so its depth
+// buffer cannot separate a decal from a car underside a few millimetres above
+// it; ordering the draw is what actually keeps the paint under the car. Cars
+// leaving the bay ride the lower departure lane, so the decal also disables
+// depth testing entirely: a bay is ground art and must never cover a car.
+const SPOT_OUTLINE_RENDER_ORDER = -10;
+// The seat-count badge is the same kind of ground art. It draws just above the
+// bay paint but still before every vehicle and passenger.
+const SEAT_COUNT_BOARD_RENDER_ORDER = -9;
+// Collision flashes sit this far past the bumper so the burst never overlaps
+// the car body it belongs to.
+const HIT_CONTACT_CLEARANCE = 0.04;
 const HIDDEN_VEHICLE_ASSETS = MECHANISM_ASSETS.hiddenVehicle;
 const HIDDEN_REVEAL_DURATION = 1;
 const HIDDEN_REVEAL_MARKER_FADE_START = 0.5;
@@ -148,14 +174,35 @@ const POLICE_COLOR_INDEX = 11;
 const FIRETRUCK_COLOR_INDEX = 12;
 const AMBULANCE_COLOR_INDEX = 13;
 const LUXURY_COLOR_INDEX = 15;
+const CHRISTMAS_COLOR_INDEX = 16;
+// Runtime levels converted from the catalog carry `ambulanceStepLimit` with no
+// mechanism object at all, so the family has to be inferred from the colour
+// slot as well. A step-limited sled sets `mechanism.type = 'christmas'` and must
+// not fall into this branch: it keeps its own model and Santa passengers.
+function isAmbulanceVehicle(vehicle) {
+  if (vehicle?.mechanism?.type) return vehicle.mechanism.type === 'ambulance';
+  return vehicle?.colorIndex === AMBULANCE_COLOR_INDEX
+    || Number.isInteger(vehicle?.ambulanceStepLimit);
+}
 // The VAT mesh already uses the runtime forward axis; no extra yaw is needed.
 const AMBULANCE_PASSENGER_YAW_OFFSET_DEGREES = 0;
+// Supplied Christmas passenger clips, in SSVT frame rows: row 0 is the static
+// bind pose, 1-61 Passenger_Idle, 62-81 Passenger_Move, 82-101 MoveToBus.
+// The runtime only samples idle and move, and the +0.5 row offset baked into
+// the VAT shader means these bounds address the clip's first and last row.
+const CHRISTMAS_PASSENGER_ANIMATIONS = Object.freeze({
+  textureWidth: 621,
+  textureHeight: 102,
+  idle: { uvMin: 1 / 102, uvMax: 61 / 102, duration: 2 },
+  move: { uvMin: 62 / 102, uvMax: 81 / 102, duration: 0.60000014 }
+});
 const AMBULANCE_STEP_BOARD_BASE_SCALE = 0.56 * 1.2 * 1.2;
 const AMBULANCE_STEP_BOARD_OFFSET_Y = 0.42 * 0.9;
 const AMBULANCE_STEP_BOARD_FONT_SIZE = 76 * 1.1;
 const AMBULANCE_ASSETS = MECHANISM_ASSETS.ambulance;
 const FIRETRUCK_ASSETS = MECHANISM_ASSETS.firetruck;
 const POLICE_ASSETS = MECHANISM_ASSETS.police;
+const CHRISTMAS_ASSETS = MECHANISM_ASSETS.christmas;
 const AMBULANCE_PASSENGER_ANIMATIONS = Object.freeze({
   textureWidth: 859,
   textureHeight: 79,
@@ -243,6 +290,153 @@ function resolveCountBoardColors(vehicle) {
     ?? PASSENGER_COUNT_BOARD_COLORS[0];
 }
 
+// The authored seat-count board is a flat rounded card. The card is drawn here
+// instead of sampling count_al.png: every fully transparent texel of that PNG
+// stores black RGB, so minified samples along the rounded edge lerp those black
+// texels in and paint a dark fringe around the card. A drawn card keeps white
+// RGB all the way out. The box keeps the game's wide card profile (aspect 1.49)
+// inside the 256x256 atlas the plate plane is sized from.
+const COUNT_BOARD_PLATE_BOX = Object.freeze({
+  x: 0,
+  y: 52,
+  width: 256,
+  height: 152,
+  // Radius is a fraction of the card height (see the geometry builder), so this
+  // reads as the same corner on any card size. The game's card is about a fifth
+  // of its height; larger values turn the badge into a pill.
+  radius: 32
+});
+
+// The card is a real rounded-rectangle mesh rather than an alpha-cut texture.
+// At badge scale it covers only ~40x27 screen pixels, and a texture cutout
+// resolved by alphaTest snapped that arc to whole pixels, which read as a
+// staircase. Rasterising the shape lets the renderer's MSAA smooth the arc at
+// whatever resolution the camera actually lands on.
+//
+// The geometry is a unit square so the existing width/depth tuning still scales
+// it to the same physical size; the corner radius is expressed as a fraction of
+// the card height, which keeps the corners circular despite that non-uniform
+// scale.
+function createCountBoardPlateGeometry({ width, height, radius }) {
+  const half = 0.5;
+  const r = Math.min(radius / height, half);
+  const shape = new THREE.Shape();
+  shape.moveTo(-half + r, -half);
+  shape.lineTo(half - r, -half);
+  shape.quadraticCurveTo(half, -half, half, -half + r);
+  shape.lineTo(half, half - r);
+  shape.quadraticCurveTo(half, half, half - r, half);
+  shape.lineTo(-half + r, half);
+  shape.quadraticCurveTo(-half, half, -half, half - r);
+  shape.lineTo(-half, -half + r);
+  shape.quadraticCurveTo(-half, -half, -half + r, -half);
+  // 16 segments per corner keeps the arc smooth even at large preview sizes.
+  return new THREE.ShapeGeometry(shape, 16);
+}
+// The digits share the card's plane and its exact footprint, so they foreshorten
+// with the card instead of billboarding towards the camera. The canvas spans the
+// whole 256x256 atlas, which keeps it power-of-two (so it gets mipmaps and the
+// minified glyph edge stays smooth) and maps texel-for-texel onto the plate.
+const COUNT_BOARD_TEXT_CANVAS = Object.freeze({ width: 256, height: 256 });
+
+// Outlined-digit ink budget as a fraction of the card. The game keeps the white
+// core at about 53% of the card height, and the outlined block at roughly 60% of
+// the width and 65% of the height. The old fixed 112px font with an 18px stroke
+// (16% of the size per side) read as a heavy dark blob, and had no width guard,
+// so a 30+ count ran past the card edges.
+const COUNT_BOARD_INK_FRACTION = 0.95;
+const COUNT_BOARD_MAX_INK_WIDTH = COUNT_BOARD_PLATE_BOX.width * COUNT_BOARD_INK_FRACTION;
+const COUNT_BOARD_MAX_INK_HEIGHT = COUNT_BOARD_PLATE_BOX.height * COUNT_BOARD_INK_FRACTION;
+const COUNT_BOARD_MAX_FONT_SIZE = 112;
+const COUNT_BOARD_STROKE_RATIO = 0.11;
+
+// Card box inside Unity's authored 256x256 count-board atlases
+// (count_al.png, count_limousine.png). Only the luxury badge still samples its
+// atlas, cropped to this box so the geometry supplies the rounded outline.
+const COUNT_BOARD_LUXURY_CARD_BOX = Object.freeze({
+  x: 12,
+  y: 45,
+  width: 232,
+  height: 157
+});
+
+// Authored atlases (count_al.png, count_limousine.png) put the card inside a
+// 256x256 sheet with padding. The geometry card already supplies the rounded
+// outline, so map only the card box onto it. Unity's origin is top-left; three's
+// UV origin is bottom-left, hence the flipped V offset.
+function cropCountBoardTextureToCard(texture) {
+  const box = COUNT_BOARD_LUXURY_CARD_BOX;
+  texture.wrapS = THREE.ClampToEdgeWrapping;
+  texture.wrapT = THREE.ClampToEdgeWrapping;
+  texture.repeat.set(box.width / 256, box.height / 256);
+  texture.offset.set(box.x / 256, (256 - box.y - box.height) / 256);
+  texture.needsUpdate = true;
+  return texture;
+}
+
+// The outline is stroked with lineWidth = strokeRatio x fontSize, so it eats
+// strokeRatio/2 of the ink budget per side. Solve for the largest font that
+// still fits both the card width and height.
+export function fitCountBoardFontSize(inkWidth, inkHeight, fontSize) {
+  if (!(inkWidth > 0) || !(inkHeight > 0) || !(fontSize > 0)) return COUNT_BOARD_MAX_FONT_SIZE;
+  const widthLimit = COUNT_BOARD_MAX_INK_WIDTH / (inkWidth / fontSize + COUNT_BOARD_STROKE_RATIO);
+  const heightLimit = COUNT_BOARD_MAX_INK_HEIGHT / (inkHeight / fontSize + COUNT_BOARD_STROKE_RATIO);
+  return Math.max(1, Math.min(COUNT_BOARD_MAX_FONT_SIZE, widthLimit, heightLimit));
+}
+
+function resolveCountBoardFontSize(context, label) {
+  const probe = 100;
+  context.font = `700 ${probe}px "Poppins Branding", Arial, sans-serif`;
+  const metrics = context.measureText(label);
+  const inkWidth = (metrics.actualBoundingBoxLeft ?? 0) + (metrics.actualBoundingBoxRight ?? 0);
+  const inkHeight = (metrics.actualBoundingBoxAscent ?? 0) + (metrics.actualBoundingBoxDescent ?? 0);
+  return fitCountBoardFontSize(
+    inkWidth > 0 ? inkWidth : probe * 0.72,
+    inkHeight > 0 ? inkHeight : probe * 0.72,
+    probe
+  );
+}
+
+// Canvas 2D is premultiplied, so transparent pixels read back as black, and mip
+// filtering along the rounded edge lerped that black in as a dark rim (exactly
+// what sampling count_al.png used to do). The card is filled white and only its
+// outside is cleared, so repaint those texels white at an alpha below alphaTest:
+// invisible on their own, but neutral in the filter footprint.
+function clearCountBoardTexels(context, width, height) {
+  const image = context.getImageData(0, 0, width, height);
+  const { data } = image;
+  for (let i = 0; i < data.length; i += 4) {
+    if (data[i + 3] > 0) continue;
+    data[i] = 255;
+    data[i + 1] = 255;
+    data[i + 2] = 255;
+    data[i + 3] = 1;
+  }
+  context.putImageData(image, 0, 0);
+}
+
+// Authored count-board atlases (count_al.png, count_limousine.png) store black
+// RGB under their transparent texels. Redraw the texture's own artwork into a
+// canvas with those texels neutralised, so the material keeps its authored
+// pixels but no longer bleeds black into its minified rounded edge.
+function whitenTextureClearTexels(source) {
+  const image = source?.image;
+  if (!image?.width || !image?.height) return source;
+  const canvas = document.createElement('canvas');
+  canvas.width = image.width;
+  canvas.height = image.height;
+  const context = canvas.getContext('2d');
+  context.drawImage(image, 0, 0);
+  clearCountBoardTexels(context, canvas.width, canvas.height);
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.colorSpace = source.colorSpace;
+  texture.anisotropy = source.anisotropy;
+  texture.wrapS = source.wrapS;
+  texture.wrapT = source.wrapT;
+  source.dispose();
+  return texture;
+}
+
 function decodeOptionalGzip(buffer) {
   const bytes = buffer instanceof Uint8Array
     ? buffer
@@ -261,7 +455,11 @@ function isConveyorType(value) {
 }
 
 function getSelectedBackgroundUrl() {
-  return SCENE_TUNING.background?.asset || LEVEL_1.assets.background;
+  // A stage can override the background so a stitched session does not show the
+  // same artwork for two different boards.
+  return getActiveStageScene()?.background
+    || SCENE_TUNING.background?.asset
+    || LEVEL_1.assets.background;
 }
 
 function setPassengerMaterialMaps(material, map, emissiveMap) {
@@ -360,12 +558,22 @@ function makeTunedCurvePoints(points, tuning, anchorMode) {
   ));
 }
 
+// A playable stage owns its own conveyor and background. These stay module
+// level because the curve builders run outside the class and every call site
+// must see the same stage selection. The stage state lives in stage-scene.js so
+// the game model can read the per-stage spot count without importing this file.
 function getSelectedConveyorLayout() {
-  return getConveyorLayout(SCENE_TUNING.conveyorLayout?.selected ?? DEFAULT_CONVEYOR_LAYOUT_ID);
+  return getConveyorLayout(
+    getActiveStageScene()?.conveyorLayout
+    ?? SCENE_TUNING.conveyorLayout?.selected
+    ?? DEFAULT_CONVEYOR_LAYOUT_ID
+  );
 }
 
 function getSelectedSpatialConveyor() {
-  return getSpatialConveyorPackage(SCENE_TUNING.conveyorLayout?.selected);
+  return getSpatialConveyorPackage(
+    getActiveStageScene()?.conveyorLayout ?? SCENE_TUNING.conveyorLayout?.selected
+  );
 }
 
 function isConfiguredSpatialOptimizationEnabled(key) {
@@ -1434,6 +1642,12 @@ export class SceneView {
     this.policePassengerVat = null;
     this.policeVehicleTemplate = null;
     this.policeVehicleMaterial = null;
+    this.christmasVehicleTemplate = null;
+    this.christmasVehicleMaterial = null;
+    this.christmasPassengerTemplate = null;
+    this.christmasPassengerTexture = null;
+    this.christmasPassengerVat = null;
+    this.christmasArrowTemplate = null;
     this.luxuryVehicleTemplate = null;
     this.luxuryVehicleMaterial = null;
     this.luxuryPassengerTemplate = null;
@@ -1442,6 +1656,7 @@ export class SceneView {
     this.luxurySeatCountBoardTexture = null;
     this.vatTimeUniform = { value: 0 };
     this.boardingViews = [];
+    this.pendingBoardingSounds = [];
     this.vehicleBoardingPulses = new Map();
     this.initialEntryPathStates = new Map();
     this.queueEntryPathStates = new Map();
@@ -1471,6 +1686,10 @@ export class SceneView {
     this.firstClickGuideMask = this.createFirstClickGuideMask();
     this.entryBanner = SCENE_TUNING.entryBanner?.enabled ? this.createEntryBanner() : null;
     this.entryBannerState = null;
+    // Per-stage presentation written by the playable session runner. It is
+    // merged over SCENE_TUNING at read time and never persisted into tuning.
+    this.stageOpening = null;
+    this.stageLabelOverlay = null;
     this.vehiclePathLines = [];
     this.vehicleDeparturePathLines = [];
     this.lastSnapshot = null;
@@ -1513,8 +1732,61 @@ export class SceneView {
     return { root, pieces, hole, hand };
   }
 
-  createEntryBanner() {
+  createStageLabelOverlay() {
     const parent = this.canvas.parentElement;
+    if (!parent) return null;
+    const root = document.createElement('div');
+    root.className = 'stage-label-overlay';
+    root.hidden = true;
+    parent.append(root);
+    return { root, items: [] };
+  }
+
+  updateStageLabels(labels = []) {
+    const parent = this.canvas.parentElement;
+    if (!parent) return;
+    if (!this.stageLabelOverlay) this.stageLabelOverlay = this.createStageLabelOverlay();
+    const overlay = this.stageLabelOverlay;
+    if (!overlay) return;
+    const entries = Array.isArray(labels) ? labels : [];
+    overlay.root.replaceChildren();
+    overlay.items = entries.map((label) => {
+      const element = document.createElement('div');
+      element.className = `stage-label is-${label.align ?? 'center'}`;
+      element.textContent = String(label.text ?? '');
+      element.dataset.x = String(label.x ?? 0.5);
+      element.dataset.y = String(label.y ?? 0.1);
+      overlay.root.append(element);
+      return element;
+    });
+    overlay.root.hidden = overlay.items.length === 0;
+    this.updateStageLabelLayout();
+  }
+
+  updateStageLabelLayout() {
+    const overlay = this.stageLabelOverlay;
+    const parent = overlay?.root?.parentElement;
+    if (!overlay || !parent) return;
+    if (overlay.items.length === 0) return;
+    const canvasRect = this.canvas.getBoundingClientRect();
+    const parentRect = parent.getBoundingClientRect();
+    const left = canvasRect.left - (parentRect.left + (parent.clientLeft || 0));
+    const top = canvasRect.top - (parentRect.top + (parent.clientTop || 0));
+    const width = Math.max(1, canvasRect.width || this.canvas.clientWidth || 1);
+    const height = Math.max(1, canvasRect.height || this.canvas.clientHeight || 1);
+    overlay.root.style.left = `${left}px`;
+    overlay.root.style.top = `${top}px`;
+    overlay.root.style.width = `${width}px`;
+    overlay.root.style.height = `${height}px`;
+    for (const element of overlay.items) {
+      const x = Math.min(1, Math.max(0, Number(element.dataset.x) || 0));
+      const y = Math.min(1, Math.max(0, Number(element.dataset.y) || 0));
+      element.style.left = `${x * width}px`;
+      element.style.top = `${y * height}px`;
+    }
+  }
+
+  createEntryBanner() {    const parent = this.canvas.parentElement;
     if (!parent) return null;
     const assets = MECHANISM_ASSETS.entryBanner;
     const root = document.createElement('div');
@@ -1563,7 +1835,7 @@ export class SceneView {
   updateEntryBannerComponentTransforms() {
     const banner = this.entryBanner;
     if (!banner) return;
-    const components = SCENE_TUNING.entryBanner?.components ?? {};
+    const components = this.getEntryBannerTuning()?.components ?? {};
     const toNumber = (value, fallback = 0) => Number.isFinite(Number(value)) ? Number(value) : fallback;
     const transform = (component = {}, defaultScale = 1) => {
       const position = component.position ?? {};
@@ -1594,11 +1866,11 @@ export class SceneView {
     const playableWidth = Math.max(1, Math.min(canvasWidth, playableRight) - Math.max(0, playableLeft));
     const playableHeight = Math.max(1, Math.min(canvasHeight, playableBottom) - Math.max(0, playableTop));
     const uiScale = Math.min(1, playableWidth / designWidth, playableHeight / designHeight);
-    const positionX = Number.isFinite(Number(SCENE_TUNING.entryBanner?.positionX))
-      ? Number(SCENE_TUNING.entryBanner.positionX)
+    const positionX = Number.isFinite(Number(this.getEntryBannerTuning()?.positionX))
+      ? Number(this.getEntryBannerTuning().positionX)
       : designWidth / 2;
-    const positionY = Number.isFinite(Number(SCENE_TUNING.entryBanner?.positionY))
-      ? Number(SCENE_TUNING.entryBanner.positionY)
+    const positionY = Number.isFinite(Number(this.getEntryBannerTuning()?.positionY))
+      ? Number(this.getEntryBannerTuning().positionY)
       : designHeight / 2;
 
     const parentContentLeft = parentRect.left + (parent.clientLeft || 0);
@@ -1615,7 +1887,7 @@ export class SceneView {
   }
 
   updateEntryBannerTuning() {
-    const tuning = SCENE_TUNING.entryBanner ?? {};
+    const tuning = this.getEntryBannerTuning();
     const enabled = Boolean(tuning.enabled);
     if (!enabled) {
       this.hideEntryBanner();
@@ -1647,7 +1919,7 @@ export class SceneView {
   }
 
   showEntryBanner() {
-    if (!SCENE_TUNING.entryBanner?.enabled) {
+    if (!this.getEntryBannerTuning()?.enabled) {
       this.hideEntryBanner();
       return;
     }
@@ -1672,8 +1944,9 @@ export class SceneView {
   }
 
   updateEntryBanner(time = globalThis.performance?.now?.() ?? Date.now()) {
-    if (!this.entryBannerState || !SCENE_TUNING.entryBanner?.enabled) return;
-    const duration = Math.max(0.5, Number(SCENE_TUNING.entryBanner.durationSeconds) || ENTRY_BANNER_DURATION_SECONDS);
+    const tuning = this.getEntryBannerTuning();
+    if (!this.entryBannerState || !tuning?.enabled) return;
+    const duration = Math.max(0.5, Number(tuning.durationSeconds) || ENTRY_BANNER_DURATION_SECONDS);
     const progress = (time - this.entryBannerState.startedAt) / (duration * 1000);
     this.updateEntryBannerFrame(progress * ENTRY_BANNER_TIMELINE_SECONDS);
     if (progress >= 1) this.hideEntryBanner();
@@ -1989,6 +2262,11 @@ export class SceneView {
     this.backgroundPlane.rotation.set(0, 0, 0);
     this.backgroundPlane.material.depthWrite = false;
     this.backgroundPlane.renderOrder = -100;
+    // The backdrop must render before the parking bays. Transparent materials
+    // always draw after opaque ones, so a blended backdrop would paint over the
+    // bays; it only needs the blended pass when the editor fades it below 1.
+    this.backgroundPlane.material.transparent = false;
+    this.backgroundPlane.material.needsUpdate = true;
     const conveyorLayout = getSelectedConveyorLayout();
     this.loopPlane = this.makeArtworkPlane(
       conveyorLayout.assets.loopScene,
@@ -2196,11 +2474,12 @@ export class SceneView {
       && !this.hasAmbulanceVehicles()
       && !this.hasFiretruckVehicles()
       && !this.hasPoliceVehicles()
+      && !this.hasChristmasVehicles()
       && !this.hasLuxuryVehicles();
   }
 
   hasAmbulanceVehicles() {
-    return LEVEL_1.vehicles.some((vehicle) => Number.isInteger(vehicle.ambulanceStepLimit));
+    return LEVEL_1.vehicles.some(isAmbulanceVehicle);
   }
 
   hasFiretruckVehicles() {
@@ -2212,6 +2491,12 @@ export class SceneView {
   hasPoliceVehicles() {
     return LEVEL_1.vehicles.some((vehicle) => (
       vehicle?.mechanism?.type === 'police' || vehicle.colorIndex === POLICE_COLOR_INDEX
+    ));
+  }
+
+  hasChristmasVehicles() {
+    return LEVEL_1.vehicles.some((vehicle) => (
+      vehicle?.mechanism?.type === 'christmas' || vehicle.colorIndex === CHRISTMAS_COLOR_INDEX
     ));
   }
 
@@ -2653,21 +2938,37 @@ export class SceneView {
   }
 
   buildSpots() {
-    for (let i = 0; i < SCENE_TUNING.parkingSpots.count; i += 1) {
+    this.ensureSpotRootCount();
+  }
+
+  // Spot roots are created once at build time, so a count change in the editor
+  // used to be invisible until reload. This grows or trims the pool to match the
+  // tuning and is called from applyTuning as well.
+  ensureSpotRootCount() {
+    const desired = Math.max(1, Math.floor(Number(resolveParkingSpots()?.count) || 1));
+    while (this.spotRoots.length < desired) {
       const root = new THREE.Group();
       const board = this.createSeatCountBoard();
       board.visible = false;
-      board.renderOrder = 40;
+      // Same layering as the loaded outline: a thin ground slab kept below the
+      // vehicle underside so a parked car covers it.
       const fallback = new THREE.Mesh(
-        new THREE.BoxGeometry(0.82, 0.04, 1.42),
+        new THREE.BoxGeometry(0.82, 0.004, 1.42),
         new THREE.MeshStandardMaterial({ color: 0xb6a9cb, roughness: 0.76 })
       );
-      fallback.position.y = 0.02;
+      fallback.position.y = -0.006;
       root.add(fallback, board);
       this.spotRoots.push(root);
       this.spotPositions.push(new THREE.Vector3());
       this.seatCountBoards.push(board);
       this.layoutRoot.add(root);
+    }
+    // Shrinking the count hides the surplus instead of freeing it: the parked-car
+    // layout and the boarding views both index by spot, and disposing roots here
+    // would leave dangling references in the snapshot path.
+    for (let index = desired; index < this.spotRoots.length; index += 1) {
+      this.spotRoots[index].visible = false;
+      if (this.seatCountBoards[index]) this.seatCountBoards[index].visible = false;
     }
   }
 
@@ -2695,6 +2996,67 @@ export class SceneView {
     line.renderOrder = 80;
     line.frustumCulled = false;
     return line;
+  }
+
+  // Place the collision flash on the car's silhouette, on the side of the thing
+  // it hit. The raw contact point cannot be used directly: container contacts
+  // arrive in level source space (not world), and garage/conveyor collision
+  // volumes overlap a parked car, so the mapped point can land inside the body.
+  // Direction therefore comes from the blocker itself, falling back to the
+  // engine's bump direction. Using the car's own axes for the silhouette keeps
+  // this independent of which local axis is authored as "front".
+  resolveHitContact(vehicleId, { targetId = null, contactPosition = null } = {}) {
+    const view = this.vehicleViews.get(vehicleId);
+    if (!view) {
+      return contactPosition ? mapMotionPoint(contactPosition, SCENE_TUNING.vehicleArea.y) : null;
+    }
+    view.updateWorldMatrix(true, false);
+    const origin = view.getWorldPosition(new THREE.Vector3());
+    const scale = view.getWorldScale(new THREE.Vector3());
+    const halfLength = Math.max(0.05, (view.userData.templateSize?.z ?? 0.68) * scale.z * 0.5);
+    const halfWidth = Math.max(0.04, (view.userData.templateSize?.x ?? 0.27) * scale.x * 0.5);
+
+    const aim = (() => {
+      const targetView = targetId != null ? this.vehicleViews.get(targetId) : null;
+      if (targetView) {
+        targetView.updateWorldMatrix(true, false);
+        return targetView.getWorldPosition(new THREE.Vector3());
+      }
+      if (contactPosition
+        && Number.isFinite(Number(contactPosition.x))
+        && Number.isFinite(Number(contactPosition.z))) {
+        return mapMotionPoint(contactPosition, SCENE_TUNING.vehicleArea.y);
+      }
+      return null;
+    })();
+
+    let direction = aim ? aim.clone().sub(origin).setY(0) : null;
+    if (!direction || direction.lengthSq() <= 1e-8) {
+      // No usable blocker position: aim along the engine's own drive-out
+      // direction, expressed in world space through the same mapping.
+      const vehicle = this.lastGame?.getVehicle?.(vehicleId);
+      const yaw = Number(vehicle?.yaw);
+      if (vehicle && Number.isFinite(yaw) && Number.isFinite(vehicle.x) && Number.isFinite(vehicle.z)) {
+        const rad = yaw * Math.PI / 180;
+        const ahead = mapMotionPoint(
+          { x: vehicle.x + Math.sin(rad) * 0.5, z: vehicle.z + Math.cos(rad) * 0.5 },
+          SCENE_TUNING.vehicleArea.y
+        );
+        direction = ahead.clone().sub(origin).setY(0);
+      }
+    }
+    if (!direction || direction.lengthSq() <= 1e-8) return null;
+    direction.normalize();
+
+    // Distance from the car center to its silhouette along that direction.
+    const quaternion = view.getWorldQuaternion(new THREE.Quaternion());
+    const axisX = new THREE.Vector3(1, 0, 0).applyQuaternion(quaternion).setY(0).normalize();
+    const axisZ = new THREE.Vector3(0, 0, 1).applyQuaternion(quaternion).setY(0).normalize();
+    const extent = Math.abs(direction.dot(axisX)) * halfWidth
+      + Math.abs(direction.dot(axisZ)) * halfLength;
+    return origin.clone()
+      .addScaledVector(direction, extent + HIT_CONTACT_CLEARANCE)
+      .setY(origin.y);
   }
 
   updateVehiclePathPreview(snapshot = this.lastSnapshot, game = this.lastGame) {
@@ -2757,10 +3119,7 @@ export class SceneView {
       const target = game.getSpotPosition(spot.index);
       const backwardPath = buildRoundedPath(buildOutStationPoints(target, tuning), tuning);
       const forwardStart = backwardPath.segments.at(-1)?.p1 ?? target;
-      const forwardPath = buildRoundedPath([
-        forwardStart,
-        { x: tuning.exitTargetX ?? 4.2, z: forwardStart.z + (tuning.exitTargetZOffset ?? 0) }
-      ], tuning);
+      const forwardPath = buildRoundedPath(buildDepartureForwardPoints(forwardStart, tuning), tuning);
       for (const path of [backwardPath, forwardPath]) {
         const line = this.makeVehiclePathLine(path, baseMaterial, tuning.y);
         this.vehicleDeparturePathLines.push(line);
@@ -2771,28 +3130,51 @@ export class SceneView {
   }
   createSeatCountBoard() {
     const group = new THREE.Group();
+    // The badge is ground UI, not scenery: it must sit under the cars like the
+    // bay paint does. A transparent material is always drawn after every car, so
+    // both pieces stay opaque and are ordered before the vehicle layer.
     const boardMaterial = new THREE.MeshBasicMaterial({
       color: 0xffffff,
-      transparent: true,
+      depthTest: false,
       depthWrite: false,
       side: THREE.DoubleSide
     });
-    const board = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), boardMaterial);
+    const board = new THREE.Mesh(
+      createCountBoardPlateGeometry(COUNT_BOARD_PLATE_BOX),
+      boardMaterial
+    );
     board.rotation.x = -Math.PI / 2;
     board.position.y = 0.028;
+    board.renderOrder = SEAT_COUNT_BOARD_RENDER_ORDER;
 
     const canvas = document.createElement('canvas');
-    canvas.width = 256;
-    canvas.height = 160;
+    canvas.width = COUNT_BOARD_TEXT_CANVAS.width;
+    canvas.height = COUNT_BOARD_TEXT_CANVAS.height;
     const texture = new THREE.CanvasTexture(canvas);
     texture.colorSpace = THREE.SRGBColorSpace;
-    const text = new THREE.Sprite(new THREE.SpriteMaterial({
+    // The digits lie in the card's own plane, not on a billboard: the bay is
+    // rotated, so a camera-facing sprite keeps its full width while the card
+    // foreshortens, which is what made the numbers look wider than the card.
+    const text = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), new THREE.MeshBasicMaterial({
       map: texture,
-      transparent: true,
-      depthWrite: false
+      // Opaque alpha cutout for the same reason as the card: a transparent
+      // material is drawn after every car and would cover the parked vehicle.
+      transparent: false,
+      alphaTest: 0.02,
+      // Same treatment as the card: the glyph outline is only a pixel or two
+      // wide, and a binary cutoff chewed it into steps.
+      alphaToCoverage: true,
+      depthTest: false,
+      depthWrite: false,
+      side: THREE.DoubleSide
     }));
-    text.position.set(0, 0.052, 0);
+    text.rotation.x = -Math.PI / 2;
+    text.position.y = 0.034;
+    // Sized to the whole plate plane later by applyTuning; the digits are
+    // centred on the card box inside the atlas, so plate and text register
+    // exactly. scale.x/scale.y are rewritten from the board tuning there.
     text.scale.set(0.42, 0.26, 1);
+    text.renderOrder = SEAT_COUNT_BOARD_RENDER_ORDER;
     group.userData.textSprite = text;
 
     group.add(board, text);
@@ -2859,7 +3241,6 @@ export class SceneView {
         busShadowFbx,
         shadowTexture,
         parkingTexture,
-        seatCountBoardTexture,
         carShadowTexture,
         vanShadowTexture,
         busShadowTexture,
@@ -2900,7 +3281,6 @@ export class SceneView {
         loadPackedFbx(modelPaths.vehicleShadowBySeats[10], this.fbxLoader, this.loadingManager),
         this.textureLoader.loadAsync(LEVEL_1.assets.textures.shadow),
         this.textureLoader.loadAsync(LEVEL_1.assets.textures.parkingSpot),
-        this.textureLoader.loadAsync(LEVEL_1.assets.textures.seatCountBoard),
         this.textureLoader.loadAsync(LEVEL_1.assets.textures.vehicleShadowBySeats[4]),
         this.textureLoader.loadAsync(LEVEL_1.assets.textures.vehicleShadowBySeats[6]),
         this.textureLoader.loadAsync(LEVEL_1.assets.textures.vehicleShadowBySeats[10]),
@@ -2929,7 +3309,6 @@ export class SceneView {
       if (garageTexture) configureColorTexture(garageTexture);
       if (garageShadowTexture) configureColorTexture(garageShadowTexture);
       configureColorTexture(parkingTexture);
-      configureColorTexture(seatCountBoardTexture);
       configureColorTexture(shadowTexture);
       [carShadowTexture, vanShadowTexture, busShadowTexture].forEach(configureColorTexture);
       [
@@ -2954,7 +3333,11 @@ export class SceneView {
           hitRound1: hitRound1Texture,
           smokeTrail: smokeTrailTexture
         },
-        effectsTuning: SCENE_TUNING.effects
+        effectsTuning: SCENE_TUNING.effects,
+        // Collision contacts come from the engine in level source space; the
+        // scene owns mirroring/rotation/scale and the car's forward axis, so
+        // resolve the flash position here.
+        resolveHitContact: (vehicleId, contact) => this.resolveHitContact(vehicleId, contact)
       });
       this.passengerMaterials = this.passengerColorTextures.map((map, colorIndex) => {
         if (!map) return null;
@@ -2996,13 +3379,14 @@ export class SceneView {
         6: new THREE.MeshBasicMaterial({ map: vanShadowTexture, color: SCENE_TUNING.vehicleShadows.color ?? 0xffffff, transparent: true, opacity: SCENE_TUNING.vehicleShadows.opacity, depthWrite: false, side: THREE.DoubleSide }),
         10: new THREE.MeshBasicMaterial({ map: busShadowTexture, color: SCENE_TUNING.vehicleShadows.color ?? 0xffffff, transparent: true, opacity: 0.8, depthWrite: false, side: THREE.DoubleSide })
       };
+      // The bay art is a cutout decal. It must stay in the opaque pass: a
+      // transparent material is drawn after every car and passenger, which
+      // painted the white outline across whatever stood on the bay.
       this.parkingMaterial = new THREE.MeshStandardMaterial({
         map: parkingTexture,
         roughness: 0.68,
-        transparent: true,
         alphaTest: 0.02
       });
-      this.seatCountBoardTexture = seatCountBoardTexture;
 
       const vatRoot = new THREE.Group();
       const vatMesh = new THREE.Mesh(passengerVatGeometry);
@@ -3085,6 +3469,7 @@ export class SceneView {
       if (this.hasAmbulanceVehicles()) await this.loadAmbulanceAssets();
       if (this.hasFiretruckVehicles()) await this.loadFiretruckAssets();
       if (this.hasPoliceVehicles()) await this.loadPoliceAssets();
+      if (this.hasChristmasVehicles()) await this.loadChristmasAssets();
       if (this.hasLuxuryVehicles()) await this.loadLuxuryAssets();
       this.upgradePassengerViews();
       this.upgradeVehicleViews();
@@ -3094,6 +3479,9 @@ export class SceneView {
       this.applyTuning();
     } catch (error) {
       this.unityAssetsFailed = true;
+      // Kept on the instance so the runtime gate can report *why* the build
+      // silently dropped to untextured geometry.
+      this.unityAssetsError = String(error?.message ?? error ?? '');
       console.warn('Unity asset load failed; keeping geometric fallbacks.', error);
     }
   }
@@ -3263,6 +3651,66 @@ export class SceneView {
     };
   }
 
+  async loadChristmasAssets() {
+    const [
+      vehicleFbx,
+      arrowFbx,
+      passengerVatGeometry,
+      passengerVatTexture,
+      vehicleTexture,
+      passengerTexture,
+      stepBubbleTexture
+    ] = await Promise.all([
+      loadPackedFbx(CHRISTMAS_ASSETS.vehicleModel, this.fbxLoader, this.loadingManager),
+      loadPackedFbx(CHRISTMAS_ASSETS.arrowModel, this.fbxLoader, this.loadingManager),
+      loadVatGeometry(CHRISTMAS_ASSETS.passengerVatMesh, this.loadingManager),
+      loadPackedVatTexture(CHRISTMAS_ASSETS.passengerVatTexture, this.loadingManager),
+      this.textureLoader.loadAsync(CHRISTMAS_ASSETS.vehicleTexture),
+      this.textureLoader.loadAsync(CHRISTMAS_ASSETS.passengerTexture),
+      // Always fetched with the sled: it is a 3 KB badge, and the centre-rescue
+      // variant needs it before the first frame.
+      this.textureLoader.loadAsync(CHRISTMAS_ASSETS.stepBubble)
+    ]);
+    [vehicleTexture, passengerTexture, stepBubbleTexture].forEach(configureColorTexture);
+    this.christmasVehicleTemplate = this.prepareVehicleTemplate(vehicleFbx, 10);
+    this.christmasVehicleMaterial = new THREE.MeshStandardMaterial({
+      map: vehicleTexture,
+      emissiveMap: vehicleTexture,
+      // The delivered atlas is a flat palette; a weak self-light keeps the red
+      // coat and cream fur from going muddy under the scene's cool fill.
+      emissive: 0x1a0a08,
+      emissiveIntensity: 0.18,
+      roughness: 0.5,
+      metalness: 0
+    });
+    this.christmasPassengerTemplate = this.prepareVatPassengerTemplate(passengerVatGeometry);
+    this.christmasPassengerTexture = passengerTexture;
+    this.christmasPassengerVat = {
+      ...passengerVatTexture,
+      animation: CHRISTMAS_PASSENGER_ANIMATIONS,
+      key: 'christmas-passenger-vatq'
+    };
+    // Arrow_06 ships without UVs or a texture: it is the white arrow silhouette
+    // the other vehicle families use, just a different outline shape. Its tip
+    // points at +Z where Arrow_01's points at -Z, so the source is turned 180°
+    // *before* the geometry is baked: every vehicle then shares the same
+    // arrowYawDegrees and the marker matches the direction the sled drives.
+    // (Leaving the rotation on the template instead would stack with that
+    // shared yaw and cancel to 360°.)
+    arrowFbx.rotation.y = Math.PI;
+    this.christmasArrowTemplate = normalizeObject(toStaticMeshGroup(arrowFbx), { depth: 0.56 });
+    setMaterial(this.christmasArrowTemplate, new THREE.MeshBasicMaterial({
+      color: 0xffffff,
+      side: THREE.DoubleSide
+    }));
+    addArrowOutline(this.christmasArrowTemplate, {
+      color: SCENE_TUNING.vehicleArrow.outlineColor,
+      scale: SCENE_TUNING.vehicleArrow.outlineScale,
+      depthTest: SCENE_TUNING.vehicleArrow.outlineDepthTest
+    });
+    this.christmasStepBubbleTexture = stepBubbleTexture;
+  }
+
   async loadLuxuryAssets() {
     const [
       vehicleFbx,
@@ -3351,10 +3799,25 @@ export class SceneView {
         })
     ];
     this.luxuryPassengerAnimations = passengerAnimations;
-    this.luxurySeatCountBoardTexture = seatCountBoardTexture;
+    // Same dark-fringe problem as count_al.png: this atlas also stores black
+    // RGB in its transparent texels, so minified samples along the gold card's
+    // rounded edge painted a dirty rim. Keep the authored artwork but neutralise
+    // those texels.
+    this.luxurySeatCountBoardTexture = whitenTextureClearTexels(seatCountBoardTexture);
   }
 
   getSpecialPassengerConfig(colorIndex) {
+    if (colorIndex === CHRISTMAS_COLOR_INDEX
+      && this.christmasPassengerTemplate
+      && this.christmasPassengerTexture
+      && this.christmasPassengerVat) {
+      return {
+        type: 'christmas',
+        template: this.christmasPassengerTemplate,
+        texture: this.christmasPassengerTexture,
+        vat: this.christmasPassengerVat
+      };
+    }
     if (colorIndex === FIRETRUCK_COLOR_INDEX
       && this.firetruckPassengerTemplate
       && this.firetruckPassengerTexture
@@ -3756,9 +4219,13 @@ export class SceneView {
   upgradeVehicleViews() {
     for (const vehicle of LEVEL_1.vehicles) {
       const view = this.vehicleViews.get(vehicle.id);
-      const isAmbulance = Number.isInteger(vehicle.ambulanceStepLimit);
+      const isAmbulance = isAmbulanceVehicle(vehicle);
+      // The heart badge belongs to the step-limit mechanic; the sled opts in
+      // without becoming an ambulance.
+      const isStepLimited = Number.isInteger(vehicle.ambulanceStepLimit);
       const isFiretruck = vehicle?.mechanism?.type === 'firetruck' || Number.isInteger(vehicle.firetruckTimeLimit);
       const isPolice = vehicle?.mechanism?.type === 'police' || vehicle.colorIndex === 11;
+      const isChristmas = vehicle?.mechanism?.type === 'christmas' || vehicle.colorIndex === CHRISTMAS_COLOR_INDEX;
       const isLuxury = vehicle.colorIndex === LUXURY_COLOR_INDEX || vehicle.isLuxury;
       const template = isAmbulance && this.ambulanceVehicleTemplate
         ? this.ambulanceVehicleTemplate
@@ -3766,9 +4233,11 @@ export class SceneView {
           ? this.firetruckVehicleTemplate
           : (isPolice && this.policeVehicleTemplate
             ? this.policeVehicleTemplate
-            : (isLuxury && this.luxuryVehicleTemplate
-              ? this.luxuryVehicleTemplate
-              : (this.vehicleTemplates[vehicle.seats] ?? this.vehicleTemplates[10]))));
+            : (isChristmas && this.christmasVehicleTemplate
+              ? this.christmasVehicleTemplate
+              : (isLuxury && this.luxuryVehicleTemplate
+                ? this.luxuryVehicleTemplate
+                : (this.vehicleTemplates[vehicle.seats] ?? this.vehicleTemplates[10])))));
       const size = template.userData.fittedSize;
       const material = isAmbulance && this.ambulanceVehicleMaterial
         ? this.ambulanceVehicleMaterial.clone()
@@ -3776,12 +4245,15 @@ export class SceneView {
           ? this.firetruckVehicleMaterial.clone()
           : (isPolice && this.policeVehicleMaterial
             ? this.policeVehicleMaterial.clone()
-            : (isLuxury && this.luxuryVehicleMaterial
-              ? (Array.isArray(this.luxuryVehicleMaterial)
-                ? this.luxuryVehicleMaterial.map((entry) => entry.clone())
-                : this.luxuryVehicleMaterial.clone())
-              : (this.vehicleMaterials[vehicle.colorIndex] ?? this.vehicleMaterials[0]).clone())));
-      if (!isAmbulance && !isFiretruck && !isPolice && !isLuxury && vehicle.colorOverrides && Object.keys(vehicle.colorOverrides).length) {
+            : (isChristmas && this.christmasVehicleMaterial
+              ? this.christmasVehicleMaterial.clone()
+              : (isLuxury && this.luxuryVehicleMaterial
+                ? (Array.isArray(this.luxuryVehicleMaterial)
+                  ? this.luxuryVehicleMaterial.map((entry) => entry.clone())
+                  : this.luxuryVehicleMaterial.clone())
+                : (this.vehicleMaterials[vehicle.colorIndex] ?? this.vehicleMaterials[0]).clone()))));
+      if (!isAmbulance && !isFiretruck && !isPolice && !isChristmas && !isLuxury
+        && vehicle.colorOverrides && Object.keys(vehicle.colorOverrides).length) {
         forEachMaterial(material, (entry) => {
           const baseMap = this.vehicleColorTextures[vehicle.colorIndex] ?? this.vehicleColorTextures[0];
           entry.map = tintVehicleTexture(baseMap, vehicle.colorIndex, vehicle.colorOverrides);
@@ -3816,9 +4288,13 @@ export class SceneView {
           size.z / Math.max(hiddenSize.z, 0.0001)
         ));
       }
+      // The Christmas sled uses its own delivered arrow; every other family
+      // keeps the shared arrow, and turn vehicles keep the turn arrow.
       const arrowTemplate = vehicle.isTurnVehicle && this.turnArrowTemplate
         ? this.turnArrowTemplate
-        : this.arrowTemplate;
+        : (isChristmas && this.christmasArrowTemplate
+          ? this.christmasArrowTemplate
+          : this.arrowTemplate);
       const arrow = makeCenteredArrow(arrowTemplate);
       const hitRoot = new THREE.Group();
       this.applyVehicleArrowTuning(arrow, size, { isTurnVehicle: vehicle.isTurnVehicle });
@@ -3865,11 +4341,20 @@ export class SceneView {
         child.traverse((object) => { object.userData.vehicleId = vehicle.id; });
       }
       view.add(shadow, hitRoot);
-      if (isAmbulance && this.ambulanceStepBubbleTexture) {
-        const board = this.createAmbulanceStepBoard();
-        board.position.set(0, size.y + AMBULANCE_STEP_BOARD_OFFSET_Y, 0);
-        view.add(board);
-        view.userData.ambulanceStepBoard = board;
+      if (isStepLimited) {
+        // The sled's badge is its own copy under the Christmas asset root; an
+        // ambulance keeps the delivered one.
+        const bubbleTexture = isChristmas
+          ? (this.christmasStepBubbleTexture ?? this.ambulanceStepBubbleTexture)
+          : this.ambulanceStepBubbleTexture;
+        if (bubbleTexture) {
+          const board = this.createAmbulanceStepBoard(bubbleTexture);
+          board.position.set(0, size.y + AMBULANCE_STEP_BOARD_OFFSET_Y, 0);
+          view.add(board);
+          view.userData.ambulanceStepBoard = board;
+        } else {
+          view.userData.ambulanceStepBoard = null;
+        }
       } else {
         view.userData.ambulanceStepBoard = null;
       }
@@ -3931,7 +4416,7 @@ export class SceneView {
     }
   }
 
-  createAmbulanceStepBoard() {
+  createAmbulanceStepBoard(bubbleTexture) {
     const canvas = document.createElement('canvas');
     canvas.width = 192;
     canvas.height = 192;
@@ -3949,6 +4434,7 @@ export class SceneView {
     sprite.raycast = () => {};
     sprite.userData.canvas = canvas;
     sprite.userData.texture = texture;
+    sprite.userData.bubbleTexture = bubbleTexture ?? null;
     sprite.userData.remainingSteps = null;
     sprite.userData.warning = null;
     return sprite;
@@ -3964,7 +4450,8 @@ export class SceneView {
       const canvas = board.userData.canvas;
       const context = canvas.getContext('2d');
       context.clearRect(0, 0, canvas.width, canvas.height);
-      context.drawImage(this.ambulanceStepBubbleTexture.image, 8, 8, 176, 176);
+      const bubbleTexture = board.userData.bubbleTexture ?? this.ambulanceStepBubbleTexture;
+      if (bubbleTexture?.image) context.drawImage(bubbleTexture.image, 8, 8, 176, 176);
       context.font = `900 ${AMBULANCE_STEP_BOARD_FONT_SIZE}px "Poppins Branding", Arial, sans-serif`;
       context.textAlign = 'center';
       context.textBaseline = 'middle';
@@ -4136,16 +4623,50 @@ export class SceneView {
   }
 
   upgradeSpotViews() {
+    // The parking outline art is a raised 3D slab. Its top face sits above the
+    // vehicle underside, so a car parked on a spot has the outline painted
+    // across its body. Flatten the decal and sink it below the vehicle layer.
+    // Measured relative to the spot root: applyTuning moves the roots later.
+    if (!this.parkingTemplate) return;
+    const stageSpots = resolveParkingSpots();
+    const targetLocalTopY = (SCENE_TUNING.vehicleArea.y ?? stageSpots.y)
+      - stageSpots.y
+      - SPOT_OUTLINE_CLEARANCE_Y;
+    this.spotOutlines = this.spotOutlines ?? [];
     for (let index = 0; index < this.spotRoots.length; index += 1) {
       const root = this.spotRoots[index];
+      // Spots added by the editor's count slider arrive after the template
+      // loaded, so this has to be incremental -- rebuilding every root would
+      // also drop the boarded-car boards already attached to them.
+      if (this.spotOutlines[index]) continue;
       const board = this.seatCountBoards[index];
+      const outline = this.parkingTemplate.clone(true);
+      outline.scale.y *= SPOT_OUTLINE_FLATTEN_Y_SCALE;
+      outline.updateMatrixWorld(true);
+      const outlineBox = new THREE.Box3().setFromObject(outline);
+      outline.position.y += targetLocalTopY - outlineBox.max.y;
+      outline.traverse((object) => {
+        if (!object.isMesh) return;
+        object.renderOrder = SPOT_OUTLINE_RENDER_ORDER;
+        const materials = Array.isArray(object.material) ? object.material : [object.material];
+        for (const material of materials) {
+          if (!material) continue;
+          // A departing car rides the departure lane, which is lower than the
+          // bay. Depth testing would then make the paint cover that car. The
+          // bay is ground art, so it must never occlude anything drawn after it.
+          material.depthTest = false;
+          material.depthWrite = false;
+        }
+      });
       root.clear();
-      root.add(this.parkingTemplate.clone(true), board);
-      board.userData.boardMesh.material.map = this.seatCountBoardTexture;
+      root.add(outline, board);
+      this.spotOutlines[index] = outline;
+      // The generic card is untextured geometry; a per-vehicle texture is
+      // attached on demand for luxury cars only.
+      board.userData.boardMesh.material.map = null;
       board.userData.boardMesh.material.needsUpdate = true;
     }
   }
-
 
   updateSeatCountBoard(board, vehicle, time = 0) {
     const baseRemaining = Math.max(0, vehicle.seats - vehicle.boardedGroups) * LEVEL_1.groupSize;
@@ -4182,37 +4703,56 @@ export class SceneView {
     board.userData.bodyColor = bodyColor;
 
     const config = resolveCountBoardColors(vehicle);
+    // The generic card is pure geometry tinted by the vehicle colour; only the
+    // luxury badge carries authored artwork, cropped to its card box so the
+    // rounded geometry provides the outline.
     const boardTexture = vehicle.colorIndex === LUXURY_COLOR_INDEX && this.luxurySeatCountBoardTexture
       ? this.luxurySeatCountBoardTexture
-      : this.seatCountBoardTexture;
+      : null;
     if (board.userData.boardMesh.material.map !== boardTexture) {
+      if (boardTexture) cropCountBoardTextureToCard(boardTexture);
       board.userData.boardMesh.material.map = boardTexture;
       board.userData.boardMesh.material.needsUpdate = true;
     }
     // The luxury board texture already contains Unity's gold background;
     // multiplying it by the generic color swatch makes it needlessly dark.
+    // Compare against null explicitly: a luxury vehicle with no loaded atlas
+    // falls back to the geometry card, which still needs the vehicle colour.
     board.userData.boardMesh.material.color.setHex(
-      boardTexture === this.luxurySeatCountBoardTexture ? 0xffffff : config.background
+      boardTexture ? 0xffffff : config.background
     );
-    if (board.userData.isLuxuryBoard) {
+    if (board.userData.isLuxuryBoard && boardTexture) {
+      // The brightness knob only makes sense for Unity's authored gold card: it
+      // scales the artwork's colours. The geometry card has no map, so scaling
+      // its colour would just turn the badge grey.
       this.updateLuxuryMaterialTuning();
-    } else {
-      board.userData.textSprite.material.color.setHex(0xffffff);
     }
+    board.userData.textSprite.material.color.setHex(0xffffff);
 
     const canvas = board.userData.textCanvas;
     const context = canvas.getContext('2d');
+    const label = String(remaining);
+    const fontSize = resolveCountBoardFontSize(context, label);
+    const lineWidth = Math.max(1, Math.round(fontSize * COUNT_BOARD_STROKE_RATIO));
     context.clearRect(0, 0, canvas.width, canvas.height);
-    context.font = '700 112px "Poppins Branding", Arial, sans-serif';
+    context.font = `700 ${fontSize}px "Poppins Branding", Arial, sans-serif`;
     context.textAlign = 'center';
-    context.textBaseline = 'middle';
+    context.textBaseline = 'alphabetic';
     context.lineJoin = 'round';
     context.miterLimit = 2;
-    context.lineWidth = 18;
+    context.lineWidth = lineWidth;
     context.strokeStyle = config.outline;
     context.fillStyle = '#ffffff';
-    context.strokeText(String(remaining), canvas.width / 2, canvas.height / 2 + 2);
-    context.fillText(String(remaining), canvas.width / 2, canvas.height / 2 + 2);
+    // Baseline placement centres the measured ink rather than the em box, and
+    // the centre is the card box (not the atlas), so one- and two-digit counts
+    // sit on the card exactly like the game's badge.
+    const metrics = context.measureText(label);
+    const inkAscent = metrics.actualBoundingBoxAscent ?? fontSize * 0.36;
+    const inkDescent = metrics.actualBoundingBoxDescent ?? 0;
+    const cardCenterY = COUNT_BOARD_PLATE_BOX.y + COUNT_BOARD_PLATE_BOX.height / 2;
+    const baselineY = cardCenterY + (inkAscent - inkDescent) / 2;
+    context.strokeText(label, canvas.width / 2, baselineY);
+    context.fillText(label, canvas.width / 2, baselineY);
     board.userData.textTexture.needsUpdate = true;
   }
 
@@ -4290,7 +4830,13 @@ export class SceneView {
     this.applySceneLighting();
     const background = SCENE_TUNING.background;
     this.setArtworkPlaneTexture(this.backgroundPlane, getSelectedBackgroundUrl());
-    this.backgroundPlane.material.opacity = background.opacity;
+    const backgroundMaterial = this.backgroundPlane.material;
+    backgroundMaterial.opacity = background.opacity;
+    const backgroundBlended = (Number(background.opacity) || 0) < 1;
+    if (backgroundMaterial.transparent !== backgroundBlended) {
+      backgroundMaterial.transparent = backgroundBlended;
+      backgroundMaterial.needsUpdate = true;
+    }
     if (this.vehicleShadowMaterials) {
       Object.entries(this.vehicleShadowMaterials).forEach(([seats, material]) => {
         material.color.setHex(SCENE_TUNING.vehicleShadows.color ?? 0xffffff);
@@ -4337,10 +4883,21 @@ export class SceneView {
       this.loopPlane.material.opacity = conveyor.opacity;
     }
 
-    const spots = SCENE_TUNING.parkingSpots;
+    const spots = resolveParkingSpots();
+    // A spot's x is derived, never authored, when auto-centring is on: changing
+    // the count used to shove the whole row off to one side because startX was a
+    // fixed number tuned for the old count.
+    const startX = resolveParkingStartX(spots);
+    this.ensureSpotRootCount();
+    // Newly pooled spots need the outline decal before they are shown; without
+    // this they render as bare grey slabs until the scene reloads.
+    if (this.parkingTemplate) this.upgradeSpotViews();
+    const activeCount = Math.max(1, Math.floor(Number(spots.count) || 1));
     for (let i = 0; i < this.spotRoots.length; i += 1) {
+      // Roots past the count come back into view when the count grows again.
+      this.spotRoots[i].visible = i < activeCount;
       const position = this.spotPositions[i];
-      position.set(spots.startX + spots.spacing * i, spots.y, spots.z);
+      position.set(startX + spots.spacing * i, spots.y, spots.z);
       this.spotRoots[i].position.copy(position);
       this.spotRoots[i].rotation.y = deg(SCENE_TUNING.facing.parkingSpotYawDegrees);
       this.spotRoots[i].scale.set(spots.scaleX, 1, spots.scaleZ);
@@ -4350,8 +4907,21 @@ export class SceneView {
         board.position.set(boardTuning.x, 0.03, boardTuning.z);
         board.rotation.y = -deg(SCENE_TUNING.facing.parkingSpotYawDegrees);
         board.scale.set(1 / Math.max(spots.scaleX, 0.0001), 1, 1 / Math.max(spots.scaleZ, 0.0001));
-        board.userData.boardMesh.scale.set(boardTuning.width, boardTuning.depth, 1);
-        board.userData.textSprite.scale.set(0.42 * boardTuning.textScale, 0.26 * boardTuning.textScale, 1);
+        // The card geometry spans the full card box, so its depth is the card's
+        // share of the atlas height. depth alone is the whole 256-tall sheet the
+        // old textured plate used; using it here made the badge nearly square.
+        board.userData.boardMesh.scale.set(
+          boardTuning.width,
+          boardTuning.depth * (COUNT_BOARD_PLATE_BOX.height / 256),
+          1
+        );
+        // The text canvas covers the whole atlas, so the digit plane matches the
+        // plate plane exactly; the digits are centred on the card box inside.
+        board.userData.textSprite.scale.set(
+          boardTuning.width * boardTuning.textScale,
+          boardTuning.depth * boardTuning.textScale,
+          1
+        );
       }
     }
     this.applyVisibilityTuning();
@@ -4469,7 +5039,7 @@ export class SceneView {
       for (const vehicle of LEVEL_1.vehicles ?? []) {
         addPoint(mapVehicleAreaPoint(vehicle), vehiclePadding);
       }
-      const spots = SCENE_TUNING.parkingSpots ?? {};
+      const spots = resolveParkingSpots() ?? {};
       const spotCount = Math.max(0, Number(spots.count) || 0);
       const spotHalfWidth = Math.max(0.3, Math.abs(Number(spots.modelWidth) || 0.78) * Math.abs(Number(spots.scaleX) || 1) * 0.5);
       const spotHalfDepth = Math.max(0.3, Math.abs(Number(spots.modelDepth) || 1.46) * Math.abs(Number(spots.scaleZ) || 1) * 0.5);
@@ -4668,6 +5238,10 @@ export class SceneView {
         const data = vehicle.motionData;
         const total = data.backwardDuration + data.forwardDuration;
         const elapsed = vehicle.motion * total;
+        // `vehicleDeparturePath.y` is the authored height of the departure
+        // route: the preview line sits lower on screen than the parking row,
+        // on the road lane. The car must ride that same height, otherwise it
+        // visibly leaves the line. Do not substitute the vehicle layer here.
         const departureY = SCENE_TUNING.vehicleDeparturePath?.y ?? SCENE_TUNING.vehicleArea.y;
         if (elapsed < data.backwardDuration) {
           const t = evaluateUnityCurve(UNITY_CURVES.outBackward, elapsed / data.backwardDuration);
@@ -4768,6 +5342,9 @@ export class SceneView {
         this.setPassengerColor(view, slot.colorIndex);
         this.setPassengerAnimation(view, 'move', slot.index > 0 && slot.index % 2 === 0 ? 0.3 : 0);
       }
+      for (let index = snapshot.slots.length; index < this.passengerViews.length; index += 1) {
+        this.passengerViews[index].visible = false;
+      }
       this.pruneInitialEntryPathStates(activeInitialEntryKeys);
     }
 
@@ -4838,19 +5415,31 @@ export class SceneView {
     if (this.guideHand) this.guideHand.visible = false;
   }
 
-  resolveGuideHandTarget(snapshot, tuning, { requireMovable = true } = {}) {
+  // The configured id is authoritative: the guide points at that car whether or
+  // not it can currently drive out. Handing the tap to a different, unblocked car
+  // silently contradicts the id in the editor panel -- changing the id then looks
+  // like it did nothing. Pointing at a blocked car is also the honest preview:
+  // the player taps it, sees the bump, and learns the blocking rule.
+  resolveGuideHandTarget(snapshot, tuning, { requireMovable = false } = {}) {
     const vehicles = snapshot?.vehicles ?? [];
     const preferredId = Math.round(tuning.vehicleId ?? 1);
     const vehicle = vehicles.find((vehicle) => vehicle.id === preferredId);
     if (!vehicle) return null;
     const target = this.vehicleViews.get(vehicle.id);
     const isHidden = vehicle.isHidden && !vehicle.hiddenRevealed;
-    const isMovable = vehicle.state === 'parked'
+    const isSelectable = vehicle.state === 'parked'
       && !vehicle.turnRotation?.active
       && !vehicle.hiddenReveal
       && !isHidden
       && (!requireMovable || !this.lastGame || this.getVehicleBlockers(this.lastGame, vehicle.id).length === 0);
-    return isMovable && target?.visible ? target : null;
+    return isSelectable && target?.visible ? target : null;
+  }
+
+  // Both guides name a specific car, so they share one resolution: the authored
+  // vehicle, never a substitute. Kept as a thin alias so the opening-spotlight
+  // call sites stay readable.
+  resolveActionableFirstClickGuideTarget(snapshot, tuning) {
+    return this.resolveGuideHandTarget(snapshot, tuning);
   }
 
   updateGuideHand(time = 0, snapshot = this.lastSnapshot) {
@@ -4895,15 +5484,32 @@ export class SceneView {
     this.guideHand.visible = true;
   }
 
+  getFirstClickGuideTuning() {
+    return mergeStageTuning(SCENE_TUNING.firstClickGuide, this.stageOpening?.firstClickGuide);
+  }
+
+  getEntryBannerTuning() {
+    return mergeStageTuning(SCENE_TUNING.entryBanner, this.stageOpening?.entryBanner);
+  }
+
+  setStageOpening(opening = null, labels = []) {
+    this.stageOpening = opening && typeof opening === 'object' ? opening : null;
+    this.entryBannerState = null;
+    this.updateEntryBannerTuning();
+    this.updateStageLabels(labels);
+    this.resetGuideHandActivity();
+    if (this.firstClickGuideMask) this.firstClickGuideMask.root.hidden = true;
+  }
+
   getFirstClickGuidePreferredId() {
-    const guide = SCENE_TUNING.firstClickGuide ?? {};
+    const guide = this.getFirstClickGuideTuning();
     return Math.round(guide.vehicleId ?? SCENE_TUNING.vehicleGuideHand?.vehicleId ?? 1);
   }
 
   resolveFirstClickGuideTarget(snapshot = this.lastSnapshot) {
-    return this.resolveGuideHandTarget(snapshot, {
+    return this.resolveActionableFirstClickGuideTarget(snapshot, {
       vehicleId: this.getFirstClickGuidePreferredId()
-    }, { requireMovable: false });
+    });
   }
 
   getFirstClickGuideTargetId(snapshot = this.lastSnapshot) {
@@ -4911,8 +5517,14 @@ export class SceneView {
     return Number(target?.userData?.vehicleId ?? this.getFirstClickGuidePreferredId());
   }
 
+  isFirstClickGuideTarget(vehicleId, snapshot = this.lastSnapshot) {
+    if (vehicleId == null) return false;
+    if (!this.isFirstClickGuideActive(snapshot)) return false;
+    return this.getFirstClickGuideTargetId(snapshot) === Number(vehicleId);
+  }
+
   isFirstClickGuideActive(snapshot = this.lastSnapshot) {
-    const guide = SCENE_TUNING.firstClickGuide ?? {};
+    const guide = this.getFirstClickGuideTuning();
     if (!guide.enabled) return false;
     const duration = Math.max(0, Number(guide.durationSeconds) || 0);
     if (duration <= 0) return false;
@@ -4968,7 +5580,7 @@ export class SceneView {
       return;
     }
 
-    const guide = SCENE_TUNING.firstClickGuide ?? {};
+    const guide = this.getFirstClickGuideTuning();
     const maskEnabled = Boolean(Number(guide.maskEnabled));
     const padding = Math.max(0, Number(guide.holePadding) || 0);
     const configuredRadius = Number(guide.holeRadius);
@@ -5004,7 +5616,7 @@ export class SceneView {
   }
 
   isOpeningGuideActive(snapshot = this.lastSnapshot) {
-    const guide = SCENE_TUNING.firstClickGuide ?? {};
+    const guide = this.getFirstClickGuideTuning();
     return shouldBlockVehicleInput({
       firstClickGuideEnabled: guide.enabled,
       firstClickGuideDuration: guide.durationSeconds,
@@ -5243,6 +5855,7 @@ export class SceneView {
       this.releaseBoardingVisual(entry.root);
     }
     this.boardingViews.length = 0;
+    this.pendingBoardingSounds.length = 0;
     this.vehicleBoardingPulses.clear();
     this.initialEntryPathStates.clear();
     this.queueEntryPathStates.clear();
@@ -5397,19 +6010,51 @@ export class SceneView {
   }
 
   updateBoardingViews(time, passengersVisible = Boolean(SCENE_TUNING.visibility?.passengers ?? 1)) {
+    // Sounds whose offset moved them past the visual release are fired from here.
+    for (let index = this.pendingBoardingSounds.length - 1; index >= 0; index -= 1) {
+      const pending = this.pendingBoardingSounds[index];
+      if (time < pending.triggerAt) continue;
+      this.pendingBoardingSounds.splice(index, 1);
+      this.hooks.onPassengerAboard?.(pending.vehicleId);
+    }
+    const soundOffset = Number(SCENE_TUNING.passengers.aboardSoundOffset) || 0;
     for (let index = this.boardingViews.length - 1; index >= 0; index -= 1) {
       const entry = this.boardingViews[index];
+      // A car that already left the bay cannot still receive passengers. Left
+      // alone, the last group keeps walking to the now-empty spot and is drawn
+      // standing where the car used to be.
+      const vehicle = this.lastGame?.getVehicle?.(entry.vehicleId);
+      const vehicleGone = vehicle && ['departing', 'done'].includes(vehicle.state);
+      if (vehicleGone) {
+        if (!entry.soundPlayed) {
+          entry.soundPlayed = true;
+          this.hooks.onPassengerAboard?.(entry.vehicleId);
+        }
+        this.layoutRoot.remove(entry.root);
+        this.releaseBoardingVisual(entry.root);
+        this.boardingViews.splice(index, 1);
+        continue;
+      }
       entry.root.visible = passengersVisible;
       const elapsed = time - entry.startedAt - entry.delay;
       if (elapsed < 0) continue;
       const progress = THREE.MathUtils.clamp(elapsed / entry.duration, 0, 1);
       entry.root.position.lerpVectors(entry.start, entry.target, ease(progress));
+      // The aboard sound is triggered on its own timeline so the offset can
+      // advance (negative) or delay (positive) it against the arrival frame.
+      const soundAt = entry.startedAt + entry.delay + entry.duration + soundOffset;
+      if (!entry.soundPlayed && time >= soundAt) {
+        entry.soundPlayed = true;
+        this.hooks.onPassengerAboard?.(entry.vehicleId);
+      }
       if (progress < 1) continue;
       this.triggerVehicleBoardingPulse(entry.vehicleId, time);
       if (Boolean(SCENE_TUNING.visibility?.vehicles ?? 1)) {
         this.vehicleEffects?.spawnAboardSmoke(entry.vehicleId);
       }
-      this.hooks.onPassengerAboard?.(entry.vehicleId);
+      if (!entry.soundPlayed) {
+        this.pendingBoardingSounds.push({ vehicleId: entry.vehicleId, triggerAt: soundAt });
+      }
       this.layoutRoot.remove(entry.root);
       this.releaseBoardingVisual(entry.root);
       this.boardingViews.splice(index, 1);
@@ -5550,9 +6195,13 @@ export class SceneView {
     const backgroundDistance = distance + background.distanceOffset;
     const backgroundWidth = layoutBackground.width;
     const backgroundHeight = layoutBackground.height;
+    // Artwork drawn with its playfield boundary in a different place than the
+    // reference set would otherwise put the cars on the road. The slide is
+    // derived here rather than baked into tuning so switching backgrounds can
+    // never leave a stale correction behind.
     this.backgroundPlane.position.set(
       background.offsetX - cropOffsetX,
-      background.offsetY + cropOffsetZ,
+      resolveBackgroundOffsetY({ background }) + cropOffsetZ,
       -backgroundDistance
     );
     this.backgroundPlane.scale.set(
@@ -5565,7 +6214,10 @@ export class SceneView {
     this.camera.updateProjectionMatrix();
     this.camera.updateMatrixWorld(true);
     if (updateRenderer) this.renderer.setSize(width, height, false);
-    if (updateDom) this.updateEntryBannerLayout();
+    if (updateDom) {
+      this.updateEntryBannerLayout();
+      this.updateStageLabelLayout();
+    }
     if (this.fullQueueCurves) this.updateQueueCurvesForCamera();
   }
 

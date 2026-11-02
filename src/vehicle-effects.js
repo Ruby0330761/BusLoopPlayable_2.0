@@ -198,6 +198,36 @@ function hitEmitterSizeScale(tuning, emitterName) {
   return positiveScale(tuning?.sizeScale) * positiveScale(tuning?.[keys[emitterName]]);
 }
 
+// The trail effect is the one smoke emitter that had no editor entry: every
+// value here was hard-coded in UNITY_EFFECTS.smokeTrail. Each field falls back
+// to the Unity default, so an old saved tuning snapshot without this block still
+// renders exactly as before.
+function smokeTrailTuning(effectsTuning) {
+  const effect = UNITY_EFFECTS.smokeTrail;
+  const tuning = effectsTuning?.smokeTrail ?? {};
+  const number = (value, fallback, min = -Infinity) => {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? Math.max(min, parsed) : fallback;
+  };
+  const lifetimeMin = number(tuning.lifetimeMin, effect.lifetime[0], 0.01);
+  const sizeMin = number(tuning.sizeMin, effect.initialSize[0], 0.001);
+  return {
+    rateOverTime: number(tuning.rateOverTime, effect.rateOverTime, 0),
+    lifetimeMin,
+    // A max below the min would collapse the random range to a constant, so the
+    // lower bound wins and the effect keeps a spread.
+    lifetimeMax: Math.max(lifetimeMin, number(tuning.lifetimeMax, effect.lifetime[1], 0.01)),
+    sizeMin,
+    sizeMax: Math.max(sizeMin, number(tuning.sizeMax, effect.initialSize[1], 0.001)),
+    speedScale: number(tuning.speedScale, 1, 0),
+    offsetZ: number(tuning.offsetZ, effect.localPosition[2]),
+    offsetY: number(tuning.offsetY, effect.localPosition[1]),
+    spread: number(tuning.spread, 1, 0),
+    gravity: number(tuning.gravity, effect.gravity),
+    opacity: Math.min(1, number(tuning.opacity, 1, 0))
+  };
+}
+
 function disposeParticle(particle) {
   particle.sprite.parent?.remove(particle.sprite);
   particle.material.dispose();
@@ -209,12 +239,18 @@ function isVehicleMoving(vehicle) {
 }
 
 export class VehicleEffects {
-  constructor({ scene, vehicleViews, spotRoots, textures, effectsTuning = {} }) {
+  constructor({ scene, vehicleViews, spotRoots, textures, effectsTuning = {}, resolveHitContact = null }) {
     this.scene = scene;
     this.vehicleViews = vehicleViews;
     this.spotRoots = spotRoots;
     this.textures = textures;
     this.effectsTuning = effectsTuning;
+    // Container contacts arrive from the gameplay engine in level source space
+    // (the same space as vehicle x/z), not world space, and their raw point can
+    // land inside or behind the car because garage/conveyor volumes overlap a
+    // parked car. The renderer owns that mapping and clamps the point into the
+    // gap ahead of the bumper.
+    this.resolveHitContact = resolveHitContact;
     this.particles = [];
     this.previousSpotVehicles = null;
     this.lastTime = null;
@@ -249,24 +285,38 @@ export class VehicleEffects {
     }
     this.previousSpotVehicles = currentSpotVehicles;
 
-    if (snapshot.lastEvent?.type !== 'vehicle-collision-contact') {
+    // A frame can report several visual events and lastEvent only keeps the
+    // final one, so a collision overwritten by a later boarding event would
+    // lose its hit effect. Play every collision event of the frame, then the
+    // last one, with the key check preventing duplicates.
+    const frameCollisions = (snapshot.frameAudioEvents ?? [])
+      .filter((event) => event.type === 'vehicle-collision-contact');
+    if (frameCollisions.length === 0 && snapshot.lastEvent?.type !== 'vehicle-collision-contact') {
       this.lastCollisionContactKey = null;
       return;
     }
-    const key = `${snapshot.lastEvent.vehicleId}:${snapshot.lastEvent.targetId ?? 'container'}:${snapshot.lastEvent.targetContainerId ?? ''}`;
+    for (const event of frameCollisions) this.spawnHitForEvent(event);
+    if (snapshot.lastEvent?.type === 'vehicle-collision-contact') {
+      this.spawnHitForEvent(snapshot.lastEvent);
+    }
+  }
+
+  spawnHitForEvent(event) {
+    const key = `${event.vehicleId}:${event.targetId ?? 'container'}:${event.targetContainerId ?? ''}`;
     if (key === this.lastCollisionContactKey) return;
     this.lastCollisionContactKey = key;
     this.spawnHit(
-      snapshot.lastEvent.vehicleId,
-      snapshot.lastEvent.targetId,
-      snapshot.lastEvent.contactDistance,
-      snapshot.lastEvent.contactPosition
+      event.vehicleId,
+      event.targetId,
+      event.contactDistance,
+      event.contactPosition
     );
   }
 
   spawnSmokeTrails(snapshot, delta) {
     if (delta <= 0 || !this.textures.smokeTrail) return;
     const effect = UNITY_EFFECTS.smokeTrail;
+    const { rateOverTime } = smokeTrailTuning(this.effectsTuning);
     for (const vehicle of snapshot.vehicles ?? []) {
       if (!isVehicleMoving(vehicle)) {
         this.smokeTrailRemainders.delete(vehicle.id);
@@ -274,7 +324,7 @@ export class VehicleEffects {
       }
       const parent = this.vehicleViews.get(vehicle.id);
       if (!parent) continue;
-      const total = (this.smokeTrailRemainders.get(vehicle.id) ?? 0) + effect.rateOverTime * delta;
+      const total = (this.smokeTrailRemainders.get(vehicle.id) ?? 0) + rateOverTime * delta;
       const count = Math.floor(total);
       this.smokeTrailRemainders.set(vehicle.id, total - count);
       for (let index = 0; index < count; index += 1) this.spawnSmokeTrailParticle(parent, effect);
@@ -363,7 +413,28 @@ export class VehicleEffects {
     const sourcePosition = source.getWorldPosition(new THREE.Vector3());
     let origin;
     let direction;
-    if (target) {
+    // The scene resolves the impact point for every hit (nose of the blocked
+    // car). Raw contact data cannot be trusted: container contacts are in level
+    // source space and their volumes overlap a parked car, and a graph-chosen
+    // blocker can sit behind it.
+    const resolved = this.resolveHitContact
+      ? this.resolveHitContact(vehicleId, { targetId, contactPosition })
+      : null;
+    if (resolved) {
+      origin = new THREE.Vector3(
+        Number(resolved.x),
+        Number(resolved.y) || sourcePosition.y,
+        Number(resolved.z)
+      );
+      if (target) {
+        target.updateWorldMatrix(true, false);
+        direction = target.getWorldPosition(new THREE.Vector3()).sub(sourcePosition);
+      } else {
+        direction = origin.clone().sub(sourcePosition);
+      }
+      if (direction.lengthSq() <= 1e-8) direction = new THREE.Vector3(0, 0, 1);
+      else direction.normalize();
+    } else if (target) {
       target.updateWorldMatrix(true, false);
       const targetPosition = target.getWorldPosition(new THREE.Vector3());
       origin = sourcePosition.add(targetPosition).multiplyScalar(0.5);
@@ -371,8 +442,6 @@ export class VehicleEffects {
     } else if (contactPosition
       && Number.isFinite(Number(contactPosition.x))
       && Number.isFinite(Number(contactPosition.z))) {
-      // Container contacts are already calculated in world space. Reusing the
-      // exact point keeps rail/door effects aligned with the blocking volume.
       origin = new THREE.Vector3(
         Number(contactPosition.x),
         Number(contactPosition.y) || 0,
@@ -436,10 +505,18 @@ export class VehicleEffects {
 
   spawnSmokeTrailParticle(parent, effect) {
     parent.updateWorldMatrix(true, false);
-    const position = parent.localToWorld(new THREE.Vector3(...effect.localPosition));
-    position.x += THREE.MathUtils.randFloatSpread(effect.shapeScale[0] * 0.08);
-    position.y += THREE.MathUtils.randFloatSpread(effect.shapeScale[1] * 0.08);
-    position.z += THREE.MathUtils.randFloatSpread(effect.shapeScale[2] * 0.08);
+    const tuning = smokeTrailTuning(this.effectsTuning);
+    const position = parent.localToWorld(new THREE.Vector3(
+      effect.localPosition[0],
+      tuning.offsetY,
+      tuning.offsetZ
+    ));
+    const spread = effect.shapeScale[0] * 0.08 * tuning.spread;
+    const spreadY = effect.shapeScale[1] * 0.08 * tuning.spread;
+    const spreadZ = effect.shapeScale[2] * 0.08 * tuning.spread;
+    position.x += THREE.MathUtils.randFloatSpread(spread);
+    position.y += THREE.MathUtils.randFloatSpread(spreadY);
+    position.z += THREE.MathUtils.randFloatSpread(spreadZ);
     const parentRotation = parent.getWorldQuaternion(new THREE.Quaternion());
     const emitterRotation = new THREE.Quaternion().setFromEuler(new THREE.Euler(
       effect.localEuler[0] * DEG,
@@ -452,15 +529,15 @@ export class VehicleEffects {
       parent: this.scene,
       texture: this.textures.smokeTrail,
       position,
-      velocity: axis.multiplyScalar(randomRange(effect.speed)),
-      lifetime: randomRange(effect.lifetime),
-      initialSize: randomRange(effect.initialSize),
+      velocity: axis.multiplyScalar(randomRange(effect.speed) * tuning.speedScale),
+      lifetime: THREE.MathUtils.lerp(tuning.lifetimeMin, tuning.lifetimeMax, Math.random()),
+      initialSize: THREE.MathUtils.lerp(tuning.sizeMin, tuning.sizeMax, Math.random()),
       sizeOverLifetime: effect.sizeOverLifetime,
       fadeOutSpeed: 0.35,
       speedOverLifetime: [[0, 1], [1, 1]],
       moveRange: 0,
-      opacity: 1,
-      gravity: effect.gravity,
+      opacity: tuning.opacity,
+      gravity: tuning.gravity,
       color: 0xffffff,
       blending: effect.blending,
       colorOverLifetime: effect.colorOverLifetime,

@@ -32,6 +32,9 @@ export function createBasicBridge(platform, openStore) {
       },
       ready() {},
       challenge() {},
+      challengeProgress() {},
+      challengeSolved() {},
+      challengeFailed() {},
       end() { ended = true; },
       retry() { ended = false; },
       openStore(options = {}) {

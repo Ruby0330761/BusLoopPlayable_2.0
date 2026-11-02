@@ -116,10 +116,17 @@ export function normalizeRecognitionOptions(options = {}, image = null) {
   };
 }
 
+// Runtime vehicle types that must never be offered as a photograph-recognisable
+// paint. The Christmas sled carries an authored atlas instead of a body colour,
+// and its swatch (#C62828) sits close enough to red that including it relabels
+// ordinary red cars during recognition.
+const NON_RECOGNISABLE_COLOR_IDS = new Set([16]);
+
 export function buildPalette(settings = RECOGNITION_DEFAULTS) {
   const include = Array.isArray(settings.includeColorIds) ? new Set(settings.includeColorIds.map(Number)) : null;
   const exclude = new Set((settings.excludeColorIds ?? []).map(Number));
   return VEHICLE_COLOR_OPTIONS
+    .filter((color) => !NON_RECOGNISABLE_COLOR_IDS.has(color.id))
     .filter((color) => (include ? include.has(color.id) : true))
     .filter((color) => !exclude.has(color.id))
     .map((color) => {
@@ -192,6 +199,7 @@ export function nearestPaletteColor(rgb) {
   let bestScore = Number.POSITIVE_INFINITY;
   let bestDistance = Number.POSITIVE_INFINITY;
   for (const color of VEHICLE_COLOR_OPTIONS) {
+    if (NON_RECOGNISABLE_COLOR_IDS.has(color.id)) continue;
     const candidate = hexToRgb(color.css);
     const aliases = LEGACY_RECOGNITION_SWATCHES[color.id]
       ? [hexToRgb(LEGACY_RECOGNITION_SWATCHES[color.id])]

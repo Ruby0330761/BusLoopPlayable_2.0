@@ -246,6 +246,51 @@ test('Effect_Hit uses the authored container contact position', () => {
   assert.equal(first.position.z, -0.4);
 });
 
+test('every hit is placed through the scene resolver', () => {
+  // The engine reports container contacts in level source space, the same space
+  // as vehicle x/z, and garage volumes overlap the car, so the raw point can sit
+  // inside or behind the body. A graph-chosen blocker can also sit behind the
+  // car. The scene resolver therefore owns the impact point for every hit.
+  const vehicle = new THREE.Group();
+  vehicle.position.set(0, 0, 0);
+  const calls = [];
+  const effects = new VehicleEffects({
+    scene: new THREE.Group(),
+    vehicleViews: new Map([[89, vehicle]]),
+    spotRoots: [],
+    textures: { hitCircle: new THREE.Texture(), hitRound2: new THREE.Texture(), hitRound1: new THREE.Texture() },
+    resolveHitContact: (vehicleId, contact) => {
+      calls.push({ vehicleId, contact });
+      return { x: 12.5, y: 0.035, z: -4 };
+    }
+  });
+  effects.update({ time: 0, spots: [], vehicles: [], lastEvent: {
+    type: 'vehicle-collision-contact', vehicleId: 89, targetId: null,
+    targetContainerId: 4, targetContainerRole: 'wall',
+    contactDistance: 0.2, contactPosition: { x: 1.25, z: -0.4 }
+  }});
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].vehicleId, 89);
+  assert.equal(calls[0].contact.targetId, null);
+  assert.deepEqual(calls[0].contact.contactPosition, { x: 1.25, z: -0.4 });
+  const first = effects.particles[0]?.sprite;
+  assert.ok(first);
+  assert.equal(first.position.x, 12.5);
+  assert.equal(first.position.z, -4);
+  // Vehicle-to-vehicle hits resolve through the same point instead of falling
+  // back to the midpoint between the two cars, which can sit behind the car.
+  const target = new THREE.Group();
+  target.position.set(2, 0, 0);
+  effects.vehicleViews.set(90, target);
+  effects.update({ time: 0.1, spots: [], vehicles: [], lastEvent: {
+    type: 'vehicle-collision-contact', vehicleId: 89, targetId: 90,
+    contactDistance: 0.2, contactPosition: { x: 1.25, z: -0.4 }
+  }});
+  assert.equal(calls.length, 2);
+  assert.equal(calls[1].vehicleId, 89);
+  assert.equal(calls[1].contact.targetId, 90);
+});
+
 test('Effect_Hit particle size reads scene editor tuning', () => {
   const scene = new THREE.Group();
   const effects = new VehicleEffects({
@@ -286,4 +331,60 @@ test('Effect_SmokeTrail emits while vehicles move and stops when they park', () 
   const countAfterPark = effects.particles.length;
   effects.update({ time: 0.3, spots: [], vehicles: [{ id: 84, state: 'parked' }], lastEvent: { type: 'reset' } });
   assert.ok(effects.particles.length <= countAfterPark);
+});
+
+test('Effect_SmokeTrail reads its editor tuning instead of the hard-coded defaults', () => {
+  const scene = new THREE.Group();
+  const vehicle = new THREE.Group();
+  const effects = new VehicleEffects({
+    scene,
+    vehicleViews: new Map([[84, vehicle]]),
+    spotRoots: [],
+    textures: { smokeTrail: new THREE.Texture() },
+    effectsTuning: {
+      smokeTrail: {
+        rateOverTime: 100,
+        lifetimeMin: 0.5,
+        lifetimeMax: 0.5,
+        sizeMin: 0.2,
+        sizeMax: 0.2,
+        speedScale: 3,
+        offsetZ: -0.9,
+        offsetY: 0.4,
+        spread: 0,
+        gravity: 1.5,
+        opacity: 0.5
+      }
+    }
+  });
+  effects.update({ time: 0, spots: [], vehicles: [{ id: 84, state: 'moving-to-spot' }], lastEvent: { type: 'reset' } });
+  effects.update({ time: 0.1, spots: [], vehicles: [{ id: 84, state: 'moving-to-spot' }], lastEvent: { type: 'reset' } });
+  // 100 particles/second over 0.1s, not the authored 25.
+  assert.equal(effects.particles.length, 10);
+  for (const particle of effects.particles) {
+    assert.equal(Number(particle.initialSize.toFixed(3)), 0.2);
+    assert.equal(Number(particle.lifetime.toFixed(3)), 0.5);
+    assert.equal(particle.gravity, 1.5);
+    assert.equal(particle.opacity, 0.5);
+  }
+});
+
+test('Effect_SmokeTrail keeps a spread when the editor max sits below the min', () => {
+  const scene = new THREE.Group();
+  const vehicle = new THREE.Group();
+  const effects = new VehicleEffects({
+    scene,
+    vehicleViews: new Map([[84, vehicle]]),
+    spotRoots: [],
+    textures: { smokeTrail: new THREE.Texture() },
+    // A max below the min would collapse the random range to a constant.
+    effectsTuning: { smokeTrail: { lifetimeMin: 0.6, lifetimeMax: 0.2, sizeMin: 0.3, sizeMax: 0.1 } }
+  });
+  effects.update({ time: 0, spots: [], vehicles: [{ id: 84, state: 'moving-to-spot' }], lastEvent: { type: 'reset' } });
+  effects.update({ time: 0.2, spots: [], vehicles: [{ id: 84, state: 'moving-to-spot' }], lastEvent: { type: 'reset' } });
+  assert.ok(effects.particles.length > 0);
+  for (const particle of effects.particles) {
+    assert.equal(Number(particle.lifetime.toFixed(3)), 0.6);
+    assert.equal(Number(particle.initialSize.toFixed(3)), 0.3);
+  }
 });

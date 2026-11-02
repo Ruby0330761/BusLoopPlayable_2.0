@@ -1,10 +1,12 @@
 import { LEVEL_1 } from './level-data.js';
 import { SCENE_TUNING } from './scene-tuning.js';
 import { getVehicleAreaPivot } from './vehicle-area.js';
+import { resolveParkingSpots, resolveParkingStartX } from './stage-scene.js';
 import { CONVEYOR_MECHANISM_TUNING } from './conveyor-mechanism-config.js';
 import {
   UNITY_CURVES,
   UNITY_VEHICLE_MOTION,
+  buildDepartureForwardPoints,
   buildOutStationPoints,
   buildRoundedPath,
   buildToStationPoints,
@@ -45,6 +47,33 @@ function isConveyorType(value) {
   return value === CONVEYOR_BELT_CONTAINER_TYPE
     || normalized === 'conveyorbelt'
     || normalized === 'conveyor-belt';
+}
+
+/**
+ * Spread authored passenger queues across the queue lanes the belt actually shows.
+ *
+ * A level authored for a single-lane belt carries one queue, but the conveyor
+ * catalog has no single-lane artwork, so the rendered belt still presents two
+ * queue lanes. Keeping the authored one-queue shape left lane 0 holding everyone
+ * while lane 1 stayed permanently empty: "one column crowded, one column bare" on
+ * small levels, and a belt that only ever filled from one side.
+ *
+ * Passengers are dealt round-robin rather than split in halves so both lanes keep
+ * receiving the authored colour progression instead of one lane taking all the
+ * early colours. Totals are preserved exactly, so the seat/passenger parity the
+ * importer enforces still holds; only the waiting lane changes.
+ */
+export function distributeQueuesAcrossLanes(queues, laneCount) {
+  const lanes = Math.max(1, Math.floor(Number(laneCount) || 0));
+  if (!Array.isArray(queues) || queues.length === 0) return [];
+  if (lanes === 1) return [queues.flat()];
+  if (queues.length === lanes) return queues;
+  const passengers = queues.flat();
+  const distributed = Array.from({ length: lanes }, () => []);
+  passengers.forEach((passenger, index) => {
+    distributed[index % lanes].push(passenger);
+  });
+  return distributed;
 }
 
 function getConveyorMechanicConfig(level, container) {
@@ -209,18 +238,29 @@ export class BusLoopGame {
     this.boardingEventId = 0;
     this.turnVehicleEventId = 0;
     this.boardingEvents = [];
+    // Sound-relevant events for the current frame. lastEvent keeps only the
+    // final assignment, so a frame that both departs a vehicle and boards a
+    // group would silently drop the departure sound. The audio layer reads
+    // this list instead.
+    this.frameAudioEvents = [];
     this.nextPassengerId = 1;
     this.initialFillActive = true;
     this.initialFilledSlotIndices = new Set();
     this.failureConditionStartedAt = null;
     this.conveyorPathLength = Math.max(0.0001, this.level.conveyorPathLength ?? 1);
-    const authoredQueues = this.level.passengerQueues ?? [this.level.passengerSequence];
+    this.entryPercents = [...(this.entryPercents ?? this.level.entryPercents)];
+    // One entry point per visible queue lane. A level authored for a single-lane
+    // belt still renders against two-lane artwork, so distribute instead of
+    // leaving the second lane permanently empty.
+    const authoredQueues = distributeQueuesAcrossLanes(
+      this.level.passengerQueues ?? [this.level.passengerSequence],
+      this.queueLaneCount ?? Math.max(1, this.entryPercents.length)
+    );
     this.conveyorCapacity = Math.max(1, Math.floor(this.conveyorCapacity ?? this.level.conveyorCapacity));
     this.queueCapacities = authoredQueues.map((_, index) => Math.max(
       0,
       Math.floor(this.queueCapacities?.[index] ?? this.level.queueCapacity)
     ));
-    this.entryPercents = [...(this.entryPercents ?? this.level.entryPercents)];
     this.exitStart = this.exitStart ?? this.level.exitStart;
     this.exitEnd = this.exitEnd ?? this.level.exitEnd;
     this.queueSpacing = this.level.passengerQueue?.spacing ?? 0.4;
@@ -337,7 +377,7 @@ export class BusLoopGame {
       })
     };
     this.garageRefreshPending = this.mechanicState.garages.length > 0;
-    const spotCount = SCENE_TUNING.parkingSpots.count ?? this.level.spotCount;
+    const spotCount = resolveParkingSpots().count ?? this.level.spotCount;
     this.spots = Array.from({ length: spotCount }, (_, index) => ({
       index, vehicleId: null
     }));
@@ -365,7 +405,15 @@ export class BusLoopGame {
   ) {
     const sourceQueues = this.level.passengerQueues ?? [this.level.passengerSequence];
     const directEntrance = Boolean(conveyorConfig.directEntrance);
-    const authoredQueues = directEntrance ? [sourceQueues.flat()] : sourceQueues;
+    // The belt decides how many queue lanes are on screen; a level authored for a
+    // single-lane belt still has to fill both lanes of the artwork we render.
+    const requestedLaneCount = conveyorConfig.queueCapacities?.length
+      ?? conveyorConfig.entryPercents?.length
+      ?? sourceQueues.length;
+    const laneCount = directEntrance ? 1 : Math.max(1, requestedLaneCount);
+    const authoredQueues = directEntrance
+      ? [sourceQueues.flat()]
+      : distributeQueuesAcrossLanes(sourceQueues, laneCount);
     const canPreserveQueues = !conveyorConfig.resetSlots && this.directEntrance === directEntrance;
     const remainingQueues = authoredQueues.map((queue, index) => {
       if (!canPreserveQueues || !this.queues?.[index] || !this.sourceQueues?.[index]) {
@@ -378,6 +426,8 @@ export class BusLoopGame {
     const nextConveyorCapacity = Math.max(1, Math.floor(conveyorConfig.capacity ?? this.conveyorCapacity));
     const conveyorCapacityChanged = nextConveyorCapacity !== this.conveyorCapacity;
     this.directEntrance = directEntrance;
+    // Remembered so a later reset() keeps splitting passengers the same way.
+    this.queueLaneCount = laneCount;
     this.conveyorCapacity = nextConveyorCapacity;
     this.entryPercents = [...(conveyorConfig.entryPercents ?? this.entryPercents)];
     this.exitStart = conveyorConfig.exitStart ?? this.exitStart;
@@ -445,6 +495,15 @@ export class BusLoopGame {
     for (const listener of this.listeners) listener(snapshot);
   }
 
+  // Sound-relevant events are also collected per frame: lastEvent only keeps
+  // the final assignment, so a frame that both departs a vehicle and boards a
+  // group would otherwise drop the departure sound.
+  recordEvent(event) {
+    this.lastEvent = event;
+    this.frameAudioEvents.push(event);
+    return event;
+  }
+
   snapshot() {
     return {
       time: this.time,
@@ -481,6 +540,7 @@ export class BusLoopGame {
       })),
       boardingEvents: this.boardingEvents.map((event) => ({ ...event })),
       lastEvent: { ...this.lastEvent },
+      frameAudioEvents: this.frameAudioEvents.map((event) => ({ ...event })),
       remainingGroups: this.getRemainingGroups(),
       remainingByColor: this.getRemainingByColor()
     };
@@ -724,7 +784,15 @@ export class BusLoopGame {
         return { ok: false, reason: 'blocked', blockers };
       }
       const target = contact.candidate.vehicle ?? null;
-      const motion = getCollisionMotion(contact.distance);
+      // A distant blocker makes the car lunge across the board before the hit
+      // lands, which reads as "the collision happened far away". The bump
+      // travel is clamped for the ANIMATION only: blocking behaviour is
+      // unchanged, the car just meets the obstacle sooner.
+      const maxBumpDistance = Math.max(0, Number(SCENE_TUNING.collision?.maxBumpDistance) || 0);
+      const bumpDistance = maxBumpDistance > 0
+        ? Math.min(contact.distance, maxBumpDistance)
+        : contact.distance;
+      const motion = getCollisionMotion(bumpDistance);
       Object.assign(vehicle, {
         state: 'colliding', motion: 0,
         collision: {
@@ -734,6 +802,8 @@ export class BusLoopGame {
           targetContainerId: contact.candidate.type === 'container' ? contact.candidate.id : null,
           targetContainerRole: contact.candidate.role ?? null,
           contactPosition: { ...contact.position },
+          // Keep the real gap for diagnostics; the animation uses the clamp.
+          actualDistance: contact.distance,
           elapsed: 0,
           offset: 0,
           contactTriggered: false,
@@ -809,6 +879,7 @@ export class BusLoopGame {
     if (this.status !== 'playing') return;
     const delta = Math.max(0, Math.min(deltaSeconds, 0.1));
     this.time += delta;
+    this.frameAudioEvents.length = 0;
     let changed = false;
     const completedTurnVehicleIds = [];
     const garageEvents = {
@@ -929,7 +1000,7 @@ export class BusLoopGame {
           collision.contactTriggered = true;
           const target = this.getVehicle(collision.targetId);
           if (target) target.hit = { startedAt: this.time, ...collision.hitDirection };
-          this.lastEvent = {
+          this.recordEvent({
             type: 'vehicle-collision-contact',
             vehicleId: vehicle.id,
             targetId: collision.targetId,
@@ -937,7 +1008,7 @@ export class BusLoopGame {
             targetContainerRole: collision.targetContainerRole ?? null,
             contactPosition: collision.contactPosition ? { ...collision.contactPosition } : null,
             contactDistance: collision.distance
-          };
+          });
           changed = true;
         }
         if (collision.elapsed >= finishTime) {
@@ -955,13 +1026,10 @@ export class BusLoopGame {
           const departure = SCENE_TUNING.vehicleDeparturePath ?? {};
           const backwardPath = buildRoundedPath(buildOutStationPoints(target, departure), departure);
           const forwardStart = backwardPath.segments.at(-1)?.p1 ?? target;
-          const forwardPath = buildRoundedPath([
-            forwardStart,
-            {
-              x: departure.exitTargetX ?? 4.2,
-              z: forwardStart.z + (departure.exitTargetZOffset ?? 0)
-            }
-          ], departure);
+          const forwardPath = buildRoundedPath(
+            buildDepartureForwardPoints(forwardStart, departure),
+            departure
+          );
           Object.assign(vehicle, {
             state: 'departing', motion: 0,
             motionData: {
@@ -971,7 +1039,7 @@ export class BusLoopGame {
               forwardDuration: forwardPath.length / Math.max(0.001, departure.forwardSpeed ?? 10)
             }
           });
-          this.lastEvent = { type: 'vehicle-full', vehicleId: vehicle.id };
+          this.recordEvent({ type: 'vehicle-full', vehicleId: vehicle.id });
           changed = true;
         }
       } else if (vehicle.state === 'departing') {
@@ -1116,12 +1184,16 @@ export class BusLoopGame {
   }
 
   getSpotPosition(index) {
-    const spots = SCENE_TUNING.parkingSpots;
+    const spots = resolveParkingSpots();
+    // The renderer derives the row's left edge from the spot count when
+    // auto-centring is on; using the raw authored startX here would park the car
+    // beside the spot it was sent to, by half the width difference.
+    const startX = resolveParkingStartX(spots);
     const visualYaw = SCENE_TUNING.facing.parkingSpotYawDegrees ?? this.level.vehicleMotion.spotYaw;
     const sourceYaw = visualYawToVehicleAreaYaw(visualYaw);
     const approachOffset = SCENE_TUNING.vehicleDeparturePath?.backDistance ?? this.level.vehicleMotion.spotApproachOffsetZ;
     const visualCenter = {
-      x: spots.startX + spots.spacing * index,
+      x: startX + spots.spacing * index,
       z: spots.z
     };
     const visualForward = {

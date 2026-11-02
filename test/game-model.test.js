@@ -19,6 +19,7 @@ import { getVehicleAreaPivot } from '../src/vehicle-area.js';
 import { GameAudioController } from '../src/audio-controller.js';
 import {
   DreamteckClosedBSplineCurve3,
+  fitCountBoardFontSize,
   makeClosedConveyorCurve,
   shouldHideVehicleArrow
 } from '../src/scene-view.js';
@@ -236,6 +237,52 @@ test('hidden vehicle reveal audio is deduplicated per vehicle', () => {
   audio.handleGameEvent({ type: 'hidden-vehicle-revealed', vehicleId: 67 }, 1.27);
   audio.handleGameEvent({ type: 'hidden-vehicle-reveal-started', vehicleId: 68 }, 1.25);
   assert.deepEqual(played, ['hidden_vehicle_reveal', 'bus_full', 'hidden_vehicle_reveal']);
+});
+
+test('vehicle tap audio fires once per dispatched vehicle', () => {
+  const played = [];
+  const audio = new GameAudioController({ vehicle_tap: { clips: ['tap'] } });
+  audio.play = (name) => played.push(name);
+  // The event key carries the frame time, so one tap plays once even if the
+  // snapshot is handled again, while a later dispatch of the same vehicle taps
+  // again -- every click should be audible.
+  audio.handleGameEvent({ type: 'vehicle-dispatched', vehicleId: 12 }, 1.25);
+  audio.handleGameEvent({ type: 'vehicle-dispatched', vehicleId: 12 }, 1.25);
+  audio.handleGameEvent({ type: 'vehicle-dispatched', vehicleId: 12 }, 1.5);
+  audio.handleGameEvent({ type: 'vehicle-dispatched', vehicleId: 13 }, 1.5);
+  assert.deepEqual(played, ['vehicle_tap', 'vehicle_tap', 'vehicle_tap']);
+});
+
+test('vehicle tap volume scales the authored level instead of replacing it', async () => {
+  const gains = [];
+  const makeAudio = (scale) => new GameAudioController(
+    { vehicle_tap: { clips: ['tap'], volume: 0.4 } },
+    { getVolumeScale: (name) => (name === 'vehicle_tap' ? scale : 1) }
+  );
+  for (const scale of [1, 0.5, 2]) {
+    const audio = makeAudio(scale);
+    audio.unlocked = true;
+    audio.context = {
+      state: 'running',
+      destination: {},
+      createGain: () => {
+        // Mimic WebAudio: the node exposes settings on a nested `gain` param.
+        const gain = { gain: { value: 0 }, connect: () => ({}) };
+        gains.push(gain.gain);
+        return gain;
+      },
+      createBufferSource: () => {
+        const source = { connect: () => source, start: () => {}, stop: () => {} };
+        return source;
+      }
+    };
+    audio.loadClip = () => Promise.resolve({});
+    audio.play('vehicle_tap');
+    // startPlayback resolves loadClip and then assigns gain, so the value is
+    // only visible after the microtask chain drains.
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  }
+  assert.deepEqual(gains.map((gain) => Number(gain.value.toFixed(3))), [0.4, 0.2, 0.8]);
 });
 
 test('bus full audio plays each distinct event once without dropping pending events', async () => {
@@ -485,9 +532,12 @@ test('level12 initializes Unity-authored layout and counts', () => {
 });
 
 test('Unity conveyor layout catalog includes all requested prefab shapes and assets', () => {
-  assert.deepEqual(CONVEYOR_LAYOUT_IDS, ['dualQueue2', 'dualQueue3', 'dualQueue5', 'dualQueue10']);
-  assert.equal(MAX_CONVEYOR_CAPACITY, 38);
-  assert.equal(MAX_QUEUE_CAPACITY, 26);
+  assert.deepEqual(
+    CONVEYOR_LAYOUT_IDS,
+    ['dualQueue2', 'dualQueue3', 'dualQueue5', 'dualQueue10', 'starLoop', 'heartLoop', 'catLoop']
+  );
+  assert.equal(MAX_CONVEYOR_CAPACITY, 60);
+  assert.equal(MAX_QUEUE_CAPACITY, 60);
   assert.deepEqual(
     Object.fromEntries(CONVEYOR_LAYOUT_IDS.map((id) => [id, {
       conveyor: CONVEYOR_LAYOUTS[id].conveyorCapacity,
@@ -497,14 +547,41 @@ test('Unity conveyor layout catalog includes all requested prefab shapes and ass
       dualQueue2: { conveyor: 32, queues: [24, 24] },
       dualQueue3: { conveyor: 36, queues: [22, 22] },
       dualQueue5: { conveyor: 31, queues: [26, 26] },
-      dualQueue10: { conveyor: 38, queues: [26, 26] }
+      dualQueue10: { conveyor: 38, queues: [26, 26] },
+      starLoop: { conveyor: 52, queues: [52, 52] },
+      heartLoop: { conveyor: 45, queues: [45, 45] },
+      catLoop: { conveyor: 60, queues: [60, 60] }
     }
   );
-  for (const layout of Object.values(CONVEYOR_LAYOUTS)) {
+  // StarLoop and the Footage2/Footage3 heart/cat belts come from other Unity
+  // prefab variants, so their array sizes differ from the DualQueue family:
+  // only the engine minimums are asserted for them.
+  for (const [id, layout] of Object.entries(CONVEYOR_LAYOUTS)) {
     assert.equal(layout.splineType, 'bSpline');
-    assert.equal(layout.splinePoints.length, 19);
-    assert.deepEqual(layout.queuePaths.map((path) => path.length), [20, 20]);
+    if (id === 'starLoop') {
+      assert.equal(layout.splinePoints.length, 20);
+      assert.deepEqual(layout.queuePaths.map((path) => path.length), [10, 10]);
+    } else if (id === 'heartLoop') {
+      assert.equal(layout.splinePoints.length, 20);
+      assert.deepEqual(layout.queuePaths.map((path) => path.length), [15, 15]);
+    } else if (id === 'catLoop') {
+      assert.equal(layout.splinePoints.length, 27);
+      assert.deepEqual(layout.queuePaths.map((path) => path.length), [15, 15]);
+    } else {
+      assert.equal(layout.splinePoints.length, 19);
+      assert.deepEqual(layout.queuePaths.map((path) => path.length), [20, 20]);
+    }
     assert.ok(publicAssetExists(layout.assets.loopScene), layout.assets.loopScene);
+  }
+  // The initial fill only ends once every belt slot has been filled, so a
+  // layout whose queue capacities cannot cover its own belt deadlocks on the
+  // first frame and never lets a passenger reach the exit.
+  for (const [id, layout] of Object.entries(CONVEYOR_LAYOUTS)) {
+    const queueTotal = layout.queueCapacities.reduce((sum, capacity) => sum + capacity, 0);
+    assert.ok(
+      queueTotal >= layout.conveyorCapacity,
+      `${id} queue capacities ${JSON.stringify(layout.queueCapacities)} cannot fill its ${layout.conveyorCapacity} belt slots`
+    );
   }
   assert.deepEqual(CONVEYOR_LAYOUTS.dualQueue2.splinePoints, LEVEL_1.splinePoints);
   assert.deepEqual(CONVEYOR_LAYOUTS.dualQueue2.queuePaths, LEVEL_1.queuePaths);
@@ -717,8 +794,13 @@ test('Unity visual assets and tunable camera configuration are complete', () => 
   assert.equal('luxuryPassengerRotation' in SCENE_TUNING, false);
   assert.equal(SCENE_TUNING.vehicleArea.rotationDegrees, 0);
   assert.equal(SCENE_TUNING.vehicleArea.mirrorZ, true);
-  assert.equal(SCENE_TUNING.vehicleArea.positionUnitScale, 0.8);
-  assert.equal(SCENE_TUNING.vehicleArea.modelScale, 0.7);
+  // The 4-spot layout has to fit 50-car boards (lv154 is 7.1 world units wide)
+  // inside a 390x844 phone: at positionUnitScale 0.8 the formation ran edge to
+  // edge with 0px of margin, so the field is pulled in to 0.7 and the camera
+  // opens up to fitHeight 16.4.
+  assert.equal(SCENE_TUNING.vehicleArea.positionUnitScale, 0.7);
+  assert.equal(SCENE_TUNING.vehicleArea.modelScale, 0.64);
+  assert.equal(SCENE_TUNING.camera.fitHeight, 16.4);
   assert.equal(SCENE_TUNING.facing.arrowYawDegrees, 180);
   assert.equal(ACTIVE_LEVEL.assets.background, '/assets/applovin/textures/BG01_split01_q60.jpg');
   assert.match(LEVEL_1.assets.textures.parkingSpot, /Car_P2\.png$/);
@@ -788,6 +870,10 @@ test('Unity visual assets and tunable camera configuration are complete', () => 
   assert.deepEqual(LEVEL_1.assets.audio.bus_full, {
     clips: ['/assets/unity/audio/bus_full.mp3'],
     volume: 0.50023913
+  });
+  assert.deepEqual(LEVEL_1.assets.audio.vehicle_tap, {
+    clips: ['/assets/unity/audio/vehicle_tap.mp3'],
+    volume: 0.7
   });
   assert.equal(LEVEL_1.assets.passengerAnimations.move.duration, 0.60000014);
 });
@@ -1284,6 +1370,9 @@ test('editor sizing, source background ratio, and passenger shadow anchor stay w
   assert.deepEqual(SCENE_TUNING.preview, { enabled: 1, width: 1080, height: 2160 });
   assert.deepEqual(SCENE_TUNING.sourceCrop, { enabled: 1, width: 1080, height: 2160, offsetX: 0, offsetY: 211 });
   assert.equal(SCENE_TUNING.parkingSpots.count, 4);
+  // Auto-centring is on by default, so the row's left edge is derived from
+  // count and spacing; startX only matters when the toggle is off.
+  assert.equal(SCENE_TUNING.parkingSpots.autoCenter, 1);
   assert.equal(SCENE_TUNING.parkingSpots.startX, -1.5);
   assert.equal(SCENE_TUNING.parkingSpots.z, 0.55);
   assert.equal(SCENE_TUNING.parkingSpots.scaleX, 0.7);
@@ -1291,7 +1380,7 @@ test('editor sizing, source background ratio, and passenger shadow anchor stay w
   assert.equal(SCENE_TUNING.seatCountBoard.z, 1.37);
   assert.equal(SCENE_TUNING.seatCountBoard.width, 0.52);
   assert.equal(SCENE_TUNING.seatCountBoard.depth, 0.59);
-  assert.equal(SCENE_TUNING.seatCountBoard.textScale, 1.47);
+  assert.equal(SCENE_TUNING.seatCountBoard.textScale, 1);
   assert.equal(SCENE_TUNING.vehicleArrow.offsetY, 0.04);
   assert.equal(SCENE_TUNING.vehicleArrow.outlineColor, 0x373a45);
   assert.equal(SCENE_TUNING.vehicleArrow.outlineScale, 1.05);
@@ -1365,6 +1454,8 @@ test('editor sizing, source background ratio, and passenger shadow anchor stay w
   assert.deepEqual(Object.keys(SCENE_TUNING.passengerShadows), ['conveyor', 'leftQueue', 'rightQueue']);
   assert.ok(publicAssetExists('/assets/icon-android.jpg'));
   assert.ok(publicAssetExists('/assets/icon-ios.png'));
+  assert.ok(publicAssetExists('/assets/icon-crowd.jpg'));
+  assert.ok(publicAssetExists('/assets/main-loading-icon-crowd.webp'));
   assert.ok(publicAssetExists('/assets/main-guide-hand.png'));
   assert.ok(publicAssetExists('/assets/unity/ui/Main_Prop_GreenBtn.png'));
   assert.match(indexSource, /id="loading-screen"/);
@@ -1395,6 +1486,9 @@ test('editor sizing, source background ratio, and passenger shadow anchor stay w
   assert.match(stylesSource, /@keyframes cta-pulse/);
   assert.match(stylesSource, /--cta-stroke-color/);
   assert.match(stylesSource, /\.cta-button:hover \{/);
+  // The tuned CTA line height is far shorter than its font size, so a wrapped
+  // label would overlap its own lines. The button must forbid wrapping.
+  assert.match(stylesSource, /\.cta-button \{[\s\S]*?white-space: nowrap;/);
   assert.match(stylesSource, /background: transparent url\('\/assets\/unity\/ui\/Main_Prop_GreenBtn\.png'\) center \/ 100% 100% no-repeat/);
 
   const editorSource = readFileSync(join('src', 'scene-editor.js'), 'utf8');
@@ -1603,6 +1697,7 @@ test('editor sizing, source background ratio, and passenger shadow anchor stay w
   assert.match(viewSource, /hooks = \{\}/);
   assert.match(viewSource, /onPassengerAboard/);
   assert.match(viewSource, /passengers\.modelScale/);
+  assert.match(viewSource, /for \(let index = snapshot\.slots\.length; index < this\.passengerViews\.length; index \+= 1\)/);
   assert.match(viewSource, /passengers\.groupSpacing/);
   assert.match(viewSource, /slot\.position\.x = \(index - 1\.5\) \* spacing/);
   assert.doesNotMatch(viewSource, /conveyorScale/);
@@ -1612,6 +1707,24 @@ test('editor sizing, source background ratio, and passenger shadow anchor stay w
   assert.match(viewSource, /root\.add\(shadow, personPivot\)/);
   assert.match(viewSource, /slot\.add\(visual\)/);
   assert.doesNotMatch(viewSource, /person\.position\.y = SCENE_TUNING\.shadows\.y/);
+});
+
+test('passenger aboard sound offset shifts only the audio trigger, not the visual arrival', () => {
+  const viewSource = readFileSync(join('src', 'scene-view.js'), 'utf8');
+  const editorSource = readFileSync(join('src', 'scene-editor.js'), 'utf8');
+  const mainSource = readFileSync(join('src', 'main.js'), 'utf8');
+  assert.equal(SCENE_TUNING.passengers.aboardSoundOffset, -0.25);
+  assert.match(viewSource, /passengers\.aboardSoundOffset/);
+  assert.match(viewSource, /const soundAt = entry\.startedAt \+ entry\.delay \+ entry\.duration \+ soundOffset/);
+  assert.match(viewSource, /if \(!entry\.soundPlayed && time >= soundAt\)/);
+  assert.match(viewSource, /this\.pendingBoardingSounds\.push\(\{ vehicleId: entry\.vehicleId, triggerAt: soundAt \}\)/);
+  assert.match(viewSource, /this\.pendingBoardingSounds\.length = 0/);
+  assert.match(editorSource, /passengers\.aboardSoundOffset/);
+  // Saved tuning and the per-level profile snapshots still hold the previous
+  // default (0), so both caches must realign to the new one on load.
+  assert.match(mainSource, /migrateAboardSoundOffsetTuning/);
+  assert.match(mainSource, /passengers\.aboardSoundOffset = -0\.25/);
+  assert.match(mainSource, /migrateAboardSoundOffsetProfiles\(\)/);
 });
 
 test('fallback colors remain available before Unity color textures finish loading', () => {
@@ -1661,7 +1774,7 @@ test('scene view keeps luxury vehicles and passengers on their dedicated visual 
   assert.match(sceneViewSource, /LUXURY_VEHICLE_MATCAP_BRIGHTNESS = 4\.1/);
   assert.match(sceneViewSource, /emissiveMap: passengerTexture/);
   assert.match(sceneViewSource, /LUXURY_PASSENGER_CLOTH_EMISSION/);
-  assert.match(sceneViewSource, /boardTexture === this\.luxurySeatCountBoardTexture \? 0xffffff : config\.background/);
+  assert.match(sceneViewSource, /boardTexture \? 0xffffff : config\.background/);
   assert.match(sceneViewSource, /luxuryMaterial/);
   assert.match(sceneViewSource, /updateLuxuryMaterialTuning/);
   assert.match(sceneViewSource, /busloopUnityMatcapBrightness/);
@@ -1836,8 +1949,25 @@ test('vehicle path preview and shape controls are wired to scene tuning', () => 
   assert.match(viewSource, /updateVehicleDeparturePathPreview/);
   assert.match(viewSource, /buildToStationPoints\(vehicle, target, tuning\)/);
   assert.match(viewSource, /buildOutStationPoints\(target, tuning\)/);
-  assert.match(viewSource, /departureY = SCENE_TUNING\.vehicleDeparturePath\?\.y/);
+  // `vehicleDeparturePath.y` is the authored height of the departure route: the
+  // line sits lower on screen (on the road lane), so the departing car must
+  // ride that same height to stay on the line. It is not just a preview value.
+  assert.match(viewSource, /const departureY = SCENE_TUNING\.vehicleDeparturePath\?\.y \?\? SCENE_TUNING\.vehicleArea\.y;/);
   assert.match(viewSource, /mapMotionPoint\(sample\.position, departureY\)/);
+});
+
+test('departing cars ride the authored departure line height, not the vehicle layer', () => {
+  // The line is authored below the parking row so it lies on the road lane.
+  // Raising it to the vehicle layer moves it off that lane; substituting the
+  // vehicle layer for the car instead makes the car leave the line.
+  assert.equal(SCENE_TUNING.vehicleDeparturePath.y, -1);
+  assert.notEqual(SCENE_TUNING.vehicleDeparturePath.y, SCENE_TUNING.vehicleArea.y);
+  const mainSource = readFileSync(join('src', 'main.js'), 'utf8');
+  // Caches written by the build that raised the line must be put back, or the
+  // stale value keeps overriding the authored one on every load.
+  assert.match(mainSource, /migrateDepartureRouteHeightTuning/);
+  assert.match(mainSource, /migrateDepartureRouteHeightProfiles\(\)/);
+  assert.match(mainSource, /Math\.abs\(Number\(departure\.y\) - vehicleY\) > 1e-9/);
 });
 
 test('Unity bus hit clips retain their authored directional keys', () => {
@@ -1853,12 +1983,75 @@ test('seat count board displays remaining passengers, not remaining groups', () 
   const viewSource = readFileSync(join('src', 'scene-view.js'), 'utf8');
   assert.match(viewSource, /baseRemaining = Math\.max\(0, vehicle\.seats - vehicle\.boardedGroups\) \* LEVEL_1\.groupSize/);
   assert.match(viewSource, /boardingRemaining \+= 1/);
-  assert.match(viewSource, /context\.font = '700 112px "Poppins Branding", Arial, sans-serif'/);
+  assert.match(viewSource, /context\.font = `700 \$\{fontSize\}px "Poppins Branding", Arial, sans-serif`/);
   assert.match(viewSource, /snapshot\.spots\[vehicle\.spotIndex\]\?\.vehicleId === vehicle\.id/);
   assert.match(viewSource, /function resolveCountBoardColors\(vehicle\)/);
   assert.match(viewSource, /vehicle\?\.colorOverrides\?\.body/);
   assert.match(viewSource, /const config = resolveCountBoardColors\(vehicle\)/);
   assert.match(viewSource, /board\.userData\.bodyColor === bodyColor/);
+});
+
+test('seat count digits fit the card for one and two digit counts', () => {
+  // The old fixed 112px font with an 18px outline overflowed the card once a
+  // count reached 30+, so the label is measured and scaled to an ink budget.
+  const budget = {
+    maxFontSize: Number(sceneViewSource.match(/COUNT_BOARD_MAX_FONT_SIZE = (\d+)/)?.[1]),
+    inkWidth: Number(sceneViewSource.match(/COUNT_BOARD_MAX_INK_WIDTH = ([^;]+);/)?.[1]
+      ?.replace(/COUNT_BOARD_PLATE_BOX\.width \* /, '')
+      ?.replace(/COUNT_BOARD_INK_FRACTION/, '')),
+    inkFraction: Number(sceneViewSource.match(/COUNT_BOARD_INK_FRACTION = ([\d.]+)/)?.[1]),
+    plateHeight: Number(sceneViewSource.match(/COUNT_BOARD_PLATE_BOX[\s\S]*?height: (\d+)/)?.[1]),
+    strokeRatio: Number(sceneViewSource.match(/COUNT_BOARD_STROKE_RATIO = ([\d.]+)/)?.[1])
+  };
+  assert.ok(budget.maxFontSize > 0);
+  assert.ok(budget.inkFraction > 0 && budget.inkFraction <= 1);
+  assert.ok(budget.plateHeight > 0);
+  assert.ok(budget.strokeRatio > 0 && budget.strokeRatio < .2);
+  const maxInkWidth = 256 * budget.inkFraction;
+  const maxInkHeight = budget.plateHeight * budget.inkFraction;
+  const cases = [
+    { label: '8', inkWidth: 61, inkHeight: 85 },
+    { label: '30', inkWidth: 140, inkHeight: 84 },
+    { label: '40', inkWidth: 147, inkHeight: 81 },
+    { label: '100', inkWidth: 183, inkHeight: 81 }
+  ];
+  for (const { label, inkWidth, inkHeight } of cases) {
+    const fontSize = fitCountBoardFontSize(inkWidth, inkHeight, 112);
+    const stroke = fontSize * budget.strokeRatio;
+    const drawnWidth = inkWidth / 112 * fontSize + stroke;
+    const drawnHeight = inkHeight / 112 * fontSize + stroke;
+    assert.ok(fontSize <= budget.maxFontSize, `${label} must not exceed the cap`);
+    assert.ok(drawnWidth <= maxInkWidth + .001, `${label} ink width ${drawnWidth}`);
+    assert.ok(drawnHeight <= maxInkHeight + .001, `${label} ink height ${drawnHeight}`);
+  }
+  // A two-digit count is width-limited and shrinks; a single digit is not.
+  assert.ok(fitCountBoardFontSize(61, 85, 112) >= fitCountBoardFontSize(147, 81, 112));
+});
+
+test('seat count card uses a geometry rounded rect so corners stay smooth', () => {
+  const viewSource = readFileSync(join('src', 'scene-view.js'), 'utf8');
+  // The card is minified to ~40x27 screen pixels. An alpha-cut texture snapped
+  // its arc to whole pixels and read as a staircase, so the card is a real
+  // rounded-rectangle mesh resolved by the renderer's MSAA instead.
+  assert.match(viewSource, /function createCountBoardPlateGeometry\(/);
+  assert.match(viewSource, /new THREE\.ShapeGeometry\(shape, 16\)/);
+  assert.match(viewSource, /createCountBoardPlateGeometry\(COUNT_BOARD_PLATE_BOX\)/);
+  // Radius is a fraction of the card height, so the corners stay circular
+  // despite the non-uniform width/depth scale the tuning applies.
+  assert.match(viewSource, /const r = Math\.min\(radius \/ height, half\)/);
+  // The card keeps the game's wide profile; using the full atlas height made it
+  // nearly square.
+  assert.match(viewSource, /COUNT_BOARD_PLATE_BOX\.height \/ 256/);
+  // The generic card is untextured, so it is tinted by the vehicle colour;
+  // only the luxury badge keeps Unity's authored atlas.
+  assert.match(viewSource, /cropCountBoardTextureToCard/);
+  assert.match(viewSource, /boardTexture \? 0xffffff : config\.background/);
+  const clearTexels = viewSource.slice(
+    viewSource.indexOf('function clearCountBoardTexels'),
+    viewSource.indexOf('function decodeOptionalGzip')
+  );
+  assert.match(clearTexels, /data\[i\] = 255/);
+  assert.match(clearTexels, /data\[i \+ 3\] = 1/);
 });
 
 test('all UI and canvas font references prefer bundled Poppins with a package-safe fallback', () => {
@@ -1961,7 +2154,10 @@ test('vehicle departure path and full-load delay are scene-tunable', () => {
     assert.equal(vehicle.state, 'departing');
     const forwardSegment = vehicle.motionData.forwardPath.segments.at(-1);
     assert.equal(forwardSegment.p1.x, 5.5);
-    assert.ok(Math.abs(forwardSegment.p1.z - (forwardSegment.p0.z + 0.75)) < 1e-6);
+    // Positive exitTargetZOffset must send the car further down the screen.
+    // Source-space Z is mirrored, so the endpoint Z decreases for a positive
+    // visual offset; the player-visible direction is what the editor field means.
+    assert.ok(Math.abs(forwardSegment.p1.z - (forwardSegment.p0.z - 0.75)) < 1e-6);
   } finally {
     Object.assign(SCENE_TUNING.vehicleDeparturePath, original);
   }
@@ -2086,6 +2282,78 @@ test('parking spot visual scale changes do not move the authored vehicle path ce
   }
 });
 
+test('parking outlines sit below the vehicle layer so cars drive over them', () => {
+  const viewSource = readFileSync(join('src', 'scene-view.js'), 'utf8');
+  // The outline art is a raised slab; left at full thickness its top face is
+  // higher than the vehicle underside and the line paints across the body.
+  assert.match(viewSource, /SPOT_OUTLINE_FLATTEN_Y_SCALE/);
+  assert.match(viewSource, /SPOT_OUTLINE_CLEARANCE_Y/);
+  assert.match(viewSource, /outline\.scale\.y \*= SPOT_OUTLINE_FLATTEN_Y_SCALE/);
+  assert.match(viewSource, /outline\.position\.y \+= targetLocalTopY - outlineBox\.max\.y/);
+  assert.match(viewSource, /const targetLocalTopY = \(SCENE_TUNING\.vehicleArea\.y \?\? stageSpots\.y\)/);
+  // Outlines stay visible at all times; occupancy must not hide them.
+  assert.doesNotMatch(viewSource, /hideOutlineWhenOccupied/);
+  assert.doesNotMatch(viewSource, /updateSpotOutlineVisibility/);
+  assert.equal(SCENE_TUNING.parkingSpots.hideOutlineWhenOccupied, undefined);
+});
+
+test('parking outline size is fixed at the authored size and never follows the car', () => {
+  // Bays are authored fixed-size ground art. They used to stretch to whatever
+  // car stood on them, which made every empty bay shrink to the raw FBX size
+  // and made occupancy visibly change the paint. The outline now keeps its
+  // authored footprint; only its draw order is managed.
+  const viewSource = readFileSync(join('src', 'scene-view.js'), 'utf8');
+  assert.doesNotMatch(viewSource, /updateSpotOutlineSize/);
+  assert.doesNotMatch(viewSource, /measureVehicleModelSize/);
+  assert.doesNotMatch(viewSource, /measureSpotOutlineBase/);
+  assert.match(viewSource, /object\.renderOrder = SPOT_OUTLINE_RENDER_ORDER/);
+});
+
+test('parking outlines stay under every car, including cars on the departure lane', () => {
+  const viewSource = readFileSync(join('src', 'scene-view.js'), 'utf8');
+  // A departing car rides `vehicleDeparturePath.y` (below the bay), so depth
+  // testing let the painted line cover it. The bay is ground art: it must
+  // disable depth testing and draw before the vehicles instead.
+  assert.match(viewSource, /material\.depthTest = false/);
+  assert.match(viewSource, /material\.depthWrite = false/);
+  // Opaque cutout, not a transparent decal: transparent meshes are drawn after
+  // every car, which is what painted the outline across the bodies.
+  const parkingStart = viewSource.indexOf('this.parkingMaterial = new THREE.MeshStandardMaterial');
+  const parkingMaterial = viewSource.slice(parkingStart, parkingStart + 800);
+  assert.match(parkingMaterial, /alphaTest: 0\.02/);
+  assert.doesNotMatch(parkingMaterial, /transparent: true/);
+});
+
+test('seat count badges render under the cars like the bay paint', () => {
+  const viewSource = readFileSync(join('src', 'scene-view.js'), 'utf8');
+  const boardSource = viewSource.slice(
+    viewSource.indexOf('  createSeatCountBoard() {'),
+    viewSource.indexOf('async loadUnityAssets()')
+  );
+  // Same failure mode as the bay outline: a blended material is always drawn
+  // after every car, so the badge covered the car parked on it.
+  assert.doesNotMatch(boardSource, /transparent: true/);
+  // SpriteMaterial is transparent by default; leaving it unset keeps the digits
+  // in the blended pass even when the plane below is opaque.
+  assert.match(boardSource, /transparent: false/);
+  assert.match(boardSource, /alphaTest: 0\.02/);
+  assert.match(boardSource, /renderOrder = SEAT_COUNT_BOARD_RENDER_ORDER/);
+  // Ground UI must never be occluded by the vehicle layer either.
+  assert.match(boardSource, /depthTest: false/);
+  const outlineOrder = Number(viewSource.match(/SPOT_OUTLINE_RENDER_ORDER = (-?\d+)/)?.[1]);
+  const boardOrder = Number(viewSource.match(/SEAT_COUNT_BOARD_RENDER_ORDER = (-?\d+)/)?.[1]);
+  assert.ok(boardOrder > outlineOrder, 'badge should paint above the bay outline');
+  assert.ok(boardOrder < 0, 'badge should still paint before the vehicle layer');
+});
+
+test('boarding passengers are cleared once their car has left the bay', () => {
+  const viewSource = readFileSync(join('src', 'scene-view.js'), 'utf8');
+  // A car that already departed cannot still receive passengers; otherwise the
+  // last group keeps walking to the empty spot and stands there.
+  assert.match(viewSource, /\['departing', 'done'\]\.includes\(vehicle\.state\)/);
+  assert.match(viewSource, /if \(vehicleGone\) \{/);
+});
+
 test('main thread saves and restores scene tuning from localStorage', () => {
   const mainSource = readFileSync(join('src', 'main.js'), 'utf8');
   const sceneEditorSource = readFileSync(join('src', 'scene-editor.js'), 'utf8');
@@ -2175,8 +2443,14 @@ test('main thread saves and restores scene tuning from localStorage', () => {
   assert.match(mainSource, /path === 'conveyorLayout\.selected'/);
   assert.match(mainSource, /path === 'spatialConveyor\.capacity'/);
   assert.match(mainSource, /initializeGameQueues\(\{ resetSlots: conveyorStructureChanged \}\)/);
-  assert.match(mainSource, /const mechanismTypes = getMechanismTypesForLevels\(sessionLevels\)/);
-  assert.match(mainSource, /createGameAudioController\(\{[\s\S]*sessionLevels\.map\(\(level\) => level\.assets\?\.audio \?\? \{\}\)[\s\S]*getMechanismAudioConfig\(mechanismTypes\)[\s\S]*\}\)/);
+  // Mechanism art/audio must cover every level the session can reach, which now
+  // includes the maps offered by a post-stage picker.
+  assert.match(mainSource, /const allSessionLevels = \[\.\.\.sessionLevels, \.\.\.choiceOptionLevels\]/);
+  assert.match(mainSource, /const mechanismTypes = getMechanismTypesForLevels\(allSessionLevels\)/);
+  assert.match(mainSource, /createGameAudioController\(\{[\s\S]*allSessionLevels\.map\(\(level\) => level\.assets\?\.audio \?\? \{\}\)[\s\S]*getMechanismAudioConfig\(mechanismTypes\)[\s\S]*\}\)/);
+  // Every sound-relevant event of the frame must be played, not only lastEvent:
+  // a frame can both depart a vehicle and board a group.
+  assert.match(mainSource, /for \(const event of state\.frameAudioEvents \?\? \[\]\) audio\.handleGameEvent\(event, state\.time\)/);
   assert.match(mainSource, /audio\.handleGameEvent\(state\.lastEvent, state\.time\)/);
   assert.match(mainSource, /audio\.playPassengerUp\(\)/);
   assert.match(mainSource, /audio\.unlock\(\)/);
@@ -2202,8 +2476,14 @@ test('main thread saves and restores scene tuning from localStorage', () => {
   assert.doesNotMatch(mainSource, /INSTALL_GATE_AFTER_SUCCESSFUL_OPERATIONS_ENABLED/);
   assert.match(mainSource, /function applyCtaTuning/);
   assert.match(mainSource, /ctaButton\.hidden = !Boolean\(cta\.enabled \?\? 1\)/);
+  // A wider fallback face on some Windows engines must shrink the CTA label
+  // instead of letting it wrap onto overlapping lines.
+  assert.match(mainSource, /function fitCtaLabel\(\{ fontSize, fontHeight, uiScale, availableWidth \}\)/);
+  assert.match(mainSource, /const ratio = availableWidth \/ contentWidth \* 0\.98/);
+  assert.match(mainSource, /const fitted = fitCtaLabel\(\{/);
+  assert.match(mainSource, /availableWidth: renderedWidth - paddingX \* uiScale \* 2/);
   assert.match(mainSource, /showResultOverlay\(state\.lastEvent\.reason === 'ambulance-exceed-step' \? 'Ambulance Failed' : 'Game Over'\)/);
-  assert.match(mainSource, /^\s*showResultOverlay\('You Win!'\);/m);
+  assert.match(mainSource, /showResultOverlay\('You Win!', \{ failed: false \}\)/);
   assert.match(mainSource, /gameOverTitle\.textContent = title/);
   assert.doesNotMatch(mainSource, /function getGameOverTitleFontFamily/);
   assert.match(mainSource, /function InstallFullGame/);
@@ -2227,16 +2507,17 @@ test('main thread saves and restores scene tuning from localStorage', () => {
   assert.match(mainSource, /platformBridge\?\.openStore\(\{ ios: url, android: url \}\)/);
   assert.doesNotMatch(mainSource, /window\.open/);
   assert.match(mainSource, /platformBridge\?\.openStore\(\{ ios: url, android: url \}\)/);
-  assert.match(mainSource, /createLevelSession\(sessionLevels\)/);
+  assert.match(mainSource, /createLevelSession\(sessionLevels, \{\s*\n\s*choices: sessionChoices\.map\(\(choice\) => choice\?\.options \?\? null\)\s*\n\s*\}\)/);
   assert.doesNotMatch(mainSource, /let numberCountBus = 0/);
   assert.doesNotMatch(mainSource, /let isFinish = false/);
   assert.doesNotMatch(mainSource, /countedInstallVehicles = new Set\(\)/);
   assert.match(mainSource, /INSTALL_GATE_VEHICLE_STATES = new Set\(\['at-spot', 'boarding-final', 'departing', 'done'\]\)/);
   assert.match(mainSource, /const markInstallVehicle = \(vehicleId\) => \{/);
-  assert.match(mainSource, /levelSession\.recordSuccessfulVehicle\(vehicleId, getSuccessfulOperationThreshold\(\)\)/);
+  assert.match(mainSource, /const threshold = Math\.max\(1, getSuccessfulOperationThreshold\(\)\)/);
+  assert.match(mainSource, /levelSession\.recordSuccessfulVehicle\(vehicleId, threshold\)/);
   assert.match(mainSource, /const handleVehicleClick = \(vehicleId\) => \{/);
   assert.match(mainSource, /const result = game\.clickVehicle\(vehicleId\)/);
-  assert.match(mainSource, /^\s*if \(result\?\.ok && markInstallVehicle\(vehicleId\)\) InstallFullGame\(\);/m);
+  assert.match(mainSource, /^\s*if \(result\?\.ok\) \{\n\s*startBackgroundMusic\(\);\n\s*if \(markInstallVehicle\(vehicleId\)\) InstallFullGame\(\);/m);
   assert.match(mainSource, /function updateInstallGate\(state\)/);
   assert.match(mainSource, /for \(const vehicle of state\.vehicles \?\? \[\]\)/);
   assert.match(mainSource, /levelSession\.hasCountedVehicle\(vehicle\.id\)/);
@@ -2268,7 +2549,7 @@ test('main thread saves and restores scene tuning from localStorage', () => {
   assert.match(checkSource, /data-only offline request loader present/);
   assert.match(checkSource, /inline binary data assets present/);
   assert.match(checkSource, /branding overlay markup present/);
-  assert.match(checkSource, /selected branding Icon and small Logo images inlined/);
+  assert.match(checkSource, /selected branding Icon and Logo images inlined/);
   assert.match(checkSource, /unselected branding Icon omitted/);
   assert.match(checkSource, /legacy large branding Logo omitted/);
   assert.match(checkSource, /no (?:bundled|external) font/i);
@@ -2298,6 +2579,8 @@ test('Icon, Logo, and text overlays expose independent responsive editor control
   assert.equal(existsSync(join('public', 'assets', 'icon-android.jpg')), true);
   assert.equal(existsSync(join('public', 'assets', 'icon-ios.png')), true);
   assert.equal(existsSync(join('public', 'assets', 'main-loading-icon-small.png')), true);
+  assert.equal(existsSync(join('public', 'assets', 'icon-crowd.jpg')), true);
+  assert.equal(existsSync(join('public', 'assets', 'main-loading-icon-crowd.webp')), true);
   assert.match(indexSource, /id="branding-overlay"/);
   assert.match(indexSource, /id="branding-icon"[^>]+src="\/assets\/icon-android\.jpg"/);
   assert.match(indexSource, /id="branding-logo"[^>]+src="\/assets\/main-loading-icon-small\.png"/);
@@ -2313,14 +2596,17 @@ test('Icon, Logo, and text overlays expose independent responsive editor control
     }
   }
   assert.equal(SCENE_TUNING.branding.icon.asset, '/assets/icon-android.jpg');
+  assert.equal(SCENE_TUNING.branding.logo.asset, '/assets/main-loading-icon-small.png');
   assert.equal(typeof SCENE_TUNING.branding.text.content, 'string');
+  assert.equal(existsSync(join('public', 'assets', 'icon-crowd.jpg')), true);
+  assert.equal(existsSync(join('public', 'assets', 'main-loading-icon-crowd.webp')), true);
 
   assert.match(editorSource, /Icon\/Logo\\u8c03\\u6574/);
   assert.match(editorSource, /preview\.width/);
   assert.match(editorSource, /preview\.height/);
   for (const path of [
     'branding.icon.asset', 'branding.icon.enabled', 'branding.icon.locked', 'branding.icon.x', 'branding.icon.y',
-    'branding.icon.width', 'branding.icon.height', 'branding.logo.enabled', 'branding.logo.locked',
+    'branding.icon.width', 'branding.icon.height', 'branding.logo.asset', 'branding.logo.enabled', 'branding.logo.locked',
     'branding.logo.x', 'branding.logo.y', 'branding.logo.width', 'branding.logo.height',
     'branding.text.enabled', 'branding.text.locked', 'branding.text.content', 'branding.text.x',
     'branding.text.y', 'branding.text.width', 'branding.text.height'
@@ -2331,12 +2617,20 @@ test('Icon, Logo, and text overlays expose independent responsive editor control
   assert.match(editorSource, /class="editor-text" type="text"/);
   assert.match(editorSource, /\/assets\/icon-android\.jpg/);
   assert.match(editorSource, /\/assets\/icon-ios\.png/);
+  assert.match(editorSource, /\/assets\/icon-crowd\.jpg/);
+  assert.match(editorSource, /\/assets\/main-loading-icon-crowd\.webp/);
 
   assert.match(mainSource, /function getBrandingStageMetrics/);
   assert.match(mainSource, /const positionScaleX = stageWidth \/ designWidth/);
   assert.match(mainSource, /const positionScaleY = stageHeight \/ designHeight/);
   assert.match(mainSource, /function applyBrandingTuning/);
   assert.match(mainSource, /gameOverLogo\.src = brandingItems\.logo\.src/);
+  assert.match(mainSource, /key === 'icon' \|\| key === 'logo'/);
+  assert.match(mainSource, /if \(key === 'logo' && gameOverLogo\) gameOverLogo\.src = element\.src/);
+  assert.match(mainSource, /function applyLoadingBranding\(\)/);
+  assert.match(mainSource, /branding\?\.loading/);
+  assert.match(indexSource, /id="loading-icon"/);
+  assert.match(indexSource, /id="loading-title"/);
   assert.match(mainSource, /function fitBrandingText/);
   assert.match(mainSource, /function bindBrandingDrag/);
   assert.match(mainSource, /if \(EDITOR_ENABLED\) \{\s+for \(const \[key, element\] of Object\.entries\(brandingItems\)\)/);
@@ -2385,8 +2679,8 @@ test('successful operation store redirect uses the baked threshold and remains e
   assert.equal(SCENE_TUNING.installGate.successfulOperationThreshold, 64);
   assert.match(editorSource, /installGate\.successfulOperationThreshold/);
   assert.match(mainSource, /SCENE_TUNING\.installGate\?\.successfulOperationThreshold/);
-  assert.match(mainSource, /^\s*if \(result\?\.ok && markInstallVehicle\(vehicleId\)\) InstallFullGame\(\);/m);
-  assert.match(mainSource, /levelSession\.recordSuccessfulVehicle\(vehicleId, getSuccessfulOperationThreshold\(\)\)/);
+  assert.match(mainSource, /^\s*if \(result\?\.ok\) \{\n\s*startBackgroundMusic\(\);\n\s*if \(markInstallVehicle\(vehicleId\)\) InstallFullGame\(\);/m);
+  assert.match(mainSource, /levelSession\.recordSuccessfulVehicle\(vehicleId, threshold\)/);
   assert.doesNotMatch(mainSource, /INSTALL_GATE_AFTER_SUCCESSFUL_OPERATIONS_ENABLED/);
 });
 
@@ -2408,4 +2702,241 @@ test('scene visibility controls cover vehicles, passengers, and Play Now', () =>
   assert.match(viewSource, /entry\.root\.visible = passengersVisible/);
   assert.match(viewSource, /if \(!this\.inputEnabled \|\| this\.isVehicleInputLocked\(\) \|\| !Boolean\(SCENE_TUNING\.visibility\?\.vehicles \?\? 1\)\) return/);
   assert.match(stylesSource, /\.cta-button\[hidden\]\s*\{\s*display:\s*none;\s*\}/);
+});
+
+test('frames keep every sound event: a departure and a boarding in one frame both survive', () => {
+  const game = new BusLoopGame(LEVEL_1);
+  game.initializeQueues([10, 10], 0.4, [4, 4], LEVEL_1.conveyorPathLength ?? 1, {
+    layoutId: 'dualQueue2',
+    capacity: LEVEL_1.conveyorCapacity,
+    queueCapacities: [10, 10],
+    entryPercents: [...(LEVEL_1.entryPercents ?? [])],
+    exitStart: LEVEL_1.exitStart,
+    exitEnd: LEVEL_1.exitEnd,
+    directEntrance: false,
+    initiallyFull: false
+  });
+  // lastEvent is a single slot; frameAudioEvents accumulates every sound
+  // event so the audio layer never loses an earlier one to a later overwrite.
+  game.lastEvent = { type: 'reset' };
+  game.frameAudioEvents.length = 0;
+  const departed = game.recordEvent({ type: 'vehicle-full', vehicleId: 1 });
+  const boarded = game.recordEvent({ type: 'group-boarded', vehicleId: 1, colorIndex: 0, boardedGroups: 1 });
+  assert.equal(game.lastEvent.type, 'group-boarded');
+  assert.equal(game.lastEvent, boarded);
+  assert.equal(departed.type, 'vehicle-full');
+  assert.deepEqual(
+    game.frameAudioEvents.map((event) => event.type),
+    ['vehicle-full', 'group-boarded']
+  );
+  // The snapshot must expose the list so the runtime can play all of them.
+  assert.deepEqual(
+    game.snapshot().frameAudioEvents.map((event) => event.type),
+    ['vehicle-full', 'group-boarded']
+  );
+  // And update() starts each frame with a clean list.
+  game.update(0.05);
+  assert.ok(!game.frameAudioEvents.some((event) => event.type === 'vehicle-full' && event.vehicleId === 1 && game.time > 0));
+});
+
+test('sound delay tuning is wired from the editor through the audio controller', () => {
+  const audioSource = readFileSync(join('src', 'audio-controller.js'), 'utf8');
+  const mainSource = readFileSync(join('src', 'main.js'), 'utf8');
+  const editorSource = readFileSync(join('src', 'scene-editor.js'), 'utf8');
+  assert.deepEqual(SCENE_TUNING.audio, {
+    busHitDelay: 0,
+    busFullDelay: 0,
+    passengerUpDelay: 0,
+    vehicleTapDelay: 0,
+    vehicleTapVolume: 1,
+    // The looping track is off until a level enables it; the asset, level and
+    // fade live here so the editor can tune them per level.
+    bgm: {
+      enabled: 0,
+      asset: '/assets/unity/audio/christmas_bgm.mp3',
+      volume: 0.42,
+      fadeInSeconds: 0.8
+    }
+  });
+  // Controller: per-sound delay lookup and a scheduled start.
+  assert.match(audioSource, /getDelay = null/);
+  assert.match(audioSource, /const delay = Math\.max\(0, Number\(this\.getDelay\?\.\(name\)\) \|\| 0\)/);
+  assert.match(audioSource, /source\.start\(delaySeconds > 0 \? context\.currentTime \+ delaySeconds : 0\)/);
+  // Runtime: the three tuning fields map onto the three clip names.
+  assert.match(mainSource, /getDelay: \(name\) => \{/);
+  assert.match(mainSource, /if \(name === 'bus_hit'\) return tuning\.busHitDelay \?\? 0/);
+  assert.match(mainSource, /if \(name === 'bus_full'\) return tuning\.busFullDelay \?\? 0/);
+  assert.match(mainSource, /if \(name === 'passenger_up'\) return tuning\.passengerUpDelay \?\? 0/);
+  // Editor fields exist with the positive-delay range.
+  assert.match(editorSource, /'audio\.busFullDelay', 0, 2, 0\.01/);
+  assert.match(editorSource, /'audio\.busHitDelay', 0, 2, 0\.01/);
+  assert.match(editorSource, /'audio\.passengerUpDelay', 0, 2, 0\.01/);
+  // The tap sound follows the same delay path plus a volume multiplier.
+  assert.match(mainSource, /if \(name === 'vehicle_tap'\) return tuning\.vehicleTapDelay \?\? 0/);
+  assert.match(mainSource, /getVolumeScale: \(name\) => \{/);
+  assert.match(mainSource, /tuning\.vehicleTapVolume/);
+  assert.match(editorSource, /'audio\.vehicleTapDelay', 0, 2, 0\.01/);
+  assert.match(editorSource, /'audio\.vehicleTapVolume', 0, 2, 0\.01/);
+});
+
+test('collision bump distance is capped for animation while the real gap is preserved', () => {
+  const original = { ...SCENE_TUNING.collision };
+  try {
+    const game = new BusLoopGame(LEVEL_1);
+    game.initializeQueues([10, 10], 0.4, [4, 4], LEVEL_1.conveyorPathLength ?? 1, {
+      layoutId: 'dualQueue2',
+      capacity: LEVEL_1.conveyorCapacity,
+      queueCapacities: [10, 10],
+      entryPercents: [...(LEVEL_1.entryPercents ?? [])],
+      exitStart: LEVEL_1.exitStart,
+      exitEnd: LEVEL_1.exitEnd,
+      directEntrance: false,
+      initiallyFull: false
+    });
+    // The cap only affects the bump animation; blocking behaviour is unchanged.
+    SCENE_TUNING.collision.maxBumpDistance = 0.5;
+    assert.equal(SCENE_TUNING.collision.maxBumpDistance, 0.5);
+    const source = readFileSync(join('src', 'game-model.js'), 'utf8');
+    assert.match(source, /const maxBumpDistance = Math\.max\(0, Number\(SCENE_TUNING\.collision\?\.maxBumpDistance\) \|\| 0\)/);
+    assert.match(source, /const bumpDistance = maxBumpDistance > 0[\s\S]*?Math\.min\(contact\.distance, maxBumpDistance\)/);
+    assert.match(source, /const motion = getCollisionMotion\(bumpDistance\)/);
+    // The true obstacle gap stays available for diagnostics and future tuning.
+    assert.match(source, /actualDistance: contact\.distance/);
+  } finally {
+    Object.assign(SCENE_TUNING.collision, original);
+  }
+});
+
+test('hit particles fire for every collision event in a frame, not only lastEvent', () => {
+  const effects = readFileSync(join('src', 'vehicle-effects.js'), 'utf8');
+  assert.match(effects, /const frameCollisions = \(snapshot\.frameAudioEvents \?\? \[\]\)/);
+  assert.match(effects, /\.filter\(\(event\) => event\.type === 'vehicle-collision-contact'\)/);
+  assert.match(effects, /for \(const event of frameCollisions\) this\.spawnHitForEvent\(event\)/);
+  assert.match(effects, /spawnHitForEvent\(event\) \{/);
+  // Duplicate suppression still applies across the frame list and lastEvent.
+  assert.match(effects, /if \(key === this\.lastCollisionContactKey\) return;/);
+});
+
+test('parking row stays centred on x=0 for every count and spacing when auto-centring is on', async () => {
+  const { resolveParkingStartX } = await import('../src/stage-scene.js');
+  for (const count of [1, 2, 3, 4, 5, 6, 8]) {
+    for (const spacing of [0.5, 0.95, 1.4]) {
+      const startX = resolveParkingStartX({ count, spacing, autoCenter: 1, startX: -1.5 });
+      const centre = startX + ((count - 1) * spacing) / 2;
+      assert.ok(
+        Math.abs(centre) < 1e-9,
+        `count ${count} spacing ${spacing} should centre on 0, got ${centre}`
+      );
+    }
+  }
+  // Turning the toggle off restores the hand-authored edge.
+  assert.equal(
+    resolveParkingStartX({ count: 4, spacing: 0.95, autoCenter: 0, startX: -1.5 }),
+    -1.5
+  );
+});
+
+test('a stage pins its own parking spot count for both the scene and the game model', async () => {
+  const { resolveParkingSpots, resolveParkingStartX, setActiveStageScene } = await import('../src/stage-scene.js');
+  try {
+    // No stage: the global tuning wins, so single-level playables are unchanged.
+    setActiveStageScene(null);
+    assert.equal(resolveParkingSpots().count, SCENE_TUNING.parkingSpots.count);
+
+    // Q22 stage 1 opens with six spots and stage 2 runs the four-spot hard board.
+    setActiveStageScene({ parkingSpots: { count: 6 } });
+    assert.equal(resolveParkingSpots().count, 6);
+    const sixStartX = resolveParkingStartX(resolveParkingSpots());
+    setActiveStageScene({ parkingSpots: { count: 4 } });
+    assert.equal(resolveParkingSpots().count, 4);
+    const fourStartX = resolveParkingStartX(resolveParkingSpots());
+    // Each count centres its own row, so the left edge differs between stages.
+    const spacing = SCENE_TUNING.parkingSpots.spacing;
+    assert.notEqual(sixStartX, fourStartX);
+    assert.ok(Math.abs(sixStartX + (5 * spacing) / 2) < 1e-9);
+    assert.ok(Math.abs(fourStartX + (3 * spacing) / 2) < 1e-9);
+
+    // A stage without the key must not erase the global count.
+    setActiveStageScene({ conveyorLayout: 'dualQueue2' });
+    assert.equal(resolveParkingSpots().count, SCENE_TUNING.parkingSpots.count);
+  } finally {
+    setActiveStageScene(null);
+  }
+});
+
+test('parking spot roots follow the count without a reload', async () => {
+  const viewSource = readFileSync('src/scene-view.js', 'utf8');
+  const editorSource = readFileSync('src/scene-editor.js', 'utf8');
+  // Roots are pooled on demand instead of being built once from the count.
+  assert.match(viewSource, /ensureSpotRootCount\(\)/);
+  assert.match(viewSource, /while \(this\.spotRoots\.length < desired\)/);
+  // applyTuning has to call it, or the editor slider stays invisible until reload.
+  const layoutBlock = viewSource.slice(
+    viewSource.indexOf('const startX = resolveParkingStartX(spots);'),
+    viewSource.indexOf('const startX = resolveParkingStartX(spots);') + 200
+  );
+  assert.match(layoutBlock, /this\.ensureSpotRootCount\(\)/, 'applyTuning must resize the spot pool');
+  assert.match(viewSource, /this\.spotRoots\[i\]\.visible = i < activeCount/);
+  assert.match(editorSource, /parkingSpots\.autoCenter', 0, 1, 1, null, 'toggle'/);
+});
+
+test('a single-queue level fills every visible queue lane', async () => {
+  // A-1 is authored for ConveyorBelt1 (one queue) but the rendered two-lane
+  // artwork shows two lanes. Keeping the authored shape left one lane empty, so
+  // the operator saw one crowded column beside a bare one and the belt only ever
+  // filled from one side.
+  const { distributeQueuesAcrossLanes } = await import('../src/game-model.js');
+
+  // Round-robin keeps the authored colour progression in both lanes, so neither
+  // column ends up holding only one part of the colour sequence.
+  const distributed = distributeQueuesAcrossLanes([[0, 0, 4, 4, 5, 5]], 2);
+  assert.equal(distributed.length, 2);
+  assert.deepEqual(distributed.map((lane) => lane.length), [3, 3]);
+  assert.deepEqual(distributed[0], [0, 4, 5]);
+  assert.deepEqual(distributed[1], [0, 4, 5]);
+  // No passenger may be lost or duplicated by the split.
+  assert.deepEqual(
+    distributed.flat().sort((a, b) => a - b),
+    [0, 0, 4, 4, 5, 5].sort((a, b) => a - b),
+    'the split must preserve the passenger multiset'
+  );
+
+  // Already-matching lane counts pass through untouched.
+  const paired = [[1, 2], [3, 4]];
+  assert.equal(distributeQueuesAcrossLanes(paired, 2), paired);
+  // A single lane collapses everything into one column.
+  assert.deepEqual(distributeQueuesAcrossLanes([[1], [2]], 1), [[1, 2]]);
+  // Degenerate input must not throw.
+  assert.deepEqual(distributeQueuesAcrossLanes([], 2), []);
+
+  const base = LEVEL_CATALOG.level5;
+  const level = {
+    ...JSON.parse(JSON.stringify(base)),
+    key: 'level1001',
+    passengerQueues: [Array.from({ length: 60 }, (_, index) => index % 3)],
+    entryPercents: [0, 0.421]
+  };
+  const game = new BusLoopGame(level);
+  game.initializeQueues([22, 20], 0.4, [10, 10], level.conveyorPathLength, {
+    capacity: 36,
+    queueCapacities: [22, 20],
+    entryPercents: level.entryPercents,
+    exitStart: 0.605,
+    exitEnd: 0.78,
+    directEntrance: false
+  });
+  const snapshot = game.snapshot();
+  // Both lanes receive passengers immediately instead of one sitting empty.
+  assert.ok(snapshot.queues.length === 2);
+  assert.ok(snapshot.queues[1].length > 0, 'the second lane must not start empty');
+  const waiting = game.queues.reduce((sum, queue) => sum + queue.length, 0)
+    + game.sourceQueues.reduce((sum, queue) => sum + queue.length, 0);
+  assert.equal(waiting, 60, 'no passenger may be lost or duplicated');
+
+  // Both belt entry points must actually feed the belt.
+  for (let step = 0; step < 20 * 30; step += 1) game.update(0.05);
+  const filled = game.snapshot().slots.filter((slot) => slot.colorIndex !== null);
+  const usedEntries = new Set(filled.map((slot) => slot.entryIndex));
+  assert.equal(filled.length, 36, 'the belt should be full');
+  assert.deepEqual([...usedEntries].sort(), [0, 1], 'both entry points must feed the belt');
 });

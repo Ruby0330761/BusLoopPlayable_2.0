@@ -1,4 +1,5 @@
 const MECHANISM_ROOT = '/assets/unity/mechanisms';
+const CHRISTMAS_ROOT = '/assets/unity/christmas';
 
 export const MECHANISM_TYPES = Object.freeze({
   ordinaryConveyor: 'ordinaryConveyor',
@@ -8,6 +9,7 @@ export const MECHANISM_TYPES = Object.freeze({
   ambulance: 'ambulance',
   firetruck: 'firetruck',
   police: 'police',
+  christmas: 'christmas',
   turnVehicle: 'turnVehicle',
   hiddenVehicle: 'hiddenVehicle',
   garage: 'garage',
@@ -22,6 +24,7 @@ export const MECHANISM_TYPE_ORDER = Object.freeze([
   MECHANISM_TYPES.ambulance,
   MECHANISM_TYPES.firetruck,
   MECHANISM_TYPES.police,
+  MECHANISM_TYPES.christmas,
   MECHANISM_TYPES.turnVehicle,
   MECHANISM_TYPES.hiddenVehicle,
   MECHANISM_TYPES.garage,
@@ -33,7 +36,10 @@ export const MECHANISM_RESOURCE_MANIFEST = Object.freeze({
     '/assets/unity/conveyors/Loop_02_q80.webp',
     '/assets/unity/conveyors/Loop_03_q80.webp',
     '/assets/unity/conveyors/Loop_04_q80.webp',
-    '/assets/unity/conveyors/Loop_06_q80.webp'
+    '/assets/unity/conveyors/Loop_06_q80.webp',
+    '/assets/unity/conveyors/Loop_07_q80.webp',
+    '/assets/unity/conveyors/Loop_footage2_q80.webp',
+    '/assets/unity/conveyors/Loop_footage3_q80.webp'
   ]),
   [MECHANISM_TYPES.spatialConveyor]: Object.freeze([]),
   [MECHANISM_TYPES.entryBanner]: Object.freeze([
@@ -88,6 +94,20 @@ export const MECHANISM_RESOURCE_MANIFEST = Object.freeze({
     `${MECHANISM_ROOT}/police/textures/Police_Car.png`,
     `${MECHANISM_ROOT}/police/textures/Idle_boy_police.png`,
     `${MECHANISM_ROOT}/police/audio/police_siren.bin`
+  ]),
+  // Supplied Christmas set: one sled vehicle model, its dedicated arrow, a
+  // vertex-animated Santa passenger, and the heart badge used when the sled is
+  // step-limited (centre-rescue variants). All three materials in Sled_001.fbx
+  // point at the same supplied atlas texture, so one PNG covers vehicle and
+  // passenger. The heart is a copy of the ambulance badge, kept inside this
+  // family so a sled-only package never inlines the ambulance model.
+  [MECHANISM_TYPES.christmas]: Object.freeze([
+    `${CHRISTMAS_ROOT}/models/Sled_001.fbx`,
+    `${CHRISTMAS_ROOT}/models/Arrow_06.fbx`,
+    `${CHRISTMAS_ROOT}/models/Idle_boy_Santa_vatmesh.bin`,
+    `${CHRISTMAS_ROOT}/models/Idle_boy_Santa_anim_map.vatq`,
+    `${CHRISTMAS_ROOT}/textures/Idle_boy_Santa.png`,
+    `${CHRISTMAS_ROOT}/textures/step_heart.png`
   ]),
   [MECHANISM_TYPES.turnVehicle]: Object.freeze([
     `${MECHANISM_ROOT}/turn-vehicle/models/Arrow_02.fbx.bin`,
@@ -173,6 +193,17 @@ export const MECHANISM_ASSETS = Object.freeze({
     passengerTexture: `${MECHANISM_ROOT}/police/textures/Idle_boy_police.png`,
     audio: `${MECHANISM_ROOT}/police/audio/police_siren.bin`
   }),
+  christmas: Object.freeze({
+    vehicleModel: `${CHRISTMAS_ROOT}/models/Sled_001.fbx`,
+    arrowModel: `${CHRISTMAS_ROOT}/models/Arrow_06.fbx`,
+    passengerVatMesh: `${CHRISTMAS_ROOT}/models/Idle_boy_Santa_vatmesh.bin`,
+    passengerVatTexture: `${CHRISTMAS_ROOT}/models/Idle_boy_Santa_anim_map.vatq`,
+    // Sled_001.fbx binds all three material slots to this one atlas.
+    vehicleTexture: `${CHRISTMAS_ROOT}/textures/Idle_boy_Santa.png`,
+    passengerTexture: `${CHRISTMAS_ROOT}/textures/Idle_boy_Santa.png`,
+    // Step-limit centre-rescue variants show the remaining moves on this badge.
+    stepBubble: `${CHRISTMAS_ROOT}/textures/step_heart.png`
+  }),
   turnVehicle: Object.freeze({
     arrow: `${MECHANISM_ROOT}/turn-vehicle/models/Arrow_02.fbx.bin`,
     audio: `${MECHANISM_ROOT}/turn-vehicle/audio/guidemove.bin`
@@ -254,6 +285,12 @@ const MECHANISM_AUDIO_CONFIG = Object.freeze({
   })
 });
 
+// Names the mechanism configs can play. Kept next to the config so a listener
+// added to the audio controller can be checked against a real sound source.
+export const MECHANISM_AUDIO_NAMES = Object.freeze(
+  Object.values(MECHANISM_AUDIO_CONFIG).flatMap((config) => Object.keys(config))
+);
+
 export function getMechanismAudioConfig(types = []) {
   const enabledTypes = new Set(types);
   return Object.assign(
@@ -267,7 +304,9 @@ export function getMechanismAudioConfig(types = []) {
 export const BASE_RUNTIME_ASSET_PATHS = Object.freeze([
   '/assets/applovin/icon_q75.jpg',
   '/assets/applovin/main-guide-hand_q80.webp',
-  '/assets/main-loading-icon-small.png',
+  '/assets/applovin/speed-toggle-bg_q90.webp',
+  '/assets/applovin/speed-toggle-icon-normal.png',
+  '/assets/applovin/speed-toggle-icon-boost.png',
   '/assets/unity/ui/Main_Prop_GreenBtn.png'
 ]);
 
@@ -298,7 +337,11 @@ export function deriveLevelMechanics(level = {}) {
   const conveyorBelts = Array.isArray(level.conveyorBelts) ? level.conveyorBelts : [];
   const counts = {
     luxuryVehicle: vehicles.filter((vehicle) => vehicle?.isLuxury || vehicle?.colorIndex === 15).length,
-    ambulance: vehicles.filter((vehicle) => Number.isInteger(vehicle?.ambulanceStepLimit)).length
+    // A step limit is not an ambulance. The Christmas sled can carry the same
+    // heart countdown, and counting it here would pull the ambulance model,
+    // rescuer passengers and countdown clip into a sled-only package.
+    ambulance: vehicles.filter((vehicle) => Number.isInteger(vehicle?.ambulanceStepLimit)
+      && (vehicle?.mechanism?.type ?? 'ambulance') === 'ambulance').length
       || vehicleAmbulances.length,
     turnVehicle: vehicles.filter((vehicle) => vehicle?.isTurnVehicle).length,
     hiddenVehicle: vehicles.filter((vehicle) => vehicle?.isHidden).length,
@@ -309,15 +352,18 @@ export function deriveLevelMechanics(level = {}) {
   const firetruckCount = vehicles.filter((vehicle) => vehicle?.mechanism?.type === 'firetruck' || Number.isInteger(vehicle?.firetruckTimeLimit)).length
     || (Array.isArray(level.vehicleFiretrucks) ? level.vehicleFiretrucks.length : 0);
   const policeCount = vehicles.filter((vehicle) => vehicle?.mechanism?.type === 'police' || vehicle?.colorIndex === 11).length;
+  const christmasCount = vehicles.filter((vehicle) => vehicle?.mechanism?.type === 'christmas' || vehicle?.colorIndex === 16).length;
   // Keep the legacy metadata shape byte-for-byte for levels that do not use the
   // newly imported vehicle families.
   if (firetruckCount > 0) counts.firetruck = firetruckCount;
   if (policeCount > 0) counts.police = policeCount;
+  if (christmasCount > 0) counts.christmas = christmasCount;
   const specialTypes = [];
   if (counts.luxuryVehicle > 0) addType(specialTypes, MECHANISM_TYPES.luxuryVehicle);
   if (counts.ambulance > 0) addType(specialTypes, MECHANISM_TYPES.ambulance);
   if (counts.firetruck > 0) addType(specialTypes, MECHANISM_TYPES.firetruck);
   if (counts.police > 0) addType(specialTypes, MECHANISM_TYPES.police);
+  if (counts.christmas > 0) addType(specialTypes, MECHANISM_TYPES.christmas);
   if (counts.turnVehicle > 0) addType(specialTypes, MECHANISM_TYPES.turnVehicle);
   if (counts.hiddenVehicle > 0) addType(specialTypes, MECHANISM_TYPES.hiddenVehicle);
   if (counts.garage > 0) addType(specialTypes, MECHANISM_TYPES.garage);

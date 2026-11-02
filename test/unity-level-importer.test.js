@@ -416,7 +416,10 @@ test('imported Unity levels stay selectable and resolvable after a prebuilt depl
   // merge the data-volume artifact with web documents; otherwise imported
   // levels disappear from the selector on the next reload.
   assert.match(viteSource, /async function readEditableLevelIdentities/);
-  assert.match(viteSource, /const items = \(await readEditableLevelIdentities\(\)\)/);
+  // The list merges the data-volume artifact with web documents and then adds
+  // ownership, so the ownership pass has to read the merged identities.
+  assert.match(viteSource, /const \[identities, owners\] = await Promise\.all/);
+  assert.match(viteSource, /owner: getLevelOwner\(owners, level\.key\)/);
   assert.match(viteSource, /async function readImportedUnityLevelDefinition/);
   // Reading one imported definition back powers both the runtime and the
   // layout editor without a rebuild of the served catalog chunk.

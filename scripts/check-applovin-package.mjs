@@ -10,7 +10,12 @@ const SPATIAL_PACKAGE_ROOT = path.join(ROOT, 'artifacts', 'spatial-conveyors');
 const MAX_BYTES = 5_000_000;
 const BRANDING_ICON_ASSETS = [
   '/assets/icon-android.jpg',
-  '/assets/icon-ios.png'
+  '/assets/icon-ios.png',
+  '/assets/icon-crowd.jpg'
+];
+const BRANDING_LOGO_ASSETS = [
+  '/assets/main-loading-icon-small.png',
+  '/assets/main-loading-icon-crowd.webp'
 ];
 const ALLOWED_URL_PREFIXES = [
   'http://www.w3.org/'
@@ -58,7 +63,7 @@ async function assetDataUri(asset) {
 }
 
 async function main() {
-  const [{ PLAYABLE_LEVEL_SEQUENCE }, {
+  const [{ PLAYABLE_STAGE_CHOICES, PLAYABLE_ALL_LEVELS }, {
     MECHANISM_RESOURCE_MANIFEST,
     PRE_ROLL_ASSET_PATHS,
     getMechanismResourcePaths,
@@ -79,7 +84,11 @@ async function main() {
   if (!BRANDING_ICON_ASSETS.includes(selectedIconAsset)) {
     throw new Error(`Unsupported branding Icon asset: ${selectedIconAsset}`);
   }
-  const unselectedIconAsset = BRANDING_ICON_ASSETS.find((asset) => asset !== selectedIconAsset);
+  const unselectedIconAssets = BRANDING_ICON_ASSETS.filter((asset) => asset !== selectedIconAsset);
+  const selectedLogoAsset = SCENE_TUNING.branding?.logo?.asset ?? BRANDING_LOGO_ASSETS[0];
+  if (!BRANDING_LOGO_ASSETS.includes(selectedLogoAsset)) {
+    throw new Error(`Unsupported branding Logo asset: ${selectedLogoAsset}`);
+  }
   const selectedConveyor = SCENE_TUNING.conveyorLayout?.selected;
   const selectedSpatialId = typeof selectedConveyor === 'string' && selectedConveyor.startsWith('spatial:')
     ? selectedConveyor.slice('spatial:'.length)
@@ -87,9 +96,16 @@ async function main() {
   const selectedSpatialPackage = selectedSpatialId
     ? JSON.parse(await readFile(path.join(SPATIAL_PACKAGE_ROOT, `${selectedSpatialId}.json`), 'utf8'))
     : null;
-  const mechanismTypes = getMechanismTypesForLevels(PLAYABLE_LEVEL_SEQUENCE, {
+  const mechanismTypes = getMechanismTypesForLevels(PLAYABLE_ALL_LEVELS, {
     spatialSelection: selectedConveyor,
-    entryBannerEnabled: Boolean(SCENE_TUNING.entryBanner?.enabled)
+    // A later stage can show the banner even when the global toggle is off, so
+    // the assets must be present whenever any stage asks for it.
+    entryBannerEnabled: Boolean(
+      SCENE_TUNING.entryBanner?.enabled
+      || PLAYABLE_STAGE_CHOICES.some((choice) => (
+        choice?.options?.some((option) => option.opening?.entryBanner?.enabled)
+      ))
+    )
   });
   const selectedMechanismUrls = getMechanismResourcePaths(mechanismTypes);
   const allMechanismUrls = getMechanismResourcePaths(Object.keys(MECHANISM_RESOURCE_MANIFEST));
@@ -115,12 +131,12 @@ async function main() {
       .replace(/[.*+?^${}()|[\]\\]/gu, '\\$&');
     return new RegExp(`\\$\\{[A-Za-z_$][\\w$]*\\}${tail}`, 'u').test(html);
   }
-  const [{ size }, html, selectedIconDataUri, unselectedIconDataUri, smallLogoDataUri, legacyLogoDataUri] = await Promise.all([
+  const [{ size }, html, selectedIconDataUri, unselectedIconDataUris, selectedLogoDataUri, legacyLogoDataUri] = await Promise.all([
     stat(PACKAGE_FILE),
     readFile(PACKAGE_FILE, 'utf8'),
     assetDataUri(selectedIconAsset),
-    assetDataUri(unselectedIconAsset),
-    assetDataUri('/assets/main-loading-icon-small.png'),
+    Promise.all(unselectedIconAssets.map((asset) => assetDataUri(asset))),
+    assetDataUri(selectedLogoAsset),
     assetDataUri('/assets/main-loading-icon.png')
   ]);
 
@@ -211,14 +227,14 @@ async function main() {
         /id=["']branding-text["']/iu.test(html)
     },
     {
-      name: 'selected branding Icon and small Logo images inlined',
+      name: 'selected branding Icon and Logo images inlined',
       pass: html.includes(selectedIconDataUri) &&
-        html.includes(smallLogoDataUri) &&
-        /<img\b(?=[^>]*\bid=["']branding-logo["'])(?=[^>]*\bsrc=["']data:image\/png;base64,)[^>]*>/iu.test(html)
+        html.includes(selectedLogoDataUri) &&
+        /<img\b(?=[^>]*\bid=["']branding-logo["'])(?=[^>]*\bsrc=["']data:image\/(?:png|jpeg|webp);base64,)[^>]*>/iu.test(html)
     },
     {
       name: 'unselected branding Icon omitted',
-      pass: !html.includes(unselectedIconDataUri)
+      pass: unselectedIconDataUris.every((dataUri) => !html.includes(dataUri))
     },
     {
       name: 'legacy large branding Logo omitted',

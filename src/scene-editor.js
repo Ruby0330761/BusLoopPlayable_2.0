@@ -9,7 +9,15 @@ import {
 } from './level-editor-model.js';
 import { LEVEL_1 } from './level-data.js';
 import { isValidStoreLink } from './store-links.js';
+import { detectPlayfieldHorizon, resolveBackgroundHorizon } from './background-alignment.js';
 import { BUILD_VERSION } from './build-version.js';
+import {
+  isForeignLevelOwner,
+  levelOwnerHeaders,
+  normalizeLevelOwner,
+  readStoredLevelOwner,
+  storeLevelOwner
+} from './level-owner.js';
 
 // Operator preference for the level dropdown order; kept out of scene tuning
 // so it never leaks into exported playable packages.
@@ -20,7 +28,10 @@ const CONVEYOR_LAYOUT_OPTIONS = [
   ['dualQueue2', 'GameSceneDualQueue2'],
   ['dualQueue3', 'GameSceneDualQueue3'],
   ['dualQueue5', 'GameSceneDualQueue5'],
-  ['dualQueue10', 'GameSceneDualQueue10']
+  ['dualQueue10', 'GameSceneDualQueue10'],
+  ['starLoop', '星形跑道 StarLoop'],
+  ['heartLoop', '爱心跑道 HeartLoop'],
+  ['catLoop', '猫咪跑道 CatLoop'],
 ];
 
 const BACKGROUND_OPTIONS = [
@@ -33,7 +44,18 @@ const BACKGROUND_OPTIONS = [
 
 const BRANDING_ICON_OPTIONS = [
   ['/assets/icon-android.jpg', 'Android'],
-  ['/assets/icon-ios.png', 'iOS']
+  ['/assets/icon-ios.png', 'iOS'],
+  ['/assets/icon-crowd.jpg', 'Crowd']
+];
+
+const BRANDING_LOGO_OPTIONS = [
+  ['/assets/main-loading-icon-small.png', 'Bus Fever'],
+  ['/assets/main-loading-icon-crowd.webp', 'Crowd']
+];
+
+const PLAYABLE_EXPORT_BRANDING_SETS = [
+  ['bus', 'Bus Fever\uff1aAndroid / iOS \u5171\u7528\u4e00\u5957'],
+  ['crowd', 'Crowd\uff1aAndroid / iOS \u5171\u7528\u4e00\u5957']
 ];
 
 const PRE_ROLL_OPTIONS = [
@@ -84,7 +106,7 @@ function editorCategoryForGroup(group) {
     return 'conveyor';
   }
   if (/^(?:parkingSpots|vehiclePath|vehicleDeparturePath|vehicleArea)\./.test(path)) return 'vehicle';
-  if (/^(?:cta|installGate|gameOver|vehicleGuideHand|firstClickGuide|entryBanner)\./.test(path)) return 'guide';
+  if (/^(?:cta|speedToggle|installGate|gameOver|vehicleGuideHand|firstClickGuide|entryBanner)\./.test(path)) return 'guide';
   if (path.startsWith('preRoll.')) return 'guide';
   return 'visual';
 }
@@ -100,6 +122,37 @@ export function getVehicleIdOptions(vehicles = []) {
 export function normalizeVehicleIdSelection(value) {
   const id = Number(value);
   return Number.isInteger(id) && id > 0 ? id : null;
+}
+
+function saveTextFile(filename, text, type) {
+  const url = URL.createObjectURL(new Blob([text], { type }));
+  const anchor = document.createElement('a');
+  anchor.href = url;
+  anchor.download = filename;
+  anchor.click();
+  setTimeout(() => URL.revokeObjectURL(url), 0);
+}
+
+// The server only ever sees the layout file, because scene tuning lives in this
+// browser's per-level profile. Attach the tuning on the way out so "export
+// level" actually carries parking spots, the vehicle layer, and the
+// camera/background values. The level identity is dropped: importing retargets
+// the tuning to the key the new level gets.
+export function attachTuningToExportedLevel(raw, levelKey, tuning) {
+  let document;
+  try {
+    document = JSON.parse(raw);
+  } catch {
+    // A Unity .asset export is YAML and has no place for scene tuning.
+    return null;
+  }
+  if (document?.format !== 'bus-loop-web-level-v1' || document?.key !== levelKey) return null;
+  const sceneTuning = tuning && typeof tuning === 'object' && !Array.isArray(tuning)
+    ? structuredClone(tuning)
+    : null;
+  if (!sceneTuning) return null;
+  if (sceneTuning.level) delete sceneTuning.level.selected;
+  return `${JSON.stringify({ ...document, tuning: sceneTuning }, null, 2)}\n`;
 }
 
 function isValidExportNamingPart(value) {
@@ -237,7 +290,35 @@ async function prepareBackgroundUpload(file) {
     output = await canvasToJpegBlob(canvas, quality);
     if (output.size <= CUSTOM_BACKGROUND_MAX_OUTPUT_BYTES) break;
   }
-  return { blob: output, width, height };
+  // Measure the artwork's own ground line before upload, while the pixels are
+  // already here. Without it a background drawn with its road→ground edge higher
+  // than the reference set would render with the cars standing on the road.
+  let horizon = null;
+  try {
+    const pixels = context.getImageData(0, 0, width, height);
+    horizon = detectPlayfieldHorizon(pixels.data, { width, height });
+  } catch {
+    // A tainted canvas cannot be read; the background still imports and simply
+    // keeps the default plane position.
+  }
+  return { blob: output, width, height, horizon };
+}
+
+// A saved guide id can point at a car the current level does not contain, either
+// because the tuning was carried over from another level or the level was
+// re-authored. Without an option for it the select silently shows the first
+// vehicle, which reads as "the panel picked a car for me". Keep the stale value
+// visible and labelled instead, so the mismatch is obvious.
+function ensureVehicleSelectValue(select, value) {
+  if (!select) return;
+  const id = Number(value);
+  if (!Number.isInteger(id) || id <= 0) return;
+  if ([...select.options].some((entry) => entry.value === String(id))) return;
+  const option = document.createElement('option');
+  option.value = String(id);
+  option.dataset.missingVehicle = 'true';
+  option.textContent = `${id} (\u672c\u5173\u65e0\u6b64\u8f66)`;
+  select.append(option);
 }
 
 function ensureBackgroundSelectValue(select, value, label) {
@@ -271,6 +352,16 @@ function applySelectedBackgroundDimensions(tuning, option) {
   const height = Number(option?.dataset?.sourceHeight);
   if (Number.isFinite(width) && width > 0) tuning.background.sourceWidth = Math.round(width);
   if (Number.isFinite(height) && height > 0) tuning.background.sourceHeight = Math.round(height);
+  // Carry the artwork's own playfield boundary with the artwork. The renderer
+  // slides the plane by the difference against the reference set, so a
+  // background drawn with its ground higher in the frame still lands its ground
+  // in the same place instead of pushing the cars onto the road.
+  const horizon = Number(option?.dataset?.horizon);
+  if (Number.isFinite(horizon) && horizon > 0 && horizon < 1) tuning.background.horizon = horizon;
+  else delete tuning.background.horizon;
+  // The trim is a per-artwork correction; carrying it onto different artwork
+  // would turn a small nudge into a leftover offset nobody remembers setting.
+  tuning.background.horizonTrim = 0;
 }
 
 function makeConveyorLayoutGroups(layoutId, label) {
@@ -334,15 +425,15 @@ const FIELD_GROUPS = [
       ['\u683c\u5f0f', 'exportNaming.format', 0, 0, 1, null, 'filename'],
       ['\u8bbe\u8ba1\u5e08', 'exportNaming.designer', 0, 0, 1, null, 'filename'],
       ['\u9700\u6c42\u4eba', 'exportNaming.requester', 0, 0, 1, null, 'filename'],
+      ['\u6b65\u6570', 'exportNaming.steps', 0, 0, 1, null, 'filename'],
+      ['\u4f53\u529b', 'exportNaming.stamina', 0, 0, 1, null, 'filename'],
       ['AppLovin \u6e20\u9053', 'exportNaming.channels.applovin', 0, 0, 1, null, 'filename'],
       ['Google Ads \u6e20\u9053', 'exportNaming.channels.google-ads', 0, 0, 1, null, 'filename'],
       ['Meta \u6e20\u9053', 'exportNaming.channels.meta', 0, 0, 1, null, 'filename'],
       ['Mintegral \u6e20\u9053', 'exportNaming.channels.mintegral', 0, 0, 1, null, 'filename'],
       ['Moloco \u6e20\u9053', 'exportNaming.channels.moloco', 0, 0, 1, null, 'filename'],
       ['TikTok \u6e20\u9053', 'exportNaming.channels.tiktok', 0, 0, 1, null, 'filename'],
-      ['Unity Ads \u6e20\u9053', 'exportNaming.channels.unityads', 0, 0, 1, null, 'filename'],
-      ['\u6b65\u6570', 'exportNaming.steps', 0, 0, 1, null, 'filename'],
-      ['\u4f53\u529b', 'exportNaming.stamina', 0, 0, 1, null, 'filename']
+      ['Unity Ads \u6e20\u9053', 'exportNaming.channels.unityads', 0, 0, 1, null, 'filename']
     ]
   },
   {
@@ -368,6 +459,7 @@ const FIELD_GROUPS = [
       ['Icon Y', 'branding.icon.y', 0, 4320, 1],
       ['Icon \u5bbd\u5ea6', 'branding.icon.width', 16, 2160, 1],
       ['Icon \u9ad8\u5ea6', 'branding.icon.height', 16, 2160, 1],
+      ['Logo \u7248\u672c', 'branding.logo.asset', 0, 0, 1, BRANDING_LOGO_OPTIONS],
       ['Logo \u663e\u793a', 'branding.logo.enabled', 0, 1, 1, null, 'toggle'],
       ['Logo \u9501\u5b9a', 'branding.logo.locked', 0, 1, 1, null, 'toggle'],
       ['Logo X', 'branding.logo.x', 0, 4320, 1],
@@ -445,6 +537,8 @@ const FIELD_GROUPS = [
       ['\u7f29\u653e', 'background.scale', 0.3, 3, 0.01],
       ['X \u5750\u6807', 'background.offsetX', -10, 10, 0.05],
       ['Y \u5750\u6807', 'background.offsetY', -10, 10, 0.05],
+      // \u5e73\u9762\u4f1a\u81ea\u52a8\u6ed1\u52a8\uff0c\u8ba9\u6bcf\u5f20\u80cc\u666f\u81ea\u5e26\u7684\u5730\u9762\u7ebf\u843d\u5728\u53c2\u8003\u56fe\u540c\u4e00\u4f4d\u7f6e\uff1b\u8fd9\u91cc\u662f\u5728\u90a3\u4e4b\u4e0a\u7684\u624b\u5de5\u5fae\u8c03\u3002
+      ['\u5730\u5e73\u7ebf\u6821\u6b63', 'background.horizonTrim', -6, 6, 0.02],
       ['\u900f\u660e\u5ea6', 'background.opacity', 0, 1, 0.01]
     ]
   },
@@ -452,7 +546,8 @@ const FIELD_GROUPS = [
     title: '\u5c0f\u4eba\u6a21\u578b',
     fields: [
       ['\u7edf\u4e00\u5927\u5c0f', 'passengers.modelScale', 0.2, 2, 0.01],
-      ['\u540c\u6392\u95f4\u8ddd', 'passengers.groupSpacing', 0.03, 0.5, 0.01]
+      ['\u540c\u6392\u95f4\u8ddd', 'passengers.groupSpacing', 0.03, 0.5, 0.01],
+      ['\u8fdb\u8f66\u97f3\u6548\u504f\u79fb(\u8d1f=\u63d0\u524d)', 'passengers.aboardSoundOffset', -1, 1, 0.01]
     ]
   },
   {
@@ -472,11 +567,51 @@ const FIELD_GROUPS = [
     ]
   },
   {
+    title: '\u500d\u901f\u6309\u94ae',
+    defaultOpen: true,
+    fields: [
+      ['\u542f\u7528', 'speedToggle.enabled', 0, 1, 1, null, 'toggle'],
+      ['\u5c4f\u5e55 X', 'speedToggle.x', 0, 1080, 1],
+      ['\u5c4f\u5e55 Y', 'speedToggle.y', 0, 2160, 1],
+      ['\u5bbd\u5ea6', 'speedToggle.width', 40, 640, 1],
+      ['\u9ad8\u5ea6', 'speedToggle.height', 24, 400, 1],
+      ['\u500d\u7387', 'speedToggle.multiplier', 1, 6, 0.1]
+    ]
+  },
+  {
     title: '\u5546\u5e97\u8df3\u8f6c',
     fields: [
       ['\u6210\u529f\u64cd\u4f5c\u6b21\u6570', 'installGate.successfulOperationThreshold', 1, 200, 1],
       ['Android \u94fe\u63a5', 'storeLinks.android', 0, 0, 1, null, 'url'],
       ['iOS \u94fe\u63a5', 'storeLinks.ios', 0, 0, 1, null, 'url']
+    ]
+  },
+  {
+    title: '\u97f3\u6548\u5ef6\u8fdf(\u6b63\u503c=\u63a8\u540e)',
+    fields: [
+      ['\u8f66\u8f86\u5f00\u51fa', 'audio.busFullDelay', 0, 2, 0.01],
+      ['\u649e\u51fb', 'audio.busHitDelay', 0, 2, 0.01],
+      ['\u5c0f\u4eba\u5165\u573a', 'audio.passengerUpDelay', 0, 2, 0.01],
+      ['\u70b9\u51fb\u8f66\u8f86', 'audio.vehicleTapDelay', 0, 2, 0.01]
+    ]
+  },
+  {
+    title: '\u97f3\u6548\u97f3\u91cf(\u500d\u6570)',
+    fields: [
+      // A multiplier, not an absolute level: 1 keeps the volume authored on the
+      // level asset, so raising it can never drift away from Unity's balance.
+      ['\u70b9\u51fb\u8f66\u8f86', 'audio.vehicleTapVolume', 0, 2, 0.01]
+    ]
+  },
+  {
+    title: '\u80cc\u666f\u97f3\u4e50(BGM)',
+    fields: [
+      // The loop only starts on the first successful vehicle tap, so autoplay
+      // policy can never reject it. Off by default: only a level that asks for
+      // music should make noise.
+      ['\u5f00\u542f', 'audio.bgm.enabled', 0, 1, 1, null, 'toggle'],
+      ['\u97f3\u91cf', 'audio.bgm.volume', 0, 1, 0.01],
+      ['\u6de1\u5165(\u79d2)', 'audio.bgm.fadeInSeconds', 0, 3, 0.1]
     ]
   },
   {
@@ -649,6 +784,9 @@ const FIELD_GROUPS = [
     title: '\u8f66\u4f4d',
     fields: [
       ['\u8f66\u4f4d\u6570', 'parkingSpots.count', 1, 8, 1],
+      // With this on, the row is centred on x=0 and 起点 X is derived, so a count
+      // change never shoves the row sideways. Turn it off to author the edge by hand.
+      ['\u81ea\u52a8\u5c45\u4e2d', 'parkingSpots.autoCenter', 0, 1, 1, null, 'toggle'],
       ['\u8d77\u70b9 X', 'parkingSpots.startX', -8, 2, 0.05],
       ['Z \u5750\u6807', 'parkingSpots.z', -6, 6, 0.05],
       ['\u8f66\u4f4d\u95f4\u8ddd', 'parkingSpots.spacing', 0.25, 2.5, 0.05],
@@ -684,7 +822,7 @@ const FIELD_GROUPS = [
     fields: [
       ['\u663e\u793a\u8def\u5f84', 'vehicleDeparturePath.enabled', 0, 1, 1],
       ['\u6ee1\u8f7d\u505c\u987f', 'vehicleDeparturePath.fullLoadDelay', 0, 4, 0.05],
-      ['\u7ebf\u6761\u9ad8\u5ea6', 'vehicleDeparturePath.y', -3, 0.5, 0.005],
+      ['\u79bb\u573a\u9ad8\u5ea6\uff08\u7ebf\u4e0e\u8f66\uff09', 'vehicleDeparturePath.y', -3, 0.5, 0.005],
       ['\u7ebf\u6761\u900f\u660e\u5ea6', 'vehicleDeparturePath.opacity', 0.1, 1, 0.01],
       ['\u7ebf\u6761\u7c97\u7ec6', 'vehicleDeparturePath.lineWidth', 1, 12, 1],
       ['\u5012\u8f66\u8ddd\u79bb', 'vehicleDeparturePath.backDistance', 0, 2, 0.01],
@@ -725,7 +863,11 @@ const FIELD_GROUPS = [
       ['\u5f00\u573a\u7acb\u5373\u663e\u793a', 'vehicleGuideHand.showAtStart', 0, 1, 1, null, 'toggle'],
       ['\u65e0\u64cd\u4f5c\u7b49\u5f85\uff08\u79d2\uff09', 'vehicleGuideHand.idleDelaySeconds', 1, 30, 0.5],
       ['\u5f15\u5bfc\u5173\u5361', 'vehicleGuideHand.levelKey', 0, 0, 1, LEVEL_OPTIONS],
-      ['\u5f15\u5bfc\u8f66 ID', 'vehicleGuideHand.vehicleId', 1, 200, 1],
+      // A free 1-200 number box let the id drift to values no level contains
+      // (every shipped level starts well above 1), and a missing id hides the
+      // hand entirely with no visible error. The dropdown is built from the
+      // loaded level's own vehicles, so only real ids can be chosen.
+      ['\u5f15\u5bfc\u8f66 ID', 'vehicleGuideHand.vehicleId', 1, 200, 1, null, 'vehicle-id-select'],
       ['\u5c0f\u624b X', 'vehicleGuideHand.offsetX', -3, 3, 0.01],
       ['\u5c0f\u624b\u9ad8\u5ea6', 'vehicleGuideHand.offsetY', 0, 3, 0.01],
       ['\u5c0f\u624b Z', 'vehicleGuideHand.offsetZ', -3, 3, 0.01],
@@ -783,7 +925,11 @@ const FIELD_GROUPS = [
       ['\u6574\u4f53\u5927\u5c0f', 'effects.hit.sizeScale', 0.1, 5, 0.01],
       ['ParticleHit_2 \u5927\u5c0f', 'effects.hit.particleHit2SizeScale', 0.1, 5, 0.01],
       ['ParticleHit_1 \u5927\u5c0f', 'effects.hit.particleHit1SizeScale', 0.1, 5, 0.01],
-      ['ParticleHit \u5927\u5c0f', 'effects.hit.particleHitSizeScale', 0.1, 5, 0.01]
+      ['ParticleHit \u5927\u5c0f', 'effects.hit.particleHitSizeScale', 0.1, 5, 0.01],
+      // 0 = keep the true obstacle gap (Unity behaviour). Positive values cap
+      // how far the car travels before the bump lands, so a distant blocker
+      // no longer reads as a hit happening far away.
+      ['\u649e\u51fb\u51b2\u523a\u8ddd\u79bb\u4e0a\u9650', 'collision.maxBumpDistance', 0, 3, 0.01]
     ]
   },
   {
@@ -804,6 +950,22 @@ const FIELD_GROUPS = [
       ['\u66f2\u7ebf\u4e2d\u70b9\u65f6\u95f4', 'effects.ribbonSmoke.speedMidTime', 0, 1, 0.01],
       ['\u901f\u5ea6\u4e2d\u70b9', 'effects.ribbonSmoke.speedMid', 0, 3, 0.01],
       ['\u901f\u5ea6\u7ec8\u70b9', 'effects.ribbonSmoke.speedEnd', 0, 3, 0.01]
+    ]
+  },
+  {
+    title: '\u884c\u9a76\u5c3e\u70df ParticleTrail',
+    fields: [
+      ['\u6bcf\u79d2\u7c92\u5b50\u6570', 'effects.smokeTrail.rateOverTime', 0, 120, 1],
+      ['\u5bff\u547d\u4e0b\u9650', 'effects.smokeTrail.lifetimeMin', 0.05, 2, 0.01],
+      ['\u5bff\u547d\u4e0a\u9650', 'effects.smokeTrail.lifetimeMax', 0.05, 2, 0.01],
+      ['\u521d\u59cb\u5927\u5c0f\u4e0b\u9650', 'effects.smokeTrail.sizeMin', 0.01, 1, 0.01],
+      ['\u521d\u59cb\u5927\u5c0f\u4e0a\u9650', 'effects.smokeTrail.sizeMax', 0.01, 1, 0.01],
+      ['\u6f02\u79fb\u901f\u5ea6\u500d\u6570', 'effects.smokeTrail.speedScale', 0, 4, 0.05],
+      ['\u5c3e\u90e8 Z \u504f\u79fb', 'effects.smokeTrail.offsetZ', -1.5, 1.5, 0.01],
+      ['\u9ad8\u5ea6 Y \u504f\u79fb', 'effects.smokeTrail.offsetY', -0.5, 1, 0.01],
+      ['\u6563\u5f00\u500d\u6570', 'effects.smokeTrail.spread', 0, 4, 0.05],
+      ['\u91cd\u529b', 'effects.smokeTrail.gravity', -10, 2, 0.05],
+      ['\u4e0d\u900f\u660e\u5ea6', 'effects.smokeTrail.opacity', 0, 1, 0.01]
     ]
   }
 ];
@@ -852,6 +1014,7 @@ export function createSceneEditor(root, {
   setTuning,
   getPlayableExportPayload = () => ({ tuning: getTuning() }),
   clearSavedTuning = () => {},
+  saveImportedLevelTuning = () => false,
   captureScreenshot = async () => { throw new Error('\u622a\u56fe\u529f\u80fd\u4e0d\u53ef\u7528'); },
   previewPreRoll = async () => {},
   openSpatialPointEditor = async () => {},
@@ -889,6 +1052,15 @@ export function createSceneEditor(root, {
       </nav>
       <details class="editor-section editor-playable-export" data-editor-category="export" open>
         <summary class="editor-section-summary"><h3>\u5bfc\u51fa\u8bd5\u73a9</h3></summary>
+        <label class="editor-export-set">
+          <span>\u5bfc\u51fa\u5957\u7cfb</span>
+          <select class="editor-export-set-select">
+            ${PLAYABLE_EXPORT_BRANDING_SETS.map(([id, label]) => (
+              `<option value="${id}">${label}</option>`
+            )).join('')}
+          </select>
+        </label>
+        <p class="editor-export-set-note" role="note">Bus Fever \u53ea\u51fa\u4e00\u5957\u5305\uff08Android/iOS \u5171\u7528\uff09\uff1a\u540c\u4e00\u4efd HTML \u6309\u673a\u578b\u5207 Icon \u4e0e\u5546\u5e97\u94fe\u63a5\uff0cLogo \u8ddf\u968f Logo \u7248\u672c\u3002</p>
         <label class="editor-export-platform">
           <span>\u6295\u653e\u5e73\u53f0</span>
           <select class="editor-export-select">
@@ -902,6 +1074,7 @@ export function createSceneEditor(root, {
           <button class="editor-export-all-button" type="button">\u4e00\u952e\u5bfc\u51fa\u5168\u90e8</button>
         </div>
         <p class="editor-export-status" role="status" aria-live="polite" aria-atomic="true">\u5c31\u7eea</p>
+        <p class="editor-export-events" role="status" aria-live="polite" aria-atomic="true">\u5bfc\u51fa\u5305\u81ea\u5e26 AppLovin 12 \u4e2a\u6807\u51c6\u4e8b\u4ef6</p>
       </details>
       <div class="editor-fields"></div>
       <div class="editor-history-actions">
@@ -914,10 +1087,13 @@ export function createSceneEditor(root, {
 
   const fieldsRoot = root.querySelector('.editor-fields');
   const inputs = new Map();
+  const exportSetSelect = root.querySelector('.editor-export-set-select');
+  const exportSetNote = root.querySelector('.editor-export-set-note');
   const exportSelect = root.querySelector('.editor-export-select');
   const exportButton = root.querySelector('.editor-export-button');
   const exportAllButton = root.querySelector('.editor-export-all-button');
   const exportStatus = root.querySelector('.editor-export-status');
+  const exportEventsStatus = root.querySelector('.editor-export-events');
   const screenshotSelect = root.querySelector('.editor-screenshot-select');
   const screenshotButton = root.querySelector('.editor-screenshot-button');
   const screenshotStatus = root.querySelector('.editor-screenshot-status');
@@ -1002,6 +1178,15 @@ export function createSceneEditor(root, {
     });
   });
 
+  exportSetSelect.addEventListener('change', () => {
+    const crowd = exportSetSelect.value === 'crowd';
+    if (exportSetNote) {
+      exportSetNote.textContent = crowd
+        ? 'Crowd \u53ea\u51fa\u4e00\u5957\u5305\uff08Android/iOS \u5171\u7528\uff09\uff1a\u5bfc\u51fa\u65f6\u81ea\u52a8\u6362 Crowd Icon\u3001Logo\u3001Crowd \u5546\u5e97\u94fe\u63a5\uff0c\u5e95\u90e8\u6587\u6848\u82e5\u4ecd\u4e3a\u9ed8\u8ba4\u5219\u6539\u4e3a Bus Crowd\u3002'
+        : 'Bus Fever \u53ea\u51fa\u4e00\u5957\u5305\uff08Android/iOS \u5171\u7528\uff09\uff1a\u540c\u4e00\u4efd HTML \u6309\u673a\u578b\u5207 Icon \u4e0e\u5546\u5e97\u94fe\u63a5\uff0cLogo \u8ddf\u968f Logo \u7248\u672c\u3002';
+    }
+  });
+
   async function exportPlayable({ all = false } = {}) {
     const invalidNamingControl = [...inputs.values()]
       .find((controls) => controls.isFilename && !controls.updateValidity());
@@ -1012,9 +1197,14 @@ export function createSceneEditor(root, {
       return;
     }
     const platform = all ? null : exportSelect.value;
+    const brandingSet = exportSetSelect.value === 'crowd' ? 'crowd' : 'bus';
+    const brandingSetLabel = brandingSet === 'crowd'
+      ? 'Crowd \u5171\u7528\u4e00\u5957'
+      : 'Android/iOS \u5171\u7528\u4e00\u5957';
     const platformLabel = all
-      ? '\u5168\u90e8 7 \u4e2a\u5e73\u53f0 \u00d7 Android/iOS'
-      : (PLAYABLE_EXPORT_PLATFORMS.find(([id]) => id === platform)?.[1] ?? platform);
+      ? `\u5168\u90e8 7 \u4e2a\u5e73\u53f0 \u00d7 ${brandingSetLabel}`
+      : `${PLAYABLE_EXPORT_PLATFORMS.find(([id]) => id === platform)?.[1] ?? platform}\uff08${brandingSetLabel}\uff09`;
+    exportSetSelect.disabled = true;
     exportSelect.disabled = true;
     exportButton.disabled = true;
     exportAllButton.disabled = true;
@@ -1035,7 +1225,9 @@ export function createSceneEditor(root, {
       const response = await fetch(all ? '/__playable-export-all' : '/__playable-export', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(all ? exportPayload : { ...exportPayload, platform })
+        body: JSON.stringify(all
+          ? { ...exportPayload, brandingSet }
+          : { ...exportPayload, platform, brandingSet })
       });
       if (!response.ok) {
         const payload = await response.json().catch(() => ({}));
@@ -1085,6 +1277,7 @@ export function createSceneEditor(root, {
       exportStatus.textContent = `\u5bfc\u51fa\u5931\u8d25\uff1a${message}`;
     } finally {
       clearInterval(exportElapsedTimer);
+      exportSetSelect.disabled = false;
       exportSelect.disabled = false;
       exportButton.disabled = false;
       exportAllButton.disabled = false;
@@ -1169,6 +1362,15 @@ export function createSceneEditor(root, {
       const textInput = row.querySelector('.editor-text');
       const urlInput = row.querySelector('.editor-url');
       if (options) {
+        // The built-in background set has a measured playfield boundary; keeping
+        // it on the option is what lets switching artwork re-align the plane
+        // without a server round-trip.
+        if (path === 'background.asset') {
+          for (const option of select.options) {
+            const horizon = resolveBackgroundHorizon(option.value);
+            if (horizon) option.dataset.horizon = String(horizon);
+          }
+        }
         const commitOption = (rawValue) => {
           const value = control === 'vehicle-id-select'
             ? normalizeVehicleIdSelection(rawValue)
@@ -1176,6 +1378,12 @@ export function createSceneEditor(root, {
           if (value === null) return;
           const next = structuredClone(getTuning());
           setAtPath(next, path, value);
+          // Picking a guide car is a statement about THIS level. Without this the
+          // levelKey keeps pointing at whichever level it was authored on, and the
+          // hand silently refuses to appear on the level being edited.
+          if (path === 'vehicleGuideHand.vehicleId') {
+            setAtPath(next, 'vehicleGuideHand.levelKey', getAtPath(next, 'level.selected'));
+          }
           if (path === 'background.asset') applySelectedBackgroundDimensions(next, select.selectedOptions?.[0]);
           commitTuning(next, { path });
           select.value = String(value);
@@ -1542,6 +1750,7 @@ export function createSceneEditor(root, {
       option.dataset.customBackground = 'true';
       if (item.width) option.dataset.sourceWidth = String(item.width);
       if (item.height) option.dataset.sourceHeight = String(item.height);
+      if (item.horizon) option.dataset.horizon = String(item.horizon);
       select.append(option);
     }
   }
@@ -1565,7 +1774,8 @@ export function createSceneEditor(root, {
         'Content-Type': 'image/jpeg',
         'X-Background-Filename': encodeURIComponent(file.name),
         'X-Background-Width': String(prepared.width),
-        'X-Background-Height': String(prepared.height)
+        'X-Background-Height': String(prepared.height),
+        ...(prepared.horizon ? { 'X-Background-Horizon': String(prepared.horizon) } : {})
       },
       body: prepared.blob
     });
@@ -1577,7 +1787,16 @@ export function createSceneEditor(root, {
     next.background.asset = payload.item.value;
     next.background.sourceWidth = payload.item.width || prepared.width;
     next.background.sourceHeight = payload.item.height || prepared.height;
+    // Prefer the measured value: the server echoes what it stored, and the
+    // client already measured the exact pixels it uploaded.
+    const horizon = Number(payload.item.horizon) || prepared.horizon;
+    if (Number.isFinite(horizon) && horizon > 0 && horizon < 1) next.background.horizon = horizon;
+    else delete next.background.horizon;
     ensureBackgroundSelectValue(backgroundControls?.select, payload.item.value, payload.item.label);
+    if (Number.isFinite(horizon) && horizon > 0 && horizon < 1) {
+      const option = [...(backgroundControls?.select?.options ?? [])].find((entry) => entry.value === payload.item.value);
+      if (option) option.dataset.horizon = String(horizon);
+    }
     commitTuning(next, { path: 'background.asset' });
     sync();
     return payload.item;
@@ -1708,8 +1927,15 @@ export function createSceneEditor(root, {
   levelActions.className = 'editor-level-tools';
   levelActions.dataset.editorCategory = 'level';
   levelActions.innerHTML = `
+    <label class="editor-level-owner">
+      <span>操作用户</span>
+      <input class="editor-level-owner-input" type="text" maxlength="40" placeholder="填写你的名字，例如 WXJ" autocomplete="off" spellcheck="false">
+    </label>
     <div class="editor-level-actions">
+      <button class="editor-level-official" type="button" title="浏览游戏正式版本自带的关卡，选中后导入">游戏内关卡</button>
+      <button class="editor-level-overview" type="button" title="用布局缩略图查看并切换关卡">关卡总览</button>
       <button class="editor-level-edit" type="button">编辑关卡布局</button>
+      <button class="editor-level-claim" type="button" title="把没有登记归属的关卡登记到自己名下">认领此关卡</button>
       <button class="editor-level-import" type="button">\u5bfc\u5165\u5173\u5361</button>
       <button class="editor-level-delete" type="button">删除关卡</button>
       <button class="editor-level-export" type="button">导出关卡</button>
@@ -1735,9 +1961,37 @@ export function createSceneEditor(root, {
   const levelDeleteButton = levelActions.querySelector('.editor-level-delete');
   const levelExportButton = levelActions.querySelector('.editor-level-export');
   const levelEditButton = levelActions.querySelector('.editor-level-edit');
+  const levelOfficialButton = levelActions.querySelector('.editor-level-official');
+  const levelOverviewButton = levelActions.querySelector('.editor-level-overview');
+  const levelClaimButton = levelActions.querySelector('.editor-level-claim');
   const levelOpenFolderButton = levelActions.querySelector('.editor-level-open-folder');
   const levelFileInput = levelActions.querySelector('.editor-level-file');
   const levelStatus = levelActions.querySelector('.editor-level-status');
+  const levelOwnerInput = levelActions.querySelector('.editor-level-owner-input');
+  levelOwnerInput.value = readStoredLevelOwner();
+  levelOwnerInput.addEventListener('change', () => {
+    const stored = storeLevelOwner(levelOwnerInput.value);
+    levelOwnerInput.value = stored;
+    levelStatus.dataset.kind = '';
+    levelStatus.textContent = stored
+      ? `操作用户已设为「${stored}」，只有该用户能保存、导入或删除自己创建的关卡`
+      : '未填写操作用户：保存、导入和删除会被服务端拒绝';
+    updateLevelOwnershipNotice();
+  });
+  // Saving, importing, and deleting are refused without a name, so prompt for it
+  // before the request instead of letting the server answer with a 403 the
+  // operator has to decode.
+  function requireLevelOwner() {
+    const owner = normalizeLevelOwner(levelOwnerInput.value || readStoredLevelOwner());
+    if (owner) {
+      if (levelOwnerInput.value !== owner) levelOwnerInput.value = owner;
+      return owner;
+    }
+    levelOwnerInput.focus();
+    levelStatus.dataset.kind = 'error';
+    levelStatus.textContent = '请先填写“操作用户”，再保存、导入或删除关卡';
+    return '';
+  }
   const levelSortSelect = levelActions.querySelector('.editor-level-sort-select');
   levelSortSelect.value = readLevelSortMode();
   levelSortSelect.addEventListener('change', () => {
@@ -1753,6 +2007,7 @@ export function createSceneEditor(root, {
 
   function setLevelBusy(busy) {
     levelEditButton.disabled = busy;
+    levelClaimButton.disabled = busy;
     levelImportButton.disabled = busy;
     levelDeleteButton.disabled = busy;
     levelExportButton.disabled = busy;
@@ -1792,6 +2047,7 @@ export function createSceneEditor(root, {
   }
 
   let levelOptionItems = [];
+  let overview = null;
 
   // Level names come from three layers (baked catalog, imported definitions,
   // and the web volume), and only the server knows the merged result. Rebuild
@@ -1809,7 +2065,10 @@ export function createSceneEditor(root, {
       for (const item of items) {
         const option = document.createElement('option');
         option.value = item.key;
-        option.textContent = item.displayName;
+        // Name the owner in the label so a shared editor makes it obvious which
+        // levels belong to someone else before an edit is attempted.
+        option.textContent = item.owner ? `${item.displayName} · ${item.owner}` : item.displayName;
+        if (item.owner) option.title = `属于 ${item.owner}`;
         select.append(option);
       }
       const selectedKey = getAtPath(tuning, path);
@@ -1821,7 +2080,10 @@ export function createSceneEditor(root, {
   async function refreshWebLevelOptions() {
     const controls = inputs.get('level.selected');
     if (!controls?.select) return [];
-    const response = await fetch('/__level-authoring', { cache: 'no-store' });
+    const response = await fetch('/__level-authoring', {
+      cache: 'no-store',
+      headers: levelOwnerHeaders()
+    });
     const payload = await response.json().catch(() => ({}));
     if (!response.ok) throw new Error(payload.error || `HTTP ${response.status}`);
     levelOptionItems = (payload.items ?? []).filter((item) => item?.key && item.displayName);
@@ -1832,7 +2094,71 @@ export function createSceneEditor(root, {
     if (selectedKey && !items.some((item) => item.key === selectedKey)) {
       levelStatus.textContent = `当前关卡 ${selectedKey} 没有关卡数据，请重新选择关卡，否则导出会失败`;
     }
+    updateLevelOwnershipNotice();
+    // An open overview has to follow the same list: importing a level while it
+    // is visible would otherwise leave the new thumbnail out until reopened.
+    if (overview) overview.reload().catch(() => {});
     return items;
+  }
+
+  // Ownership state of the selected level, shown next to the buttons so the
+  // reason a save is about to be refused is visible before pressing it.
+  function selectedLevelOwnership() {
+    const key = String(getTuning().level?.selected ?? '');
+    const item = levelOptionItems.find((entry) => entry.key === key);
+    return { key, owner: item?.owner ?? '', unregistered: !item?.owner };
+  }
+
+  // Explicit takeover of a level that has no registered owner. Levels created
+  // before ownership existed are read-only until this runs, so pressing save on
+  // someone else's older level cannot capture it by accident.
+  levelClaimButton.addEventListener('click', async () => {
+    const { key, owner, unregistered } = selectedLevelOwnership();
+    if (!/^level[1-9]\d*$/u.test(key)) return;
+    const operator = requireLevelOwner();
+    if (!operator) return;
+    if (!unregistered) {
+      levelStatus.dataset.kind = 'warn';
+      levelStatus.textContent = owner
+        ? `关卡 ${key} 已属于「${owner}」，不能重复认领`
+        : `关卡 ${key} 无法认领`;
+      return;
+    }
+    if (!window.confirm(`确认把关卡 ${key} 认领到「${operator}」名下？认领后只有你能修改和删除它。`)) return;
+    setLevelBusy(true);
+    try {
+      const response = await fetch(`/__level-authoring/${encodeURIComponent(key)}/claim`, {
+        method: 'POST',
+        headers: levelOwnerHeaders(operator)
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(payload.error || `HTTP ${response.status}`);
+      await refreshWebLevelOptions();
+      levelStatus.dataset.kind = 'success';
+      levelStatus.textContent = `已认领关卡 ${key}，现在归「${operator}」所有`;
+    } catch (error) {
+      levelStatus.dataset.kind = 'error';
+      levelStatus.textContent = `认领失败：${error.message}`;
+    } finally {
+      setLevelBusy(false);
+    }
+  });
+
+  function updateLevelOwnershipNotice() {
+    const { key, owner, unregistered } = selectedLevelOwnership();
+    if (!key) return;
+    if (unregistered) {
+      levelStatus.textContent = `关卡 ${key} 还没有登记归属，默认只读。要接手请点“认领此关卡”。`;
+      levelStatus.dataset.kind = 'warn';
+      return;
+    }
+    if (isForeignLevelOwner(owner, normalizeLevelOwner(levelOwnerInput.value))) {
+      levelStatus.textContent = `关卡 ${key} 属于「${owner}」，你只能查看。`;
+      levelStatus.dataset.kind = 'warn';
+      return;
+    }
+    levelStatus.textContent = `关卡 ${key} 归你所有`;
+    levelStatus.dataset.kind = '';
   }
 
   levelEditButton.addEventListener('click', async () => {
@@ -1848,6 +2174,74 @@ export function createSceneEditor(root, {
     }
   });
 
+  // The game's own campaign levels ship as .asset files that were never part of
+  // the authoring catalog. This picker browses them as read-only thumbnails and
+  // imports exactly one when chosen, so an operator can start from real game
+  // content instead of re-importing files by hand.
+  levelOfficialButton.addEventListener('click', async () => {
+    levelStatus.dataset.kind = '';
+    const owner = requireLevelOwner();
+    if (!owner) return;
+    try {
+      const { openOfficialLevelsPicker } = await import('./official-levels-picker.js');
+      openOfficialLevelsPicker({
+        owner,
+        onImported: (level) => {
+          // The picker already wrote the file; reuse the same switch path as a
+          // manual import so the tuning profile and preview stay in sync.
+          void switchToImportedLevel(level);
+        }
+      });
+    } catch (error) {
+      levelStatus.dataset.kind = 'error';
+      levelStatus.textContent = `游戏内关卡打开失败：${error.message}`;
+    }
+  });
+
+  // Shared by the manual .asset/file import and the official-level picker: the
+  // level is already on disk, so only the option list and the active selection
+  // need updating.
+  async function switchToImportedLevel(level, { status = '' } = {}) {
+    if (!level?.key) return;
+    const controls = inputs.get('level.selected');
+    if (controls?.select && !controls.select.querySelector(`option[value="${CSS.escape(level.key)}"]`)) {
+      const option = document.createElement('option');
+      option.value = level.key;
+      option.textContent = level.displayName || level.key;
+      controls.select.append(option);
+    }
+    levelStatus.textContent = status
+      || `已切换到 ${level.displayName ?? level.key}（${level.vehicleCount ?? 0} 辆车）。`;
+    const next = structuredClone(getTuning());
+    next.level.selected = level.key;
+    commitTuning(next, { path: 'level.selected' });
+    // The refreshed list carries the new level's owner label; the reload above
+    // usually wins the race, and a failure here must not block the switch.
+    refreshWebLevelOptions().catch(() => {});
+  }
+
+  // The dropdown is a flat name list, so two similarly named levels cannot be
+  // told apart without opening each one. The overview shows the actual layout
+  // and switches through the same commit path the dropdown uses, which keeps the
+  // saved-tuning profile and the playable preview in sync.
+  levelOverviewButton.addEventListener('click', async () => {
+    levelStatus.dataset.kind = '';
+    try {
+      const { openLevelOverview } = await import('./level-overview.js');
+      overview = openLevelOverview({
+        currentKey: String(getTuning().level?.selected ?? ''),
+        onSelect: (levelKey) => {
+          const next = structuredClone(getTuning());
+          next.level.selected = levelKey;
+          commitTuning(next, { path: 'level.selected' });
+        }
+      });
+    } catch (error) {
+      levelStatus.dataset.kind = 'error';
+      levelStatus.textContent = `关卡总览打开失败：${error.message}`;
+    }
+  });
+
   async function importUnityLevel(file) {
     if (!/\.asset$/i.test(file?.name ?? '')) {
       throw new Error('\u6587\u4ef6\u540d\u53ea\u9700\u4ee5 .asset \u7ed3\u5c3e');
@@ -1857,25 +2251,17 @@ export function createSceneEditor(root, {
       headers: {
         'Content-Type': 'text/plain; charset=utf-8',
         'X-Level-Filename': encodeURIComponent(file.name),
-        'X-Level-Target-Key': nextImportedLevelKey()
+        'X-Level-Target-Key': nextImportedLevelKey(),
+        ...levelOwnerHeaders(requireLevelOwner())
       },
       body: await file.text()
     });
     const payload = await response.json().catch(() => ({}));
     if (!response.ok) throw new Error(payload.error || `HTTP ${response.status}`);
-    const controls = inputs.get('level.selected');
-    if (controls?.select && !controls.select.querySelector(`option[value="${CSS.escape(payload.level.key)}"]`)) {
-      const option = document.createElement('option');
-      option.value = payload.level.key;
-      option.textContent = payload.level.displayName || `${payload.level.key} (${payload.level.filename})`;
-      controls.select.append(option);
-    }
     const action = payload.replaced ? '\u5df2\u66f4\u65b0' : '\u5df2\u5bfc\u5165';
-    levelStatus.textContent = `${action} ${payload.level.key}\uff1a${payload.level.vehicleCount} \u8f86\u8f66\uff0c${payload.level.passengerCount} \u540d\u4e58\u5ba2\u3002\u6b63\u5728\u5207\u6362...`;
-    const next = structuredClone(getTuning());
-    next.level.selected = payload.level.key;
-    commitTuning(next, { path: 'level.selected' });
-    refreshWebLevelOptions().catch(() => {});
+    await switchToImportedLevel(payload.level, {
+      status: `${action} ${payload.level.key}\uff1a${payload.level.vehicleCount} \u8f86\u8f66\uff0c${payload.level.passengerCount} \u540d\u4e58\u5ba2\u3002\u6b63\u5728\u5207\u6362...`
+    });
   }
 
   async function importWebLevel(file) {
@@ -1904,14 +2290,20 @@ export function createSceneEditor(root, {
     }
     const response = await fetch('/__level-authoring/import', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json; charset=utf-8' },
+      headers: { 'Content-Type': 'application/json; charset=utf-8', ...levelOwnerHeaders(requireLevelOwner()) },
       body: JSON.stringify({ document, filename: file.name })
     });
     const payload = await response.json().catch(() => ({}));
     if (!response.ok) throw new Error(payload.error || `HTTP ${response.status}`);
     await refreshWebLevelOptions();
     if (controls?.select) controls.select.value = payload.level.key;
-    levelStatus.textContent = `已导入新关卡 ${payload.level.displayName}：${payload.level.vehicleCount} 辆车，${payload.level.passengerCount} 名乘客。正在应用...`;
+    // The file's scene tuning belongs to the key the level just received. It
+    // must land before the switch below, because switching reads that profile.
+    const tuningRestored = Boolean(source.tuning)
+      && saveImportedLevelTuning(payload.level.key, source.tuning);
+    levelStatus.textContent = `已导入新关卡 ${payload.level.displayName}：${payload.level.vehicleCount} 辆车，${payload.level.passengerCount} 名乘客。`
+      + (tuningRestored ? '已恢复画面/车位/车辆参数。' : '该文件不含画面参数，使用默认值。')
+      + '正在应用...';
     const next = structuredClone(getTuning());
     next.level.selected = payload.level.key;
     commitTuning(next, { path: 'level.selected' });
@@ -1927,11 +2319,18 @@ export function createSceneEditor(root, {
   levelDeleteButton.addEventListener('click', async () => {
     const key = String(getTuning().level?.selected ?? '');
     if (!/^level[1-9]\d*$/.test(key)) return;
-    if (!window.confirm(`确定删除关卡 ${key}？`)) return;
+    const owner = requireLevelOwner();
+    if (!owner) return;
+    // Name the owner in the prompt: deleting someone else's level is exactly the
+    // accident this guard exists for, and the server would refuse it anyway.
+    const levelOwner = levelOptionItems.find((item) => item.key === key)?.owner ?? '';
+    const foreignNote = isForeignLevelOwner(levelOwner, owner) ? `\n注意：该关卡属于「${levelOwner}」。` : '';
+    if (!window.confirm(`确定删除关卡 ${key}？${foreignNote}`)) return;
     setLevelBusy(true);
     try {
-      let response = await fetch(`/__level-authoring/${encodeURIComponent(key)}`, { method: 'DELETE' });
-      if (response.status === 404) response = await fetch(`/__unity-levels/${encodeURIComponent(key)}`, { method: 'DELETE' });
+      const headers = levelOwnerHeaders(owner);
+      let response = await fetch(`/__level-authoring/${encodeURIComponent(key)}`, { method: 'DELETE', headers });
+      if (response.status === 404) response = await fetch(`/__unity-levels/${encodeURIComponent(key)}`, { method: 'DELETE', headers });
       const payload = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(payload.error || `HTTP ${response.status}`);
       inputs.get('level.selected')?.select?.querySelector(`option[value="${CSS.escape(key)}"]`)?.remove();
@@ -1961,17 +2360,25 @@ export function createSceneEditor(root, {
         const payload = await response.json().catch(() => ({}));
         throw new Error(payload.error || `HTTP ${response.status}`);
       }
-      const blob = await response.blob();
       const disposition = response.headers.get('Content-Disposition') || '';
       const encoded = disposition.match(/filename\*=UTF-8''([^;]+)/i)?.[1];
-      const filename = encoded ? decodeURIComponent(encoded) : `level-${key}.json`;
-      const url = URL.createObjectURL(blob);
-      const anchor = document.createElement('a');
-      anchor.href = url;
-      anchor.download = filename;
-      anchor.click();
-      setTimeout(() => URL.revokeObjectURL(url), 0);
-      levelStatus.textContent = `已导出 ${filename}`;
+      const raw = await response.text();
+      const exported = attachTuningToExportedLevel(raw, key, getTuning());
+      const serverFilename = encoded ? decodeURIComponent(encoded) : '';
+      // A Unity .asset export stays a .asset download; only the authored JSON
+      // gains the scene tuning. The server may hand back either extension, so
+      // normalize before appending.
+      const filename = exported
+        ? `${serverFilename.replace(/\.(?:asset|json)$/i, '') || `level-${key}`}.json`
+        : serverFilename || `level-${key}.asset`;
+      saveTextFile(
+        filename,
+        exported ?? raw,
+        exported ? 'application/json;charset=utf-8' : 'text/plain;charset=utf-8'
+      );
+      levelStatus.textContent = exported
+        ? `已导出 ${filename}（含画面/车位/车辆参数）`
+        : `已导出 ${filename}`;
     } catch (error) {
       levelStatus.textContent = `导出失败：${error.message}`;
     } finally {
@@ -2173,6 +2580,7 @@ export function createSceneEditor(root, {
       const value = getAtPath(tuning, path);
       if (controls.select) {
         if (path === 'background.asset') ensureBackgroundSelectValue(controls.select, value);
+        if (path.endsWith('.vehicleId')) ensureVehicleSelectValue(controls.select, value);
         controls.select.value = value;
         continue;
       }
@@ -2196,6 +2604,16 @@ export function createSceneEditor(root, {
     }
     updatePassengerMaterialVisibility(tuning);
     updateConveyorLayoutVisibility(tuning);
+    // 起点 X is computed while auto-centring is on, so leave the row in place but
+    // mark it read-only -- dragging a slider that cannot win the argument reads
+    // as a broken control.
+    const autoCenter = Boolean(Number(tuning.parkingSpots?.autoCenter));
+    const startXControls = inputs.get('parkingSpots.startX');
+    if (startXControls?.row) {
+      startXControls.row.classList.toggle('is-readonly', autoCenter);
+      if (startXControls.range) startXControls.range.disabled = autoCenter;
+      if (startXControls.number) startXControls.number.disabled = autoCenter;
+    }
     setPreRollBusy(preRollBusy);
     setBackgroundBusy(false);
   }

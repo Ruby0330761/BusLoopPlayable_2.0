@@ -114,10 +114,17 @@ body { user-select: none; overscroll-behavior: none; }
   overflow: hidden;
   pointer-events: none;
 }
-.first-click-guide-mask.is-input-blocking { pointer-events: auto; }
+/* The dimmed area is drawn by the hole's oversized shadow, so the four pieces
+   exist purely to receive input outside the hole. Blocking the whole root made
+   the highlighted car untappable for the whole guide, which reads as a broken
+   game rather than a hint. */
+.first-click-guide-mask.is-input-blocking .first-click-guide-mask-piece {
+  pointer-events: auto;
+}
 .first-click-guide-mask[hidden] { display: none; }
 .first-click-guide-mask-piece {
-  display: none;
+  position: absolute;
+  display: block;
 }
 .first-click-guide-hole {
   position: absolute;
@@ -143,6 +150,46 @@ body { user-select: none; overscroll-behavior: none; }
   user-select: none;
 }
 .first-click-guide-hand[hidden] { display: none; }
+.stage-label-overlay {
+  position: absolute;
+  /* Above the opening dim mask (8) so a HUD badge does not fade with the board,
+     below the entry banner (9) so SUPER HARD still covers it. The tie with the
+     mask is resolved by DOM order: this overlay is appended after it. */
+  z-index: 8;
+  left: 0;
+  top: 0;
+  pointer-events: none;
+  overflow: hidden;
+}
+.stage-label-overlay[hidden] { display: none; }
+.stage-label {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  padding: 0;
+  background: none;
+  color: #fff;
+  font-family: 'Poppins Branding', Arial, sans-serif;
+  font-weight: 700;
+  font-size: clamp(21px, 7.1vmin, 48px);
+  letter-spacing: .01em;
+  line-height: 1;
+  white-space: nowrap;
+  /* Plain white type with a thin dark rim. An 8-way shadow at ~0.03em draws
+     just enough edge to stay legible over grass and road; anything thicker
+     reads as a heavy black outline and fights the soft body text. */
+  text-shadow:
+    -0.03em -0.03em 0 #12203a,
+     0      -0.03em 0 #12203a,
+     0.03em -0.03em 0 #12203a,
+    -0.03em  0      0 #12203a,
+     0.03em  0      0 #12203a,
+    -0.03em  0.03em 0 #12203a,
+     0       0.03em 0 #12203a,
+     0.03em  0.03em 0 #12203a,
+     0 0.09em 0.14em rgba(23, 36, 58, .4);
+}
+.stage-label.is-left { transform: translate(0, -50%); }
+.stage-label.is-right { transform: translate(-100%, -50%); }
 .entry-banner-overlay {
   position: absolute;
   z-index: 9;
@@ -325,6 +372,100 @@ button:hover { transform: translateY(-1px); background: #fff; }
 .end-panel p { margin: 0 0 6px; color: #7de4c2; font: 700 11px/1 'Poppins Branding', Arial, sans-serif; letter-spacing: .22em; }
 .end-panel h2 { margin: 0 0 22px; font: 800 clamp(42px, 8vw, 76px)/.9 'Poppins Branding', Arial, sans-serif; }
 .end-panel button { padding: 13px 24px; font-size: 14px; }
+/* Post-stage "Please Choose a Stage" picker. It replaces the end panel for the
+   stage that hands control to the player, so it has to cover the board and the
+   branding strip but stay under the game-over panel and the CTA button. */
+.stage-choice-overlay {
+  position: absolute;
+  z-index: 11;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4.2vmin;
+  padding: 7vmin 5vmin;
+  background: #dff2ff;
+  pointer-events: auto;
+}
+.stage-choice-overlay[hidden] { display: none; }
+.stage-choice-title {
+  margin: 0;
+  color: #0a0d12;
+  font: 900 clamp(22px, 7.2vmin, 52px)/1.08 'Poppins Branding', Arial, sans-serif;
+  letter-spacing: -.015em;
+  text-align: center;
+  text-wrap: balance;
+}
+.stage-choice-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 2.4vmin;
+  width: min(100%, 88vmin);
+}
+/* The page-level button rule styles pills; a stage card is a plain tile. */
+.stage-choice-card {
+  position: relative;
+  display: block;
+  aspect-ratio: .655;
+  padding: 0;
+  overflow: hidden;
+  border: .55vmin solid #2437b5;
+  border-radius: 2vmin;
+  background: #eff2f5;
+  box-shadow: none;
+  backdrop-filter: none;
+  cursor: pointer;
+  opacity: 0;
+  transform: scale(.86);
+}
+.stage-choice-overlay.is-active .stage-choice-card {
+  animation: stage-choice-card-in .34s cubic-bezier(.2, .9, .3, 1.2) forwards;
+}
+.stage-choice-card:nth-child(1) { animation-delay: .04s; }
+.stage-choice-card:nth-child(2) { animation-delay: .1s; }
+.stage-choice-card:nth-child(3) { animation-delay: .16s; }
+.stage-choice-card:nth-child(4) { animation-delay: .22s; }
+.stage-choice-card:hover,
+.stage-choice-card:active {
+  background: #eff2f5;
+  border-color: #1a2a9c;
+  transform: none;
+}
+.stage-choice-thumb {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  pointer-events: none;
+  user-select: none;
+  -webkit-user-drag: none;
+}
+.stage-choice-hand {
+  /* Positioned by main.js against the card it points at, so the same hand art
+     works for any grid size or handIndex the session names. */
+  position: absolute;
+  z-index: 2;
+  left: 0;
+  top: 0;
+  width: min(46%, 34vmin);
+  height: auto;
+  display: block;
+  pointer-events: none;
+  user-select: none;
+  -webkit-user-drag: none;
+  filter: drop-shadow(0 .5vmin .8vmin rgba(12, 26, 60, .3));
+  transform-origin: 32% 82%;
+  animation: stage-choice-hand-bob 1.15s ease-in-out infinite;
+}
+.stage-choice-hand[hidden] { display: none; }
+@keyframes stage-choice-card-in {
+  to { opacity: 1; transform: scale(1); }
+}
+@keyframes stage-choice-hand-bob {
+  0%, 100% { transform: translate(0, 0) rotate(-5deg); }
+  50% { transform: translate(4%, -5%) rotate(1deg); }
+}
 .game-over-overlay {
   position: absolute;
   z-index: 12;
@@ -392,6 +533,9 @@ button:hover { transform: translateY(-1px); background: #fff; }
   color: #fff;
   font: 900 var(--cta-font-size, 28px)/var(--cta-font-height, 28px) 'Poppins Branding', Arial, sans-serif;
   text-align: center;
+  /* The tuned line height is far shorter than the font size, so a wrapped label
+     would draw its lines on top of each other. It must never wrap. */
+  white-space: nowrap;
   text-shadow:
     calc(var(--cta-stroke-width, 2px) * -1) 0 0 var(--cta-stroke-color, #196b07),
     var(--cta-stroke-width, 2px) 0 0 var(--cta-stroke-color, #196b07),
@@ -417,6 +561,55 @@ button:hover { transform: translateY(-1px); background: #fff; }
 @keyframes cta-pulse {
   0%, 100% { transform: translate(-50%, -50%) scale(1); }
   50% { transform: translate(-50%, -50%) scale(var(--cta-pulse-scale, 1.08)); }
+}
+/* Sticky x1/x2 conveyor-speed switch. It sits above the scene overlays but
+   below the end panel, game-over panel, and CTA so a result screen wins. */
+.speed-toggle {
+  position: absolute;
+  z-index: 9;
+  left: 50%;
+  top: 50%;
+  width: var(--speed-toggle-width, 105px);
+  height: var(--speed-toggle-height, 69px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--speed-toggle-gap, 5px);
+  padding: 0;
+  border: 0;
+  border-radius: calc(var(--speed-toggle-height, 69px) * .32);
+  /* One declaration so the single-HTML export inlines the button art once. */
+  --speed-toggle-background: url('/assets/applovin/speed-toggle-bg_q90.webp') center / 100% 100% no-repeat;
+  background: transparent var(--speed-toggle-background);
+  box-shadow: none;
+  backdrop-filter: none;
+  transform: translate(-50%, -50%);
+  transition: transform .12s ease;
+}
+.speed-toggle[hidden] { display: none; }
+/* Keep the centering transform on hover: the shared button:hover rule only
+   lifts by 1px, which would drop the translate and move the button. */
+.speed-toggle:hover {
+  background: transparent var(--speed-toggle-background);
+  transform: translate(-50%, -50%);
+}
+.speed-toggle:active { transform: translate(-50%, -50%) scale(.94); }
+.speed-toggle:focus-visible { outline: 2px solid #fff; outline-offset: 3px; }
+.speed-toggle-icon {
+  width: var(--speed-toggle-icon-width, 26px);
+  height: var(--speed-toggle-icon-height, 36px);
+  object-fit: contain;
+  pointer-events: none;
+  -webkit-user-drag: none;
+}
+.speed-toggle-label {
+  min-width: 1.6em;
+  color: #fff;
+  font: 900 var(--speed-toggle-font-size, 28px)/1 'Poppins Branding', Arial, sans-serif;
+  letter-spacing: .01em;
+  text-align: left;
+  text-shadow: 0 2px 3px rgba(8, 41, 96, .55);
+  pointer-events: none;
 }
 .scene-editor {
   position: relative; z-index: 20; flex: 0 0 320px; width: 320px; min-width: 0; height: 100%;
@@ -468,6 +661,10 @@ button:hover { transform: translateY(-1px); background: #fff; }
 .editor-field-toggle { grid-template-columns: 1fr auto; }
 .editor-field-text { grid-template-columns: 64px minmax(0, 1fr); }
 .editor-field-url { grid-template-columns: minmax(0, 1fr); gap: 4px; padding: 3px 0; }
+/* Driven by another field (e.g. parking 起点 X while auto-centring). Dimmed so it
+   reads as derived rather than broken. */
+.editor-field.is-readonly { opacity: .45; }
+.editor-field.is-readonly input { cursor: not-allowed; }
 .editor-camera-tools { margin-top: 10px; padding-top: 10px; border-top: 1px solid rgba(16,35,61,.08); }
 .editor-camera-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; }
 .editor-camera-actions button {
@@ -502,6 +699,14 @@ button:hover { transform: translateY(-1px); background: #fff; }
 }
 .editor-url[aria-invalid="true"] { border-color: #c53b3b; box-shadow: 0 0 0 1px rgba(197,59,59,.14); }
 .editor-playable-export { border-color: rgba(31, 111, 76, .24); background: rgba(250, 255, 252, .9); }
+.editor-export-set { display: grid; gap: 6px; margin-bottom: 8px; color: #5a7085; font-size: 11px; }
+.editor-export-set-select {
+  width: 100%; min-width: 0; height: 34px; padding: 0 30px 0 9px;
+  border: 1px solid rgba(16,35,61,.18); border-radius: 8px; background: #fff; color: #173451;
+  font: 700 11px/1 'Poppins Branding', Arial, sans-serif; cursor: pointer;
+}
+.editor-export-set-select:focus-visible { outline: 2px solid #287fa8; outline-offset: 2px; }
+.editor-export-set-note { margin: 0 0 8px; color: #62788c; font-size: 10px; line-height: 1.4; }
 .editor-export-platform { display: grid; gap: 6px; color: #5a7085; font-size: 11px; }
 .editor-export-select {
   width: 100%; min-width: 0; height: 34px; padding: 0 30px 0 9px;
@@ -522,6 +727,7 @@ button:hover { transform: translateY(-1px); background: #fff; }
 .editor-export-all-button:hover { background: #195f3f; }
 .editor-export-button:disabled,
 .editor-export-all-button:disabled,
+.editor-export-set-select:disabled,
 .editor-export-select:disabled { cursor: wait; opacity: .62; transform: none; }
 .editor-export-status {
   min-height: 14px; margin: 8px 0 0; overflow-wrap: anywhere; color: #62788c; font-size: 10px; line-height: 1.4;
@@ -529,6 +735,9 @@ button:hover { transform: translateY(-1px); background: #fff; }
 .editor-export-status[data-state="busy"] { color: #8a5b16; }
 .editor-export-status[data-state="success"] { color: #21764f; }
 .editor-export-status[data-state="error"] { color: #a43a38; }
+.editor-export-events {
+  margin: 2px 0 0; color: #62788c; font-size: 10px; line-height: 1.4;
+}
 .editor-screenshot { border-color: rgba(40, 127, 168, .22); background: rgba(247, 252, 255, .92); }
 .editor-screenshot-size { display: grid; gap: 6px; color: #5a7085; font-size: 11px; }
 .editor-screenshot-select {
@@ -605,6 +814,15 @@ button:hover { transform: translateY(-1px); background: #fff; }
 .editor-spatial-actions button {
   min-width: 0; padding: 8px 6px; border-radius: 8px; box-shadow: none; font-size: 11px;
 }
+.editor-level-official,
+.editor-level-overview { grid-column: 1 / -1; }
+/* The official library is a browse surface, not another edit action, so it gets
+   the accent treatment while the editing buttons stay neutral. */
+.editor-level-official {
+  border-color: rgba(22,131,162,.38) !important;
+  background: #f2fbfd !important; color: #11667c !important; font-weight: 600;
+}
+.editor-level-official:hover { background: #e3f6fb !important; }
 .editor-level-edit { grid-column: 1 / -1; }
 .editor-spatial-edit-points,
 .editor-spatial-open-folder { grid-column: 1 / -1; }
@@ -616,6 +834,17 @@ button:hover { transform: translateY(-1px); background: #fff; }
   flex: 1; min-width: 0; padding: 6px 8px; border-radius: 8px;
   border: 1px solid rgba(16,35,61,.18); background: #fff; color: #21323f; font-size: 11px;
 }
+/* The operator name gates every level write, so it sits above the buttons and
+   reads as a required field rather than an optional setting. */
+.editor-level-owner {
+  display: flex; align-items: center; gap: 8px; margin-bottom: 8px;
+  color: #21323f; font-size: 11px; font-weight: 600;
+}
+.editor-level-owner input {
+  flex: 1; min-width: 0; padding: 6px 8px; border-radius: 8px;
+  border: 1px solid rgba(16,35,61,.28); background: #fff; color: #21323f; font-size: 11px;
+}
+.editor-level-owner input:focus-visible { outline: 2px solid #287fa8; outline-offset: 1px; }
 .editor-level-status,
 .editor-spatial-status {
   margin: 8px 0 0; overflow-wrap: anywhere; color: #62788c; font-size: 10px; line-height: 1.4;

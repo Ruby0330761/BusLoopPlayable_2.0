@@ -2915,6 +2915,12 @@ export const LEVEL_CATALOG = Object.freeze({
             "/assets/unity/audio/bus_full.mp3"
           ],
           "volume": 0.50023913
+        },
+        "vehicle_tap": {
+          "clips": [
+            "/assets/unity/audio/vehicle_tap.mp3"
+          ],
+          "volume": 0.7
         }
       },
       "colorTextures": [
@@ -5163,6 +5169,12 @@ export const LEVEL_CATALOG = Object.freeze({
             "/assets/unity/audio/bus_full.mp3"
           ],
           "volume": 0.50023913
+        },
+        "vehicle_tap": {
+          "clips": [
+            "/assets/unity/audio/vehicle_tap.mp3"
+          ],
+          "volume": 0.7
         }
       },
       "colorTextures": [
@@ -9509,6 +9521,12 @@ export const LEVEL_CATALOG = Object.freeze({
             "/assets/unity/audio/bus_full.mp3"
           ],
           "volume": 0.50023913
+        },
+        "vehicle_tap": {
+          "clips": [
+            "/assets/unity/audio/vehicle_tap.mp3"
+          ],
+          "volume": 0.7
         }
       },
       "colorTextures": [
@@ -11513,6 +11531,12 @@ export const LEVEL_CATALOG = Object.freeze({
             "/assets/unity/audio/bus_full.mp3"
           ],
           "volume": 0.50023913
+        },
+        "vehicle_tap": {
+          "clips": [
+            "/assets/unity/audio/vehicle_tap.mp3"
+          ],
+          "volume": 0.7
         }
       },
       "colorTextures": [
@@ -13645,6 +13669,12 @@ export const LEVEL_CATALOG = Object.freeze({
             "/assets/unity/audio/bus_full.mp3"
           ],
           "volume": 0.50023913
+        },
+        "vehicle_tap": {
+          "clips": [
+            "/assets/unity/audio/vehicle_tap.mp3"
+          ],
+          "volume": 0.7
         }
       },
       "colorTextures": [
@@ -16124,6 +16154,12 @@ export const LEVEL_CATALOG = Object.freeze({
             "/assets/unity/audio/bus_full.mp3"
           ],
           "volume": 0.50023913
+        },
+        "vehicle_tap": {
+          "clips": [
+            "/assets/unity/audio/vehicle_tap.mp3"
+          ],
+          "volume": 0.7
         }
       },
       "colorTextures": [
@@ -19698,6 +19734,12 @@ export const LEVEL_CATALOG = Object.freeze({
             "/assets/unity/audio/bus_full.mp3"
           ],
           "volume": 0.50023913
+        },
+        "vehicle_tap": {
+          "clips": [
+            "/assets/unity/audio/vehicle_tap.mp3"
+          ],
+          "volume": 0.7
         }
       },
       "colorTextures": [
@@ -22414,6 +22456,12 @@ export const LEVEL_CATALOG = Object.freeze({
             "/assets/unity/audio/bus_full.mp3"
           ],
           "volume": 0.50023913
+        },
+        "vehicle_tap": {
+          "clips": [
+            "/assets/unity/audio/vehicle_tap.mp3"
+          ],
+          "volume": 0.7
         }
       },
       "colorTextures": [
@@ -26140,6 +26188,12 @@ export const LEVEL_CATALOG = Object.freeze({
             "/assets/unity/audio/bus_full.mp3"
           ],
           "volume": 0.50023913
+        },
+        "vehicle_tap": {
+          "clips": [
+            "/assets/unity/audio/vehicle_tap.mp3"
+          ],
+          "volume": 0.7
         }
       },
       "colorTextures": [
@@ -27591,6 +27645,12 @@ export const LEVEL_CATALOG = Object.freeze({
             "/assets/unity/audio/bus_full.mp3"
           ],
           "volume": 0.50023913
+        },
+        "vehicle_tap": {
+          "clips": [
+            "/assets/unity/audio/vehicle_tap.mp3"
+          ],
+          "volume": 0.7
         }
       },
       "colorTextures": [
@@ -30604,6 +30664,12 @@ export const LEVEL_CATALOG = Object.freeze({
             "/assets/unity/audio/bus_full.mp3"
           ],
           "volume": 0.50023913
+        },
+        "vehicle_tap": {
+          "clips": [
+            "/assets/unity/audio/vehicle_tap.mp3"
+          ],
+          "volume": 0.7
         }
       },
       "colorTextures": [
@@ -34121,6 +34187,12 @@ export const LEVEL_CATALOG = Object.freeze({
             "/assets/unity/audio/bus_full.mp3"
           ],
           "volume": 0.50023913
+        },
+        "vehicle_tap": {
+          "clips": [
+            "/assets/unity/audio/vehicle_tap.mp3"
+          ],
+          "volume": 0.7
         }
       },
       "colorTextures": [
@@ -36943,6 +37015,12 @@ export const LEVEL_CATALOG = Object.freeze({
             "/assets/unity/audio/bus_full.mp3"
           ],
           "volume": 0.50023913
+        },
+        "vehicle_tap": {
+          "clips": [
+            "/assets/unity/audio/vehicle_tap.mp3"
+          ],
+          "volume": 0.7
         }
       },
       "colorTextures": [
@@ -38828,6 +38906,12 @@ export const LEVEL_CATALOG = Object.freeze({
             "/assets/unity/audio/bus_full.mp3"
           ],
           "volume": 0.50023913
+        },
+        "vehicle_tap": {
+          "clips": [
+            "/assets/unity/audio/vehicle_tap.mp3"
+          ],
+          "volume": 0.7
         }
       },
       "colorTextures": [
@@ -40926,6 +41010,12 @@ export const LEVEL_CATALOG = Object.freeze({
             "/assets/unity/audio/bus_full.mp3"
           ],
           "volume": 0.50023913
+        },
+        "vehicle_tap": {
+          "clips": [
+            "/assets/unity/audio/vehicle_tap.mp3"
+          ],
+          "volume": 0.7
         }
       },
       "colorTextures": [
@@ -43087,6 +43177,12 @@ export const LEVEL_CATALOG = Object.freeze({
             "/assets/unity/audio/bus_full.mp3"
           ],
           "volume": 0.50023913
+        },
+        "vehicle_tap": {
+          "clips": [
+            "/assets/unity/audio/vehicle_tap.mp3"
+          ],
+          "volume": 0.7
         }
       },
       "colorTextures": [
@@ -45912,6 +46008,12 @@ export const LEVEL_CATALOG = Object.freeze({
             "/assets/unity/audio/bus_full.mp3"
           ],
           "volume": 0.50023913
+        },
+        "vehicle_tap": {
+          "clips": [
+            "/assets/unity/audio/vehicle_tap.mp3"
+          ],
+          "volume": 0.7
         }
       },
       "colorTextures": [
@@ -48747,6 +48849,12 @@ export const LEVEL_CATALOG = Object.freeze({
             "/assets/unity/audio/bus_full.mp3"
           ],
           "volume": 0.50023913
+        },
+        "vehicle_tap": {
+          "clips": [
+            "/assets/unity/audio/vehicle_tap.mp3"
+          ],
+          "volume": 0.7
         }
       },
       "colorTextures": [
@@ -51582,6 +51690,12 @@ export const LEVEL_CATALOG = Object.freeze({
             "/assets/unity/audio/bus_full.mp3"
           ],
           "volume": 0.50023913
+        },
+        "vehicle_tap": {
+          "clips": [
+            "/assets/unity/audio/vehicle_tap.mp3"
+          ],
+          "volume": 0.7
         }
       },
       "colorTextures": [

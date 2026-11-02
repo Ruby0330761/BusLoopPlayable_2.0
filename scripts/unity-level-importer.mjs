@@ -28,6 +28,7 @@ const UNSUPPORTED_MECHANISM_SECTIONS = [
 const STANDARD_COLOR_INDEX_MAX = 10;
 const AMBULANCE_COLOR_INDEX = 13;
 const LUXURY_COLOR_INDEX = 15;
+const CHRISTMAS_COLOR_INDEX = 16;
 // Supplied colour supplement (see scripts/generate-color-variant-textures.mjs).
 const SUPPLEMENT_COLOR_INDEX_MIN = 17;
 const SUPPLEMENT_COLOR_INDEX_MAX = 25;
@@ -35,6 +36,9 @@ const SUPPLEMENT_COLOR_INDEX_MAX = 25;
 function isSupportedColorIndex(colorIndex) {
   if (colorIndex <= STANDARD_COLOR_INDEX_MAX) return true;
   if (colorIndex === AMBULANCE_COLOR_INDEX || colorIndex === LUXURY_COLOR_INDEX) return true;
+  // The supplied Christmas sled carries its own authored texture; like the
+  // ambulance and luxury cars it is a runtime vehicle type, not a paint slot.
+  if (colorIndex === CHRISTMAS_COLOR_INDEX) return true;
   return colorIndex >= SUPPLEMENT_COLOR_INDEX_MIN && colorIndex <= SUPPLEMENT_COLOR_INDEX_MAX;
 }
 const PARKING_AREA_CONTAINER_TYPE = 1;

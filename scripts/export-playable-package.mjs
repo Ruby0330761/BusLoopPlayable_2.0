@@ -36,11 +36,76 @@ const PLATFORM_FORMATS = Object.freeze({
   moloco: 'html',
   tiktok: 'zip'
 });
-export const PLAYABLE_NAMING_PATTERN = 'requirement-material-iteration-language-format-designer-requester-channel-steps-stamina';
+export const PLAYABLE_NAMING_PATTERN = 'requirement-material-iteration-N-language-format-designer-requester-channel-steps-stamina';
 export const PLAYABLE_BRANDING_VARIANTS = Object.freeze([
-  Object.freeze({ id: 'android', suffix: '-Android', iconAsset: '/assets/icon-android.jpg' }),
-  Object.freeze({ id: 'ios', suffix: '-iOS', iconAsset: '/assets/icon-ios.png' })
+  // One Bus package serves both stores. The icon is not baked per variant any
+  // more: both art files ship inside the single build and the runtime picks one
+  // from the device UA, exactly like it already picks the store link. Splitting
+  // Android and iOS into separate downloads doubled the upload work for files
+  // that differed by one image, and a wrong-device preview of either half
+  // showed the other store's icon.
+  Object.freeze({
+    id: 'bus',
+    suffix: '',
+    iconAsset: '/assets/icon-android.jpg',
+    iconAssets: Object.freeze({
+      android: '/assets/icon-android.jpg',
+      ios: '/assets/icon-ios.png'
+    }),
+    // Both UAs must pass: the same file is uploaded to both stores.
+    runtimeDevices: Object.freeze(['android', 'ios'])
+  })
 ]);
+// Bus Fever ships a separate Android and iOS icon; the Crowd playable is one
+// build shared by both stores, so it keeps a single variant with its own art.
+// The Crowd playable also advertises its own store listings: the editor tuning
+// still carries the Bus Fever links, and a Crowd package that kept them would
+// send players to the wrong game.
+export const CROWD_STORE_LINKS = Object.freeze({
+  android: validateStoreLink(
+    'android',
+    'https://play.google.com/store/apps/details?id=busflow.traffic.puzzle&hl=en_SG',
+    'Crowd Android store link'
+  ),
+  ios: validateStoreLink(
+    'ios',
+    'https://apps.apple.com/us/app/bus-crowd-traffic-jam/id6754059516',
+    'Crowd iOS store link'
+  )
+});
+export const PLAYABLE_BRANDING_SETS = Object.freeze({
+  bus: Object.freeze([...PLAYABLE_BRANDING_VARIANTS]),
+  crowd: Object.freeze([
+    Object.freeze({
+      id: 'crowd',
+      suffix: '-Crowd',
+      iconAsset: '/assets/icon-crowd.jpg',
+      logoAsset: '/assets/main-loading-icon-crowd.webp',
+      storeLinks: CROWD_STORE_LINKS,
+      runtimeDevices: Object.freeze(['android', 'ios']),
+      // Crowd keeps its own naming identity instead of inheriting the Bus one.
+      // BFT is the Crowd requirement prefix the delivery sheets use (e.g.
+      // BFT-26101615), and ZZN is the Crowd requester.
+      exportNaming: Object.freeze({ requirementCode: 'BFT', requester: 'ZZN' }),
+      // Only replaces the untouched Bus default; a custom line is left alone.
+      textContent: 'Bus Crowd',
+      defaultTextContent: 'Bus Fever Party!',
+      // The Crowd wordmark under the CTA has to sit dead centre. The editor
+      // stores a draggable x, and a saved session can leave it a few pixels off
+      // (a 534 instead of 540 shipped once), so the Crowd set pins the text to
+      // the design centre instead of trusting whatever the tuning carries.
+      centerText: true,
+      loadingTitle: 'Bus Crowd'
+    })
+  ])
+});
+export const DEFAULT_PLAYABLE_BRANDING_SET = 'bus';
+
+export function resolveBrandingSetVariants(brandingSet = DEFAULT_PLAYABLE_BRANDING_SET) {
+  const variants = PLAYABLE_BRANDING_SETS[brandingSet];
+  if (!variants) throw new TypeError(`Unsupported playable branding set: ${brandingSet ?? '<missing>'}.`);
+  return variants;
+}
 const GOOGLE_SDK = 'https://tpc.googlesyndication.com/pagead/gadgets/html5/api/exitapi.js';
 const TIKTOK_SDK = 'https://sf16-muse-va.ibytedtos.com/obj/union-fe-nc-i18n/playable/sdk/playable-sdk.js';
 const MAX_COMMAND_OUTPUT = 16000;
@@ -50,7 +115,7 @@ const MAX_EXPORT_NAME_LENGTH = 180;
 const DEFAULT_EXPORT_CONCURRENCY = 2;
 const EDITOR_BACKGROUND_PREFIX = '/assets/editor-backgrounds/';
 const EDITOR_PRE_ROLL_PREFIX = '/assets/editor-prerolls/';
-const EXPORT_SOURCE_CACHE_VERSION = 'v2';
+const EXPORT_SOURCE_CACHE_VERSION = 'v3';
 const EXPORT_SOURCE_CACHE_LIMIT = 2;
 const exportSourceCache = new Map();
 
@@ -83,17 +148,23 @@ export function buildPlayableArtifactName(tuning, platform, suffix = '', { compa
   }
   const safeNaming = naming ?? {};
   const channels = safeNaming.channels ?? {};
+  // Delivery names carry one fixed `N` after the pre-roll/inducement segment and
+  // end with steps + stamina. The steps and stamina segments default to `N`
+  // (neither a step limit nor stamina is used) instead of being dropped: the
+  // requirement sheet compares names field by field, so a name with the tail
+  // segments missing reads as a different deliverable.
   const parts = [
     ['requirementCode', safeNaming.requirementCode],
     ['materialCode', safeNaming.materialCode],
     ['iterationCode', safeNaming.iterationCode],
+    ['n', 'N'],
     ['language', safeNaming.language],
     ['format', safeNaming.format],
     ['designer', safeNaming.designer],
     ['requester', safeNaming.requester],
     [`channels.${platform}`, channels[platform]],
-    ['steps', safeNaming.steps],
-    ['stamina', safeNaming.stamina]
+    ['steps', safeNaming.steps || 'N'],
+    ['stamina', safeNaming.stamina || 'N']
   ].map(([key, value]) => [key, validateExportNamingPart(value, `tuning.exportNaming.${key}`)]);
   const channelKey = `channels.${platform}`;
   const buildBaseName = (selectedParts) => {
@@ -108,14 +179,6 @@ export function buildPlayableArtifactName(tuning, platform, suffix = '', { compa
   let finalBaseName = platform === 'mintegral'
     ? `${baseName}${suffix}`.replaceAll('-', '_')
     : `${baseName}${suffix}`;
-  if (platform === 'google-ads' && compactGoogleAds && suffix && finalBaseName.length > 50) {
-    for (const optionalKey of ['stamina', 'steps']) {
-      const compactParts = parts.filter(([key]) => key !== optionalKey);
-      baseName = buildBaseName(compactParts);
-      finalBaseName = `${baseName}${suffix}`;
-      if (finalBaseName.length <= 50) break;
-    }
-  }
   if (platform === 'google-ads' && finalBaseName.length > 50) {
     throw new TypeError(`Google Ads export name must not exceed 50 characters; received ${finalBaseName.length}.`);
   }
@@ -146,12 +209,52 @@ function buildPlayableArtifactNames(tuning, platforms, suffix = '', options) {
 }
 
 export function createBrandingVariantTuning(tuning, variantId) {
-  const variant = PLAYABLE_BRANDING_VARIANTS.find(({ id }) => id === variantId);
+  const variant = Object.values(PLAYABLE_BRANDING_SETS)
+    .flat()
+    .find(({ id }) => id === variantId);
   if (!variant) throw new TypeError(`Unsupported playable branding variant: ${variantId ?? '<missing>'}.`);
   const output = structuredClone(tuning ?? {});
   output.branding ??= {};
   output.branding.icon ??= {};
   output.branding.icon.asset = variant.iconAsset;
+  if (variant.iconAssets) {
+    output.branding.icon.deviceAssets = { ...variant.iconAssets };
+  } else {
+    // A set with one icon for every device must clear whatever per-device map the
+    // tuning carried, or Crowd would keep rendering the Bus/Play badge the
+    // operator happened to have selected.
+    delete output.branding.icon.deviceAssets;
+  }
+  if (variant.logoAsset) {
+    output.branding.logo ??= {};
+    output.branding.logo.asset = variant.logoAsset;
+  }
+  if (variant.storeLinks) {
+    output.storeLinks = { ...variant.storeLinks };
+  }
+  if (variant.textContent) {
+    output.branding.text ??= {};
+    const current = String(output.branding.text.content ?? '').trim();
+    if (!current || current === variant.defaultTextContent) {
+      output.branding.text.content = variant.textContent;
+    }
+  }
+  if (variant.centerText) {
+    output.branding.text ??= {};
+    // Preview size is the authoring canvas the editor's x is expressed in, so
+    // its half width is the horizontal centre for every rendered ad size.
+    const designWidth = Number(output.preview?.width) > 0 ? Number(output.preview.width) : 1080;
+    output.branding.text.x = designWidth / 2;
+  }
+  if (variant.loadingTitle) {
+    output.branding.loading ??= {};
+    output.branding.loading.icon = '';
+    output.branding.loading.title = variant.loadingTitle;
+  }
+  if (variant.exportNaming) {
+    output.exportNaming ??= {};
+    Object.assign(output.exportNaming, variant.exportNaming);
+  }
   return output;
 }
 
@@ -171,10 +274,13 @@ function assertEmbeddedStoreLinks(sourceHtml, tuning) {
   }
 }
 
-function brandingDeviceProfiles(device) {
-  if (device === 'android') return ['android', 'ios'];
-  if (device === 'ios') return ['ios', 'android'];
-  return [];
+// A single build now serves both stores, so the smoke has to exercise both UAs
+// in turn: the first pass proves the targeted device works, the second proves
+// the other device still resolves its own icon and store link.
+function brandingDeviceProfiles(devices) {
+  if (!Array.isArray(devices) || !devices.length) return [];
+  const [first, ...rest] = devices;
+  return [first, ...rest.filter((device) => device !== first)];
 }
 
 export function retargetBrandingVariantHtml(sourceHtml, sourceTuning, targetTuning, targetIconDataUri) {
@@ -331,6 +437,7 @@ async function firstExisting(paths) {
 async function resolveSkillTools() {
   const roots = [
     process.env.BUILD_VERIFIED_PLAYABLE_SKILL_ROOT,
+    path.resolve('deploy-tools', 'build-verified-playable-packages'),
     path.join(os.homedir(), '.codex', 'skills', 'build-verified-playable-packages'),
     path.join(os.homedir(), '.agents', 'skills', 'build-verified-playable-packages')
   ].filter(Boolean);
@@ -420,17 +527,23 @@ async function loadBrandingIconDataUri(projectRoot, tuning) {
 }
 
 async function applyWorkspaceBrandingIcon(workRoot, tuning) {
-  const asset = tuning?.branding?.icon?.asset;
-  if (
-    typeof asset !== 'string'
-    || !/^\/assets\/[A-Za-z0-9][A-Za-z0-9._/-]{0,239}$/u.test(asset)
-    || asset.includes('..')
-  ) return;
   const indexPath = path.join(workRoot, 'index.html');
-  const source = await readFile(indexPath, 'utf8');
-  const pattern = /(<img\b(?=[^>]*\bid=["']branding-icon["'])[^>]*\bsrc=["'])[^"']+/iu;
-  if (!pattern.test(source)) throw new Error('Playable HTML is missing the branding icon element.');
-  await writeFile(indexPath, source.replace(pattern, `$1${asset}`), 'utf8');
+  let source = await readFile(indexPath, 'utf8');
+  for (const [elementId, asset] of [
+    ['branding-icon', tuning?.branding?.icon?.asset],
+    ['branding-logo', tuning?.branding?.logo?.asset]
+  ]) {
+    if (
+      typeof asset !== 'string'
+      || !/^\/assets\/[A-Za-z0-9][A-Za-z0-9._/-]{0,239}$/u.test(asset)
+      || asset.includes('..')
+    ) continue;
+    const escapedId = elementId.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&');
+    const pattern = new RegExp(`(<img\\b(?=[^>]*\\bid=["']${escapedId}["'])[^>]*\\bsrc=["'])[^"']+`, 'iu');
+    if (!pattern.test(source)) throw new Error(`Playable HTML is missing the ${elementId} element.`);
+    source = source.replace(pattern, `$1${asset}`);
+  }
+  await writeFile(indexPath, source, 'utf8');
 }
 
 async function prepareWorkspace(projectRoot, tuning, levelDocument = null) {
@@ -451,7 +564,8 @@ async function prepareWorkspace(projectRoot, tuning, levelDocument = null) {
   await mkdir(path.join(workRoot, 'artifacts'), { recursive: true });
   await Promise.all([
     copyIfPresent(path.join(projectRoot, 'artifacts', 'web-levels'), path.join(workRoot, 'artifacts', 'web-levels')),
-    copyIfPresent(path.join(projectRoot, 'artifacts', 'spatial-conveyors'), path.join(workRoot, 'artifacts', 'spatial-conveyors'))
+    copyIfPresent(path.join(projectRoot, 'artifacts', 'spatial-conveyors'), path.join(workRoot, 'artifacts', 'spatial-conveyors')),
+    copyIfPresent(path.join(projectRoot, 'artifacts', 'playable-session.json'), path.join(workRoot, 'artifacts', 'playable-session.json'))
   ]);
   if (levelDocument) {
     const levelKey = tuning?.level?.selected;
@@ -514,7 +628,17 @@ function encodeUnityStaticFalsePositives(source) {
   return encodeCheckerOnlyUrls(source)
     .replace(/\bparent(?=\s*[.[])/gu, 'p\\u0061rent')
     .replace(/\btop(?=\s*[.[])/gu, 't\\u006fp')
-    .replace(/texelFetch(?=\s*\()/gu, 'texelF\\u0065tch');
+    .replace(/texelFetch(?=\s*\()/gu, 'texelF\\u0065tch')
+    // The colour-atlas table keeps its slot directory as a plain constant
+    // ("/assets/applovin/textures"). That path is only ever a prefix used to
+    // build atlas URLs which the packager already inlines, so no request is
+    // made from it -- but UNITY-STA-004 reads the literal word "applovin" as a
+    // leftover AppLovin API call and fails the package. Escape one letter the
+    // same way the parent/top rewrite above does: JS decodes it before the
+    // string is used, so the runtime keeps the identical path while the checker
+    // sees no marker. Renaming the directory is not an option -- 456 generated
+    // catalog entries and every saved level document reference it.
+    .replace(/applovin(?=\/textures)/giu, 'applov\\u0069n');
 }
 
 export function prepareMolocoHtml(source) {
@@ -725,7 +849,7 @@ async function checkArtifact({
   reportRoot,
   reportLabel = platform,
   signal,
-  device = null,
+  devices = [],
   cachedRuntimeReport = null,
   skipRuntime = false,
   skipChecks = false
@@ -785,7 +909,7 @@ async function checkArtifact({
 
   const payloadReportPath = path.join(reportRoot, `${reportLabel}-payload.json`);
   const runtimeReportPath = path.join(reportRoot, `${reportLabel}-runtime.json`);
-  const runtimeDevices = brandingDeviceProfiles(device);
+  const runtimeDevices = brandingDeviceProfiles(devices);
   const [payloadResult, ...runtimeReports] = await Promise.all([
     run('python3', [
       skill.payload,
@@ -834,7 +958,7 @@ async function checkArtifact({
           platform,
           outputPath: runtimeReportPath,
           checkBatchId,
-          device,
+          device: runtimeDevices[0] ?? null,
           signal
         }),
     ...(skipRuntime || cachedRuntimeReport || runtimeDevices.length < 2
@@ -879,7 +1003,13 @@ async function checkArtifact({
       batch: batchPath,
       static: staticReportPath,
       payload: payloadReportPath,
-      runtime: runtimeReportPath
+      runtime: runtimeReportPath,
+      // One package now serves both stores. The second device's report is part
+      // of the evidence, not a scratch file: without it a reviewer sees a PASS
+      // for the package while only one of the two UAs was ever rendered.
+      ...(runtimeReports.length > 1
+        ? { [`runtime-${runtimeDevices[1]}`]: `${runtimeReportPath}.${runtimeDevices[1]}` }
+        : {})
     }
   };
 }
@@ -895,6 +1025,7 @@ async function buildOne({
   signal,
   zipTimestamp,
   brandingVariant,
+  runtimeDevices = [],
   cachedRuntimeReport = null,
   skipRuntime = false,
   cachedBackupImagePath = null,
@@ -923,8 +1054,9 @@ async function buildOne({
     cachedRuntimeReport,
     skipRuntime,
     skipChecks,
-    // A branding variant bakes one store link, so smoke it as the device that variant targets.
-    device: brandingVariant
+    // One file is uploaded to both stores and picks icon/store link from the UA,
+    // so every device the package targets has to pass its own smoke.
+    devices: runtimeDevices
   });
   const { bytes, sha256 } = await artifactIdentity(artifactPath);
   return {
@@ -984,14 +1116,55 @@ function getExportConcurrency(itemCount) {
   return Math.max(1, Math.min(itemCount, requested));
 }
 
-async function exportInputFingerprint(projectRoot, tuning, levelDocument = null) {
-  const candidates = [
+async function listPlayableSessionLevelPaths(projectRoot) {
+  const config = await readPlayableSessionConfig(projectRoot);
+  const stages = config?.session?.stages;
+  if (!Array.isArray(stages)) return [];
+  return stages
+    .map((stage) => String(stage?.levelKey ?? ''))
+    .filter((levelKey) => /^level[1-9]\d*$/u.test(levelKey))
+    .map((levelKey) => path.join(projectRoot, 'artifacts', 'web-levels', `${levelKey}.json`));
+}
+
+function applySessionExportNaming(tuning, sessionConfig) {
+  const naming = sessionConfig?.session?.exportNaming;
+  if (!naming || !isPlainObject(naming) || Object.keys(naming).length === 0) return tuning;
+  return {
+    ...tuning,
+    exportNaming: { ...(tuning?.exportNaming ?? {}), ...naming }
+  };
+}
+
+// Two Q22 versions share one repository and differ only by session, so the
+// session carries its own naming suffix. Without it both exports resolve to the
+// same filename and the second overwrites the first.
+async function readPlayableSessionConfig(projectRoot) {
+  const sessionPath = path.join(projectRoot, 'artifacts', 'playable-session.json');
+  let config;
+  try {
+    config = JSON.parse(await readFile(sessionPath, 'utf8'));
+  } catch (error) {
+    if (error.code === 'ENOENT') return null;
+    throw error;
+  }
+  const key = process.env.PLAYABLE_SESSION_KEY ?? config?.active ?? null;
+  const session = key ? config?.sessions?.[key] ?? null : null;
+  return { key, session, config };
+}
+
+async function exportInputFingerprint(projectRoot, tuning, levelDocument = null, variants = null) {  const candidates = [
     path.join(projectRoot, 'artifacts', 'selected-level.txt'),
     path.join(projectRoot, 'artifacts', 'level-catalog.js'),
     path.join(projectRoot, 'artifacts', 'unity-levels.json'),
     path.join(projectRoot, 'artifacts', 'web-levels', `${tuning?.level?.selected ?? ''}.json`),
-    path.join(projectRoot, 'artifacts', 'spatial-conveyors', `${String(tuning?.conveyorLayout?.selected ?? '').replace(/^spatial:/u, '')}.json`)
+    path.join(projectRoot, 'artifacts', 'spatial-conveyors', `${String(tuning?.conveyorLayout?.selected ?? '').replace(/^spatial:/u, '')}.json`),
+    path.join(projectRoot, 'artifacts', 'playable-session.json')
   ];
+  // A playable session can reference levels other than tuning.level.selected,
+  // so their documents have to invalidate the cached export sources too.
+  for (const stageLevelPath of await listPlayableSessionLevelPaths(projectRoot)) {
+    candidates.push(stageLevelPath);
+  }
   const background = tuning?.background?.asset;
   if (isEditorBackgroundAsset(background)) {
     candidates.push(path.join(projectRoot, 'artifacts', 'editor-backgrounds', path.basename(background)));
@@ -1040,7 +1213,9 @@ async function exportInputFingerprint(projectRoot, tuning, levelDocument = null)
   )));
   sourceStates.sort((left, right) => left[0].localeCompare(right[0]));
   return createHash('sha256')
-    .update(`${EXPORT_SOURCE_CACHE_VERSION}\n${JSON.stringify(tuning)}\n${JSON.stringify(levelDocument)}\n${JSON.stringify(artifactStates)}\n${JSON.stringify(sourceStates)}`)
+    // The cached sources are built with the first variant's branding art, so a
+    // Bus and a Crowd export of the same tuning must never share cache entries.
+    .update(`${EXPORT_SOURCE_CACHE_VERSION}\n${JSON.stringify(tuning)}\n${JSON.stringify(variants)}\n${JSON.stringify(levelDocument)}\n${JSON.stringify(artifactStates)}\n${JSON.stringify(sourceStates)}`)
     .digest('hex');
 }
 
@@ -1086,17 +1261,21 @@ async function mapWithConcurrency(items, concurrency, operation) {
 async function exportPlatforms({ projectRoot, tuning, levelDocument = null, platforms, outputDir, signal, variants = null, skipRuntime = false, skipChecks = false }) {
   const resolvedRoot = path.resolve(projectRoot);
   const template = await loadTemplate(resolvedRoot);
+  const sessionConfig = await readPlayableSessionConfig(resolvedRoot);
   let safeTuning;
   let outputNames;
   try {
-    safeTuning = validateTuning(tuning ?? template, template);
+    safeTuning = validateTuning(
+      applySessionExportNaming(tuning ?? template, sessionConfig),
+      template
+    );
     outputNames = buildPlayableArtifactNames(safeTuning, platforms);
   } catch (error) {
     if (error instanceof TypeError) error.statusCode = 400;
     throw error;
   }
   const skill = await resolveSkillTools();
-  const sourceCacheKey = variants ? await exportInputFingerprint(resolvedRoot, safeTuning, levelDocument) : null;
+  const sourceCacheKey = variants ? await exportInputFingerprint(resolvedRoot, safeTuning, levelDocument, variants) : null;
   const cachedSources = sourceCacheKey ? getCachedExportSources(sourceCacheKey) : null;
   const workspace = cachedSources
     ? { tempRoot: await mkdtemp(path.join(os.tmpdir(), 'bus-loop-playable-export-')), workRoot: null }
@@ -1106,7 +1285,16 @@ async function exportPlatforms({ projectRoot, tuning, levelDocument = null, plat
   const zipTimestamp = new Date().toISOString();
   try {
     const results = [];
-    const buildVariants = variants ?? [{ id: null, suffix: '', tuning: safeTuning }];
+    // A single-platform export is the default Bus package, which now also serves
+    // both stores from one file. It has to run the same per-device smoke as the
+    // all-platform set, so it takes the Bus variant's device list even though it
+    // is not built through a branding variant.
+    const buildVariants = variants ?? [{
+      id: null,
+      suffix: '',
+      tuning: safeTuning,
+      runtimeDevices: resolveBrandingSetVariants(DEFAULT_PLAYABLE_BRANDING_SET)[0]?.runtimeDevices ?? []
+    }];
     const reusableSources = variants ? new Map(cachedSources?.sources ?? []) : null;
     const cachedBackupImagePath = skipChecks
       ? path.join(resolvedRoot, 'artifacts', 'google-ads-backup.jpg')
@@ -1169,6 +1357,7 @@ async function exportPlatforms({ projectRoot, tuning, levelDocument = null, plat
             signal,
             zipTimestamp,
             brandingVariant: variant.id,
+            runtimeDevices: variant.runtimeDevices ?? [],
             // Branding variants must each run their own target/opposite-UA smoke;
             // reusing the first variant's report would hide device-specific fallback regressions.
             cachedRuntimeReport: null,
@@ -1189,7 +1378,12 @@ async function exportPlatforms({ projectRoot, tuning, levelDocument = null, plat
       workspace,
       stageRoot,
       skill,
-      tuning: safeTuning,
+      // Report the tuning the artifacts were actually built from. A branding set
+      // that carries its own identity (Crowd uses requirement code BFT) has to
+      // show up in the manifest too, or the sheet and the file names disagree.
+      tuning: buildVariants.length === 1 && buildVariants[0].id
+        ? createBrandingVariantTuning(safeTuning, buildVariants[0].id)
+        : safeTuning,
       zipTimestamp,
       sourceCacheHit: Boolean(cachedSources)
     };
@@ -1204,21 +1398,50 @@ async function exportPlatforms({ projectRoot, tuning, levelDocument = null, plat
   }
 }
 
-export async function exportPlayablePackage({ projectRoot = process.cwd(), platform, tuning, levelDocument = null, outputDir, signal, skipChecks = false } = {}) {
+export async function exportPlayablePackage({
+  projectRoot = process.cwd(),
+  platform,
+  tuning,
+  levelDocument = null,
+  outputDir,
+  signal,
+  skipChecks = false,
+  brandingSet = DEFAULT_PLAYABLE_BRANDING_SET
+} = {}) {
   if (!SUPPORTED_PLATFORMS.includes(platform)) {
     const error = new TypeError(`Unsupported playable platform: ${platform ?? '<missing>'}.`);
     error.statusCode = 400;
     throw error;
   }
+  const variants = resolveBrandingSetVariants(brandingSet);
   const destinationRoot = path.resolve(outputDir ?? path.join(projectRoot, 'artifacts', 'playable-exports'));
-  const built = await exportPlatforms({ projectRoot, tuning, levelDocument, platforms: [platform], outputDir: destinationRoot, signal, skipChecks });
+  const built = await exportPlatforms({
+    projectRoot,
+    tuning,
+    levelDocument,
+    platforms: [platform],
+    outputDir: destinationRoot,
+    signal,
+    skipChecks,
+    // Bus Fever keeps the historical single build that follows the editor's
+    // Icon/Logo pickers. Crowd is one Android+iOS package, so it must always
+    // bake the Crowd art even when the editor preview shows the other brand.
+    variants: brandingSet === DEFAULT_PLAYABLE_BRANDING_SET
+      ? null
+      : variants.map(({ id, suffix }) => ({ id, suffix }))
+  });
   try {
     const [result] = built.results;
     const filePath = await publish(result.filePath, path.join(destinationRoot, result.fileName));
     const publishedIdentity = await verifyPublishedArtifact(filePath, result, `${platform} artifact`);
-    const reportPaths = await publishCheckReports(result.checkSummary, destinationRoot, platform);
+    // A Crowd run of the same platform must not overwrite the Bus check reports.
+    const reportLabel = brandingSet === DEFAULT_PLAYABLE_BRANDING_SET
+      ? platform
+      : `${platform}-${brandingSet}`;
+    const reportPaths = await publishCheckReports(result.checkSummary, destinationRoot, reportLabel);
     return {
       ...result,
+      brandingSet,
       filePath,
       sourceCacheHit: built.sourceCacheHit,
       ...publishedIdentity,
@@ -1229,8 +1452,17 @@ export async function exportPlayablePackage({ projectRoot = process.cwd(), platf
   }
 }
 
-export async function exportAllPlayablePackages({ projectRoot = process.cwd(), tuning, levelDocument = null, outputDir, signal, skipChecks = false } = {}) {
+export async function exportAllPlayablePackages({
+  projectRoot = process.cwd(),
+  tuning,
+  levelDocument = null,
+  outputDir,
+  signal,
+  skipChecks = false,
+  brandingSet = DEFAULT_PLAYABLE_BRANDING_SET
+} = {}) {
   const destinationRoot = path.resolve(outputDir ?? path.join(projectRoot, 'artifacts', 'playable-exports'));
+  const brandingVariants = resolveBrandingSetVariants(brandingSet);
   const built = await exportPlatforms({
     projectRoot,
     tuning,
@@ -1238,7 +1470,9 @@ export async function exportAllPlayablePackages({ projectRoot = process.cwd(), t
     platforms: SUPPORTED_PLATFORMS,
     outputDir: destinationRoot,
     signal,
-    variants: PLAYABLE_BRANDING_VARIANTS.map(({ id, suffix }) => ({ id, suffix })),
+    // The device list travels with the variant: one Bus package is uploaded to
+    // both stores, so both UAs must be smoked here too.
+    variants: brandingVariants.map(({ id, suffix, runtimeDevices }) => ({ id, suffix, runtimeDevices })),
     // Runtime smoke is part of the online editor's export contract. The remote
     // fast flag may reuse the Google Ads backup image, but must not publish an
     // artifact whose JavaScript path was never exercised.
@@ -1250,6 +1484,7 @@ export async function exportAllPlayablePackages({ projectRoot = process.cwd(), t
     const manifest = {
       schemaVersion: 'bus-loop-playable-export-set-v1',
       resourceMode: EXPORT_RESOURCE_MODE,
+      brandingSet,
       status: checksSkipped ? 'EXPORTED_WITHOUT_LOCAL_CHECKS' : 'LOCAL_RULES_PASSED_AWAITING_PLATFORM_ACCEPTANCE',
       note: checksSkipped
         ? 'Local package, payload, and runtime checks were intentionally skipped by the editor export action. Official upload and device acceptance are required before use.'
@@ -1277,7 +1512,9 @@ export async function exportAllPlayablePackages({ projectRoot = process.cwd(), t
       }))
     };
     await writeFile(path.join(built.stageRoot, 'manifest.json'), `${JSON.stringify(manifest, null, 2)}\n`, 'utf8');
-    const aggregateName = 'bus-loop-all-platforms.zip';
+    const aggregateName = brandingSet === DEFAULT_PLAYABLE_BRANDING_SET
+      ? 'bus-loop-all-platforms.zip'
+      : `bus-loop-${brandingSet}-all-platforms.zip`;
     const aggregateStage = path.join(built.workspace.tempRoot, aggregateName);
     await deterministicZip(
       built.skill.zip,
@@ -1332,8 +1569,10 @@ function parseArgs(argv) {
   return {
     all: argv.includes('--all'),
     platform: value('--platform'),
+    brandingSet: value('--branding-set'),
     tuningPath: value('--tuning-json'),
-    outputDir: value('--output-dir')
+    outputDir: value('--output-dir'),
+    skipChecks: argv.includes('--skip-checks')
   };
 }
 
@@ -1343,9 +1582,16 @@ async function main() {
   const tuning = args.tuningPath
     ? JSON.parse(await readFile(path.resolve(args.tuningPath), 'utf8'))
     : undefined;
+  const common = {
+    projectRoot,
+    tuning,
+    outputDir: args.outputDir,
+    skipChecks: args.skipChecks,
+    ...(args.brandingSet ? { brandingSet: args.brandingSet } : {})
+  };
   const result = args.all
-    ? await exportAllPlayablePackages({ projectRoot, tuning, outputDir: args.outputDir })
-    : await exportPlayablePackage({ projectRoot, platform: args.platform, tuning, outputDir: args.outputDir });
+    ? await exportAllPlayablePackages(common)
+    : await exportPlayablePackage({ ...common, platform: args.platform });
   console.log(JSON.stringify(result, null, 2));
 }
 

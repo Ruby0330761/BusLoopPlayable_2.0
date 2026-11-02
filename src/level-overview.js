@@ -1,0 +1,341 @@
+// Level overview picker for the scene editor.
+//
+// The level panel's dropdown only shows names, so telling two similarly named
+// levels apart — or spotting which one actually has the layout you remember —
+// meant opening them one at a time. This overlay shows every level as a
+// top-down thumbnail so a level can be recognised and selected in one click.
+//
+// Data comes from /__level-authoring-overview, which re-reads the level volumes
+// on every request. Levels imported, saved, or deleted while the editor is open
+// therefore appear without rebuilding the bundle.
+
+import { levelSvgStyles } from './level-layout-thumbnail.js';
+
+const OVERVIEW_STYLE_ID = 'level-overview-styles';
+
+const STYLE = `
+.level-overview {
+  position: fixed; inset: 0; z-index: 130;
+  display: flex; flex-direction: column;
+  color: #17242d;
+  background: #eef2f5;
+  font: 13px/1.4 'Poppins Branding', -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif;
+}
+.level-overview__bar {
+  display: flex; align-items: center; gap: 14px; flex: none;
+  padding: 10px 16px;
+  border-bottom: 1px solid #ccd7dd; background: #fbfcfd;
+  box-shadow: 0 2px 8px rgba(29,50,61,.07);
+}
+.level-overview__title { color: #173444; font-size: 14px; font-weight: 600; white-space: nowrap; }
+.level-overview__count { color: #6b8291; font-size: 12px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.level-overview__search {
+  flex: 1; min-width: 140px; max-width: 380px;
+  padding: 7px 10px; border: 1px solid #c3d0d6; border-radius: 6px;
+  background: #fff; color: #1d3644; font: inherit; font-size: 12px;
+}
+.level-overview__search:focus-visible { outline: 2px solid #1683a2; outline-offset: 1px; }
+.level-overview__sort {
+  padding: 7px 8px; border: 1px solid #c3d0d6; border-radius: 6px;
+  background: #fff; color: #1d3644; font: inherit; font-size: 12px;
+}
+.level-overview__close {
+  margin-left: auto; min-height: 32px; padding: 6px 14px;
+  border: 1px solid #b8c7ce; border-radius: 6px; background: #fff;
+  color: #243944; font: 600 12px/1 'Poppins Branding', Arial, sans-serif; cursor: pointer;
+}
+.level-overview__close:hover { border-color: #1683a2; background: #eefafd; }
+.level-overview__body { flex: 1; min-height: 0; overflow: auto; padding: 16px; }
+.level-overview__grid {
+  display: grid; gap: 14px;
+  grid-template-columns: repeat(auto-fill, minmax(228px, 1fr));
+}
+.level-overview__empty {
+  padding: 48px 16px; color: #6b8291; text-align: center;
+}
+.level-overview__card {
+  display: flex; flex-direction: column; gap: 8px; min-width: 0;
+  padding: 10px; border: 1px solid #d3dde2; border-radius: 10px;
+  background: #fff; text-align: left; cursor: pointer;
+  box-shadow: 0 1px 2px rgba(29,50,61,.05);
+  font: inherit; color: inherit;
+}
+.level-overview__card:hover { border-color: #1683a2; box-shadow: 0 3px 10px rgba(22,131,162,.16); }
+.level-overview__card:focus-visible { outline: 2px solid #1683a2; outline-offset: 2px; }
+.level-overview__card[data-active="true"] { border-color: #1683a2; box-shadow: 0 0 0 2px rgba(22,131,162,.22); }
+.level-overview__card[disabled] { cursor: progress; opacity: .6; }
+.level-overview__head { display: flex; align-items: baseline; gap: 8px; min-width: 0; }
+.level-overview__name {
+  flex: 1; min-width: 0; color: #173444; font-size: 13px; font-weight: 600;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.level-overview__key {
+  flex: none; color: #7d8f9b; font-size: 11px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+.level-overview__thumb {
+  display: flex; align-items: center; justify-content: center;
+  border-radius: 6px; background: #f4f7f9; overflow: hidden;
+}
+.level-overview__thumb svg { display: block; width: 100%; height: auto; }
+.level-overview__meta { display: flex; flex-wrap: wrap; gap: 4px 10px; color: #5d7382; font-size: 11px; }
+.level-overview__meta b { color: #33505f; font-weight: 600; font-variant-numeric: tabular-nums; }
+.level-overview__badges { display: flex; flex-wrap: wrap; gap: 4px; margin-left: auto; }
+.level-overview__badge {
+  padding: 1px 6px; border-radius: 8px; font-size: 10px; white-space: nowrap;
+}
+.level-overview__badge[data-kind="active"] { background: #d9f0f7; color: #11667c; }
+.level-overview__badge[data-kind="owner"] { background: #eaeef1; color: #556b78; }
+.level-overview__badge[data-kind="catalog"] { background: #f3ece0; color: #7d5b25; }
+.level-overview__badge[data-kind="error"] { background: #fbe3e2; color: #9c3330; }
+.level-overview__error { color: #9c3330; font-size: 11px; }
+.level-overview__foot {
+  flex: none; padding: 8px 16px; border-top: 1px solid #ccd7dd;
+  background: #fbfcfd; color: #6b8291; font-size: 11px;
+}
+.level-overview__foot[data-state="error"] { color: #9c3330; }
+`;
+
+function injectStyle() {
+  if (document.getElementById(OVERVIEW_STYLE_ID)) return;
+  const style = document.createElement('style');
+  style.id = OVERVIEW_STYLE_ID;
+  // The thumbnail CSS is generated by the shared renderer so the sheet script
+  // and this overlay always agree on what a bay, a car, or an empty level looks like.
+  style.textContent = `${STYLE}\n${levelSvgStyles('level-thumb', {
+    // The overlay sits on a light surface, so the canvas needs a light frame
+    // instead of the dark sheet background while the car colours stay identical.
+    canvas: '#f4f7f9',
+    belt: '#93a6b0',
+    bay: '#b7c6ce',
+    empty: '#93a6b0'
+  })}`;
+  document.head.append(style);
+}
+
+function sortItems(items, mode) {
+  const rank = (key) => {
+    const match = /^level(\d+)$/.exec(key);
+    return match ? Number(match[1]) : Number.MAX_SAFE_INTEGER;
+  };
+  const sorted = [...items];
+  if (mode === 'name') {
+    sorted.sort((first, second) => String(first.displayName ?? '').localeCompare(
+      String(second.displayName ?? ''), 'zh-Hans-CN', { numeric: true, sensitivity: 'base' }
+    ) || rank(first.key) - rank(second.key));
+    return sorted;
+  }
+  if (mode === 'created') {
+    sorted.sort((first, second) => (Number(second.updatedAt) || 0) - (Number(first.updatedAt) || 0)
+      || rank(first.key) - rank(second.key));
+    return sorted;
+  }
+  if (mode === 'vehicles') {
+    sorted.sort((first, second) => (Number(second.vehicleCount) || 0) - (Number(first.vehicleCount) || 0)
+      || rank(first.key) - rank(second.key));
+    return sorted;
+  }
+  sorted.sort((first, second) => rank(first.key) - rank(second.key) || first.key.localeCompare(second.key));
+  return sorted;
+}
+
+function matchesQuery(item, query) {
+  if (!query) return true;
+  const haystack = [
+    item.displayName,
+    item.key,
+    item.owner,
+    item.conveyorBeltName,
+    item.vehicleCount,
+    item.passengerCount,
+    // The card shows these as badges, so typing what you see has to find them.
+    item.source === 'catalog' ? 'unity' : '',
+    item.active ? '当前' : '',
+    item.error ? '无数据' : ''
+  ].filter((value) => value != null && value !== '').join(' ').toLocaleLowerCase();
+  return query.toLocaleLowerCase().split(/\s+/u).every((token) => haystack.includes(token));
+}
+
+function renderCard(item) {
+  const badges = [];
+  if (item.owner) badges.push(`<span class="level-overview__badge" data-kind="owner">${escapeHtml(item.owner)}</span>`);
+  if (item.source === 'catalog') badges.push('<span class="level-overview__badge" data-kind="catalog">Unity</span>');
+  if (item.error) badges.push('<span class="level-overview__badge" data-kind="error">无数据</span>');
+  const thumb = item.svg
+    ? item.svg
+    : `<div class="level-overview__error">${escapeHtml(item.error ?? '无法读取关卡数据')}</div>`;
+  const meta = item.error
+    ? ''
+    : `<div class="level-overview__meta">`
+      + `<span><b>${Number(item.vehicleCount) || 0}</b> 辆</span>`
+      + `<span><b>${Number(item.passengerCount) || 0}</b> 人</span>`
+      + `<span><b>${Number(item.colorCount) || 0}</b> 色</span>`
+      + (item.seatSummary ? `<span>${escapeHtml(item.seatSummary)}</span>` : '')
+      + '</div>';
+  return `<button type="button" class="level-overview__card" data-level-key="${escapeHtml(item.key)}"`
+    + ` data-active="${item.active ? 'true' : 'false'}"${item.error ? ' disabled' : ''}>`
+    + `<div class="level-overview__head">`
+    + `<span class="level-overview__name" title="${escapeHtml(item.displayName)}">${escapeHtml(item.displayName)}</span>`
+    + `<span class="level-overview__key">${escapeHtml(item.key)}</span>`
+    + (badges.length ? `<span class="level-overview__badges">${badges.join('')}</span>` : '')
+    + '</div>'
+    + `<div class="level-overview__thumb">${thumb}</div>`
+    + meta
+    + '</button>';
+}
+
+function escapeHtml(value) {
+  return String(value ?? '')
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;');
+}
+
+/**
+ * Open the level overview.
+ *
+ * @param {object} options
+ * @param {(levelKey: string) => void} options.onSelect  called with the chosen key; the caller owns switching
+ * @param {string} [options.currentKey]                   highlights the level the editor is on
+ * @returns {{ close: () => void, reload: () => Promise<void> }}
+ */
+export function openLevelOverview({ onSelect, currentKey = '' } = {}) {
+  injectStyle();
+  const root = document.createElement('div');
+  root.className = 'level-overview';
+  root.dataset.state = 'loading';
+  root.innerHTML = `
+    <div class="level-overview__bar">
+      <strong class="level-overview__title">关卡总览</strong>
+      <span class="level-overview__count">加载中…</span>
+      <input class="level-overview__search" type="search" placeholder="搜索名称、编号、用户、传送带…" autocomplete="off" spellcheck="false" />
+      <select class="level-overview__sort" aria-label="排序方式">
+        <option value="number">按编号</option>
+        <option value="name">按名称</option>
+        <option value="created">按创建时间</option>
+        <option value="vehicles">按车辆数</option>
+      </select>
+      <button type="button" class="level-overview__close">关闭</button>
+    </div>
+    <div class="level-overview__body"><div class="level-overview__grid"></div></div>
+    <div class="level-overview__foot" aria-live="polite">正在读取关卡列表…</div>
+  `;
+  document.body.append(root);
+
+  const countLabel = root.querySelector('.level-overview__count');
+  const searchInput = root.querySelector('.level-overview__search');
+  const sortSelect = root.querySelector('.level-overview__sort');
+  const grid = root.querySelector('.level-overview__grid');
+  const body = root.querySelector('.level-overview__body');
+  const foot = root.querySelector('.level-overview__foot');
+  const closeButton = root.querySelector('.level-overview__close');
+
+  let items = [];
+  let activeKey = currentKey;
+  let switching = false;
+
+  function paint() {
+    const query = searchInput.value.trim();
+    const visible = sortItems(items.filter((item) => matchesQuery(item, query)), sortSelect.value);
+    grid.innerHTML = visible.length
+      ? visible.map(renderCard).join('')
+      : `<div class="level-overview__empty">没有符合条件的关卡</div>`;
+    countLabel.textContent = query
+      ? `${visible.length} / ${items.length} 关`
+      : `${items.length} 关`;
+    markActive();
+  }
+
+  // The server's `active` flag describes the exported/baked selection, which can
+  // lag the tuning the operator is looking at. The editor's current key wins.
+  function markActive() {
+    for (const card of grid.querySelectorAll('.level-overview__card')) {
+      card.dataset.active = card.dataset.levelKey === activeKey ? 'true' : 'false';
+    }
+    for (const badge of grid.querySelectorAll('.level-overview__badge[data-kind="active"]')) badge.remove();
+    const activeCard = grid.querySelector('.level-overview__card[data-active="true"]');
+    if (activeCard) {
+      const badges = activeCard.querySelector('.level-overview__badges');
+      const badge = document.createElement('span');
+      badge.className = 'level-overview__badge';
+      badge.dataset.kind = 'active';
+      badge.textContent = '当前';
+      if (badges) badges.prepend(badge);
+      else activeCard.querySelector('.level-overview__head')?.append(badge);
+    }
+  }
+
+  async function load() {
+    root.dataset.state = 'loading';
+    foot.dataset.state = '';
+    foot.textContent = '正在读取关卡列表…';
+    try {
+      const response = await fetch('/__level-authoring-overview', { cache: 'no-store' });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(payload.error || `HTTP ${response.status}`);
+      items = Array.isArray(payload.items) ? payload.items : [];
+      root.dataset.state = 'ready';
+      const failed = items.filter((item) => item.error).length;
+      const totalVehicles = items.reduce((sum, item) => sum + (Number(item.vehicleCount) || 0), 0);
+      // A selection pointing at a deleted level is a real state (the editor
+      // keeps the last chosen key in storage), and it makes every export fail,
+      // so name it here instead of silently highlighting nothing.
+      const missingCurrent = activeKey && !items.some((item) => item.key === activeKey);
+      foot.dataset.state = missingCurrent ? 'error' : '';
+      foot.textContent = `共 ${items.length} 关，${totalVehicles} 辆车`
+        + (failed ? `　${failed} 关数据读取失败，已在卡片上标出` : '')
+        + (missingCurrent ? `　当前选中的 ${activeKey} 已不存在，请重新选择一关` : '　点击任意关卡即可切换');
+      paint();
+      searchInput.focus();
+    } catch (error) {
+      root.dataset.state = 'error';
+      foot.dataset.state = 'error';
+      foot.textContent = `读取关卡列表失败：${error.message}`;
+      grid.innerHTML = '<div class="level-overview__empty">无法读取关卡列表</div>';
+      countLabel.textContent = '';
+    }
+  }
+
+  function close() {
+    root.remove();
+    document.removeEventListener('keydown', onKeyDown, true);
+  }
+
+  function onKeyDown(event) {
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      close();
+    }
+  }
+
+  searchInput.addEventListener('input', paint);
+  sortSelect.addEventListener('change', paint);
+  closeButton.addEventListener('click', close);
+  document.addEventListener('keydown', onKeyDown, true);
+
+  grid.addEventListener('click', (event) => {
+    const card = event.target.closest('.level-overview__card');
+    if (!card || switching || card.disabled) return;
+    const levelKey = card.dataset.levelKey;
+    if (!levelKey) return;
+    if (levelKey === activeKey) {
+      close();
+      return;
+    }
+    switching = true;
+    activeKey = levelKey;
+    for (const other of grid.querySelectorAll('.level-overview__card')) other.disabled = true;
+    card.dataset.active = 'true';
+    foot.dataset.state = '';
+    foot.textContent = `正在切换到 ${levelKey}…`;
+    // The caller reloads the page, so this overlay is torn down with it.
+    onSelect?.(levelKey);
+  });
+
+  // Keeps the overlay from sitting on a stale list: importing a level while it
+  // is open, or switching back from another window, should refresh the thumbnails.
+  load();
+
+  return { close, reload: load, element: root };
+}

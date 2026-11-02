@@ -2,8 +2,9 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { LEVEL_CATALOG, LEVEL_OPTIONS } from '../src/level-catalog.js';
-import { ACTIVE_LEVEL, PLAYABLE_LEVEL_SEQUENCE } from '../src/generated-active-level.js';
+import { ACTIVE_LEVEL, PLAYABLE_ALL_LEVELS, PLAYABLE_LEVEL_SEQUENCE } from '../src/generated-active-level.js';
 import { SCENE_TUNING } from '../src/scene-tuning.js';
+import { resolvePlayableSession } from '../src/playable-session-config.js';
 import { BusLoopGame } from '../src/game-model.js';
 import { createLevelDocument, levelDocumentToRuntime, validateLevelDocument } from '../src/level-editor-model.js';
 import { boxesOverlap, getVehicleCollisionSize } from '../src/vehicle-collision.js';
@@ -134,22 +135,38 @@ test('Unity level catalog imports each supplied layout and its paired queues', (
 test('production active module contains only the selected playable session levels', () => {
   const selectedLevel = readFileSync('artifacts/selected-level.txt', 'utf8').trim()
     || SCENE_TUNING.level.selected;
-  assert.equal(ACTIVE_LEVEL.key, selectedLevel);
+  const sessionConfig = JSON.parse(readFileSync('artifacts/playable-session.json', 'utf8'));
+  const sessionKey = process.env.PLAYABLE_SESSION_KEY ?? sessionConfig.active ?? null;
+  const activeSession = sessionKey ? resolvePlayableSession(sessionConfig, sessionKey) : null;
+  const expectedKeys = activeSession
+    ? activeSession.stages.map((stage) => stage.levelKey)
+    : selectedLevel === 'level9' ? ['level9', 'level7'] : [selectedLevel];
+  assert.equal(ACTIVE_LEVEL.key, expectedKeys[0]);
   const sessionKeys = new Set(PLAYABLE_LEVEL_SEQUENCE.map((level) => level.key));
-  assert.deepEqual([...sessionKeys], selectedLevel === 'level9' ? ['level9', 'level7'] : [selectedLevel]);
+  assert.deepEqual([...sessionKeys], expectedKeys);
+
+  // A stage can end in a map picker. Its options are real reachable levels and
+  // are baked alongside the fixed order so the picked map plays offline; every
+  // other imported level must stay out of the bundle.
+  const choiceKeys = activeSession
+    ? activeSession.stages.flatMap((stage) => (stage.choice?.options ?? []).map((option) => option.levelKey))
+    : [];
+  assert.deepEqual(PLAYABLE_ALL_LEVELS.map((level) => level.key), [...expectedKeys, ...choiceKeys]);
+
   const source = readFileSync('src/generated-active-level.js', 'utf8');
-  for (const level of PLAYABLE_LEVEL_SEQUENCE) {
+  for (const level of PLAYABLE_ALL_LEVELS) {
     assert.match(source, new RegExp(`"sourceFile": "${level.sourceFile}"`));
   }
-  if (!LEVEL_CATALOG[selectedLevel]) {
-    const webDocument = JSON.parse(readFileSync(`artifacts/web-levels/${selectedLevel}.json`, 'utf8'));
-    assert.equal(ACTIVE_LEVEL.sourceFile, `artifacts/web-levels/${selectedLevel}.json`);
+  if (!LEVEL_CATALOG[ACTIVE_LEVEL.key]) {
+    const webDocument = JSON.parse(readFileSync(`artifacts/web-levels/${ACTIVE_LEVEL.key}.json`, 'utf8'));
+    assert.equal(ACTIVE_LEVEL.sourceFile, `artifacts/web-levels/${ACTIVE_LEVEL.key}.json`);
     assert.equal(ACTIVE_LEVEL.displayName, webDocument.displayName);
     assert.equal(ACTIVE_LEVEL.vehicles.length, webDocument.vehicles.length);
     assert.deepEqual(ACTIVE_LEVEL.passengerQueues, webDocument.passengerQueues);
   }
+  const reachableKeys = new Set([...sessionKeys, ...choiceKeys]);
   for (const key of Object.keys(IMPORTED_EXPECTATIONS)) {
-    if (sessionKeys.has(key)) continue;
+    if (reachableKeys.has(key)) continue;
     assert.doesNotMatch(source, new RegExp(`"key": "${key}"`));
   }
 });

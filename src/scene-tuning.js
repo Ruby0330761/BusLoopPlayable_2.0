@@ -38,14 +38,18 @@ export const SCENE_TUNING = {
       "tiktok": "TT",
       "unityads": "UN"
     },
-    "steps": "0",
-    "stamina": "0"
+    "steps": "N",
+    "stamina": "N"
   },
   "branding": {
     "icon": {
       "enabled": 1,
       "locked": 1,
       "asset": "/assets/icon-android.jpg",
+      "deviceAssets": {
+        "android": "/assets/icon-android.jpg",
+        "ios": "/assets/icon-ios.png"
+      },
       "x": 966,
       "y": 2018,
       "width": 180,
@@ -54,6 +58,7 @@ export const SCENE_TUNING = {
     "logo": {
       "enabled": 1,
       "locked": 1,
+      "asset": "/assets/main-loading-icon-small.png",
       "x": 0,
       "y": 2023,
       "width": 230,
@@ -63,10 +68,14 @@ export const SCENE_TUNING = {
       "enabled": 1,
       "locked": 1,
       "content": "Bus Fever Party!",
-      "x": 534,
+      "x": 540,
       "y": 2114,
       "width": 800,
       "height": 100
+    },
+    "loading": {
+      "icon": "/assets/applovin/icon_q75.jpg",
+      "title": "Bus Fever Party!"
     }
   },
   "camera": {
@@ -76,7 +85,7 @@ export const SCENE_TUNING = {
     "targetY": 0,
     "targetZ": 1.85,
     "fitWidth": 14.5,
-    "fitHeight": 15.9,
+    "fitHeight": 16.4,
     "padding": 0.35
   },
   "sourceCrop": {
@@ -100,8 +109,32 @@ export const SCENE_TUNING = {
     "pulseSpeed": 0.21,
     "appearSpeed": 1.45
   },
+  "speedToggle": {
+    "enabled": 1,
+    "x": 916,
+    "y": 118,
+    "width": 210,
+    "height": 138,
+    "multiplier": 2
+  },
   "installGate": {
     "successfulOperationThreshold": 64
+  },
+  "collision": {
+    "maxBumpDistance": 0.5
+  },
+  "audio": {
+    "busHitDelay": 0,
+    "busFullDelay": 0,
+    "passengerUpDelay": 0,
+    "vehicleTapDelay": 0,
+    "vehicleTapVolume": 1,
+    "bgm": {
+      "enabled": 0,
+      "asset": "/assets/unity/audio/christmas_bgm.mp3",
+      "volume": 0.42,
+      "fadeInSeconds": 0.8
+    }
   },
   "gameOver": {
     "failureDelaySeconds": 2,
@@ -292,6 +325,96 @@ export const SCENE_TUNING = {
         }
       ]
     },
+    "starLoop": {
+      "art": {
+        "x": 0,
+        "y": -0.045,
+        "z": -5.3394,
+        "width": 16.685,
+        "depth": 10.3288,
+        "opacity": 1
+      },
+      "curve": {
+        "offsetX": 0,
+        "offsetZ": 0,
+        "scaleX": 1,
+        "scaleZ": 1
+      },
+      "queueCurves": [
+        {
+          "offsetX": 0,
+          "offsetZ": 0,
+          "scaleX": 1,
+          "scaleZ": 1
+        },
+        {
+          "offsetX": 0,
+          "offsetZ": 0,
+          "scaleX": 1,
+          "scaleZ": 1
+        }
+      ]
+    },
+    "heartLoop": {
+      "art": {
+        "x": 0,
+        "y": -0.045,
+        "z": -5.3394,
+        "width": 16.685,
+        "depth": 10.3288,
+        "opacity": 1
+      },
+      "curve": {
+        "offsetX": 0,
+        "offsetZ": 0,
+        "scaleX": 1,
+        "scaleZ": 1
+      },
+      "queueCurves": [
+        {
+          "offsetX": 0,
+          "offsetZ": 0,
+          "scaleX": 1,
+          "scaleZ": 1
+        },
+        {
+          "offsetX": 0,
+          "offsetZ": 0,
+          "scaleX": 1,
+          "scaleZ": 1
+        }
+      ]
+    },
+    "catLoop": {
+      "art": {
+        "x": 0,
+        "y": -0.045,
+        "z": -5.3394,
+        "width": 16.685,
+        "depth": 10.3288,
+        "opacity": 1
+      },
+      "curve": {
+        "offsetX": 0,
+        "offsetZ": 0,
+        "scaleX": 1,
+        "scaleZ": 1
+      },
+      "queueCurves": [
+        {
+          "offsetX": 0,
+          "offsetZ": 0,
+          "scaleX": 1,
+          "scaleZ": 1
+        },
+        {
+          "offsetX": 0,
+          "offsetZ": 0,
+          "scaleX": 1,
+          "scaleZ": 1
+        }
+      ]
+    },
     "dualQueueShape": {
       "art": {
         "x": 0.05,
@@ -354,7 +477,8 @@ export const SCENE_TUNING = {
     "scale": 1,
     "sourceWidth": 2100,
     "sourceHeight": 3382,
-    "opacity": 1
+    "opacity": 1,
+    "horizonTrim": 0
   },
   "lighting": {
     "hemisphere": {
@@ -422,6 +546,7 @@ export const SCENE_TUNING = {
   },
   "parkingSpots": {
     "count": 4,
+    "autoCenter": 1,
     "startX": -1.5,
     "spacing": 0.95,
     "y": 0.035,
@@ -436,7 +561,7 @@ export const SCENE_TUNING = {
     "z": 1.37,
     "width": 0.52,
     "depth": 0.59,
-    "textScale": 1.47
+    "textScale": 1
   },
   "vehiclePath": {
     "enabled": 0,
@@ -474,7 +599,7 @@ export const SCENE_TUNING = {
   },
   "vehicleArea": {
     "unityToWorldScale": 2,
-    "positionUnitScale": 0.8,
+    "positionUnitScale": 0.7,
     "sourceRootX": 0,
     "sourceRootZ": -2.92,
     "positionPivotX": 0,
@@ -497,7 +622,7 @@ export const SCENE_TUNING = {
       "6": 1.23,
       "10": 1.48
     },
-    "modelScale": 0.7
+    "modelScale": 0.64
   },
   "vehicleBoardingPulse": {
     "scale": 1.09,
@@ -529,11 +654,11 @@ export const SCENE_TUNING = {
     "maskEnabled": 1,
     "maskOpacity": 0.68,
     "holePadding": 30,
-    "holeRadius": 16,
+    "holeRadius": 5,
     "holeOffsetX": 0,
     "holeOffsetY": 0,
-    "holeScaleX": 0.62,
-    "holeScaleY": 0.62
+    "holeScaleX": 0.54,
+    "holeScaleY": 0.4
   },
   "hiddenVehicleReveal": {
     "durationSeconds": 0.45,
@@ -546,19 +671,58 @@ export const SCENE_TUNING = {
     "normalArrowFadeEnd": 0.65,
     "root": {
       "position": {
-        "x": { "start": 0, "hold": 0, "mid": -0.03, "end": -0.05 },
-        "y": { "start": 0, "hold": 0, "mid": 0.14, "end": 0.96 },
-        "z": { "start": 0, "hold": 0, "mid": 0, "end": -0.96 }
+        "x": {
+          "start": 0,
+          "hold": 0,
+          "mid": -0.03,
+          "end": -0.05
+        },
+        "y": {
+          "start": 0,
+          "hold": 0,
+          "mid": 0.14,
+          "end": 0.96
+        },
+        "z": {
+          "start": 0,
+          "hold": 0,
+          "mid": 0,
+          "end": -0.96
+        }
       },
       "scale": {
-        "x": { "start": 1, "mid": 1, "end": 1.2 },
-        "y": { "start": 1, "mid": 1, "end": 0.5 },
-        "z": { "start": 1, "mid": 1, "end": 0.7 }
+        "x": {
+          "start": 1,
+          "mid": 1,
+          "end": 1.2
+        },
+        "y": {
+          "start": 1,
+          "mid": 1,
+          "end": 0.5
+        },
+        "z": {
+          "start": 1,
+          "mid": 1,
+          "end": 0.7
+        }
       },
       "rotation": {
-        "x": { "start": 0, "mid": -20, "end": -45 },
-        "y": { "start": 0, "mid": 5, "end": 15 },
-        "z": { "start": 0, "mid": -5, "end": -10 }
+        "x": {
+          "start": 0,
+          "mid": -20,
+          "end": -45
+        },
+        "y": {
+          "start": 0,
+          "mid": 5,
+          "end": 15
+        },
+        "z": {
+          "start": 0,
+          "mid": -5,
+          "end": -10
+        }
       }
     }
   },
@@ -633,6 +797,7 @@ export const SCENE_TUNING = {
     "shadowScale": 0.168,
     "aboardInterval": 0.05,
     "aboardSpeed": 3.8,
+    "aboardSoundOffset": -0.25,
     "boardingTargetOffsetX": 0,
     "boardingTargetOffsetY": 0,
     "boardingTargetOffsetZ": 0
@@ -765,6 +930,19 @@ export const SCENE_TUNING = {
       "speedMidTime": 0.27,
       "speedMid": 0.59,
       "speedEnd": 0.72
+    },
+    "smokeTrail": {
+      "rateOverTime": 25,
+      "lifetimeMin": 0.2,
+      "lifetimeMax": 0.3,
+      "sizeMin": 0.06,
+      "sizeMax": 0.15,
+      "speedScale": 1,
+      "offsetZ": -0.46,
+      "offsetY": 0.08,
+      "spread": 1,
+      "gravity": -0.5,
+      "opacity": 1
     },
     "hit": {
       "sizeScale": 2,

@@ -127,16 +127,32 @@ function replaceAssetUrls(content, assetMap) {
   return next;
 }
 
+// Mechanism art is addressed through a root constant plus a template literal
+// (`${ROOT}/models/Sled_001.fbx`), so the literal full path never appears in the
+// bundle and the plain URL replacement above cannot see it. Rewrite those
+// template-literal tails instead. Every mechanism root the resource manifest can
+// emit has to be listed here: the Christmas set lives under
+// /assets/unity/christmas rather than /assets/unity/mechanisms, and leaving its
+// root out shipped a sled whose passenger atlas still pointed at a
+// root-relative URL that does not exist inside a single-file ad.
+const DYNAMIC_MECHANISM_ROOTS = Object.freeze([
+  '/assets/unity/mechanisms',
+  '/assets/unity/christmas'
+]);
+
 function replaceBundledDynamicAssetUrls(content, assetMap) {
   let next = content;
   const escapeRegex = (value) => value.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&');
-  for (const [url, dataUri] of assetMap) {
-    if (!url.startsWith('/assets/unity/mechanisms/')) continue;
-    const tail = url.slice('/assets/unity/mechanisms'.length);
-    const pattern = new RegExp(`\\$\\{[A-Za-z_$][\\w$]*\\}${escapeRegex(tail)}`, 'gu');
-    next = next.replace(pattern, () => dataUri);
+  for (const root of DYNAMIC_MECHANISM_ROOTS) {
+    for (const [url, dataUri] of assetMap) {
+      if (!url.startsWith(`${root}/`)) continue;
+      const tail = url.slice(root.length);
+      const pattern = new RegExp(`\\$\\{[A-Za-z_$][\\w$]*\\}${escapeRegex(tail)}`, 'gu');
+      next = next.replace(pattern, () => dataUri);
+    }
   }
-  return next.replaceAll('"/assets/unity/mechanisms"', '""');
+  for (const root of DYNAMIC_MECHANISM_ROOTS) next = next.replaceAll(`"${root}"`, '""');
+  return next;
 }
 
 function reuseDocumentImageAsset(html, js, assetMap, elementId) {
@@ -218,16 +234,17 @@ function stripEditorMount(html) {
 }
 
 async function main() {
-  const [{ PLAYABLE_LEVEL_SEQUENCE }, { SCENE_TUNING }, {
+  const [{ PLAYABLE_STAGES, PLAYABLE_STAGE_CHOICES, PLAYABLE_ALL_LEVELS }, { SCENE_TUNING }, {
     BASE_RUNTIME_ASSET_PATHS,
     PRE_ROLL_ASSET_PATHS,
     getMechanismResourcePaths,
     getMechanismTypesForLevels
-  }, { isPreRollAssetPath }] = await Promise.all([
+  }, { isPreRollAssetPath }, { LEVEL_AUDIO_CONFIG }] = await Promise.all([
     import('../src/generated-active-level.js'),
     import('../src/scene-tuning.js'),
     import('../src/mechanism-resources.js'),
-    import('../src/pre-roll.js')
+    import('../src/pre-roll.js'),
+    import('../src/level-audio-config.js')
   ]);
   const htmlPath = path.join(DIST_DIR, 'index.html');
   const html = stripEditorMount(await readFile(htmlPath, 'utf8'));
@@ -243,9 +260,24 @@ async function main() {
   ]);
   const packagedCssSource = stripBundledFontFaces(cssSource);
   const spatialSelection = SCENE_TUNING.conveyorLayout?.selected;
-  const mechanismTypes = getMechanismTypesForLevels(PLAYABLE_LEVEL_SEQUENCE, {
+  const choiceOptions = PLAYABLE_STAGE_CHOICES.flatMap((choice) => choice?.options ?? []);
+  // Mechanism art follows the whole reachable level set, not just the fixed
+  // order: a picked map can be the only stage that uses a special vehicle.
+  //
+  // The banner is requested by a *stage*, not by the global toggle, and the two
+  // session shapes carry their stages in different arrays: a fixed sequence
+  // (Q22's simple -> hard pair) in PLAYABLE_STAGES, and a map picker (Q23) in
+  // PLAYABLE_STAGE_CHOICES. Missing either one ships the six banner sprites as
+  // 1-byte octet-stream placeholders, and the banner degrades to a line of text.
+  const stageBannerEnabled = PLAYABLE_STAGES.some((stage) => stage?.opening?.entryBanner?.enabled);
+  const choiceBannerEnabled = PLAYABLE_STAGE_CHOICES.some((choice) => (
+    choice?.options?.some((option) => option.opening?.entryBanner?.enabled)
+  ));
+  const mechanismTypes = getMechanismTypesForLevels(PLAYABLE_ALL_LEVELS, {
     spatialSelection,
-    entryBannerEnabled: Boolean(SCENE_TUNING.entryBanner?.enabled)
+    entryBannerEnabled: Boolean(
+      SCENE_TUNING.entryBanner?.enabled || stageBannerEnabled || choiceBannerEnabled
+    )
   });
   const realAssetUrls = new Set(BASE_RUNTIME_ASSET_PATHS);
   if (SCENE_TUNING.preRoll?.enabled && (
@@ -254,15 +286,36 @@ async function main() {
   )) {
     realAssetUrls.add(SCENE_TUNING.preRoll.asset);
   }
-  for (const level of PLAYABLE_LEVEL_SEQUENCE) collectAssetUrls(level, realAssetUrls);
+  for (const level of PLAYABLE_ALL_LEVELS) collectAssetUrls(level, realAssetUrls);
+  // The BGM is addressed from tuning, not from a level document, so the plain
+  // URL collection above never sees it. Missing it ships a silently dead loop:
+  // the runtime requests a root-relative path that does not exist in the
+  // single-file ad and only logs a warning.
+  if (Number(SCENE_TUNING.audio?.bgm?.enabled) && SCENE_TUNING.audio?.bgm?.asset) {
+    realAssetUrls.add(SCENE_TUNING.audio.bgm.asset);
+  }
+  // The picker art is not part of a level document, so it needs its own pass.
+  for (const option of choiceOptions) realAssetUrls.add(option.image);
   collectAssetUrls(html, realAssetUrls);
   collectAssetUrls(packagedCssSource, realAssetUrls);
   collectAssetUrls({
     background: SCENE_TUNING.background?.asset,
     icon: SCENE_TUNING.branding?.icon?.asset,
+    // One Bus build serves both stores and swaps its icon from the device UA, so
+    // every per-device icon has to be inlined. Taking only `icon.asset` shipped
+    // the iOS half with a root-relative image URL that resolves to nothing
+    // inside a single-file ad.
+    iconDeviceAssets: Object.values(SCENE_TUNING.branding?.icon?.deviceAssets ?? {}),
     logo: SCENE_TUNING.branding?.logo?.asset
   }, realAssetUrls);
   for (const assetUrl of getMechanismResourcePaths(mechanismTypes)) realAssetUrls.add(assetUrl);
+  // The runtime completes a level's sound list from the canonical table, so a
+  // clip a level document does not name can still be requested at playback.
+  // Inlining only what the documents list would leave that fallback pointing at
+  // a root-relative URL that does not exist inside a single-file ad.
+  for (const entry of Object.values(LEVEL_AUDIO_CONFIG)) {
+    for (const clip of entry.clips) realAssetUrls.add(clip);
+  }
   realAssetUrls.delete(jsPath);
   realAssetUrls.delete(cssPath);
 
@@ -272,7 +325,15 @@ async function main() {
     if (!availableUrls.has(assetUrl)) throw new Error(`Required production asset is missing: ${assetUrl}`);
   }
   const jsWithAssets = replaceAssetUrls(replaceBundledDynamicAssetUrls(jsSource, assetMap), assetMap);
-  const js = reuseDocumentImageAsset(html, jsWithAssets, assetMap, 'branding-icon');
+  // These images are already inlined in the document; re-embedding the same
+  // base64 blob in the tuning literal doubles the package size. The loading
+  // icon is compared against the element's own src at runtime, so reading it
+  // back from the document keeps that comparison equal.
+  // `stage-choice-hand` is the same sprite as the 3D guide hand's texture, so its
+  // data URI would otherwise appear twice (once in the document, once in the
+  // runtime constant) and the payload scan rejects the package.
+  const js = ['branding-icon', 'branding-logo', 'loading-icon', 'stage-choice-hand']
+    .reduce((source, elementId) => reuseDocumentImageAsset(html, source, assetMap, elementId), jsWithAssets);
   const css = stripEditorCss(replaceAssetUrls(packagedCssSource, assetMap));
 
   let output = inlineCss(html, css, cssPath);

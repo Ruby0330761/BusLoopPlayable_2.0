@@ -43,6 +43,7 @@ export const VEHICLE_COLOR_OPTIONS = Object.freeze([
   { id: 13, name: 'Ambulance', label: '救护车', css: '#9A0040' },
   { id: 14, name: 'Vip', label: 'VIP 车', css: '#FFDFCE' },
   { id: 15, name: 'Luxury', label: '豪华车', css: '#FFF7A5' },
+  { id: 16, name: 'Christmas', label: '圣诞雪橇', css: '#C62828' },
   // Supplied colour supplement (Unity indices 17-25). Position is not the id,
   // so look colours up through getVehicleColorOption().
   { id: 17, name: 'Black', label: '黑', css: '#2D2D30' },
@@ -68,7 +69,8 @@ const VEHICLE_COLOR_BY_ID = new Map(VEHICLE_COLOR_OPTIONS.map((color) => [color.
 const SPECIAL_VEHICLE_COLOR_INDEX = Object.freeze({
   police: 11,
   firetruck: 12,
-  ambulance: 13
+  ambulance: 13,
+  christmas: 16
 });
 
 export function getSpecialVehicleColorIndex(mechanismType) {
@@ -77,7 +79,7 @@ export function getSpecialVehicleColorIndex(mechanismType) {
 
 export function isSpecialVehicle(vehicle) {
   return getSpecialVehicleColorIndex(vehicle?.mechanism?.type) != null
-    || Number(vehicle?.colorIndex) === 15;
+    || [15, 16].includes(Number(vehicle?.colorIndex));
 }
 
 export function getVehicleColorOption(colorIndex) {
@@ -131,6 +133,15 @@ function normalizeVehicle(vehicle, fallbackId) {
       distance: Math.max(0.15, finite(vehicle?.mechanism?.distance, 0.25)),
       wrenchColor: Math.max(0, Math.round(finite(vehicle?.mechanism?.wrenchColor))),
       secondColorIndex: Math.max(0, Math.round(finite(vehicle?.mechanism?.secondColorIndex))),
+      // The ambulance is step-limited by definition. Any other family (the
+      // Christmas sled) opts in: its authored texture is not the ambulance, but
+      // the centre-rescue heart board and the countdown still apply. Omitted
+      // when false so ordinary cars keep their existing document shape.
+      ...(mechanismType === 'ambulance'
+        || vehicle?.mechanism?.stepLimited
+        || Number.isInteger(vehicle?.ambulanceStepLimit)
+        ? { stepLimited: true }
+        : {}),
       stepLimit: positiveInt(vehicle?.mechanism?.stepLimit ?? vehicle?.ambulanceStepLimit, 35),
       timeLimit: positiveInt(vehicle?.mechanism?.timeLimit ?? vehicle?.firetruckTimeLimit, 30)
     }
@@ -221,14 +232,27 @@ export function createLevelDocument(level = {}) {
     passengerQueues,
     passengerColorOverrides,
     vehicleDepthes: clone(level.vehicleDepthes ?? {}),
+    // Scene tuning (parking spots, vehicle layer, camera/background, badge
+    // sizes) is authored per level and lives beside the layout. It is optional
+    // so level files written before it was carried still load; the layout
+    // editor must not drop it on save, otherwise exporting a level would lose
+    // every scene setting the operator had dialled in.
+    ...(isPlainTuning(level.tuning) ? { tuning: clone(level.tuning) } : {}),
     editor: {
       gridGap: Math.max(0.05, finite(level.editor?.gridGap, 0.27)),
       gridRotation: normalizeAngle(level.editor?.gridRotation),
       gridSnap: level.editor?.gridSnap !== false,
       vehicleSnap: level.editor?.vehicleSnap !== false,
-      alignmentGuides: level.editor?.alignmentGuides !== false
+      alignmentGuides: level.editor?.alignmentGuides !== false,
+      // Operators asked for the numbering to stay compact after a delete; the
+      // flag only governs the automatic pass, the explicit button always runs.
+      autoRenumberVehicles: level.editor?.autoRenumberVehicles !== false
     }
   };
+}
+
+function isPlainTuning(value) {
+  return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
 }
 
 export function retargetLevelDocument(document, target = {}) {
@@ -251,6 +275,114 @@ function selectedItems(document, selection) {
 
 function nextId(items) {
   return items.reduce((max, item) => Math.max(max, finite(item.id)), 0) + 1;
+}
+
+// Depth entries are stored as `ownerVehicleId: [blockerId, ...]` and a blocker
+// may be a vehicle or a container. Deleting a vehicle has to drop every mention
+// of it, otherwise the next renumber would hand that stale id to a live vehicle
+// and turn a removed blocker into a real one.
+function pruneRemovedVehicleDepths(document, removedVehicleIds, removedContainerIds) {
+  const depths = document.vehicleDepthes;
+  if (!depths || typeof depths !== 'object') return false;
+  const liveVehicleIds = new Set(document.vehicles.map((vehicle) => vehicle.id));
+  const liveContainerIds = new Set(document.containers
+    .filter((container) => container.type !== CONTAINER_TYPES.PARKING)
+    .map((container) => container.id));
+  const removed = new Set([...removedVehicleIds, ...removedContainerIds]);
+  if (!removed.size) return false;
+  const next = {};
+  let changed = false;
+  for (const [ownerId, blockers] of Object.entries(depths)) {
+    if (removedVehicleIds.has(Number(ownerId))) { changed = true; continue; }
+    const values = Array.isArray(blockers) ? blockers : [];
+    const kept = values.filter((value) => (
+      liveVehicleIds.has(Number(value)) || liveContainerIds.has(Number(value))
+    ));
+    if (kept.length !== values.length) changed = true;
+    next[ownerId] = kept;
+  }
+  if (changed) document.vehicleDepthes = next;
+  return changed;
+}
+
+/**
+ * Rewrites vehicle ids into a gapless 1..N sequence while keeping the relative
+ * order the operator already sees on the canvas: cars are numbered by their
+ * current id, so removing #3 turns #4 into #3 instead of reshuffling the level.
+ * Every reference travels with the id — depth graph, mechanism partners, and the
+ * authored guide targets — because the runtime and the Unity export address cars
+ * by number. The returned map lets callers remap ids they hold themselves (the
+ * editor selection and the live scene tuning).
+ */
+export function renumberVehicleIds(document) {
+  const vehicles = document.vehicles ?? [];
+  const idMap = new Map([...vehicles]
+    .sort((a, b) => a.id - b.id)
+    .map((vehicle, index) => [vehicle.id, index + 1]));
+  const containerIds = new Set((document.containers ?? [])
+    .filter((container) => container.type !== CONTAINER_TYPES.PARKING)
+    .map((container) => container.id));
+
+  // Vehicle and container ids share one namespace in the depth graph (level20
+  // has vehicles 1 and 2 beside garages 1 and 2). Resolve as a vehicle first:
+  // only vehicle ids move, so an id that exists solely as a container stays put.
+  const remapDepthReference = (value) => {
+    const mapped = idMap.get(Number(value));
+    if (mapped != null) return mapped;
+    return containerIds.has(Number(value)) ? Number(value) : null;
+  };
+
+  const depths = document.vehicleDepthes ?? {};
+  const nextDepths = {};
+  for (const [ownerId, blockers] of Object.entries(depths)) {
+    const owner = idMap.get(Number(ownerId));
+    if (owner == null) continue;
+    nextDepths[owner] = (Array.isArray(blockers) ? blockers : [])
+      .map(remapDepthReference)
+      .filter((value) => value != null);
+  }
+  const depthsChanged = JSON.stringify(depths) !== JSON.stringify(nextDepths);
+  if (depthsChanged) document.vehicleDepthes = nextDepths;
+
+  let idsChanged = false;
+  for (const vehicle of vehicles) {
+    const nextVehicleId = idMap.get(vehicle.id);
+    if (nextVehicleId !== vehicle.id) {
+      vehicle.id = nextVehicleId;
+      idsChanged = true;
+    }
+    const pairId = vehicle.mechanism?.pairVehicleId;
+    if (pairId != null && idMap.has(pairId) && idMap.get(pairId) !== pairId) {
+      vehicle.mechanism.pairVehicleId = idMap.get(pairId);
+      idsChanged = true;
+    }
+  }
+
+  // Level files carry a tuning snapshot on export, and the opening guides name a
+  // car by id. Move that target with the car it pointed at; a guide authored for
+  // another level keeps its own numbering.
+  const tuning = document.tuning;
+  let tuningChanged = false;
+  if (tuning && typeof tuning === 'object' && !Array.isArray(tuning)) {
+    const maxId = vehicles.length;
+    for (const guide of [tuning.vehicleGuideHand, tuning.firstClickGuide]) {
+      if (!guide || (guide.levelKey && guide.levelKey !== document.key)) continue;
+      const previous = Number(guide.vehicleId);
+      if (!Number.isFinite(previous)) continue;
+      // A guide pointed at a car that is now gone keeps pointing at the ordinal
+      // it owned: that slot now holds the car that shifted up into it.
+      const mapped = idMap.get(previous) ?? (maxId > 0 ? Math.min(Math.max(1, previous), maxId) : previous);
+      if (mapped === guide.vehicleId) continue;
+      guide.vehicleId = mapped;
+      tuningChanged = true;
+    }
+  }
+
+  return { idMap, changed: idsChanged || depthsChanged || tuningChanged };
+}
+
+function invertVehicleIdMap(idMap) {
+  return new Map([...idMap].map(([from, to]) => [to, from]));
 }
 
 function worldBounds(items) {
@@ -819,6 +951,10 @@ export class LevelEditorModel {
     this.redoStack = [];
     this.clipboard = [];
     this.changeVersion = 0;
+    // Set by the operations that rewrite vehicle ids so the editor can remap
+    // ids it owns outside the document (selection, live scene tuning) without
+    // diffing the whole document after every edit.
+    this.pendingRenumber = null;
   }
 
   snapshot() { return clone(this.document); }
@@ -827,24 +963,33 @@ export class LevelEditorModel {
   transact(mutator) {
     const before = this.snapshot();
     const beforeSelection = [...this.selection];
+    this.pendingRenumber = null;
     mutator(this.document);
-    this.undoStack.push({ document: before, selection: beforeSelection });
+    // A mutator may compact the numbering; keep that mapping with the history
+    // entry so undo/redo can walk the ids held outside the document back.
+    const renumber = this.pendingRenumber;
+    this.pendingRenumber = null;
+    this.undoStack.push({ document: before, selection: beforeSelection, renumber });
     if (this.undoStack.length > this.historyLimit) this.undoStack.shift();
     this.redoStack.length = 0;
     this.changeVersion += 1;
+    this.lastRenumber = renumber;
     return this.document;
   }
 
-  restore(entry, destination) {
+  restore(entry, destination, { invert = false } = {}) {
     if (!entry) return false;
-    destination.push({ document: this.snapshot(), selection: [...this.selection] });
+    destination.push({ document: this.snapshot(), selection: [...this.selection], renumber: entry.renumber });
     this.document = clone(entry.document);
     this.selection = new Set(entry.selection);
+    this.lastRenumber = entry.renumber
+      ? { idMap: invert ? invertVehicleIdMap(entry.renumber.idMap) : entry.renumber.idMap, changed: true }
+      : null;
     this.changeVersion += 1;
     return true;
   }
 
-  undo() { return this.restore(this.undoStack.pop(), this.redoStack); }
+  undo() { return this.restore(this.undoStack.pop(), this.redoStack, { invert: true }); }
   redo() { return this.restore(this.redoStack.pop(), this.undoStack); }
 
   select(key, { add = false, toggle = false } = {}) {
@@ -954,18 +1099,68 @@ export class LevelEditorModel {
 
   removeSelected() {
     const keys = new Set(this.selection);
-    if (!keys.size) return;
+    if (!keys.size) return null;
+    let renumber = null;
     this.transact((document) => {
-      const removedContainers = new Set(document.containers.filter((item) => keys.has(`container:${item.id}`)).map((item) => item.id));
-      document.vehicles = document.vehicles.filter((item) => !keys.has(`vehicle:${item.id}`) && !removedContainers.has(item.containerId));
+      const previousVehicleIds = new Set(document.vehicles.map((item) => item.id));
+      const selectedContainers = new Set(document.containers
+        .filter((item) => keys.has(`container:${item.id}`))
+        .map((item) => item.id));
+      document.vehicles = document.vehicles.filter((item) => !keys.has(`vehicle:${item.id}`) && !selectedContainers.has(item.containerId));
       document.containers = document.containers.filter((item) => !keys.has(`container:${item.id}`) || item.type === CONTAINER_TYPES.PARKING);
+      const removedVehicleIds = new Set([...previousVehicleIds]
+        .filter((id) => !document.vehicles.some((item) => item.id === id)));
+      const removedContainers = new Set([...selectedContainers]
+        .filter((id) => !document.containers.some((item) => item.id === id)));
       const active = document.containers.find((item) => item.id === this.activeContainerId);
       if (active?.type === CONTAINER_TYPES.GARAGE) resetGarageVehiclePositions(document, active);
       if (active?.type === CONTAINER_TYPES.CONVEYOR) resetConveyorVehiclePositions(document, active);
       if (active?.type === CONTAINER_TYPES.GATE_QUEUE) resetGateQueueVehiclePositions(document, active);
       syncPassengerQueuesToVehicleCapacity(document);
       this.selection.clear();
+      pruneRemovedVehicleDepths(document, removedVehicleIds, removedContainers);
+      // Deleting a car leaves a hole in the numbering the operator watches on
+      // the canvas, and every reference (depth graph, guide targets) is keyed by
+      // that number, so compact the sequence in the same undo step.
+      if (removedVehicleIds.size && document.editor.autoRenumberVehicles) {
+        renumber = renumberVehicleIds(document);
+        this.pendingRenumber = renumber.changed ? renumber : null;
+      }
     });
+    return renumber;
+  }
+
+  /**
+   * Manual counterpart to the delete-time compaction: closes gaps left by older
+   * files or by ids that were assigned before a car was removed. Undoable.
+   */
+  renumberVehicles() {
+    if (!this.document.vehicles.length) return null;
+    let result = null;
+    this.transact((document) => {
+      result = renumberVehicleIds(document);
+      this.pendingRenumber = result.changed ? result : null;
+      this.selection = new Set([...this.selection].map((key) => {
+        const [kind, value] = key.split(':');
+        if (kind !== 'vehicle') return key;
+        const mapped = result.idMap.get(Number(value));
+        return mapped == null ? key : `vehicle:${mapped}`;
+      }));
+    });
+    return result;
+  }
+
+  /**
+   * Hands the id rewrite of the most recent change to the caller once, so the
+   * editor can move the ids it keeps outside the document (live scene tuning,
+   * saved guide targets). Delete, cut, undo/redo, and the manual button all land
+   * here without the caller having to diff the document.
+   */
+  consumeRenumber() {
+    const pending = this.lastRenumber;
+    this.lastRenumber = null;
+    this.pendingRenumber = null;
+    return pending;
   }
 
   copy() { this.clipboard = clone(this.selected().map((item) => ({ ...item, kind: item.seats ? 'vehicle' : 'container' }))); }
@@ -1400,7 +1595,10 @@ export function levelDocumentToRuntime(document, baseLevel = {}) {
     ...vehicle,
     mechanism: clone(vehicle.mechanism),
     collisionSize: clone(VEHICLE_SIZES[vehicle.seats] ?? VEHICLE_SIZES[4]),
-    ...(vehicle.mechanism.type === 'ambulance' ? { ambulanceStepLimit: vehicle.mechanism.stepLimit } : {}),
+    // `ambulanceStepLimit` is the runtime's step-countdown field, not a visual
+    // family flag: the Christmas sled opts in through `stepLimited` and keeps
+    // its own model, arrow and passengers.
+    ...(vehicle.mechanism.stepLimited ? { ambulanceStepLimit: vehicle.mechanism.stepLimit } : {}),
     ...(vehicle.mechanism.type === 'firetruck' ? { firetruckTimeLimit: vehicle.mechanism.timeLimit } : {})
   }));
   const previousBelts = new Map((baseLevel.conveyorBelts ?? []).map((belt) => [Number(belt.vcId), belt]));

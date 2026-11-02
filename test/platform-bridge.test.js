@@ -37,11 +37,66 @@ test('AppLovin bridge waits for viewability, tracks both visibility directions, 
   assert.equal(starts, 1);
   bridge.ready();
   bridge.challenge();
+  bridge.challengeProgress(25);
+  bridge.challengeProgress(25);
+  bridge.challengeProgress(50);
+  bridge.challengeProgress(100);
+  bridge.challengeSolved();
   bridge.end();
+  bridge.challengeFailed();
+  bridge.retry();
   bridge.openStore({ android: 'https://play.google.com/example' });
-  assert.deepEqual(events, ['LOADING', 'LOADED', 'DISPLAYED', 'CHALLENGE_STARTED', 'ENDCARD_SHOWN', 'CTA_CLICKED']);
+  assert.deepEqual(events, [
+    'LOADING',
+    'LOADED',
+    'DISPLAYED',
+    'CHALLENGE_STARTED',
+    'CHALLENGE_PASS_25',
+    'CHALLENGE_PASS_50',
+    'CHALLENGE_PASS_75',
+    'CHALLENGE_SOLVED',
+    'ENDCARD_SHOWN',
+    'CTA_CLICKED'
+  ]);
   assert.deepEqual(opened, ['https://play.google.com/example']);
   assert.deepEqual(visibility, [false, true, false, true]);
+});
+
+test('AppLovin bridge backfills CHALLENGE_STARTED and keeps the retry funnel stuck to one attempt', async (t) => {
+  const events = [];
+  global.window = { ALPlayableAnalytics: { trackEvent: (name) => events.push(name) } };
+  t.after(() => { delete global.window; });
+  const { createPlatformBridge } = await import(`../src/platform-bridge.js?test=funnel-${Date.now()}`);
+  const bridge = createPlatformBridge({ onStart: () => {} });
+
+  bridge.challengeProgress(30);
+  bridge.challengeFailed();
+  bridge.retry();
+  bridge.challengeProgress(25);
+  assert.deepEqual(events, [
+    'CHALLENGE_STARTED',
+    'CHALLENGE_PASS_25',
+    'CHALLENGE_FAILED',
+    'CHALLENGE_RETRY'
+  ]);
+});
+
+test('AppLovin CTA clicked before any gameplay backfills CHALLENGE_STARTED ahead of CTA_CLICKED', async (t) => {
+  const events = [];
+  const opened = [];
+  global.window = {
+    mraid: { open: (url) => opened.push(url) },
+    ALPlayableAnalytics: { trackEvent: (name) => events.push(name) }
+  };
+  t.after(() => { delete global.window; });
+  const { createPlatformBridge } = await import(`../src/platform-bridge.js?test=cta-${Date.now()}`);
+  const bridge = createPlatformBridge({ onStart: () => {} });
+
+  bridge.openStore({ android: 'https://play.google.com/example' });
+  assert.deepEqual(events, ['CHALLENGE_STARTED']);
+  await new Promise((resolve) => setTimeout(resolve, 260));
+  assert.deepEqual(events, ['CHALLENGE_STARTED', 'CTA_CLICKED']);
+  assert.deepEqual(opened, ['https://play.google.com/example']);
 });
 
 test('AppLovin bridge rejects unsupported non-browser previews without MRAID', async (t) => {
@@ -147,6 +202,9 @@ test('platform-specific bridges call their native CTA APIs', async (t) => {
   global.window = {
     ExitApi: { exit: (...args) => calls.push(['google', ...args]) },
     FbPlayableAd: { onCTAClick: () => calls.push(['meta']) },
+    // A real TikTok container injects the JSBridge transport; the bundled SDK
+    // alone is not proof of a host, so the fixture has to include it.
+    JSBridge: { on: () => {} },
     playableSDK: { openAppStore: () => calls.push(['tiktok']) }
   };
   t.after(() => { delete global.window; });
@@ -165,6 +223,7 @@ test('platform-specific bridges call their native CTA APIs', async (t) => {
 test('TikTok bridge falls back to the global openAppStore API', async (t) => {
   const calls = [];
   global.window = {
+    JSBridge: { on: () => {} },
     playableSDK: {},
     openAppStore: () => calls.push('global')
   };
@@ -173,6 +232,76 @@ test('TikTok bridge falls back to the global openAppStore API', async (t) => {
   const bridge = createPlatformBridge({ onStart: () => {} });
   assert.equal(bridge.openStore(), true);
   assert.deepEqual(calls, ['global']);
+});
+
+test('TikTok CTA still calls the platform API and opens the store in a browser', async (t) => {
+  // The SDK script is inlined in every TikTok build, so `openAppStore` exists
+  // even with no host listening. The call is made (the ad container is the real
+  // target), and because this is not an in-app webview the store link opens too.
+  const calls = [];
+  global.window = {
+    location: { protocol: 'https:' },
+    playableSDK: { openAppStore: () => calls.push('sdk') }
+  };
+  global.document = {
+    createElement: () => ({ click() { calls.push('anchor'); }, remove() {} }),
+    body: { append() {} }
+  };
+  t.after(() => { delete global.window; delete global.document; });
+  const { createPlatformBridge } = await import(`../src/platform-bridges/tiktok.js?test=browser-${Date.now()}`);
+  const bridge = createPlatformBridge({ onStart: () => {} });
+  assert.equal(
+    bridge.openStore({ android: 'https://play.google.com/store/apps/details?id=example' }),
+    true
+  );
+  assert.deepEqual(calls, ['sdk', 'anchor']);
+});
+
+test('TikTok CTA ignores the SDK-installed JSBridge when deciding on the fallback', async (t) => {
+  // The SDK creates window.JSBridge and its iframes itself, so that object can
+  // never prove a host is listening; the UA has to decide.
+  const calls = [];
+  global.window = {
+    location: { protocol: 'https:' },
+    JSBridge: { on: () => {} },
+    playableSDK: { openAppStore: () => calls.push('sdk') }
+  };
+  global.document = {
+    createElement: () => ({ click() { calls.push('anchor'); }, remove() {} }),
+    body: { append() {} }
+  };
+  t.after(() => { delete global.window; delete global.document; });
+  const { createPlatformBridge } = await import(`../src/platform-bridges/tiktok.js?test=sdkbridge-${Date.now()}`);
+  const bridge = createPlatformBridge({ onStart: () => {} });
+  assert.equal(bridge.openStore({ android: 'https://play.google.com/example' }), true);
+  assert.deepEqual(calls, ['sdk', 'anchor']);
+});
+
+test('TikTok CTA opens the store only once inside the in-app webview', async (t) => {
+  const calls = [];
+  const originalNavigator = Object.getOwnPropertyDescriptor(globalThis, 'navigator');
+  Object.defineProperty(globalThis, 'navigator', {
+    configurable: true,
+    value: { userAgent: 'Mozilla/5.0 (Linux; Android 13) Mobile TikTok 30.1.0' }
+  });
+  global.window = {
+    location: { protocol: 'https:' },
+    playableSDK: { openAppStore: () => calls.push('sdk') }
+  };
+  global.document = {
+    createElement: () => ({ click() { calls.push('anchor'); }, remove() {} }),
+    body: { append() {} }
+  };
+  t.after(() => {
+    delete global.window;
+    delete global.document;
+    if (originalNavigator) Object.defineProperty(globalThis, 'navigator', originalNavigator);
+    else delete globalThis.navigator;
+  });
+  const { createPlatformBridge } = await import(`../src/platform-bridges/tiktok.js?test=inapp-${Date.now()}`);
+  const bridge = createPlatformBridge({ onStart: () => {} });
+  assert.equal(bridge.openStore({ android: 'https://play.google.com/example' }), true);
+  assert.deepEqual(calls, ['sdk']);
 });
 
 test('Mintegral bridge exposes one-shot lifecycle and handles close and retry', async (t) => {
@@ -219,6 +348,7 @@ test('native CTA failures propagate instead of being converted into success or w
     ['unity', '../src/platform-bridges/unityads.js', () => ({ mraid: { open: () => { throw failure; } } })],
     ['mintegral', '../src/platform-bridges/mintegral.js', () => ({ install: () => { throw failure; } })],
     ['tiktok', '../src/platform-bridges/tiktok.js', () => ({
+      JSBridge: { on: () => {} },
       playableSDK: { openAppStore: () => { throw failure; } },
       openAppStore: () => assert.fail('SDK failures must not trigger a second store open')
     })]

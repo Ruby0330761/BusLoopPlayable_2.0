@@ -51,7 +51,9 @@ test('entry banner uses the supplied title/background images and keeps the match
   assert.match(tuningSource, /"entryBanner": \{/);
   assert.match(tuningSource, /"components": \{/);
   assert.doesNotMatch(tuningSource, /"debug": \{/);
-  assert.match(sceneSource, /SCENE_TUNING\.entryBanner\?\.components/);
+  // Stage presentation overrides the global banner tuning, so components are
+  // read through the merged getter rather than straight off SCENE_TUNING.
+  assert.match(sceneSource, /this\.getEntryBannerTuning\(\)\?\.components/);
   assert.doesNotMatch(sceneSource, /entryBanner\?\.debug/);
   assert.match(sceneSource, /const alpha = frame\(\[\[start, 0\], \[end, 1\], \[end \+ 0\.25, 1\], \[end \+ 0\.32, 0\]\]/);
   assert.match(styleSource, /\.entry-banner-arrow-group[\s\S]*z-index: 3/);

@@ -55,6 +55,9 @@ export function createPlatformBridge({ onStart, onVisibilityChange = () => {}, o
       window.gameStart();
     },
     challenge() {},
+    challengeProgress() {},
+    challengeSolved() {},
+    challengeFailed() {},
     end() {
       if (ended) return;
       ended = true;

@@ -1,0 +1,323 @@
+{
+  "format": "bus-loop-playable-session-v1",
+  "active": "q159-christmas",
+  "sessions": {
+    "q159-christmas": {
+      "stages": [
+        {
+          "id": "q159-christmas-rescue",
+          "levelKey": "level2602",
+          "opening": {
+            "firstClickGuide": {
+              "enabled": 0
+            },
+            "entryBanner": {
+              "enabled": 0
+            }
+          },
+          "labels": [],
+          "scene": {
+            "conveyorLayout": "dualQueue3",
+            "background": "/assets/editor-backgrounds/bg-93f23dce52-2100x3382-nano-banana-2_20261023_182259_598f1f3d441b47be90.jpg",
+            "parkingSpots": {
+              "count": 6
+            }
+          }
+        }
+      ],
+      "exportNaming": {
+        "materialCode": "Q159V1"
+      },
+      "preRoll": 0
+    },
+    "q24-christmas": {
+      "stages": [
+        {
+          "id": "q24-christmas-sled",
+          "levelKey": "level2601",
+          "opening": {
+            "firstClickGuide": {
+              "enabled": 1,
+              "vehicleId": 162,
+              "durationSeconds": 3,
+              "maskEnabled": 1,
+              "maskOpacity": 0.67
+            },
+            "entryBanner": {
+              "enabled": 0
+            }
+          },
+          "labels": [],
+          "scene": {
+            "conveyorLayout": "dualQueue3",
+            "background": "/assets/editor-backgrounds/bg-93f23dce52-2100x3382-nano-banana-2_20261023_182259_598f1f3d441b47be90.jpg",
+            "parkingSpots": {
+              "count": 6
+            }
+          }
+        }
+      ],
+      "exportNaming": {
+        "materialCode": "Q158V1"
+      },
+      "preRoll": 0
+    },
+    "q23-choice": {
+      "stages": [
+        {
+          "id": "q23-choice-simple",
+          "levelKey": "level27",
+          "opening": {
+            "firstClickGuide": {
+              "enabled": 1,
+              "vehicleId": 159,
+              "durationSeconds": 4,
+              "maskEnabled": 1,
+              "maskOpacity": 0.68
+            },
+            "entryBanner": {
+              "enabled": 0
+            }
+          },
+          "labels": [],
+          "scene": {
+            "conveyorLayout": "dualQueue3",
+            "parkingSpots": {
+              "count": 6
+            }
+          },
+          "choice": {
+            "title": "Please Choose a Stage",
+            "handIndex": 1,
+            "options": [
+              {
+                "id": "q23-fish",
+                "levelKey": "level13",
+                "label": "Lv13 Fish",
+                "image": "/assets/applovin/stage-choice/level13.webp",
+                "scene": {
+                  "conveyorLayout": "dualQueue3",
+                  "parkingSpots": {
+                    "count": 4
+                  }
+                },
+                "opening": {
+                  "firstClickGuide": {
+                    "enabled": 0
+                  },
+                  "entryBanner": {
+                    "enabled": 0
+                  }
+                },
+                "labels": []
+              },
+              {
+                "id": "q23-rainbow",
+                "levelKey": "level7",
+                "label": "Lv7 Rainbow",
+                "image": "/assets/applovin/stage-choice/level7.webp",
+                "scene": {
+                  "conveyorLayout": "dualQueue3",
+                  "parkingSpots": {
+                    "count": 4
+                  }
+                },
+                "opening": {
+                  "firstClickGuide": {
+                    "enabled": 0
+                  },
+                  "entryBanner": {
+                    "enabled": 0
+                  }
+                },
+                "labels": []
+              },
+              {
+                "id": "q23-matrix",
+                "levelKey": "level5",
+                "label": "Lv5 Matrix",
+                "image": "/assets/applovin/stage-choice/level5.webp",
+                "scene": {
+                  "conveyorLayout": "dualQueue3",
+                  "parkingSpots": {
+                    "count": 4
+                  }
+                },
+                "opening": {
+                  "firstClickGuide": {
+                    "enabled": 0
+                  },
+                  "entryBanner": {
+                    "enabled": 0
+                  }
+                },
+                "labels": []
+              },
+              {
+                "id": "q23-level154",
+                "levelKey": "level30",
+                "label": "Lv154",
+                "image": "/assets/applovin/stage-choice/level30.webp",
+                "scene": {
+                  "conveyorLayout": "dualQueue3",
+                  "parkingSpots": {
+                    "count": 4
+                  }
+                },
+                "opening": {
+                  "firstClickGuide": {
+                    "enabled": 0
+                  },
+                  "entryBanner": {
+                    "enabled": 0
+                  }
+                },
+                "labels": []
+              }
+            ]
+          }
+        }
+      ],
+      "exportNaming": {
+        "materialCode": "Q23V1"
+      },
+      "preRoll": 0
+    },
+    "q22-special": {
+      "stages": [
+        {
+          "id": "q22-special-level1",
+          "levelKey": "level27",
+          "opening": {
+            "firstClickGuide": {
+              "enabled": 1,
+              "vehicleId": 159,
+              "durationSeconds": 4,
+              "maskEnabled": 1,
+              "maskOpacity": 0.68
+            },
+            "entryBanner": {
+              "enabled": 0
+            }
+          },
+          "labels": [
+            {
+              "text": "Level 1",
+              "x": 0.5,
+              "y": 0.06,
+              "align": "center"
+            }
+          ],
+          "scene": {
+            "conveyorLayout": "dualQueue3",
+            "parkingSpots": {
+              "count": 6
+            }
+          }
+        },
+        {
+          "id": "q22-special-level99",
+          "levelKey": "level12",
+          "opening": {
+            "firstClickGuide": {
+              "enabled": 0
+            },
+            "entryBanner": {
+              "enabled": 1,
+              "style": "superhard",
+              "durationSeconds": 2.2,
+              "maskEnabled": 1,
+              "maskOpacity": 0.62
+            }
+          },
+          "labels": [
+            {
+              "text": "Level 99",
+              "x": 0.5,
+              "y": 0.06,
+              "align": "center"
+            }
+          ],
+          "scene": {
+            "conveyorLayout": "dualQueue3",
+            "parkingSpots": {
+              "count": 4
+            }
+          }
+        }
+      ],
+      "exportNaming": {
+        "materialCode": "Q22V2"
+      },
+      "preRoll": 0
+    },
+    "q22-rect": {
+      "stages": [
+        {
+          "id": "q22-rect-level1",
+          "levelKey": "level9804",
+          "opening": {
+            "firstClickGuide": {
+              "enabled": 1,
+              "vehicleId": 6,
+              "durationSeconds": 4,
+              "maskEnabled": 1,
+              "maskOpacity": 0.68
+            },
+            "entryBanner": {
+              "enabled": 0
+            }
+          },
+          "labels": [
+            {
+              "text": "Level 1",
+              "x": 0.5,
+              "y": 0.06,
+              "align": "center"
+            }
+          ],
+          "scene": {
+            "conveyorLayout": "dualQueue3",
+            "parkingSpots": {
+              "count": 6
+            }
+          }
+        },
+        {
+          "id": "q22-rect-level99",
+          "levelKey": "level30",
+          "opening": {
+            "firstClickGuide": {
+              "enabled": 0
+            },
+            "entryBanner": {
+              "enabled": 1,
+              "style": "superhard",
+              "durationSeconds": 2.2,
+              "maskEnabled": 1,
+              "maskOpacity": 0.62
+            }
+          },
+          "labels": [
+            {
+              "text": "Level 99",
+              "x": 0.5,
+              "y": 0.06,
+              "align": "center"
+            }
+          ],
+          "scene": {
+            "conveyorLayout": "dualQueue3",
+            "parkingSpots": {
+              "count": 4
+            }
+          }
+        }
+      ],
+      "exportNaming": {
+        "materialCode": "Q22V1"
+      },
+      "preRoll": 0
+    }
+  }
+}

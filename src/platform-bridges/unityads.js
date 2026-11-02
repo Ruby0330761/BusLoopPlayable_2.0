@@ -40,6 +40,9 @@ export function createPlatformBridge({ onStart, onVisibilityChange = () => {}, o
     },
     ready() {},
     challenge() {},
+    challengeProgress() {},
+    challengeSolved() {},
+    challengeFailed() {},
     end() {},
     retry() {},
     openStore({ ios, android } = {}) {

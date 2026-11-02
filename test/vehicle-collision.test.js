@@ -180,6 +180,77 @@ test('blocked vehicle selects a direct geometry candidate and animates collision
   assert.equal(game.getVehicle(1).collision.targetType, 'vehicle');
 });
 
+test('a volume behind the attacker never wins the impact contact', () => {
+  // Garage/container footprints can overlap the car's own body in authored
+  // data. Such a candidate has no point ahead of the nose; before the guard it
+  // produced a zero-distance contact and the hit effect appeared behind the
+  // car instead of on the vehicle it actually bumped.
+  const level = createLevel();
+  const [attacker, target] = level.vehicles;
+  const attackerBox = {
+    position: { x: attacker.x, z: attacker.z },
+    yaw: attacker.yaw,
+    size: getVehicleCollisionSize(level, attacker),
+    forward: { x: 0, z: 1 },
+    right: { x: 1, z: 0 }
+  };
+  const behindContainer = {
+    type: 'container',
+    id: 1,
+    role: 'body',
+    box: {
+      position: { x: 0, z: -0.3 },
+      yaw: 0,
+      size: { width: 0.8, length: 1 },
+      forward: { x: 0, z: 1 },
+      right: { x: 1, z: 0 }
+    }
+  };
+  const aheadVehicle = {
+    type: 'vehicle',
+    id: 2,
+    vehicle: target,
+    box: {
+      position: { x: 0, z: 2 },
+      yaw: 0,
+      size: getVehicleCollisionSize(level, target),
+      forward: { x: 0, z: 1 },
+      right: { x: 1, z: 0 }
+    }
+  };
+  const contact = findCollisionContact(level, attacker, [behindContainer, aheadVehicle]);
+  assert.ok(contact);
+  assert.equal(contact.candidate.type, 'vehicle');
+  assert.equal(contact.candidate.id, 2);
+  const ahead = contact.position.z - (attackerBox.position.z + attackerBox.size.length * 0.5);
+  assert.ok(ahead >= -1e-6, `impact must be ahead of the nose, got ${ahead}`);
+});
+
+test('a garage body that only overlaps the car still yields a nose-level impact', () => {
+  // Nothing ahead: blocking stays true, but the fallback contact must sit on
+  // the car's own nose so the click still animates in the right place instead
+  // of rendering the effect behind the car.
+  const level = createLevel();
+  const [attacker] = level.vehicles;
+  const contact = findCollisionContact(level, attacker, [{
+    type: 'container',
+    id: 1,
+    role: 'body',
+    box: {
+      position: { x: 0, z: -0.3 },
+      yaw: 0,
+      size: { width: 0.8, length: 1 },
+      forward: { x: 0, z: 1 },
+      right: { x: 1, z: 0 }
+    }
+  }]);
+  assert.ok(contact);
+  const halfLength = getVehicleCollisionSize(level, attacker).length * 0.5;
+  const aheadOfNose = contact.position.z - (attacker.z + halfLength);
+  assert.ok(aheadOfNose >= -1e-6, `impact must not land behind the nose, got ${aheadOfNose}`);
+  assert.equal(contact.distance, 0);
+});
+
 test('ordinary vehicles do not block on a non-overlapping narrow gap', () => {
   const game = new BusLoopGame(createLevel({
     vehicles: [

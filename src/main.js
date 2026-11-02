@@ -1,14 +1,18 @@
 ﻿import './styles.css';
 import { BusLoopGame } from './game-model.js';
-import { PLAYABLE_LEVEL_SEQUENCE } from './generated-active-level.js';
+import { PLAYABLE_LEVEL_SEQUENCE, PLAYABLE_STAGES, PLAYABLE_STAGE_CHOICES, ACTIVE_PLAYABLE_SESSION } from './generated-active-level.js';
 import { ACTIVE_SPATIAL_CONVEYOR_PACKAGE } from './generated-active-spatial-conveyor.js';
 import { LEVEL_1, setActiveLevel } from './level-data.js';
 import { createLevelSession } from './level-session.js';
 import { SceneView } from './scene-view.js';
+import { setActiveStageScene } from './stage-scene.js';
 import { calculateAutoCameraFit, clampCenteredRectX } from './scene-layout.js';
 import { SCENE_TUNING } from './scene-tuning.js';
+import { pruneUnknownTuning } from './tuning-migrations.js';
 import { isValidStoreLink, resolveStoreLink } from './store-links.js';
+import { formatSpeedLabel, normalizeSpeedMultiplier, resolveTimeScale } from './speed-toggle.js';
 import { createGameAudioController } from './audio-controller.js';
+import { resolveLevelAudioConfig } from './level-audio-config.js';
 import { createPreRollController } from './pre-roll.js';
 import {
   getMechanismAudioConfig,
@@ -21,6 +25,7 @@ import {
   registerSpatialConveyorPackage,
   refreshSpatialConveyorPackages
 } from './spatial-conveyor-runtime.js';
+import { detectPlayfieldHorizon, resolveBackgroundHorizon } from './background-alignment.js';
 
 const EDITOR_ENABLED = import.meta.env.DEV || __REMOTE_EDITOR__;
 const DEFAULT_SCENE_TUNING = EDITOR_ENABLED ? structuredClone(SCENE_TUNING) : null;
@@ -42,27 +47,45 @@ const INSTALL_THRESHOLD_CUSTOM_STORAGE_KEY = 'bus-loop-install-threshold-custom-
 const LEVEL36_VEHICLE_SCALE_MIGRATION_KEY = 'bus-loop-level36-vehicle-scale-v1';
 const LEVEL36_VEHICLE_COMPACTION_MIGRATION_KEY = 'bus-loop-level36-vehicle-compaction-v1';
 const LEVEL36_TIMED_GUIDE_MIGRATION_KEY = 'bus-loop-level36-timed-guide-v1';
+const SPEED_TOGGLE_HIDDEN_MIGRATION_KEY = 'bus-loop-speed-toggle-hidden-v1';
 const CUSTOM_BACKGROUND_ASSET_PREFIX = '/assets/editor-backgrounds/';
+// Horizons measured in the browser for backgrounds that shipped without the
+// sidecar metadata. Keyed by asset URL, so a re-imported or renamed artwork can
+// never inherit another file's value.
+const BACKGROUND_HORIZON_CACHE_KEY = 'bus-loop-background-horizons-v1';
 const DEFAULT_BACKGROUND_SOURCE_WIDTH = 2100;
 const DEFAULT_BACKGROUND_SOURCE_HEIGHT = 3382;
 const DEFAULT_STORE_LINKS = { ...SCENE_TUNING.storeLinks };
 const STORE_OPEN_COOLDOWN_MS = 800;
+// Time given to the final departure animation of a stage before the level swap.
+const STAGE_ADVANCE_DELAY_MS = 900;
 let platformVisible = true;
+// Module scoped because applyCtaTuning (which hides the store button) runs from
+// resize handlers outside startRuntime's closure.
+let stageChoiceActive = false;
 let platformBridge;
 const $ = (selector) => document.querySelector(selector);
 const app = $('#app');
 const stage = $('#stage');
 const canvas = $('#game-canvas');
 const loadingScreen = $('#loading-screen');
+const loadingIcon = $('#loading-icon');
+const loadingTitle = $('#loading-title');
 const loadingProgress = loadingScreen?.querySelector('.loading-progress');
 const loadingProgressBar = $('#loading-progress-bar');
 const loadingProgressValue = $('#loading-progress-value');
 const preRollOverlay = $('#pre-roll-overlay');
 const preRollVideo = $('#pre-roll-video');
-const gameOverOverlay = $('#game-over-overlay');
-const gameOverTitle = $('#game-over-title');
+const gameOverOverlay = $('#game-over-overlay');const gameOverTitle = $('#game-over-title');
 const gameOverLogo = $('#game-over-logo');
+const stageChoiceOverlay = $('#stage-choice-overlay');
+const stageChoiceTitle = $('#stage-choice-title');
+const stageChoiceGrid = $('#stage-choice-grid');
+const stageChoiceHand = $('#stage-choice-hand');
 const ctaButton = $('#cta-button');
+const speedToggleButton = $('#speed-toggle');
+const speedToggleIcon = $('#speed-toggle-icon');
+const speedToggleLabel = $('#speed-toggle-label');
 const brandingItems = {
   icon: $('#branding-icon'),
   logo: $('#branding-logo'),
@@ -174,6 +197,12 @@ function deepMerge(target, source) {
   return target;
 }
 
+// Saved tuning and per-level profiles snapshot the whole tuning object, so a
+// field that was later removed from source keeps coming back through deepMerge.
+// The exporter validates the payload against the current defaults and rejects
+// the entire package for one unknown key, which surfaced as an unexplainable
+// "export failed". Drop anything this build no longer defines and report it so
+// the caller can rewrite the cache instead of pruning again on every load.
 function migrateLegacyConveyorTuning(source) {
   if (source?.conveyorLayouts) return;
   const layout = SCENE_TUNING.conveyorLayouts?.dualQueue2;
@@ -408,6 +437,37 @@ function migrateSpatialSpeedTuning(source) {
   return changed;
 }
 
+// The speed switch used to be on by default, so every save wrote enabled: 1
+// whether the operator touched it or not. It is now off by default; leaving the
+// cached 1 in place would keep showing the button on every level that already
+// has a profile. One marker guards the whole pass so an operator who enables a
+// level afterwards is not flipped back off on the next reload.
+function applySpeedToggleHiddenMigration(source) {
+  const toggle = source?.speedToggle;
+  if (!toggle || Number(toggle.enabled) !== 1) return false;
+  toggle.enabled = 0;
+  return true;
+}
+
+function migrateSpeedToggleHiddenTuning(source) {
+  if (localStorage.getItem(SPEED_TOGGLE_HIDDEN_MIGRATION_KEY) === '1') return false;
+  // Set the marker only after every cache has been handled below, otherwise the
+  // first profile would consume it and the rest would keep the stale value.
+  return applySpeedToggleHiddenMigration(source);
+}
+
+function migrateSpeedToggleHiddenProfiles() {
+  if (localStorage.getItem(SPEED_TOGGLE_HIDDEN_MIGRATION_KEY) === '1') return false;
+  const profiles = readLevelTuningProfiles();
+  let changed = false;
+  for (const profile of Object.values(profiles)) {
+    if (!isLevelTuningProfile(profile)) continue;
+    if (applySpeedToggleHiddenMigration(profile.tuning)) changed = true;
+  }
+  if (changed) writeLevelTuningProfiles(profiles);
+  return changed;
+}
+
 function migrateCtaScreenPositionTuning(source) {
   const cta = source?.cta;
   if (!cta) return false;
@@ -468,6 +528,113 @@ function migrateExportNamingTuning(savedTuning) {
   return changed;
 }
 
+function migrateAboardSoundOffsetTuning(source) {
+  // Browsers that already saved tuning keep the previous default (0 = no
+  // offset at all) and would override the new shipped default, so realign it.
+  // A value an operator typed themselves is left alone.
+  const passengers = source?.passengers;
+  if (!passengers || typeof passengers !== 'object') return false;
+  if (Number(passengers.aboardSoundOffset) !== 0) return false;
+  passengers.aboardSoundOffset = -0.25;
+  return true;
+}
+
+function migrateAboardSoundOffsetProfiles() {
+  // Per-level profiles snapshot the whole tuning object and are merged back
+  // over SCENE_TUNING after the global migration, so they need the same pass
+  // or the old default reappears for every level that already has a profile.
+  const profiles = readLevelTuningProfiles();
+  let changed = false;
+  for (const profile of Object.values(profiles)) {
+    if (!isLevelTuningProfile(profile)) continue;
+    if (migrateAboardSoundOffsetTuning(profile.tuning)) changed = true;
+  }
+  if (changed) writeLevelTuningProfiles(profiles);
+  return changed;
+}
+
+function migrateDepartureRouteHeightProfiles() {
+  // Per-level profiles snapshot the whole tuning object and are merged back
+  // over the global cache, so a profile written by the raised-route build would
+  // otherwise keep the car off the line for that level.
+  const profiles = readLevelTuningProfiles();
+  let changed = false;
+  for (const profile of Object.values(profiles)) {
+    if (!isLevelTuningProfile(profile)) continue;
+    if (migrateDepartureRouteHeightTuning(profile.tuning)) changed = true;
+  }
+  if (changed) writeLevelTuningProfiles(profiles);
+  return changed;
+}
+
+function migrateDepartureRouteHeightTuning(source) {
+  // A previous build of this same day drove departing cars at vehicleArea.y
+  // instead of the authored departure height, and saved that value into the
+  // caches. The authored height is what places the route on the road lane, so
+  // anything still equal to the vehicle layer is put back. Values an operator
+  // set themselves are left alone.
+  const departure = source?.vehicleDeparturePath;
+  if (!departure || typeof departure !== 'object') return false;
+  const vehicleY = Number(source?.vehicleArea?.y);
+  if (!Number.isFinite(vehicleY) || Math.abs(Number(departure.y) - vehicleY) > 1e-9) return false;
+  departure.y = SCENE_TUNING.vehicleDeparturePath.y;
+  return true;
+}
+
+function migrateSeatCountBoardTextScaleTuning(source) {
+  // The digits used to be a billboard scaled 1.47x over a 0.42 x 0.26 sprite.
+  // They now lie in the card's plane and textScale multiplies the card box, so
+  // keeping 1.47 would draw them half again larger than the card. Only the old
+  // default is rewritten; an operator's own value is left alone.
+  const board = source?.seatCountBoard;
+  if (!board || Number(board.textScale) !== 1.47) return false;
+  board.textScale = SCENE_TUNING.seatCountBoard.textScale;
+  return true;
+}
+
+function migrateSeatCountBoardTextScaleProfiles() {
+  const profiles = readLevelTuningProfiles();
+  let changed = false;
+  for (const profile of Object.values(profiles)) {
+    if (!isLevelTuningProfile(profile)) continue;
+    if (migrateSeatCountBoardTextScaleTuning(profile.tuning)) changed = true;
+  }
+  if (changed) writeLevelTuningProfiles(profiles);
+  return changed;
+}
+
+function migrateFootageConveyorArtTuning(source) {
+  const layouts = source?.conveyorLayouts;
+  if (!layouts || typeof layouts !== 'object') return false;
+  let changed = false;
+  for (const layoutId of ['heartLoop', 'catLoop']) {
+    const art = layouts[layoutId]?.art;
+    if (!art || typeof art !== 'object') continue;
+    if (
+      Number(art.z) === -4.15
+      && Number(art.width) === 13.55
+      && Number(art.depth) === 7.95
+    ) {
+      art.z = -5.3394;
+      art.width = 16.685;
+      art.depth = 10.3288;
+      changed = true;
+    }
+  }
+  return changed;
+}
+
+function migrateFootageConveyorArtProfiles() {
+  const profiles = readLevelTuningProfiles();
+  let changed = false;
+  for (const profile of Object.values(profiles)) {
+    if (!isLevelTuningProfile(profile)) continue;
+    if (migrateFootageConveyorArtTuning(profile.tuning)) changed = true;
+  }
+  if (changed) writeLevelTuningProfiles(profiles);
+  return changed;
+}
+
 function migrateExportNamingProfiles() {
   // Per-level profiles snapshot the whole tuning object and are merged back over
   // SCENE_TUNING after the global migration, so they need the same treatment or
@@ -512,9 +679,14 @@ function loadSavedTuning() {
       const firstClickGuideScopeMigrated = migrateFirstClickGuideScope(savedTuning);
       const firstClickGuideMaskMigrated = migrateFirstClickGuideMaskTuning(savedTuning);
       const spatialSpeedMigrated = migrateSpatialSpeedTuning(savedTuning);
+      const speedToggleHiddenMigrated = migrateSpeedToggleHiddenTuning(savedTuning);
       const ctaScreenPositionMigrated = migrateCtaScreenPositionTuning(savedTuning);
       const customBackgroundSourceMigrated = migrateCustomBackgroundSourceSize(savedTuning);
       const exportNamingMigrated = migrateExportNamingTuning(savedTuning);
+      const aboardSoundOffsetMigrated = migrateAboardSoundOffsetTuning(savedTuning);
+      const departureRouteHeightMigrated = migrateDepartureRouteHeightTuning(savedTuning);
+      const seatCountBoardTextScaleMigrated = migrateSeatCountBoardTextScaleTuning(savedTuning);
+      const footageConveyorArtMigrated = migrateFootageConveyorArtTuning(savedTuning);
       const luxuryPassengerRotationRemoved = delete savedTuning.luxuryPassengerRotation;
       const luxuryPassengerOffsetRemoved = delete savedTuning.luxuryPassengerOffset;
       const luxuryMaterialDebugRemoved = delete savedTuning.luxuryMaterialDebug;
@@ -526,6 +698,7 @@ function loadSavedTuning() {
         || savedLuxuryMaterial.boardBrightness !== SCENE_TUNING.luxuryMaterial.boardBrightness;
       delete savedTuning.luxuryMaterial;
       deepMerge(SCENE_TUNING, savedTuning);
+      const staleTuningPruned = pruneUnknownTuning(SCENE_TUNING, DEFAULT_SCENE_TUNING);
       migrateLegacyConveyorTuning(savedTuning);
       if (
         guideHandMotionMigrated
@@ -536,14 +709,20 @@ function loadSavedTuning() {
         || firstClickGuideScopeMigrated
         || firstClickGuideMaskMigrated
         || spatialSpeedMigrated
+        || speedToggleHiddenMigrated
         || ctaScreenPositionMigrated
         || customBackgroundSourceMigrated
         || exportNamingMigrated
+        || aboardSoundOffsetMigrated
+        || departureRouteHeightMigrated
+        || seatCountBoardTextScaleMigrated
+        || footageConveyorArtMigrated
         || luxuryPassengerRotationRemoved
         || luxuryPassengerOffsetRemoved
         || luxuryMaterialDebugRemoved
         || conveyorVisualRemoved
         || luxuryMaterialNeedsReset
+        || staleTuningPruned
       ) {
         savedTuning.luxuryMaterial = structuredClone(SCENE_TUNING.luxuryMaterial);
         localStorage.setItem(TUNING_STORAGE_KEY, JSON.stringify(savedTuning));
@@ -565,9 +744,13 @@ function loadSavedTuning() {
     migrateFirstClickGuideScope(legacy);
     migrateFirstClickGuideMaskTuning(legacy);
     migrateSpatialSpeedTuning(legacy);
+    migrateSpeedToggleHiddenTuning(legacy);
     migrateCtaScreenPositionTuning(legacy);
     migrateCustomBackgroundSourceSize(legacy);
     migrateExportNamingTuning(legacy);
+    migrateAboardSoundOffsetTuning(legacy);
+    migrateDepartureRouteHeightTuning(legacy);
+    migrateSeatCountBoardTextScaleTuning(legacy);
     migrateLegacyPackageTuning(legacy);
     delete legacy.luxuryMaterialDebug;
     delete legacy.luxuryMaterial;
@@ -575,6 +758,7 @@ function loadSavedTuning() {
     const legacyModelScale = legacy.vehicleArea?.modelScale;
     delete legacy.vehicleArea;
     deepMerge(SCENE_TUNING, legacy);
+    pruneUnknownTuning(SCENE_TUNING, DEFAULT_SCENE_TUNING);
     migrateLegacyConveyorTuning(legacy);
     if (Number.isFinite(legacyModelScale)) {
       SCENE_TUNING.vehicleArea.modelScale = legacyModelScale;
@@ -632,15 +816,58 @@ function saveLevelTuningProfile(value) {
   writeLevelTuningProfiles(profiles);
 }
 
+// Importing a level JSON allocates a brand new level key, so the tuning shipped
+// inside that file has nowhere to land unless it is written for the new key
+// explicitly. Base the profile on the current defaults so a file exported by an
+// older build still gets sane values for whatever it omits.
+function saveImportedLevelTuning(levelKey, tuning) {
+  const key = String(levelKey ?? '').trim();
+  if (!EDITOR_ENABLED || !/^level[1-9]\d*$/.test(key)) return false;
+  if (!tuning || typeof tuning !== 'object' || Array.isArray(tuning)) return false;
+  const merged = structuredClone(DEFAULT_SCENE_TUNING);
+  deepMerge(merged, structuredClone(tuning));
+  pruneUnknownTuning(merged, DEFAULT_SCENE_TUNING);
+  merged.level ??= {};
+  merged.level.selected = key;
+  const profiles = readLevelTuningProfiles();
+  profiles[key] = {
+    tuning: merged,
+    installThresholdCustom: Boolean(profiles[key]?.installThresholdCustom)
+  };
+  writeLevelTuningProfiles(profiles);
+  return true;
+}
+
 function restoreSelectedLevelTuning() {
   if (!EDITOR_ENABLED) return;
   migrateExportNamingProfiles();
+  migrateAboardSoundOffsetProfiles();
+  migrateDepartureRouteHeightProfiles();
+  migrateSeatCountBoardTextScaleProfiles();
+  migrateFootageConveyorArtProfiles();
+  // Run the profile pass before the marker is written: both paths above skip
+  // everything once the marker exists, so the marker has to be the last step.
+  migrateSpeedToggleHiddenProfiles();
+  localStorage.setItem(SPEED_TOGGLE_HIDDEN_MIGRATION_KEY, '1');
+  // Clean every stored profile, not only the selected one: switching levels
+  // later would otherwise reload the same stale keys and break the export then.
+  const storedProfiles = readLevelTuningProfiles();
+  let profilesPruned = false;
+  for (const [key, entry] of Object.entries(storedProfiles)) {
+    if (!isLevelTuningProfile(entry)) continue;
+    if (pruneUnknownTuning(entry.tuning, DEFAULT_SCENE_TUNING)) {
+      storedProfiles[key] = entry;
+      profilesPruned = true;
+    }
+  }
+  if (profilesPruned) writeLevelTuningProfiles(storedProfiles);
   const levelKey = String(SCENE_TUNING.level?.selected ?? '').trim();
   if (!levelKey) return;
-  const profiles = readLevelTuningProfiles();
+  const profiles = profilesPruned ? readLevelTuningProfiles() : storedProfiles;
   const profile = profiles[levelKey];
   if (isLevelTuningProfile(profile)) {
     deepMerge(SCENE_TUNING, structuredClone(profile.tuning));
+    pruneUnknownTuning(SCENE_TUNING, DEFAULT_SCENE_TUNING);
     SCENE_TUNING.level.selected = levelKey;
     if (profile.installThresholdCustom) {
       localStorage.setItem(INSTALL_THRESHOLD_CUSTOM_STORAGE_KEY, '1');
@@ -669,6 +896,7 @@ function getLevelTuningForSelection(levelKey) {
   const profile = profiles[String(levelKey ?? '').trim()];
   if (isLevelTuningProfile(profile)) {
     const tuning = structuredClone(profile.tuning);
+    pruneUnknownTuning(tuning, DEFAULT_SCENE_TUNING);
     tuning.level ??= {};
     tuning.level.selected = levelKey;
     return tuning;
@@ -753,6 +981,25 @@ function fitBrandingText(element, boxHeight) {
   }
 }
 
+// One Bus build is uploaded to both stores. `branding.icon.deviceAssets` carries
+// the icon for each store and the device UA decides which one a player sees; the
+// store link already works this way, so the icon has to follow it or an iOS
+// player gets the Play Store badge (or nothing, if only one asset shipped).
+//
+// The editor keeps its Icon 版本 picker authoritative: an operator choosing an
+// icon there is explicitly overriding the device default for the preview.
+function resolveBrandingIconAsset(config = {}) {
+  if (!EDITOR_ENABLED) {
+    const deviceAssets = config.deviceAssets;
+    if (deviceAssets && typeof deviceAssets === 'object') {
+      const device = isIOSDevice() ? 'ios' : 'android';
+      const deviceAsset = deviceAssets[device];
+      if (typeof deviceAsset === 'string' && deviceAsset) return deviceAsset;
+    }
+  }
+  return typeof config.asset === 'string' ? config.asset : '';
+}
+
 function applyBrandingTuning(backgroundBounds = null) {
   const metrics = getBrandingStageMetrics();
   for (const [key, element] of Object.entries(brandingItems)) {
@@ -776,9 +1023,14 @@ function applyBrandingTuning(backgroundBounds = null) {
         right: backgroundBounds?.right
       });
     const draggable = EDITOR_ENABLED && enabled && !locked;
-    if (key === 'icon') {
-      const asset = typeof config.asset === 'string' ? config.asset : '';
+    if (key === 'icon' || key === 'logo') {
+      const asset = key === 'icon'
+        ? resolveBrandingIconAsset(config)
+        : (typeof config.asset === 'string' ? config.asset : '');
       if (asset && element.getAttribute('src') !== asset) element.setAttribute('src', asset);
+      // The game-over panel reuses the branding logo, so it has to follow a
+      // runtime logo switch instead of the document default captured at load.
+      if (key === 'logo' && gameOverLogo) gameOverLogo.src = element.src;
     }
     if (key === 'text') {
       const content = String(config.content ?? 'Bus Fever Party!');
@@ -795,7 +1047,26 @@ function applyBrandingTuning(backgroundBounds = null) {
     element.style.height = `${renderedHeight}px`;
     if (key === 'text') fitBrandingText(element, renderedHeight);
   }
+  applyLoadingBranding();
 }
+
+// The loading screen is not an editable overlay, but a Crowd export must not
+// flash the Bus Fever name while it waits. An empty icon follows the overlaid
+// branding icon instead of embedding the same bytes a second time.
+function applyLoadingBranding() {
+  const config = SCENE_TUNING.branding?.loading ?? {};
+  const icon = typeof config.icon === 'string' ? config.icon : '';
+  const iconSource = icon || brandingItems.icon?.getAttribute('src') || '';
+  if (loadingIcon && iconSource && loadingIcon.getAttribute('src') !== iconSource) {
+    loadingIcon.setAttribute('src', iconSource);
+  }
+  if (loadingTitle && typeof config.title === 'string' && config.title && loadingTitle.textContent !== config.title) {
+    loadingTitle.textContent = config.title;
+    loadingIcon?.setAttribute('alt', `${config.title} icon`);
+  }
+}
+
+applyLoadingBranding();
 
 function bindBrandingDrag(element, key, onPositionChange) {
   if (!element || !EDITOR_ENABLED) return;
@@ -861,6 +1132,20 @@ let audio = null;
 let preRollController = null;
 let lastStoreOpenAt = 0;
 let storeOpenAttempts = 0;
+let ctaFitFontsReadyHooked = false;
+
+// The button label must stay on one line (the tuned line height is much
+// shorter than the font size, so wrapped lines would overlap). When engine or
+// fallback metrics push the label past the button width, it shrinks instead.
+function fitCtaLabel({ fontSize, fontHeight, uiScale, availableWidth }) {
+  if (!ctaButton || ctaButton.hidden || !(availableWidth > 0)) return { fontSize, fontHeight };
+  const textRange = document.createRange();
+  textRange.selectNodeContents(ctaButton);
+  const contentWidth = textRange.getBoundingClientRect().width;
+  if (!(contentWidth > availableWidth)) return { fontSize, fontHeight };
+  const ratio = availableWidth / contentWidth * 0.98;
+  return { fontSize: fontSize * ratio, fontHeight: fontHeight * ratio };
+}
 
 function applyCtaTuning() {
   if (!ctaButton) return;
@@ -870,6 +1155,7 @@ function applyCtaTuning() {
   const width = Math.max(1, height * (Number(cta.stretchX) || 2.75));
   const fontSize = Math.max(1, Number(cta.fontSize) || 28);
   const fontHeight = Math.max(1, Number(cta.fontHeight) || fontSize);
+  const paddingX = 24;
   const centerX = Number.isFinite(Number(cta.x)) ? Number(cta.x) : metrics.designWidth / 2;
   const centerY = Number.isFinite(Number(cta.y))
     ? Number(cta.y)
@@ -890,12 +1176,24 @@ function applyCtaTuning() {
     metrics.stageHeight - renderedHeight / 2,
     metrics.stageHeight - renderedHeight / 2
   );
-  ctaButton.hidden = !Boolean(cta.enabled ?? 1);
+  // The picker owns the screen while it is open; the store button belongs to
+  // the end of the ad and must not leak onto it.
+  ctaButton.hidden = !Boolean(cta.enabled ?? 1) || stageChoiceActive;
   ctaButton.style.setProperty('--cta-width', scaledPx(width, uiScale));
   ctaButton.style.setProperty('--cta-height', scaledPx(height, uiScale));
-  ctaButton.style.setProperty('--cta-padding-x', scaledPx(24, uiScale));
+  ctaButton.style.setProperty('--cta-padding-x', scaledPx(paddingX, uiScale));
   ctaButton.style.setProperty('--cta-font-size', scaledPx(fontSize, uiScale));
   ctaButton.style.setProperty('--cta-font-height', scaledPx(fontHeight, uiScale));
+  const fitted = fitCtaLabel({
+    fontSize,
+    fontHeight,
+    uiScale,
+    availableWidth: renderedWidth - paddingX * uiScale * 2
+  });
+  if (fitted.fontSize !== fontSize) {
+    ctaButton.style.setProperty('--cta-font-size', scaledPx(fitted.fontSize, uiScale));
+    ctaButton.style.setProperty('--cta-font-height', scaledPx(fitted.fontHeight, uiScale));
+  }
   ctaButton.style.setProperty('--cta-stroke-color', formatHexColor(cta.strokeColor, 0x196b07));
   ctaButton.style.setProperty('--cta-stroke-width', scaledPx(Math.max(0, Number(cta.strokeWidth) || 0), uiScale));
   ctaButton.style.setProperty('--cta-pulse-scale', String(Math.max(1, Number(cta.pulseScale) || 1.08)));
@@ -903,6 +1201,12 @@ function applyCtaTuning() {
   ctaButton.style.setProperty('--game-over-cta-appear-duration', durationCss(cta.appearSpeed, 1.45));
   ctaButton.style.left = `${left}px`;
   ctaButton.style.top = `${top}px`;
+  // An early fit may have measured a wider fallback face; re-fit once the
+  // bundled font finishes loading so the label uses its final metrics.
+  if (!ctaFitFontsReadyHooked && document.fonts?.ready) {
+    ctaFitFontsReadyHooked = true;
+    document.fonts.ready.then(() => applyCtaTuning()).catch(() => {});
+  }
 }
 
 const screenshotImageCache = new Map();
@@ -1198,6 +1502,73 @@ function readLevelEditorPreviewDocument() {
   }
 }
 
+function readBackgroundHorizonCache() {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(BACKGROUND_HORIZON_CACHE_KEY) ?? '{}');
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+function writeBackgroundHorizonCache(cache) {
+  try {
+    localStorage.setItem(BACKGROUND_HORIZON_CACHE_KEY, JSON.stringify(cache));
+  } catch {
+    // A blocked or full store only costs a re-measure next time.
+  }
+}
+
+/**
+ * Measure the selected background's ground line when no horizon is known for it.
+ *
+ * Backgrounds imported before horizon tracking shipped have no sidecar metadata,
+ * and the built-in table only covers artwork that was measured at build time. So
+ * the first time one of them is shown, decode it in the browser, measure it with
+ * the same detector the importer uses, and store the result on the background
+ * profile. Without this, every pre-existing custom background would keep the
+ * unaligned plane and the "cars on the road" composition.
+ */
+async function ensureBackgroundHorizon({ onMeasured } = {}) {
+  if (!EDITOR_ENABLED) return;
+  const background = SCENE_TUNING.background;
+  if (!background?.asset) return;
+  if (resolveBackgroundHorizon(background.asset, background.horizon) != null) return;
+
+  // `view` belongs to startRuntime(), so the caller supplies the re-layout. A
+  // module-scope reference here would throw and be swallowed below, leaving the
+  // stale composition in place — the exact bug this function exists to fix.
+  const cache = readBackgroundHorizonCache();
+  const cached = Number(cache[background.asset]);
+  if (Number.isFinite(cached) && cached > 0 && cached < 1) {
+    background.horizon = cached;
+    onMeasured?.();
+    return;
+  }
+
+  try {
+    const response = await fetch(background.asset, { cache: 'force-cache' });
+    if (!response.ok) return;
+    const bitmap = await createImageBitmap(await response.blob());
+    const canvas = new OffscreenCanvas(bitmap.width, bitmap.height);
+    const context = canvas.getContext('2d');
+    context.drawImage(bitmap, 0, 0);
+    const pixels = context.getImageData(0, 0, bitmap.width, bitmap.height);
+    const horizon = detectPlayfieldHorizon(pixels.data, { width: bitmap.width, height: bitmap.height });
+    bitmap.close?.();
+    if (horizon == null) return;
+    // Cache even when the selection moved on: the measurement is per artwork.
+    cache[background.asset] = horizon;
+    writeBackgroundHorizonCache(cache);
+    if (SCENE_TUNING.background.asset !== background.asset) return;
+    SCENE_TUNING.background.horizon = horizon;
+    saveTuning(SCENE_TUNING, { immediate: true });
+    onMeasured?.();
+  } catch {
+    // An unreadable artwork keeps the plane where the tuning puts it.
+  }
+}
+
 function getPlayableExportPayload() {
   const selectedKey = String(SCENE_TUNING.level?.selected ?? '');
   const previewEntry = readLevelEditorPreviewDocument();
@@ -1280,6 +1651,11 @@ async function startRuntime() {
     for (const key of LEGACY_LEVEL_EDITOR_PREVIEW_STORAGE_KEYS) localStorage.removeItem(key);
   }
   let revealPlayable = () => {};
+  // A session can opt out of the pre-roll. A progressive flow already has an
+  // opening banner and a guide, and the video only delays the first tap.
+  if (ACTIVE_PLAYABLE_SESSION?.preRollEnabled === false) {
+    SCENE_TUNING.preRoll.enabled = 0;
+  }
   if (preRollOverlay && preRollVideo) {
     preRollController?.destroy();
     preRollController = createPreRollController({
@@ -1290,6 +1666,15 @@ async function startRuntime() {
     void preRollController.play(SCENE_TUNING.preRoll);
   }
   let sessionLevels = PLAYABLE_LEVEL_SEQUENCE;
+  // Stage descriptors stay index-aligned with sessionLevels so the runner can
+  // read the current stage's opening presentation without a second cursor.
+  let sessionStages = PLAYABLE_STAGES.map((stage) => ({
+    id: stage.id,
+    levelKey: stage.level.key,
+    scene: stage.scene ?? {},
+    opening: stage.opening,
+    labels: stage.labels
+  }));
   if (EDITOR_ENABLED) {
     const { getLevelDefinition } = await import('./level-catalog.js');
     await refreshSpatialConveyorPackages().catch((error) => {
@@ -1323,16 +1708,89 @@ async function startRuntime() {
     sessionLevels = selectedLevel.key === 'level9'
       ? [selectedLevel, getLevelDefinition('level7')]
       : [selectedLevel];
+    // Editor preview always runs one stage with no baked session presentation.
+    sessionStages = sessionLevels.map((level) => ({
+      id: level.key,
+      levelKey: level.key,
+      scene: {},
+      opening: {},
+      labels: []
+    }));
   }
-  const levelSession = createLevelSession(sessionLevels);
+  // A stage may hand off to a fixed next stage or to a map picker. The picker
+  // options are full stages, so they are carried alongside sessionStages and
+  // only join the play order once the player actually picks one. The editor
+  // preview never runs a baked picker: it always shows the selected level.
+  const sessionChoices = EDITOR_ENABLED
+    ? sessionStages.map(() => null)
+    : PLAYABLE_STAGE_CHOICES.map((choice) => choice ?? null);
+  const choiceOptionLevels = sessionChoices.flatMap((choice) => (
+    (choice?.options ?? []).map((option) => option.level)
+  ));
+  // Mechanism art and audio have to be ready before the first frame, and a
+  // choice map can be picked mid-ad, so they are collected up front.
+  const allSessionLevels = [...sessionLevels, ...choiceOptionLevels];
+  const levelSession = createLevelSession(sessionLevels, {
+    choices: sessionChoices.map((choice) => choice?.options ?? null)
+  });
+  // Captured before any pick appends a map, so a retry can drop the picked one
+  // even in the editor preview, where the baked order is not the active one.
+  const initialSessionLevels = sessionLevels.slice();
+  const initialSessionStages = sessionStages.slice();
+  // A multi-stage session counts every vehicle of every stage against one
+  // shared gate. The baked value targets a single level, so a 2-stage flow
+  // would open the store half way through the second stage and swallow clicks.
+  // A choice session is counted after the pick, because only four of the five
+  // authored maps are ever played and the fifth would inflate the gate.
+  if (!EDITOR_ENABLED && sessionLevels.length > 1 && !sessionChoices.some(Boolean)) {
+    const sessionVehicleCount = sessionLevels.reduce(
+      (total, level) => total + Math.max(0, level.vehicles?.length ?? 0),
+      0
+    );
+    if (sessionVehicleCount > 0) {
+      SCENE_TUNING.installGate.successfulOperationThreshold = sessionVehicleCount;
+    }
+  }
+  const initialInstallThreshold = SCENE_TUNING.installGate.successfulOperationThreshold;
+  const currentStage = () => sessionStages[levelSession.state().levelIndex] ?? null;
+  // The scene's belt and background are module-level read points, so the stage
+  // must be applied before the first SceneView is constructed.
+  setActiveStageScene(currentStage()?.scene ?? null);
   setActiveLevel(levelSession.currentLevel());
   applyPreviewFrame();
 
   let game = new BusLoopGame(levelSession.currentLevel());
-  const mechanismTypes = getMechanismTypesForLevels(sessionLevels);
+  const mechanismTypes = getMechanismTypesForLevels(allSessionLevels);
   audio = createGameAudioController({
-    ...Object.assign({}, ...sessionLevels.map((level) => level.assets?.audio ?? {})),
+    // Merged from every level the session can reach, then completed from the
+    // canonical sound table: the audio events are wired in code, so a packaged
+    // build must never depend on the catalog on disk having listed a sound.
+    // A level that does carry the sound keeps its own clips and balance.
+    ...resolveLevelAudioConfig(
+      Object.assign({}, ...allSessionLevels.map((level) => level.assets?.audio ?? {}))
+    ),
     ...getMechanismAudioConfig(mechanismTypes)
+  }, {
+    // Per-sound delay so a hit or departure sound can be lined up with its
+    // animation; the values live in the editor's sound-delay fields.
+    getDelay: (name) => {
+      const tuning = SCENE_TUNING.audio ?? {};
+      if (name === 'bus_hit') return tuning.busHitDelay ?? 0;
+      if (name === 'bus_full') return tuning.busFullDelay ?? 0;
+      if (name === 'passenger_up') return tuning.passengerUpDelay ?? 0;
+      if (name === 'vehicle_tap') return tuning.vehicleTapDelay ?? 0;
+      return 0;
+    },
+    // Volume multipliers from the editor. 1 keeps the level's authored volume,
+    // so these sliders only ever scale relative loudness.
+    getVolumeScale: (name) => {
+      const tuning = SCENE_TUNING.audio ?? {};
+      if (name === 'vehicle_tap') {
+        const scale = Number(tuning.vehicleTapVolume);
+        return Number.isFinite(scale) ? Math.max(0, scale) : 1;
+      }
+      return 1;
+    }
   });
   audio.resetEventHistory();
   const endPanel = $('#end-panel');
@@ -1343,6 +1801,10 @@ async function startRuntime() {
   let spatialPointEditor = null;
   let levelLayoutEditor = null;
   let unsubscribeGame = () => {};
+  // A stage win waits out the last departure animation, then swaps levels. The
+  // flag stops the still-running game loop from scheduling a second swap.
+  let stageAdvancePending = false;
+  let stageChoiceVisible = false;
   const gameOverTimers = new Set();
   const INSTALL_GATE_VEHICLE_STATES = new Set(['at-spot', 'boarding-final', 'departing', 'done']);
 
@@ -1355,15 +1817,45 @@ async function startRuntime() {
 
   updateLoadingProgress(0);
   const markInstallVehicle = (vehicleId) => {
-    return levelSession.recordSuccessfulVehicle(vehicleId, getSuccessfulOperationThreshold());
+    const threshold = Math.max(1, getSuccessfulOperationThreshold());
+    const ready = levelSession.recordSuccessfulVehicle(vehicleId, threshold);
+    const { successfulOperationCount } = levelSession.state();
+    platformBridge?.challengeProgress?.((successfulOperationCount / threshold) * 100);
+    if (ready) platformBridge?.challengeSolved?.();
+    return ready;
   };
 
   let view;
+  // Background music starts on the first successful vehicle tap, not on load:
+  // autoplay before a gesture is blocked by every ad platform's browser, and a
+  // silent ad is safer than a rejected one. Once started it keeps looping across
+  // retries and stage handoffs, so this only ever fires the first time.
+  function startBackgroundMusic() {
+    const bgm = SCENE_TUNING.audio?.bgm;
+    if (!Number(bgm?.enabled)) return;
+    if (!audio?.playBgm) return;
+    if (audio.isBgmPlaying) return;
+    audio.unlock();
+    audio.playBgm({
+      asset: bgm.asset,
+      volume: bgm.volume,
+      fadeInSeconds: bgm.fadeInSeconds
+    });
+  }
+
   const handleVehicleClick = (vehicleId) => {
-    if (view?.isVehicleInputLocked?.()) return { ok: false, reason: 'opening-guide' };
+    // During the opening guide only the spotlighted car is playable. Locking
+    // every car made the highlighted one look broken: the hint said "tap this",
+    // and the tap was refused.
+    if (view?.isVehicleInputLocked?.() && !view.isFirstClickGuideTarget?.(vehicleId)) {
+      return { ok: false, reason: 'opening-guide' };
+    }
     view?.recordGuideInteraction();
     const result = game.clickVehicle(vehicleId);
-    if (result?.ok && markInstallVehicle(vehicleId)) InstallFullGame();
+    if (result?.ok) {
+      startBackgroundMusic();
+      if (markInstallVehicle(vehicleId)) InstallFullGame();
+    }
     return result;
   };
 
@@ -1381,11 +1873,22 @@ async function startRuntime() {
     console.warn('WebGL 场景初始化失败，已切换到仅编辑器模式。', error);
     view = createEditorFallbackView(levelSession.currentLevel(), error);
   }
+  view.setStageOpening?.(currentStage()?.opening ?? null, currentStage()?.labels ?? []);
+  // A background imported before horizon tracking has no measured ground line,
+  // which would render with the cars sitting on the road. Measure it once, in the
+  // background, and re-lay-out when it lands.
+  void ensureBackgroundHorizon({ onMeasured: () => view?.resize?.() });
+  // The speed button scales the simulation clock, so every system (vehicle
+  // routes, boarding, collisions, conveyor) keeps its relative pace. The
+  // long-press boost stays a separate belt-only multiplier, exactly as before.
+  let speedToggleBoosted = false;
   const updateCtaPosition = () => {
     view.resize();
     applyGameOverTuning();
     applyCtaTuning();
+    applySpeedToggleTuning();
     applyBrandingTuning(view.getBackgroundCanvasBounds());
+    if (stageChoiceVisible) positionStageChoiceHand();
   };
   const getCameraPreset = (action) => {
     if (action === 'default') return structuredClone(DEFAULT_SCENE_TUNING.camera);
@@ -1424,6 +1927,69 @@ async function startRuntime() {
       view.getConveyorPathLength(),
       { ...view.getConveyorConfig(), resetSlots }
     );
+  }
+  // The speed button scales the simulation clock, so every system (vehicle
+  // routes, boarding, collisions, conveyor) keeps its relative pace.
+  function getSpeedToggleMultiplier() {
+    const configured = Number(SCENE_TUNING.speedToggle?.multiplier);
+    return normalizeSpeedMultiplier(configured, 2);
+  }
+  function applySpeedToggleTuning() {
+    if (!speedToggleButton) return;
+    const config = SCENE_TUNING.speedToggle ?? {};
+    const metrics = getBrandingStageMetrics();
+    const uiScale = metrics.uiScale;
+    const enabled = Boolean(config.enabled ?? 0);
+    const width = Math.max(1, Number(config.width) || 105);
+    const height = Math.max(1, Number(config.height) || 69);
+    const renderedWidth = width * uiScale;
+    const renderedHeight = height * uiScale;
+    const centerX = Number.isFinite(Number(config.x)) ? Number(config.x) : metrics.designWidth * 0.84;
+    const centerY = Number.isFinite(Number(config.y)) ? Number(config.y) : metrics.designHeight * 0.14;
+    speedToggleButton.hidden = !enabled;
+    speedToggleButton.style.setProperty('--speed-toggle-width', scaledPx(width, uiScale));
+    speedToggleButton.style.setProperty('--speed-toggle-height', scaledPx(height, uiScale));
+    speedToggleButton.style.setProperty('--speed-toggle-gap', scaledPx(Math.max(2, width * 0.05), uiScale));
+    speedToggleButton.style.setProperty('--speed-toggle-icon-width', scaledPx(Math.max(6, height * 0.38), uiScale));
+    speedToggleButton.style.setProperty('--speed-toggle-icon-height', scaledPx(Math.max(6, height * 0.52), uiScale));
+    speedToggleButton.style.setProperty(
+      '--speed-toggle-font-size',
+      scaledPx(Math.max(6, height * 0.42), uiScale)
+    );
+    speedToggleButton.style.left = `${clampConfigNumber(
+      centerX * metrics.positionScaleX,
+      renderedWidth / 2,
+      metrics.stageWidth - renderedWidth / 2,
+      metrics.stageWidth * 0.84
+    )}px`;
+    speedToggleButton.style.top = `${clampConfigNumber(
+      centerY * metrics.positionScaleY,
+      renderedHeight / 2,
+      metrics.stageHeight - renderedHeight / 2,
+      metrics.stageHeight * 0.14
+    )}px`;
+    if (!enabled) speedToggleBoosted = false;
+    syncSpeedToggleUi();
+  }
+  function syncSpeedToggleUi() {
+    if (!speedToggleButton) return;
+    const multiplier = speedToggleBoosted ? getSpeedToggleMultiplier() : 1;
+    speedToggleButton.setAttribute('aria-pressed', String(speedToggleBoosted));
+    speedToggleButton.setAttribute('aria-label', `Playback speed ${formatSpeedLabel(multiplier)}`);
+    if (speedToggleLabel) speedToggleLabel.textContent = formatSpeedLabel(multiplier);
+    if (speedToggleIcon) {
+      speedToggleIcon.src = speedToggleBoosted
+        ? '/assets/applovin/speed-toggle-icon-boost.png'
+        : '/assets/applovin/speed-toggle-icon-normal.png';
+    }
+  }
+  function setSpeedToggleBoosted(boosted) {
+    const enabled = Boolean(SCENE_TUNING.speedToggle?.enabled ?? 1);
+    speedToggleBoosted = enabled && Boolean(boosted);
+    syncSpeedToggleUi();
+  }
+  function getTimeScale() {
+    return resolveTimeScale({ multiplier: getSpeedToggleMultiplier(), boosted: speedToggleBoosted });
   }
   function getIdleSpeedMultiplier() {
     if (!isSpatialConveyorSelection(SCENE_TUNING.conveyorLayout?.selected)) return 1;
@@ -1529,6 +2095,23 @@ async function startRuntime() {
         initialDocument: previewDocument,
         initialRevision: previewDocument ? previewEntry.baseRevision : null,
         onPreview: () => window.location.reload(),
+        // Vehicle ids are rewritten whenever a delete compacts the numbering.
+        // The opening guides name a car by number, and that number lives in the
+        // live scene tuning rather than in the level document, so move the guide
+        // target with the car and persist it for the current profile.
+        onVehiclesRenumbered: ({ idMap, document }) => {
+          const levelKey = String(document?.key ?? '');
+          let changed = false;
+          for (const guide of [SCENE_TUNING.vehicleGuideHand, SCENE_TUNING.firstClickGuide]) {
+            if (!guide) continue;
+            if (guide.levelKey && levelKey && guide.levelKey !== levelKey) continue;
+            const mapped = idMap.get(Number(guide.vehicleId));
+            if (mapped == null || mapped === Number(guide.vehicleId)) continue;
+            guide.vehicleId = mapped;
+            changed = true;
+          }
+          if (changed) saveTuning(SCENE_TUNING, { immediate: true });
+        },
         onClose: () => {
           levelLayoutEditor = null;
           sceneEditorRoot?.classList.remove('is-level-layout-editing');
@@ -1590,6 +2173,16 @@ async function startRuntime() {
       if (syncEditor) editor.sync();
       return SCENE_TUNING;
     }
+    if (path?.startsWith('speedToggle.')) {
+      deepMerge(SCENE_TUNING, next);
+      applySpeedToggleTuning();
+      // A multiplier change has to reach the running game even while the button
+      // is off, because the next toggle-on has to use the new value.
+      applyIdleSpeedMultiplier();
+      saveTuning(SCENE_TUNING);
+      if (syncEditor) editor.sync();
+      return SCENE_TUNING;
+    }
     const materialOnly = isPassengerMaterialTuningPath(path);
     const restartOpeningGuide = path?.startsWith('firstClickGuide.')
       && Boolean(Number(next.firstClickGuide?.enabled));
@@ -1615,6 +2208,10 @@ async function startRuntime() {
       updateCtaPosition();
     }
     saveTuning(tuning, { immediate: conveyorStructureChanged });
+    // Selecting artwork that has never been measured leaves the plane where the
+    // tuning puts it, which is what made a new background look misplaced. Measure
+    // it now; the layout is re-applied as soon as the result lands.
+    if (path === 'background.asset') void ensureBackgroundHorizon({ onMeasured: () => view?.resize?.() });
     if (restartOpeningGuide) reset();
     if (restartEntryBanner) view.showEntryBanner?.();
     if (restartPreRoll) void preRollController?.play(tuning.preRoll);
@@ -1650,6 +2247,9 @@ async function startRuntime() {
   }
 
   if (EDITOR_ENABLED && sceneEditorRoot) {
+    // The build stamp belongs to exported packages only, where it identifies a
+    // file that gets handed around. The editor is a live page with its own
+    // version label in the header, so the corner stays empty there.
     import('./scene-editor.js').then(({ createSceneEditor }) => {
       editor = createSceneEditor(sceneEditorRoot, {
         getTuning: () => SCENE_TUNING,
@@ -1657,6 +2257,7 @@ async function startRuntime() {
         setTuning: applyTuningPatch,
         getPlayableExportPayload,
         clearSavedTuning,
+        saveImportedLevelTuning,
         captureScreenshot: capturePlayableScreenshot,
         previewPreRoll: () => preRollController?.play(SCENE_TUNING.preRoll),
         openSpatialPointEditor,
@@ -1670,30 +2271,210 @@ async function startRuntime() {
     sceneEditorRoot?.remove();
   }
 
+  // The picker is authored data: the session names four maps, and this only
+  // lays them out and reports which one was tapped. The preview art comes from
+  // the exported asset bundle so the same page renders offline.
+  function buildStageChoice(choice) {
+    if (!stageChoiceOverlay || !stageChoiceGrid) return;
+    stageChoiceGrid.replaceChildren();
+    for (const [index, option] of choice.options.entries()) {
+      const card = document.createElement('button');
+      card.type = 'button';
+      card.className = 'stage-choice-card';
+      card.dataset.levelKey = option.levelKey;
+      card.setAttribute('aria-label', option.label);
+      const thumb = document.createElement('img');
+      thumb.className = 'stage-choice-thumb';
+      thumb.src = option.image;
+      thumb.alt = option.label;
+      thumb.draggable = false;
+      card.append(thumb);
+      card.addEventListener('click', (event) => {
+        event.stopPropagation();
+        chooseStage(index);
+      });
+      stageChoiceGrid.append(card);
+    }
+    if (stageChoiceTitle) stageChoiceTitle.textContent = choice.title;
+    stageChoiceOverlay.dataset.handIndex = String(choice.handIndex ?? -1);
+  }
+
+  function positionStageChoiceHand() {
+    if (!stageChoiceHand || !stageChoiceGrid || !stageChoiceOverlay) return;
+    const handIndex = Number(stageChoiceOverlay.dataset.handIndex ?? -1);
+    const card = stageChoiceGrid.children[handIndex];
+    if (!Number.isInteger(handIndex) || handIndex < 0 || !card) {
+      stageChoiceHand.hidden = true;
+      return;
+    }
+    // The hand is absolutely positioned inside the overlay, so every offset has
+    // to be measured against the overlay rather than against the grid.
+    const overlayRect = stageChoiceOverlay.getBoundingClientRect();
+    const cardRect = card.getBoundingClientRect();
+    if (cardRect.width <= 0) {
+      stageChoiceHand.hidden = true;
+      return;
+    }
+    // Aim the fingertip (about 72%/18% into the sprite) at the middle of the
+    // card's vehicle field, the part the player is being asked to recognise.
+    const width = cardRect.width * 0.46;
+    const height = width * (194 / 188);
+    const tipX = cardRect.left - overlayRect.left + cardRect.width * 0.2;
+    const tipY = cardRect.top - overlayRect.top + cardRect.height * 0.56;
+    stageChoiceHand.style.width = `${Math.round(width)}px`;
+    stageChoiceHand.style.left = `${Math.round(tipX - width * 0.72)}px`;
+    stageChoiceHand.style.top = `${Math.round(tipY - height * 0.18)}px`;
+    stageChoiceHand.hidden = false;
+  }
+
+  function showStageChoice(choice) {
+    if (!stageChoiceOverlay || !choice) return;
+    stageChoiceVisible = true;
+    stageChoiceActive = true;
+    endPanel.hidden = true;
+    buildStageChoice(choice);
+    stageChoiceOverlay.hidden = false;
+    stageChoiceOverlay.classList.remove('is-active');
+    void stageChoiceOverlay.offsetWidth;
+    stageChoiceOverlay.classList.add('is-active');
+    applyCtaTuning();
+    positionStageChoiceHand();
+    window.requestAnimationFrame(positionStageChoiceHand);
+  }
+
+  function hideStageChoice() {
+    stageChoiceVisible = false;
+    stageChoiceActive = false;
+    stageChoiceOverlay?.classList.remove('is-active');
+    if (stageChoiceOverlay) stageChoiceOverlay.hidden = true;
+    if (stageChoiceHand) stageChoiceHand.hidden = true;
+    applyCtaTuning();
+  }
+
+  function chooseStage(optionIndex) {
+    const choice = sessionChoices[levelSession.state().levelIndex];
+    const option = choice?.options?.[optionIndex];
+    if (!option) return;
+    // The session appends the picked map, so it has to succeed before the stage
+    // lists are extended; otherwise a refused pick leaves a phantom stage.
+    const nextLevel = levelSession.choose(option.id);
+    if (!nextLevel) return;
+    hideStageChoice();
+    sessionStages.push({
+      id: option.id,
+      levelKey: option.levelKey,
+      scene: option.scene ?? {},
+      opening: option.opening,
+      labels: option.labels
+    });
+    sessionLevels = [...sessionLevels, option.level];
+    const vehicles = sessionLevels.reduce(
+      (total, level) => total + Math.max(0, level.vehicles?.length ?? 0),
+      0
+    );
+    if (vehicles > 0) SCENE_TUNING.installGate.successfulOperationThreshold = vehicles;
+    const stage = currentStage();
+    setActiveStageScene(stage?.scene ?? null);
+    view.setStageOpening?.(stage?.opening ?? null, stage?.labels ?? []);
+    advanceToLevel(nextLevel);
+    if (stage?.opening?.entryBanner?.enabled) view.showEntryBanner?.();
+  }
+
+  // A step-limited centre-rescue ad spends its moves as the ad's ending: the
+  // heart counts down from 35, and the 35th successful dispatch is also the
+  // install-gate threshold, so that same tap opens the store. Without this the
+  // model would also draw a failure card underneath the jump.
+  //
+  // Only a step-limited non-ambulance vehicle (the Christmas sled) ends this
+  // way, and only when the budget is what the store gate counts. An authentic
+  // ambulance level keeps its failure card: there the limit punishes wrong
+  // taps, it is not the ad's scripted ending.
+  function stepLimitedSledJumpOwnsEnding(state) {
+    if (state.lastEvent?.reason !== 'ambulance-exceed-step') return false;
+    const stepLimit = (state.vehicles ?? []).reduce((highest, vehicle) => (
+      Number.isInteger(vehicle.ambulanceStepLimit)
+      && vehicle.mechanism?.type
+      && vehicle.mechanism.type !== 'ambulance'
+        ? Math.max(highest, vehicle.ambulanceStepLimit)
+        : highest
+    ), 0);
+    return stepLimit > 0 && getSuccessfulOperationThreshold() === stepLimit;
+  }
+
   function syncHud(state) {
+    // Play every sound-relevant event of the frame, not just the last one: a
+    // frame can both depart a vehicle and board a group, and lastEvent would
+    // have dropped the earlier sound. The final lastEvent is played as well so
+    // merge-attached fields (garage release, turn, ambulance) still sound; the
+    // controller de-duplicates keys shared with the frame list.
+    for (const event of state.frameAudioEvents ?? []) audio.handleGameEvent(event, state.time);
     audio.handleGameEvent(state.lastEvent, state.time);
     updateInstallGate(state);
     if (state.status === 'lost') {
       endPanel.hidden = true;
+      // The click that consumed the last move already fired the install gate;
+      // drawing a failure card on top of the store jump would contradict it.
+      if (stepLimitedSledJumpOwnsEnding(state)) return;
       showResultOverlay(state.lastEvent.reason === 'ambulance-exceed-step' ? 'Ambulance Failed' : 'Game Over');
       return;
     }
     if (state.status === 'won') {
       endPanel.hidden = true;
-      const nextLevel = levelSession.advanceAfterWin();
-      if (nextLevel) {
-        unsubscribeGame();
-        setActiveLevel(nextLevel);
-        game = new BusLoopGame(nextLevel);
-        audio.resetEventHistory();
-        view.replaceActiveLevel({ animate: true });
-        initializeGameQueues({ resetSlots: true });
-        applyIdleSpeedMultiplier();
-        unsubscribeGame = game.subscribe(syncHud);
+      // The won game keeps emitting state while the picker is open, so the
+      // picker itself has to short-circuit the schedule or it would reopen.
+      if (stageAdvancePending || stageChoiceVisible) return;
+      const hasNextStage = levelSession.state().levelIndex + 1 < levelSession.levelCount();
+      if (hasNextStage) {
+        stageAdvancePending = true;
+        // Let the last departure animation finish before the stage swap; the
+        // next stage's opening banner then covers the rebuild.
+        queueGameOverTimer(advanceToNextStage, STAGE_ADVANCE_DELAY_MS);
         return;
       }
-      showResultOverlay('You Win!');
+      const choice = sessionChoices[levelSession.state().levelIndex];
+      if (choice) {
+        // A picker replaces the win screen: the ad continues with whichever
+        // map the player taps, so the challenge must not be reported solved yet.
+        // advanceAfterWin() is what parks the session on the pending choice.
+        stageAdvancePending = true;
+        queueGameOverTimer(() => {
+          stageAdvancePending = false;
+          levelSession.advanceAfterWin();
+          showStageChoice(choice);
+        }, STAGE_ADVANCE_DELAY_MS);
+        return;
+      }
+      platformBridge?.challengeSolved?.();
+      showResultOverlay('You Win!', { failed: false });
     }
+  }
+
+  function advanceToLevel(nextLevel) {
+    unsubscribeGame();
+    setActiveLevel(nextLevel);
+    game = new BusLoopGame(nextLevel);
+    audio.resetEventHistory();
+    view.replaceActiveLevel({ animate: true });
+    initializeGameQueues({ resetSlots: true });
+    applyIdleSpeedMultiplier();
+    unsubscribeGame = game.subscribe(syncHud);
+  }
+
+  function advanceToNextStage() {
+    // A reset or a second win callback can leave a queued timer behind; only
+    // the pending swap is allowed to run.
+    if (!stageAdvancePending) return;
+    const nextLevel = levelSession.advanceAfterWin();
+    stageAdvancePending = false;
+    if (!nextLevel) return;
+    const stage = currentStage();
+    // Apply the stage presentation before replaceActiveLevel: that call runs
+    // applyTuning, which re-reads the stage override for the belt, background,
+    // guide, and banner.
+    setActiveStageScene(stage?.scene ?? null);
+    view.setStageOpening?.(stage?.opening ?? null, stage?.labels ?? []);
+    advanceToLevel(nextLevel);
+    if (stage?.opening?.entryBanner?.enabled) view.showEntryBanner?.();
   }
 
   function updateInstallGate(state) {
@@ -1722,10 +2503,11 @@ async function startRuntime() {
     gameOverTimers.clear();
   }
 
-  function showResultOverlay(title = 'Game Over') {
+  function showResultOverlay(title = 'Game Over', { failed = true } = {}) {
     if (!gameOverOverlay || gameOverActive) return;
     gameOverActive = true;
     platformBridge?.end();
+    if (failed) platformBridge?.challengeFailed?.();
     clearGameOverTimers();
     applyGameOverTuning();
     if (gameOverTitle) gameOverTitle.textContent = title;
@@ -1755,13 +2537,26 @@ async function startRuntime() {
     endPanel.hidden = true;
     platformBridge?.retry();
     hideGameOver();
+    hideStageChoice();
+    stageAdvancePending = false;
     unsubscribeGame();
+    // A picked map is appended to the play order, so a retry has to drop it
+    // again or the next run would start with a stale final stage.
+    sessionLevels = initialSessionLevels.slice();
+    sessionStages = initialSessionStages.slice();
+    SCENE_TUNING.installGate.successfulOperationThreshold = initialInstallThreshold;
     const initialLevel = levelSession.reset();
+    // Reset returns to the first stage, so its belt, guide, and labels come back with it.
+    setActiveStageScene(currentStage()?.scene ?? null);
+    view.setStageOpening?.(currentStage()?.opening ?? null, currentStage()?.labels ?? []);
     setActiveLevel(initialLevel);
     game = new BusLoopGame(initialLevel);
     audio.resetEventHistory();
     view.replaceActiveLevel();
     initializeGameQueues({ resetSlots: true });
+    // A retry starts from the authored pace again; the button is a session
+    // preference, not a permanent override of the tuned belt speed.
+    setSpeedToggleBoosted(false);
     applyIdleSpeedMultiplier();
     unsubscribeGame = game.subscribe(syncHud);
   }
@@ -1770,6 +2565,13 @@ async function startRuntime() {
   ctaButton?.addEventListener('click', (event) => {
     event.stopPropagation();
     InstallFullGame();
+  });
+  speedToggleButton?.addEventListener('click', (event) => {
+    // The stage click handlers start the long-press boost and log the platform
+    // challenge; a speed tap is neither, it only flips the sticky multiplier.
+    event.stopPropagation();
+    audio.unlock();
+    setSpeedToggleBoosted(!speedToggleBoosted);
   });
   canvas.addEventListener('pointerdown', (event) => {
     if (spatialEditorActive) return;
@@ -1808,9 +2610,21 @@ async function startRuntime() {
 
   let previous = performance.now();
   function frame(now) {
-    const delta = (now - previous) / 1000;
+    // Clamp the wall delta first: after a platform hiccup or a throttled tab the
+    // raw gap can be seconds long, and scaling that would fast-forward the whole
+    // level in one frame.
+    const delta = Math.min(0.1, (now - previous) / 1000);
     previous = now;
-    if (platformVisible && !spatialEditorActive && !preRollController?.isActive()) game.update(delta);
+    if (platformVisible && !spatialEditorActive && !preRollController?.isActive()) {
+      // game.update clamps one call to 0.1s of simulated time, so the scaled
+      // time is fed in substeps; otherwise a low-framerate x2 is truncated.
+      let remaining = delta * getTimeScale();
+      while (remaining > 0) {
+        const step = Math.min(remaining, 0.05);
+        game.update(step);
+        remaining -= step;
+      }
+    }
     const renderState = isSpatialOptimizationEnabled('liveRenderState')
       ? game.renderState()
       : game.snapshot();
@@ -1837,6 +2651,41 @@ async function startRuntime() {
       for (let time = 0; time < seconds; time += increment) game.update(increment);
       return game.snapshot();
     },
+    // QA hooks for the post-stage picker: a headless run has to be able to
+    // reach the choice page and take a specific map without playing it out.
+    stageChoice: {
+      visible: () => stageChoiceVisible,
+      options: () => (sessionChoices[levelSession.state().levelIndex]?.options ?? []).map((option) => ({
+        id: option.id,
+        label: option.label,
+        levelKey: option.levelKey
+      })),
+      choose: (optionId) => {
+        const choice = sessionChoices[levelSession.state().levelIndex];
+        if (!choice) return false;
+        const index = choice.options.findIndex((option) => (
+          option.id === optionId || option.levelKey === optionId
+        ));
+        if (index < 0) return false;
+        chooseStage(index);
+        return true;
+      }
+    },
+    // QA hooks for the speed switch: the frame loop owns the time scale, so a
+    // headless check needs a way to read and flip it without real frames.
+    speedToggle: (boosted) => {
+      if (boosted === undefined) return speedToggleBoosted;
+      setSpeedToggleBoosted(boosted);
+      return speedToggleBoosted;
+    },
+    timeScale: () => getTimeScale(),
+    // QA hook for the background music: a headless run has to prove the track
+    // only starts after a real tap and keeps playing across retries.
+    bgm: () => ({
+      enabled: Number(SCENE_TUNING.audio?.bgm?.enabled) === 1,
+      playing: Boolean(audio?.isBgmPlaying),
+      asset: SCENE_TUNING.audio?.bgm?.asset ?? null
+    }),
     reset,
     ...(EDITOR_ENABLED ? {
       tuning: SCENE_TUNING,

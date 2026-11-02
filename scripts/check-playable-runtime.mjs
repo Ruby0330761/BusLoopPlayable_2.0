@@ -620,7 +620,21 @@ function readinessExpression() {
     const brokenImages = images.filter((image) => image.complete && image.naturalWidth === 0);
     let sceneChildren = null;
     try { sceneChildren = window.__busLoop && window.__busLoop.view && window.__busLoop.view.scene.children.length; } catch (_) {}
+    // The scene falls back to untextured geometry when any Unity asset fails to
+    // load, and everything else still "works": the canvas is non-blank, there are
+    // no failed requests, and the checks used to pass. That shipped a build whose
+    // bicycles were grey boxes and whose sled was missing. Surface the flag so a
+    // broken asset graph is a hard failure instead of a silent downgrade.
+    let unityAssetsFailed = null;
+    let unityAssetsError = null;
+    try {
+      const view = window.__busLoop && window.__busLoop.view;
+      if (view && typeof view.unityAssetsFailed === 'boolean') unityAssetsFailed = view.unityAssetsFailed;
+      unityAssetsError = view && typeof view.unityAssetsError === 'string' ? view.unityAssetsError.slice(0, 400) : null;
+    } catch (_) {}
     return {
+      unityAssetsFailed,
+      unityAssetsError,
       documentReady: document.readyState === 'complete',
       runtimeReady: !!window.__busLoop,
       loadingPresent: !!loading,
@@ -1397,6 +1411,10 @@ export async function checkPlayableRuntimeArtifact({
           canvasPixels: readiness.hostProbe?.canvasPixels ?? null,
           compositedPixels: pixels
         }),
+      check('RUNTIME-ASSETS-001', 'Unity 模型与贴图全部加载成功', readiness.unityAssetsFailed !== true, {
+        unityAssetsFailed: readiness.unityAssetsFailed,
+        unityAssetsError: readiness.unityAssetsError
+      }),
       check('RUNTIME-CONSOLE-001', '无未捕获异常和 console.error', runtimeErrors.length === 0 && consoleErrors.length === 0, {
         runtimeErrors,
         consoleErrors

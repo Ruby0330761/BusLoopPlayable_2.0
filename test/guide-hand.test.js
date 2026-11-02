@@ -54,11 +54,13 @@ test('level36 uses an opening and five-second idle hand without a dimming mask',
   assert.equal(firstClickGuide.maskEnabled, 1);
   assert.equal(firstClickGuide.maskOpacity, 0.68);
   assert.equal(firstClickGuide.holePadding, 30);
-  assert.equal(firstClickGuide.holeRadius, 16);
+  // The spotlight box follows the delivered playables: a tight frame around one
+  // car body rather than the older oversized square.
+  assert.equal(firstClickGuide.holeRadius, 5);
   assert.equal(firstClickGuide.holeOffsetX, 0);
   assert.equal(firstClickGuide.holeOffsetY, 0);
-  assert.equal(firstClickGuide.holeScaleX, 0.62);
-  assert.equal(firstClickGuide.holeScaleY, 0.62);
+  assert.equal(firstClickGuide.holeScaleX, 0.54);
+  assert.equal(firstClickGuide.holeScaleY, 0.4);
   assert.equal(isGuideLevelActive(tuning, 'level36'), true);
   assert.equal(isGuideLevelActive(tuning, 'level33'), false);
   assert.equal(shouldBlockVehicleInput({
@@ -130,7 +132,11 @@ test('level36 uses an opening and five-second idle hand without a dimming mask',
   assert.match(viewSource, /is-input-blocking/);
   assert.match(viewSource, /this\.isVehicleInputLocked\(\)/);
   assert.match(mainSource, /view\?\.isVehicleInputLocked\?\.\(\)/);
-  assert.match(stylesSource, /\.first-click-guide-mask\.is-input-blocking\s*\{\s*pointer-events:\s*auto/);
+  // Only the surrounding mask pieces capture input; the spotlight hole must
+  // stay clickable or the highlighted car cannot be dispatched.
+  assert.match(stylesSource, /\.first-click-guide-mask\.is-input-blocking \.first-click-guide-mask-piece\s*\{\s*pointer-events:\s*auto/);
+  assert.doesNotMatch(stylesSource, /\.first-click-guide-mask\.is-input-blocking\s*\{\s*pointer-events:\s*auto/);
+  assert.match(mainSource, /isFirstClickGuideTarget/);
   assert.match(viewSource, /resolveGuideHandTarget/);
   assert.match(viewSource, /resolveFirstClickGuideTarget/);
   assert.match(viewSource, /getFirstClickGuidePreferredId/);
@@ -165,7 +171,9 @@ test('level36 uses an opening and five-second idle hand without a dimming mask',
   assert.match(stylesSource, /\.first-click-guide-hand/);
   assert.match(stylesSource, /scaleX\(-1\)/);
   assert.match(stylesSource, /\.first-click-guide-mask\s*\{[^}]*overflow:\s*hidden/s);
-  assert.match(stylesSource, /\.first-click-guide-mask-piece\s*\{[^}]*display:\s*none/s);
+  // The pieces used to be display:none because the whole mask captured input.
+  // They now carry the outside-the-hole input area instead.
+  assert.match(stylesSource, /\.first-click-guide-mask-piece\s*\{[^}]*display:\s*block/s);
   assert.match(stylesSource, /0 0 0 9999px rgba\(0, 0, 0, var\(--first-click-guide-opacity, \.8\)\)/);
   assert.match(stylesSource, /border-radius:\s*var\(--first-click-guide-radius, 16px\)/);
   assert.match(editorSource, /firstClickGuide\.enabled/);
@@ -199,7 +207,7 @@ test('opening guide animation has an editor toggle that restarts its preview', a
   assert.match(mainSource, /if \(restartOpeningGuide\) reset\(\)/);
   assert.match(mainSource, /path\?\.startsWith\('entryBanner\.'\)/);
   assert.match(mainSource, /if \(restartEntryBanner\) view\.showEntryBanner\?\.\(\)/);
-  assert.match(viewSource, /if \(!SCENE_TUNING\.entryBanner\?\.enabled\)/);
+  assert.match(viewSource, /if \(!this\.getEntryBannerTuning\(\)\?\.enabled\)/);
   assert.match(viewSource, /this\.updateEntryBannerTuning\(\);\n    const banner = this\.entryBanner/);
   assert.match(editorSource, /document\.createElement\('details'\)/);
   assert.match(editorSource, /editor-section-summary/);
@@ -220,32 +228,44 @@ const guideView = (vehicles) => ({
   }
 });
 
-test('guide highlight stays on the configured vehicle instead of falling back to another', () => {
+test('both guides point at the configured vehicle even when it is blocked', () => {
   const vehicles = [
     { id: 43, state: 'parked', blockers: [] },
     { id: 100, state: 'parked', blockers: [98, 99] }
   ];
+  // A blocked car is still the honest target: the player taps it, sees the bump,
+  // and learns the blocking rule. Substituting an unblocked car used to make the
+  // editor's id look ignored.
   const blocked = SceneView.prototype.resolveGuideHandTarget.call(
     guideView(vehicles),
     { vehicles },
     { vehicleId: 100 }
   );
-  assert.equal(blocked, null, 'a blocked target vehicle must not be replaced by a different one');
+  assert.equal(blocked.userData.vehicleId, 100, 'the blocked configured car must still be highlighted');
 
   const openingGuideView = {
     ...guideView(vehicles),
     resolveGuideHandTarget: SceneView.prototype.resolveGuideHandTarget,
+    resolveActionableFirstClickGuideTarget: SceneView.prototype.resolveActionableFirstClickGuideTarget,
     getFirstClickGuidePreferredId: () => 100
   };
   const openingTarget = SceneView.prototype.resolveFirstClickGuideTarget.call(
     openingGuideView,
-    { vehicles }
+    { vehicles, queues: [] }
   );
   assert.equal(
     openingTarget.userData.vehicleId,
     100,
-    'the opening spotlight may preview the exact configured vehicle even when it is blocked'
+    'the opening guide must not swap a blocked target for a dispatchable one'
   );
+
+  // A belt-head colour used to win a fallback; it must not influence the target
+  // at all now that the configured car is authoritative.
+  const withBeltColour = SceneView.prototype.resolveFirstClickGuideTarget.call(
+    openingGuideView,
+    { vehicles, queues: [[{ colorIndex: 43 }]] }
+  );
+  assert.equal(withBeltColour.userData.vehicleId, 100, 'belt colours must not redirect the guide');
 
   const clear = SceneView.prototype.resolveGuideHandTarget.call(
     guideView([{ id: 100, state: 'parked', blockers: [] }]),
