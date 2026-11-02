@@ -63,7 +63,7 @@
       "enabled": 1,
       "locked": 1,
       "content": "Bus Fever Party!",
-      "x": 534,
+      "x": 540,
       "y": 2114,
       "width": 800,
       "height": 100
@@ -76,7 +76,7 @@
     "targetY": 0,
     "targetZ": 1.85,
     "fitWidth": 14.5,
-    "fitHeight": 15.9,
+    "fitHeight": 16.4,
     "padding": 0.35
   },
   "sourceCrop": {
@@ -99,6 +99,14 @@
     "pulseScale": 1.05,
     "pulseSpeed": 0.21,
     "appearSpeed": 1.45
+  },
+  "speedToggle": {
+    "enabled": 1,
+    "x": 916,
+    "y": 118,
+    "width": 210,
+    "height": 138,
+    "multiplier": 2
   },
   "installGate": {
     "successfulOperationThreshold": 64
@@ -435,7 +443,7 @@
     "z": 1.37,
     "width": 0.52,
     "depth": 0.59,
-    "textScale": 1.47
+    "textScale": 1
   },
   "vehiclePath": {
     "enabled": 0,
@@ -473,7 +481,7 @@
   },
   "vehicleArea": {
     "unityToWorldScale": 2,
-    "positionUnitScale": 0.8,
+    "positionUnitScale": 0.7,
     "sourceRootX": 0,
     "sourceRootZ": -2.92,
     "positionPivotX": 0,
@@ -496,7 +504,7 @@
       "6": 1.23,
       "10": 1.48
     },
-    "modelScale": 0.7
+    "modelScale": 0.64
   },
   "vehicleBoardingPulse": {
     "scale": 1.09,
@@ -528,11 +536,11 @@
     "maskEnabled": 1,
     "maskOpacity": 0.68,
     "holePadding": 30,
-    "holeRadius": 16,
+    "holeRadius": 5,
     "holeOffsetX": 0,
     "holeOffsetY": 0,
-    "holeScaleX": 0.62,
-    "holeScaleY": 0.62
+    "holeScaleX": 0.54,
+    "holeScaleY": 0.4
   },
   "entryBanner": {
     "enabled": 0,

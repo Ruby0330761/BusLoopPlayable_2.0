@@ -40,6 +40,11 @@
   - CTA 走 `FbPlayableAd.onCTAClick()`
   - 读：`moloco-playable-audit.md`
 
+## 通用（所有平台）
+
+- **交付命名 11 段**：`需求-素材-前贴-N-语言-PL-设计师-需求人-渠道-步数-体力`。前贴段后固定一个 `N`，末尾步数/体力无值时写 `N`。Mintegral 只接受字母数字下划线，整名转下划线。
+- **Bus 只出一份包**（Android/iOS 共用）：`branding.icon.deviceAssets` 提供两端 icon，运行时按 UA 选 icon 与商店链接。同一文件必须双 UA 都过 runtime smoke；出包后抽查 Android 应为 JPG icon + Play 链接、iOS 应为 PNG icon + App Store 链接。
+
 ## Mintegral
 
 - 交付：`ZIP`

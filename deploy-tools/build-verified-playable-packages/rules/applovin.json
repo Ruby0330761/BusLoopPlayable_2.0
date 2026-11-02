@@ -82,7 +82,7 @@
     },
     {
       "id": "APL-STA-004",
-      "title": "包含 AppLovin 核心事件链",
+      "title": "包含 AppLovin 核心事件链与挑战漏斗事件",
       "stage": "static",
       "severity": "warning",
       "sourceClass": "delivery-contract",
@@ -94,11 +94,17 @@
           "LOADED",
           "DISPLAYED",
           "CHALLENGE_STARTED",
+          "CHALLENGE_PASS_25",
+          "CHALLENGE_PASS_50",
+          "CHALLENGE_PASS_75",
+          "CHALLENGE_SOLVED",
+          "CHALLENGE_FAILED",
+          "CHALLENGE_RETRY",
           "ENDCARD_SHOWN",
           "CTA_CLICKED"
         ]
       },
-      "repairHint": "按真实玩法时机补齐核心事件，不重复注入第二套 tracker。",
+      "repairHint": "按真实玩法时机补齐核心事件与挑战漏斗（进度 25/50/75%、通关、失败、重试），不重复注入第二套 tracker。",
       "autoRepair": false
     },
     {

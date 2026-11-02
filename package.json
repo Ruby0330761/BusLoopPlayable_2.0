@@ -16,6 +16,8 @@
     "package:applovin": "node scripts/package-applovin-single-html.mjs",
     "export:playable": "node scripts/export-playable-package.mjs",
     "export:playable:all": "node scripts/export-playable-package.mjs --all",
+    "levels:contact-sheet": "node scripts/build-level-contact-sheet.mjs",
+    "levels:contact-sheet:remote": "node scripts/build-level-contact-sheet.mjs --remote --out artifacts/level-contact-sheet-remote.html",
     "preview": "vite preview --host 127.0.0.1",
     "test": "node --test"
   },

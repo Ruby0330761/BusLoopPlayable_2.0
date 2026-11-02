@@ -22,6 +22,7 @@ COPY src ./src
 COPY scripts ./scripts
 COPY public ./public
 COPY artifacts ./artifacts
+COPY official-levels ./official-levels
 COPY tools/spatial-conveyor-import-support ./tools/spatial-conveyor-import-support
 COPY deploy-tools/build-verified-playable-packages ./deploy-tools/build-verified-playable-packages
 RUN cp src/level-catalog.js artifacts/level-catalog.js \

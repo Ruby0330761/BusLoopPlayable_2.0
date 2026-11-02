@@ -10,3 +10,17 @@ BusLoopPlayable_new/
 .DS_Store
 server-dist/
 __pycache__/
+
+# Scratch diagnostics and one-off pages
+*.tmp.mjs
+pelican-bike.html
+.zcodeignore
+
+# Generated snapshots and exports
+artifacts/backups/
+artifacts/web-level-backups/
+artifacts/level-contact-sheet*.html
+artifacts/q24-belt-compare.png
+artifacts/busloop-level-editor-*.zip
+artifacts/applovin/*.html
+!artifacts/applovin/index.html

@@ -1,5 +1,650 @@
 # Playable Project Progress
 
+## Completed On 2026-11-02 - Q159（圣诞中心救援 / 红绿双色 / 35 步红心）
+
+- 需求：中心救援 + 圣诞雪橇 + 限制步数（35 步跳转，红心显示在雪橇车上）；红绿双色；中心车辆为斜向雪橇；六车位；圣诞彩灯背景；11 段命名 `BL-2610296-Q159V1-...-35moves-N`。
+- 关卡：`artifacts/web-levels/level2602.json`（`displayName: Q159V1-圣诞中心救援`），由 `scripts/create-christmas-sled-level.mjs --keep-sled-blocked --palette redgreen --step-limit 35` 生成。70 车，中心 `id 162` 为 10 座圣诞雪橇，**保留源关卡的 315° 斜向朝向**，四周 34 平台红 / 35 台绿（车与乘客同色染色），两侧队列 212/218。
+- **中心车不再是被清空包心的“可直接点”雪橇**：`--keep-sled-blocked` 保留源关卡的外圈，开局有 6 台直接阻挡车，先拆 28 台才能点到雪橇；35 步预算留 7 步余量，生成器用阻塞闭包（`countCarsToClear`）硬校验，预算不足会直接拒绝出关卡。
+- **步数机制复用运行时字段、不复用车型**：`mechanism.stepLimited` 是新的 opt-in 位，`levelDocumentToRuntime` 据此写 `ambulanceStepLimit`；`isAmbulanceVehicle` 改为先看 `mechanism.type`，所以雪橇不会渲染成救护车 FBX，也不会把救护车资源拉进包。红心贴图复制到 `/assets/unity/christmas/textures/step_heart.png` 并挂在 `christmas` 机制清单里（3 KB，导出白名单自动覆盖）。
+- **第 35 步同时是商店跳转**：`installGate.successfulOperationThreshold = 35`，`main.js` 的 `stepLimitedSledJumpOwnsEnding` 让这次失败不再叠一张失败卡（跳转已由安装门槛在同一帧触发）。真正的救护车关卡仍保留 `Ambulance Failed`。
+- 会话：`artifacts/playable-session.json` 新增 `q159-christmas`（单舞台、`dualQueue3`、六车位、圣诞彩灯背景），`active` 指向它；调参快照 `artifacts/q159-christmas-tuning.json`。
+- 验证：`node --test` 454/454（新增 `test/christmas-rescue-level.test.js` 7 条）；`npm run build` 通过；本地浏览器实拍确认斜向雪橇、红绿左右分色、红心 `35→30` 递减；注入门槛 35 后跑到第 35 步实测 `mraid.open` 收到 Play 商店链接、无失败卡。全平台导出 `242/256`、14 份运行时报告全 PASS，7 个文件名与需求逐字一致（Mintegral 用下划线），成品在 `/Users/von/wxj/试玩成品/BUS/bus-Q159V1-20261102-WXJ/`。
+
+## Completed On 2026-10-29 - 五角星 / 爱心 / 猫咪三条异形跑道按原版参考图做饱满化校准
+
+- 用户提供原版 `Level 85`（五角星）、`Level 102`（爱心）、`Level 156`（猫咪）参考图，要求将三条轨道的小人排布调整得与参考图一样饱满贴边。
+- 像素级对比查明原版显得饱满的三个几何原因：
+  1. **外圈轨迹外扩**：Unity Prefab 里的原始控制点经三次均匀 B 样条平滑后向内缩了 40~65px（且 `catLoop` 头顶控制点 `6/7/8` 呈 W 形掉进猫头孔洞 `y=833`），导致外圈星角、心瓣、猫耳留出灰色空地，内侧小人反而踩住内圈白框；
+  2. **3D 小人身高视差（Parallax）**：小人模型高 `0.48`，在 61° 俯视相机下大圆球头顶比脚底在屏幕上方（贴图 `-y`）偏移约 `22~26px`。控制点必须向 `+y` 补偿约 `22px` 并微扩下半圈脸颊/心腰，才能让上半圈头顶收在上白边内、下半圈外侧填满下白边；
+  3. **贴图内圈孔洞同步外扩**：原贴图的内圈孔洞画得偏小，导致上半圈灰带宽度是一排 4 人宽度的近两倍。通过对环道内部做平滑径向放大（外圈白边与入场手臂保持 1.0 不变），将五角星、爱心、猫咪的内圈立体白框同步扩大到紧贴小人内包络线。
+- 改动文件：`src/conveyor-layouts.js`（更新 `starLoop` / `heartLoop` / `catLoop` 经视差补偿与外扩校准的控制点）、`public/assets/unity/conveyors/Loop_07_q80.webp`、`Loop_footage2_q80.webp`、`Loop_footage3_q80.webp`（及 `artifacts/conveyor-art-sources/` 源图）、`src/scene-tuning.js`、`src/main.js`、`src/scene-view.js`（隐藏超出当前跑道容量的多余 `passengerViews` 池视图）。
+- 验证：`node --test` 400/400；`npm run build` 通过；浏览器实拍三条跑道，小人外沿贴满星角/心瓣/猫耳外白边、内沿紧贴放大后的五角星/爱心/猫头内白框，无多余灰地。
+
+## Deployed On 2026-10-29 - Android icon replaced and live as 20261029-1441
+
+- 需求方给了新的 Android 商店图标（黄双层巴士 + 车顶欢呼小人）。只换 Android：`public/assets/icon-android.jpg` 换成新图，iOS 的 `icon-ios.png` 与加载页 `applovin/icon_q75.jpg` 保持不变（md5 仍为 `6044d8c4…` / `c3cbdcbb…`）。
+- 编码对齐旧文件规格：512×512，4:4:4 渐进 JPEG q88，89,374 B（旧 106,774 B）。源图是 480×480 PNG，按 LANCZOS 放大到 512，与 `branding.icon` 的 180×123 展示框和其他图标同尺寸，不引入新的解码分支。
+- **部署基底用了 `20261028-1625` 的源码树，而不是本地工作区**：本地 10-29 还有未上线的 `heartLoop` / `catLoop` 轨道与 q23-choice 会话烘焙，整包重部署会把它们一起推上去。先核对 `/tmp/busloop-deploy-20261028-audio.zip` 内 `build-version.js` 是 `20261028-1625`、`conveyor-layouts.js` 不含新轨道、图标 md5 与线上一致（`7c1d33d0…`），再在该树里只替换图标并打时间戳。
+- 版本号 `src/build-version.js` → `20261029-1441`。部署包 27.8 MB / 697 条目，无 `node_modules` / `server-dist`；zip `http://10.0.0.6:8081/6c/6c8a08217e7ad50d2e7f72a019a0a469.zip`，复用 12142 端口与持久化 artifacts 卷。
+- 线上验证：入口 chunk `index-ByGUDOMb.js`，9 个 js/css 与本地 `PLAYABLE_REMOTE_EDITOR=1 npm run build` 产物 **sha256 逐字节一致**；编辑器标题 `v20261029-1441`；线上 `icon-android.jpg` md5 `c1309146…` 与本地一致，iOS 与加载图 md5 未变。
+- 线上真实导出抽检（POST `/__playable-export`，level33 / applovin / bus）：包内新图标 1 次，旧 Android 图与 iOS 图均 0 次，加载页图标保留 1 次；产物 3,429,927 B。
+- 未上线的 10-29 改动仍在本地工作区：远端 bundle 内 `heartLoop` / `catLoop` 计数为 0，与部署前一致。
+- 验证：`node --test` 400/400；`npm run build` 与 `PLAYABLE_REMOTE_EDITOR=1 npm run build` 均通过。
+
+## Completed On 2026-10-29 - Q23 Bus / Crowd 双版本上传 NAS
+
+- Bus 版 14 个成品 → `ua_video/BL/试玩/20261029/<platform>/`；Crowd 版 7 个成品 → `ua_video/BFT/试玩/20261029/<platform>/`。两边都按七平台子目录（applovin/google/meta/mintegral/moloco/tiktok/unity）扁平存放，`manifest.json` 与 `reports/` 按项目惯例不上传，只放可交付产物。
+- Verification：21 个文件逐个比对 NAS 与本地 SHA-256，全部一致（BL 14/14、BFT 7/7）。本地副本仍在 `/Users/von/wxj/试玩成品/BUS/`。
+- 备注：Crowd 在 BFT 下的命名沿用上一版 Q22 的习惯，前缀 `BFT-`、requester `ZZN`；BL 下沿用 `BL-`、requester `TJW`。
+
+## Completed On 2026-10-28 - 入场横幅素材丢失（Q22 全部版本受影响）
+
+- 需求方反馈「入场横幅应该是这样的，现在素材丢失了」，并给了编辑器正常显示的对照图。现象：成品里横幅退化成一行小字，紫底和箭头都没了。
+- 根因在打包器的**素材白名单判断**：`scripts/package-applovin-single-html.mjs` 只检查 `PLAYABLE_STAGE_CHOICES`（Q23 的地图选择结构）里有没有舞台启用 `entryBanner`，**漏了 `PLAYABLE_STAGES`**（Q22 这种固定两关序列用的数组）。于是 Q22 的 stage2 明明 `entryBanner.enabled: 1`，判断结果却是 false，横幅六张图（hardTitle / hardBackground / superHardTitle / superHardBackground / purpleArrows / redArrows）全部被替换成 `data:application/octet-stream;base64,AA==`（1 字节空占位）。
+- 修复：同时检查三个来源——全局 `SCENE_TUNING.entryBanner.enabled`、`PLAYABLE_STAGES`、`PLAYABLE_STAGE_CHOICES`。并把 `PLAYABLE_STAGES` 补进 `generated-active-level.js` 的导入解构（原来没导入，第一次改完直接 `ReferenceError`）。
+- 这类失败很隐蔽：构建不报错、静态检查也过，只有真跑起来看画面才发现。判据是包内 `superHardTitle` 后面接的是 `__playableEmbeddedAssetN`（正常）还是 `data:application/octet-stream;base64,AA==`（被省略）。
+- 验证：四个包全部为 `banner art INLINED`；重渲染确认紫底横幅 + 双向箭头 + SUPER HARD 大字与编辑器一致；`node --test` 400/400（新增一条断言必须同时检查 `PLAYABLE_STAGES` 与 `PLAYABLE_STAGE_CHOICES`，并修正了旧断言里写死的单一来源正则）。
+- 四个交付文件夹已用修复后的包重出。
+
+
+## Completed On 2026-10-29 - Q23 Crowd 版交付集（底部文本强制居中）
+
+- 出 Crowd 导出集并放本地：`/Users/von/wxj/试玩成品/BUS/bus-Q23V1-20261028-WXJ-Crowd/`，7 个成品（AppLovin/Moloco/Unity Ads 单 HTML，Google Ads/Meta/TikTok/Mintegral ZIP），命名前缀 `BFT-...-Crowd`，商店链接走 Crowd 自己的条目。
+- **底部文本居中**：编辑器里的品牌文字坐标是可拖拽的 x，历史某一版存成了 534 而非 540，导出后实测偏 3px。现在 `PLAYABLE_BRANDING_SETS.crowd` 增加 `centerText: true`，导出时把 `branding.text.x` 钉成 `preview.width / 2`（当前 1080 → 540），不再信任保存下来的坐标；Bus 两版仍保留操作者手动设置的位置。
+- Verification：`node --test` 399/399；Crowd 全平台导出 235/249（`LOCAL_RULES_PASSED_AWAITING_PLATFORM_ACCEPTANCE`）；实测 AL-Crowd 包文本中心偏移 0px，选关页四张卡正常，点第一张进 level13（75 台车、门槛 99）；TT-Crowd 包点击 CTA 打开 `https://play.google.com/store/apps/details?id=busflow.traffic.puzzle&hl=en_SG` 且无运行时错误。
+
+## Completed On 2026-10-29 - 修复 TikTok 包 CTA 点击无跳转
+
+- 现象：TikTok 包点击 Play Now 没有任何反应。
+- 根因：导出时 `index.html` 会注入官方 `playable-sdk.js`，它把 `window.playableSDK.openAppStore()` 转发给宿主原生桥接。纯浏览器/桌面审核环境里没有宿主，调用被静默吞掉；而 `src/platform-bridges/tiktok.js` 只要看到这个函数存在就返回 `true`，浏览器兜底链接永远不会执行。
+- 试过但否掉的判定：用 `JSBridge` / `JS2NativeBridge` / `webkit.messageHandlers` 判断「是否有宿主」不可行——官方 SDK 自己会创建 `JSBridge` 对象和 `__JSBridgeIframe__` 系列 iframe，这个信号恒为真。
+- 修复：TikTok 桥接现在**始终**调用平台 API（真容器里这是唯一正确动作），并改为用 UA 判断是否在 App 容器内（`TikTok|musical_ly|trill_|BytedanceWebview|Pangle|pangolin`）；不在容器内时额外打开商店链接，容器内不重复打开。
+- Verification：`node --test` 399/399；`PLAYABLE_SESSION_KEY=q23-choice npm run export:playable:all` 全平台导出通过（470/498，`LOCAL_RULES_PASSED_AWAITING_PLATFORM_ACCEPTANCE`）；解包 TT Android 后用真实 Chrome 实测：点击 Play Now 打开 `https://play.google.com/store/apps/details?id=gridplus.busjam.carpuzzle`，无运行时错误。交付目录 `/Users/von/wxj/试玩成品/BUS/bus-Q23V1-20261028-WXJ/` 已用修复后的构建重出（14 个成品）。
+
+## Completed On 2026-10-29 - 修复爱心 / 猫咪跑道点位与贴图比例（改回 Unity Prefab 原生样条）
+
+- 用户录屏指出上一版 `heartLoop` 小人在爱心顶部横切、在中间凹角扭成 X 形打结，且排与排之间有明显灰色空隙。
+- 根因（对比 `/Users/von/Downloads/五角星跑道.unitypackage` 里的同族 `ConveyorBelt_Footage.prefab` 与现有 `starLoop` 后彻底查清）：
+  1. `ConveyorBelt_Footage.prefab`（starLoop）、`ConveyorBelt_Footage2.prefab`（heartLoop）、`ConveyorBelt_Footage3.prefab`（catLoop）三者的 `Loop_13` Transform 完全一致（`localPosition: (0, -0.24, 1.8), localScale: 0.43`），`starLoop` 里的点位就是把 prefab 原生 `_spline.points` 按线性变换 `out_x = 0.826305 * raw_x - 0.004829, out_z = 0.826305 * raw_z + 14.2367365` 转换到场景坐标系，并配合 `art: { x: 0, y: -0.045, z: -5.3394, width: 16.685, depth: 10.3288 }` 与全图 `spriteRect (0, 0, 2100, 1300)`。
+  2. 上一版误拿 `dualQueue2` 的 `art` 尺寸（`13.55 × 7.95, z: -4.15`）去配 `Footage2/3`，发现对不上后又自己写脚本从孔洞描中轴反解控制点，结果在心尖凹槽和猫耳处自交打结，还把原生容量 45/60 砍成了 30 导致队伍稀疏露底。
+- 修复：
+  - `src/conveyor-layouts.js`：`heartLoop`（主环 20 点、左右队列各 15 点、容量 45、队列上限 `[45, 45]`）与 `catLoop`（主环 27 点、左右队列各 15 点、容量 60、队列上限 `[60, 60]`）全部改用各自 Unity prefab 的原生点位经上述精确公式转换；`spriteRect` / `loopSpriteRect` 对齐 `starLoop`（`2100 × 1300`）。
+  - `src/scene-tuning.js` + `src/main.js`：`heartLoop` / `catLoop` 的 `art` 默认值对齐 `starLoop`（`width: 16.685, depth: 10.3288, z: -5.3394`），并在 `main.js` 增加 `migrateFootageConveyorArtTuning` / `migrateFootageConveyorArtProfiles`，自动把浏览器 `localStorage` 全局与关卡级缓存里残留的旧 `13.55 × 7.95` 尺寸迁移为新值。
+  - `src/scene-view.js`：修复从大容量跑道（如 `catLoop` 60）切到小容量跑道（如 `heartLoop` 45）时，`this.passengerViews` 池中超出 `snapshot.slots.length` 的尾部视图未隐藏而残留在入口处的幽灵小人 bug。
+  - `src/game-model.js`：撤回上一轮误加的 `conveyorCapacity` 截断逻辑。
+- 验证：`node --test` 399/399；`npm run build` 通过；浏览器实测 `heartLoop`（45/45 填满）与 `catLoop`（60/60 填满）小人紧密饱满、完整贴合心瓣与猫耳轮廓顺滑流动，无打结、无空隙、无残留幽灵小人。
+
+## Completed On 2026-10-28 - 关卡写入归属（只能改自己的关卡）
+
+- 修复共享编辑器里别人的关卡被覆盖：原保存链路只有 `baseRevision`（挡「版本过期」），两个人先后打开同一关卡时，后保存的人 revision 是最新的，于是合法覆盖前一个人。
+- 新增 `scripts/level-ownership.mjs`（名字规范化、大小写不敏感的归属比较、`artifacts/level-owners.json` 注册表、claim/allow/refuse 判定）与 `src/level-owner.js`（浏览器侧名字存储 + `X-Level-Owner` 请求头）。保存、网页关卡导入、Unity 关卡导入、两种删除全部要求操作用户名；删除时释放归属。
+- **无归属的既有关卡默认只读**（403 `LEVEL_UNCLAIMED`），必须走独立 `POST /__level-authoring/<key>/claim` 显式认领，界面提供「认领此关卡」按钮；新建关卡因文件尚不存在而直接归创建者所有。
+- 编辑器「关卡」面板新增「操作用户」输入框，关卡下拉显示归属（`名称 · WXJ`），删除前提示归属；布局编辑器保存同样带身份。
+- Verification: `node --test` 396/396（`test/level-ownership.test.js` 16 条）；本机 dev server 端到端 10 项「抢改无归属关卡」全通过（他人保存/删除均 403 且内容未变、显式认领后原创建者反被 403、不能重复认领、认领不存在的 key 404）；真实 Chrome 检查界面：认领按钮可见、状态栏显示「还没有登记归属，默认只读」；`npm run build` 与 `package:applovin` 通过。测试文件与备份已清理。
+- 边界：这是防误覆盖的护栏，不是鉴权，请求头可被伪造。真正的隔离需要登录体系。
+
+## Completed On 2026-10-28 - 音效修复已部署（轨道未随本次上线）
+
+- 部署 `bus-loop-playable-editor` 到 `http://10.0.0.54:12142/`，版本 `20261028-1625`，复用 12142 端口与持久化 artifacts 卷。
+- 本次只带点车音效修复（`src/level-audio-config.js` 等 8 个文件），**未包含**当天的 `heartLoop` / `catLoop` 两条新轨道：部署树里移除了这两个布局条目、对应的 `scene-tuning` 默认调参、编辑器下拉选项、会话可选布局白名单、导出白名单与 `Loop_footage2/3_q80.webp`，`test/game-model.test.js` 的布局断言同步收回，进度文档里的轨道段落也从部署树剔除。部署后线上 bundle 不含 `heartLoop`/`catLoop`/`Loop_footage`，保留既有 `starLoop`。
+- 部署包含当次工作区的其它会话/调优改动，但不含 `artifacts/playable-session.json`（烘焙的 q23-choice 会话），因此线上导出仍走所选单关卡，与部署前行为一致。
+- Verification: 线上首页 HTTP 200，`assets/index-Dny6Vgw_.js` 与本地 `PLAYABLE_REMOTE_EDITOR=1 npm run build` 产物 sha256 一致（`00cc5bcf…`）；远端真实导出 AppLovin 包 HTTP 200、3,453,127 B，`vehicle_tap` 的 base64 与 `public/assets/unity/audio/vehicle_tap.mp3` 字节一致（13,017 B），产物内无 `heartLoop`/`catLoop`；真实 Chrome 打开该产物点车，音频探针捕获 0.392 s 的 `vehicle_tap`。
+- 待办：轨道部分仍只在本地工作区，需要单独部署；`src/level-catalog.js` 的音效条目与 `public/assets/unity/audio/vehicle_tap.mp3` 仍未提交。
+
+## Completed On 2026-10-28 - 底部文案与 Play Now 按钮对齐
+
+- 需求方反馈「游戏名有点不居中，或者按钮不居中，两个有点错位」。实测确认是**文案**偏了，按钮一直是正的：
+  - 设计空间中心是 `preview.width / 2 = 540`，`cta.x` 也是 540，但 `branding.text.x` 是 **534**，差 6 设计像素。渲染到 390 宽的手机上是 2.17px 的左偏，肉眼正好能看出来。
+  - 修正：`branding.text.x` 改为 540（与 CTA 同值）。实测 DOM 里 `glyphCx = ctaCx = stageCx = 195`，偏移归零。
+- 四个交付文件夹已重出（Bus/Crowd × Q22V1/Q22V2）。
+- 新增回归断言：`cta.x` 与 `branding.text.x` 都必须等于 `preview.width / 2`。
+- 验证：`node --test` 370/370；Crowd 与 Bus 两版截图确认 `Bus Crowd` 与 `Play Now` 中心对齐。
+
+### 期间遇到的两个环境问题（非代码缺陷）
+
+- **`artifacts/playable-session.json` 的 `active` 被改成 `q23-choice`**（Q23 需求，level27 + 6 车位）。不带 `PLAYABLE_SESSION_KEY` 导出会出 `BL-Q23V1-*` / `BFT-Q23V1-*`。处理方式是导出时显式传 `PLAYABLE_SESSION_KEY=q22-rect` / `q22-special`，**没有改回 active**，避免打断 Q23 的工作。以后给 Q22 出包必须显式带 key。
+- **残留 Chrome 进程导致 `Chrome DevTools 调试端口启动超时`**：机器上堆积了几十个 headless 实例，其中一个已跑 73 分钟。`pkill -9 -f "headless=new"` 清理后导出正常。批量导出前建议先清一次。
+
+
+## Completed On 2026-10-28 - Q23 选关试玩打包并交付 BUS
+
+- 需求方审核通过后按最终状态出了全平台导出集，落在本地交付目录 `/Users/von/wxj/试玩成品/BUS/bus-Q23V1-20261028-WXJ/`：14 个成品（AppLovin/Moloco/Unity Ads 为单 HTML，Google Ads/Meta/TikTok/Mintegral 为 ZIP，各含 Android 与 iOS 变体）+ `manifest.json` + `reports/`。命令为 `PLAYABLE_SESSION_KEY=q23-choice npm run export:playable:all`，本地规则 470/498 通过，结论 `LOCAL_RULES_PASSED_AWAITING_PLATFORM_ACCEPTANCE`。
+- **交付目录以本地为准，不上传 NAS**：曾按默认交单流程把 AppLovin 单包传到 `ua_video/BUS/试玩/20261028/applovin/`，用户要求改放本地目录后已删除该文件及其空日期目录，NAS `BUS/试玩` 现为空。
+- 交付内容：简单关 `level27`（BL-2610142，6 车位，开局置灰+手型指引）→ 胜利后四选一选关页 → `level13`(小鱼) / `level7`(彩虹) / `level5`(矩阵) / `level30`(level154)，四关均 4 车位。
+- **交付前发现并修正一处配置漂移**：`artifacts/playable-session.json` 的 `active` 在打包后被改回 `q22-rect`，若直接打包会输出 Q22 而非 Q23。已恢复为 `q23-choice` 并重新生成/构建/打包，包体从 3,790,862 变为 3,783,157，确认产物内含 `q23-choice` 与选关页。
+- 验证：`node --test` 369/369；AppLovin 静态检查 23 项中 22 项 PASS（`no root-relative asset URLs` 为既有良性项）；运行时门禁 13/13 PASS；在包内实测「打败 level27 → 选关页 → 点卡进 level30（50 台车、门槛 74）」通过；解压后的 6 个 HTML 逐一确认含选关页、manifest `materialCode` 为 `Q23V1`。
+- 遗留：编辑器侧 `level13` 与本地构建的 `level13` 是两份不同数据（远端为 94 台车横条纹车阵，本地为 75 台车扇形），需求方已确认按现状交付，后续若再改需先对齐数据源。
+
+## Completed On 2026-10-28 - Crowd 需求方改为 ZZN，并修掉 Q23 引入的重复资源
+
+- Crowd 需求方从 TJW 改为 ZZN。没有把 `requester` 写死进全局调参（那会连 Bus 一起改），而是在 Crowd 变体上加了 `exportNaming: { requirementCode: 'BFT', requester: 'ZZN' }`，由 `createBrandingVariantTuning()` 合并。文件名变成 `BFT-Q22V1-N-EN-PL-WXJ-ZZN-AL-Crowd.html`，Bus 仍是 `...-TJW-...`。
+- **顺带修掉一个会阻断 Crowd 导出的新问题**：`applovin payload scan blocked: FINAL_PAYLOAD_DUPLICATE_WASTE`，报的是同一张 5796B 的 webp 出现两次。来源是 Q23 新加的 `#stage-choice-hand` 元素，它和 `scene-view.js` 里 `GUIDE_HAND_TEXTURE_URL` 指向同一个 `main-guide-hand_q80.webp`，于是包里既有 `<img src=data:...>` 又有等价的 JS 常量。把 `stage-choice-hand` 加进 `reuseDocumentImageAsset` 的复用名单即可（和 branding-icon/logo、loading-icon 同一处理）。
+- **注意一个会话切换陷阱**：`artifacts/playable-session.json` 里今天新增了 `q23-choice`（level27、6 车位）且 `active` 已指向它，导致 `--all` 导出会默认出 Q23V1。本次把 `active` 切回 `q22-rect`，**没有删除或修改 q23-choice 的内容**，Q23 的工作不受影响。
+- 验证：两版 Crowd 各 7 产物、全部 PASS；包内无 >4KB 重复 blob；图标 md5 与 `icon-crowd.jpg` 一致；商店链接为 Crowd 自己的两条；`node --test` 369/369。
+
+
+## Completed On 2026-10-27 - 简单关胜利后四选一选关页（Q23）
+
+- 会话从「两关顺序」扩展成「可带选择节点的关卡链」。新会话 `q23-choice`：先玩简单关 `level27`（编辑器里的 BL-2610142），胜利后进入 `Please Choose a Stage` 选关页，四个选项为 `level13`（小鱼）、`level5`（矩阵）、`level7`（彩虹）、`level30`（编辑器显示 level154）。
+- `src/playable-session-config.js` 新增 `stage.choice` 校验：标题、指哪张卡的手型索引、可选关卡（id/levelKey/label/预览图/该关自己的 scene+opening+labels），并限制选择节点只能出现在会话最后一关，避免它悄悄跳过后面编排的关卡。
+- `src/level-session.js` 从固定序列升级为带选择门的状态机：胜利只把选择挂起（`choicePending`），`choose()` 才把所选关卡追加进播放序列，最终关判定与 CTA/安装门槛都以此为准；`reset()` 会丢弃已选关卡，重玩一次仍从简单关开始。
+- `src/main.js` 新增选关页渲染与流程：四张卡按会话数据生成、手型按卡定位、选关期间隐藏 Play Now，选中后应用该关自己的传送带/车位/引导配置再切关。QA 侧补了 `window.__busLoop.stageChoice`（`visible/options/choose`）。
+- 卡面预览图 `public/assets/applovin/stage-choice/level{13,5,7,30}.webp`（512×782，上半传送带下半车阵）由真实 Three.js 场景逐关截图后合成，导出时随包内联；`generate-active-level.mjs` 现在额外产出 `PLAYABLE_STAGE_CHOICES` 与 `PLAYABLE_ALL_LEVELS`，打包器与静态检查改用后者收集可达关卡的机制与音频素材，否则被选中的关卡会带进占位字节。
+- 验证：`node --test` 369/369；`npm run build`；`npm run package:applovin` 产物 3,790,862 bytes 且四张选关图均内联（无残留 `/assets/applovin/stage-choice` 路径）；AppLovin 运行时门禁 13/13 PASS；在打包后的单 HTML 里实测「打通 level27 → 选关页出现 → 点第 4 张卡进入 level30（50 台车、门槛 74）」，并确认 reset 回到 level27。
+- 已知：`check:applovin` 的 `no root-relative asset URLs` 仍失败，是 `src/color-atlases.js` 里 `/assets/applovin/textures` 目录字面量导致的既有良性项（与本次改动无关）。
+
+## Completed On 2026-10-27 - 彻底移除画面上左上角的构建时间戳
+
+- 用户要求「全都去掉」。这次不是隐藏而是**整条链路删除**，因为上一轮只是让编辑器不显示、导出包仍会打印。
+- 删除的四处：
+  - `index.html`：`#build-stamp` 元素。
+  - `scripts/package-applovin-single-html.mjs`：`formatBuildStamp()` / `injectBuildStamp()` 以及打包末尾的注入调用。
+  - `src/styles.css`：`.build-stamp` 规则、`:empty` 兜底、`#app.is-editor .build-stamp`。
+  - `src/main.js`：给 `#app` 加 `is-editor` 的代码——它当初只是为了配合上面那条隐藏规则，规则没了就是死代码。
+- 测试从「必须有时间戳」改成「必须不存在」：断言 `index.html`、打包器、样式、main 里都不再出现 `build-stamp` / `BuildStamp` / `is-editor`。这样以后谁再把它加回来会立刻失败。
+- 重出四个交付文件夹并逐包扫描：18 个 HTML 产物里 `build-stamp` 与 `2026xxxx-xxxx` 时间戳残留均为 0；AppLovin 12 个打点仍在（12/12）；命名保持上一轮的 `BL-...-AL-Android.html` / `BFT-...-AL-Crowd.html`。
+- 验证：`node --test` 363/363；左上角截图确认已清空。
+
+
+## Completed On 2026-10-27 - 命名去掉步数/体力，并核实 AppLovin 12 个打点
+
+- **命名去掉 `-0-0-`**：删掉 `steps` / `stamina` 两个字段后，文件名变成
+  `BL-Q22V1-N-EN-PL-WXJ-TJW-AL-Android.html`（原来夹着 `-0-0-`）。
+  - `scripts/export-playable-package.mjs`：`buildPlayableArtifactName()` 的字段列表去掉这两项，`PLAYABLE_NAMING_PATTERN` 同步改成 `requirement-material-iteration-language-format-designer-requester-channel`；Google Ads 的 50 字符压缩分支原本靠删这两项来缩短名字，字段没了之后该分支也删掉，超长现在直接报错（测试里用手工加长的材料码覆盖这条）。
+  - `src/scene-editor.js`：编辑器「命名」分组里删掉「步数」「体力」两个输入框，避免填了不进文件名。
+  - 四个交付文件夹已用新命名重出，旧文件删除。
+- **AppLovin 12 个打点核实结果**：都有，但触发条件不同，必须跑完整流程才看得到：
+  - 加载即发：`LOADING` / `LOADED` / `DISPLAYED`。
+  - 进度里程碑：`CHALLENGE_STARTED` + `CHALLENGE_PASS_25/50/75`，按「已发车数 / 会话总车数」计算。
+  - 结局：`CHALLENGE_SOLVED`（最后一关打完且总数达标）、`CHALLENGE_FAILED`（车位满+传送带满+无可上客车）、`ENDCARD_SHOWN`。
+  - 交互：`CTA_CLICKED`；`CHALLENGE_RETRY` 在失败后重开时发。
+  - **注意**：`CHALLENGE_RETRY` 和里程碑在 `CHALLENGE_SOLVED` 之后被有意压制（`SOLVED_SUPPRESSED`），所以通关后重开不会再刷挑战事件，这是既有设计不是缺失。
+  - 闸门阈值是**整场 62 辆**（lv2 的 12 + lv154 的 50），不是单关 64。运行时由 `sessionLevels` 求和覆盖，包内烘焙值 64 只是兜底。
+  - 实测覆盖：完整两关跑出 `LOADING→LOADED→DISPLAYED→CHALLENGE_STARTED→PASS_25→PASS_50→PASS_75→SOLVED→ENDCARD_SHOWN→CTA_CLICKED`；失败路径单独跑出 `FAILED→RETRY`。
+- 验证：`node --test` 363/363；四个交付文件夹的 manifest `pattern` 已同步去掉尾部两段。
+
+
+## Completed On 2026-10-27 - Q22 补出 Crowd 套系（BFT 命名）
+
+- 用户要求再出一份 Crowd。Crowd 是**一套包同时给 Android 和 iOS**（与 Bus 的 Android/iOS 双变体不同），所以每个版本只有 7 个产物：AppLovin/Moloco/UnityAds 出单 HTML，Google Ads/Meta/TikTok/Mintegral 出 zip。
+- 交付目录：
+  - `bus-Q22V1-20261027-WXJ-Crowd`（lv2 → lv154）
+  - `bus-Q22V2-20261027-WXJ-Crowd`（BL-2610142 → lv12）
+- **产品缩写 BFT**：文件名的第一段来自 `exportNaming.requirementCode`，原来直接继承 Bus 的 `BL`。已给 Crowd 变体加 `requirementCode: 'BFT'`，由 `createBrandingVariantTuning()` 覆盖；Bus 变体不受影响（仍为 BL）。文件名形如 `BFT-Q22V1-N-EN-PL-WXJ-TJW-AL-0-0-Crowd.html`。
+- 顺带修掉 manifest 与文件名不一致：`manifest.naming.values.requirementCode` 之前取的是变体覆盖前的 `safeTuning`，文件名已经是 BFT、manifest 里还是 BL。改为在单变体导出时用 `createBrandingVariantTuning(safeTuning, variantId)` 的结果写 manifest。
+- Crowd 品牌资源实测（包内解码后 md5 与源文件逐字节一致）：icon `icon-crowd.jpg`（jpeg）、logo `main-loading-icon-crowd.webp`（webp）；底部文案 `Bus Crowd`；商店链接换成 Crowd 自己的两条，Android UA 打开 `play.google.com/...busflow.traffic.puzzle`，iOS UA 打开 `apps.apple.com/...bus-crowd-traffic-jam/id6754059516`。
+- 验证：两套各 7 产物全部 PASS；`node --test` 363/363（新增一条断言 Crowd 用 BFT、Bus 保持 BL）；Crowd 包在两种 UA 下均正常启动，控制台零报错。
+- 第一次导出 Crowd V2 时遇到 `ENOTEMPTY: directory not empty`（临时目录清理竞争），重跑即通过，非代码问题。
+
+
+## Completed On 2026-10-27 - Q22 两版出全平台 Android/iOS 交付包
+
+- 按编辑器同款逻辑（`npm run export:playable:all`）重出两版，目标目录 `/Users/von/wxj/试玩成品/BUS/`，命名沿用现有规范 `bus-Q22Vn-YYYYMMDD-WXJ`：
+  - `bus-Q22V1-20261027-WXJ`（lv2 → lv154）
+  - `bus-Q22V2-20261027-WXJ`（BL-2610142 → lv12）
+- 每个文件夹 14 个产物 = 7 平台 × 2 机型，外加 `manifest.json` 与 `reports/`：AppLovin/Moloco/UnityAds 出单 HTML；Google Ads/Meta/TikTok/Mintegral 出 zip。命名沿用 `BL-Q22Vn-N-EN-PL-WXJ-TJW-<渠道>-<步骤>-<体力>-<机型>`。
+- **Android 与 iOS 的差异只有 icon**：`icon-android.jpg`（jpeg，106,774 B）与 `icon-ios.png`（png，92,110 B），包内解码后的 md5 与源文件逐字节一致。商店链接两版相同，运行时按设备分流：iPhone/iPad/Mac 触控走 App Store，其余走 Google Play。实测 Android UA 打开 `play.google.com/...gridplus.busjam.carpuzzle`，iOS UA 打开 `apps.apple.com/...id6746743297`。
+- **修掉一条会阻断全平台导出的回归**：UnityAds 包被 `UNITY-STA-004`（禁止 AppLovin 残留）判 fail。根因不在 Unity bridge，而是 `src/color-atlases.js` 把色卡目录写成常量 `/assets/applovin/textures`——10-23 把色卡表搬进代码后，所有平台的包都带上了这个字样；旧包（10-21）早于该文件所以干净。处理：在 `encodeUnityStaticFalsePositives()` 里把 `applovin` 的一个字母转成 `\u0069`，JS 解码后路径不变，检查器不再命中；没有改目录名，因为 456 处 catalog 引用和所有已存关卡都指向它。
+- 导出结果：两版各 14 产物、470/498 项 PASS（其余为人工项），`conclusion: LOCAL_RULES_PASSED_AWAITING_PLATFORM_ACCEPTANCE`。
+- 验证：`node --test` 362/362（新增一条断言 UnityAds 变换必须去掉该字样且运行时路径不变）；Android/iOS 两种 UA 下都能启动到第一关（6 车位、`Level 1`、时间戳正常）。
+- 平台上传与真机验收仍未做，`manifest.json` 的 status 也标注了这一点。
+
+
+## Deployed On 2026-10-27 - Crowd packages carry Crowd's own store links (20261027-1439)
+
+- 用户给的 Crowd 商店链接：Android `https://play.google.com/store/apps/details?id=busflow.traffic.puzzle&hl=en_SG`，iOS `https://apps.apple.com/us/app/bus-crowd-traffic-jam/id6754059516`。此前 Crowd 套系只换 Icon/Logo/文案，`storeLinks` 仍沿用编辑器里那套 Bus Fever（loop）链接，Crowd 包会跳到错的游戏。
+- 实现：`PLAYABLE_BRANDING_SETS.crowd` 新增 `storeLinks` 字段，`createBrandingVariantTuning` 在变体带 `storeLinks` 时整体覆盖 `output.storeLinks`。Crowd 链接集中在导出的 `CROWD_STORE_LINKS`，值经 `validateStoreLink` 在模块加载时校验（Google Play 的 `id` 与 Apple `id\d+` 都通过现有规则）。Bus 变体不带该字段，仍跟随编辑器保存的链接。
+- 编辑器「导出套系」在 Crowd 下的说明文案补上「自动换 Crowd 商店链接」。
+- 验证：`node --test` 361/361（新增断言：Crowd 变体覆盖两条链接、Bus 变体不覆盖、链接含正确包名/id）。本地 `export:playable --branding-set crowd` PASS 31/33（3,501,863 B），产物内 Crowd 两条链接各 1 次、loop 两条 0 次；Bus 包装 Bell 仍为 loop 链接各 1 次、Crowd 链接 0 次，两侧互不泄漏。
+- **运行时实测**（不止查字符串）：把 Crowd 包在真实浏览器里跑起来、注入 mraid stub 后点 CTA —— 桌面 UA 下 `mraid.open` 收到 `busflow.traffic.puzzle&hl=en_SG`；伪造 iPhone UA 后收到 `bus-crowd-traffic-jam/id6754059516`。确认按设备分支取的是正确的商店，且 URL 里的 `&hl=en_SG` 在打包后没有被转义成 `&amp;` 或 `\u0026`。
+- 部署：版本号 → `20261027-1439`，打包 27.6 MB / 702 条目上传 NAS → 复用 12142。zip：`http://10.0.0.6:8081/98/98f39d4026a8fc86c021a375feab6e6b.zip`。线上 chunk `index-BrhRhM-G.js` 与本地 `server-dist` sha256 一致。线上真实导出接口 POST `/__playable-export`（`brandingSet: crowd`）返回 200 / 3,398,815 B，产物内 Crowd 两条链接各 1 次、loop 链接 0 次。
+
+## Completed On 2026-10-27 - 构建时间戳只留在导出包，编辑器不再显示
+
+- 用户反馈线上编辑器（`10.0.0.54:12142`）画面里出现了 `editor 20261027-1428` 这行字。时间戳的用途是区分**交付出去的包**，编辑器是实时页面、页头本来就有 `v20261027-1425`，不需要再在画面上多一行。
+- 两处改动：
+  - `src/main.js`：删掉编辑器启动时往 `#build-stamp` 写文字的那段逻辑。时间戳改由打包器独占写入。
+  - `src/styles.css` + `src/main.js`：新增 `#app.is-editor .build-stamp { display: none }`，并在 `main.js` 启动时给 `#app` 加 `is-editor`（仅 `EDITOR_ENABLED`）。不改用 `#app:has(.scene-editor)`，因为那条依赖打包器是否剥掉 `<aside id="scene-editor">`；显式的 class 语义更直接。
+- 实测：本地 dev 编辑器 `stampText=""`、`display: none`、页头 `v20261027-1425` 正常；导出包 `#app` 无 `is-editor`、时间戳 `20261027-1433` 照常显示在左上角。
+- 验证：`node --test` 361/361（`test/playable-export.test.js` 补三条：编辑器必须隐藏该元素、main 必须打上 `is-editor`、编辑器不得再向该元素写 `textContent`）；两包重新导出各 31/33。
+
+## Deployed On 2026-10-27 - Crowd logo replaced with the new BUS CROWD art (20261027-1425)
+
+- 用户提供 `logo_busjamsolver.png`（674×450，带透明通道）替换 Crowd 套系 logo。旧文件 `main-loading-icon-crowd.jpg` 是一张**带城市背景的宽幅 JPEG**（1024×500，不透明、宽高比 2.05），新图是**透明底、宽高比 1.5** 的独立 logo，两者构图不同：旧图是「右上角贴 logo 的场景图」，新图是纯 logo。因此换的是整张素材的定位，不只是换一张图。
+- 因为原文件是无 alpha 的 JPEG，直接覆盖会把透明底压成黑块，所以改用 **WebP**：`public/assets/main-loading-icon-crowd.webp`（674×449，质量 90，61,470 B）。同样内容的 PNG 要 440 KB，WebP 小 7 倍且保留 alpha。项目里已有 29 处 `data:image/webp` 在跑，格式无兼容风险。
+- 同步改了 5 处引用（`.jpg` → `.webp`）：`src/scene-editor.js` 的 Logo 下拉选项、`scripts/export-playable-package.mjs` 的 `PLAYABLE_BRANDING_SETS.crowd.logoAsset`、`scripts/check-applovin-package.mjs` 的 `BRANDING_LOGO_ASSETS`，以及 `test/game-model.test.js`、`test/playable-export.test.js` 的路径断言。旧 `.jpg` 已删除。
+- 删除前扫过远端全部 71 个关卡的 `__level-authoring` 文档：只有 level45/47–54 带 `branding` 字段，且都指向 `icon-android.jpg` + `main-loading-icon-small.png`，**没有任何关卡引用旧的 crowd logo 路径**，所以重命名不会让已保存的调参失效。
+- 验证：`node --test` 361/361；`--branding-set crowd` 导出 AppLovin 包 PASS 31/33（3,501,810 B），`<img id="branding-logo">` 内嵌的 data URI 解码后与本地 webp **字节完全相同**（`image/webp`，61,470 B）；让该包在浏览器里真实运行，左下角渲染新的 BUS CROWD logo，透明边缘正常，底部文案为 `Bus Crowd`。
+- 部署：版本号 → `20261027-1425`（基线是当时线上的 `20261026-1201`，另有一次部署已先于本次上线），打包 27.6 MB / 702 条目上传 NAS → 复用 12142。zip：`http://10.0.0.6:8081/c4/c4a5287d95269ea9e0c65b95c57afe94.zip`。线上 chunk `index-BRDB5RLs.js` 与本地 `server-dist` sha256 一致，编辑器标题 `v20261027-1425`，线上 `main-loading-icon-crowd.webp` md5 与本地一致；旧 `.jpg` 已不存在（请求返回 SPA 的 HTML fallback，`text/html`，不是残留图片）。
+- 未在线上编辑器切换 Logo 下拉框验证：`branding.*` 的改动会走 `applyTuningPatch` → `saveTuning()` 写进关卡调参，会污染用户的关卡数据。改用本地真实导出 + 浏览器运行验证（结论同上）。
+
+## Completed On 2026-10-27 - 每个试玩包带上构建时间戳（左上角淡字）
+
+- 需求：在不起眼的地方标一个时间戳，用来区分不同的导出包。
+- 实现：`index.html` 新增 `#build-stamp`，`scripts/package-applovin-single-html.mjs` 新增 `formatBuildStamp()` / `injectBuildStamp()`，在打包最后一步把时间写进那个元素。格式 `YYYYMMDD-HHMM`，例如 `20261027-1116`。支持 `SOURCE_DATE_EPOCH`，确定性构建不会因为时钟走动而改变字节。
+  - **时区用本地时间，不是 UTC**：第一版用了 UTC 并带 `Z` 后缀，结果 11:13 生成的包显示 `0251Z`，跟人对不上表。已改为本地时间并去掉 `Z`，现在 11:16 出包就是 `20261027-1116`。测试里用 `new Date(2026, 9, 27, 11, 13)` 断言必须得到 `20261027-1113`，并禁止 `getUTC*`。
+- 位置：**左上角**。底部那条已经被 Logo、CTA、商店图标占满（品牌 icon 在 x=966、logo 在 x=0、文案居中），右上角是倍速键、顶部中间是关卡号，只有左上角在各套布局下都空着。
+- 样式：8–12px、白色、`opacity: .55`，`:empty` 时不渲染任何占位。第一版放在左下角，实测被 Logo 压住；后来又发现 `z-index: 5` 会被开场置灰遮罩（8）盖掉，已提到与关卡号同级的 8（仍低于 SUPER HARD 横幅的 9）。
+- 编辑器模式下也启用：没有打包步骤，所以 `main.js` 在编辑器启动时把「页面打开时间」写进同一个元素，前缀 `editor`，用于区分不同编辑会话的截图。
+- 验证：包内实测 `20261027-0251Z` / `20261027-0254Z` 两个包各自独立；放大截图确认左上角可读且不遮挡；线上 `http://page.hupogames.com/6300d0a5-9acb-43cd-a3b2-c7ea2dcb3a64/` 已更新并通过真实浏览器校验（6 车位、`Level 1`、控制台零报错）。
+- `node --test` 361/361（新增 `test/playable-export.test.js` 一条：包内必须有该元素、打包器必须注入、必须尊重 `SOURCE_DATE_EPOCH`、CSS 必须避开底部且 `:empty` 不占位、透明度落在 0.3–0.8 区间）。
+
+## Completed On 2026-10-27 - 关卡号描边收细，并让它不再跟着置灰变暗
+
+- 用户反馈「不要这么严重的黑边」。第一版用了 `±0.095em` 的 8 向 `text-shadow`，在 48px 字号下等于约 4.5px 的黑边，太重。改为 `±0.03em`（约 1.4px）的一圈细边 + 一层柔和投影，白字仍然压在草地和路面上都清楚，但不再是黑框。
+- 顺带查出一个真问题：**第一关的关卡号一直是灰的**。`.stage-label-overlay` 的 `z-index` 是 7，而开场置灰遮罩 `.first-click-guide-mask` 是 8，所以引导那几秒里 HUD 角标被一起压暗了。角标是常驻 HUD，不该跟着车阵变暗。已把 overlay 提到 `z-index: 8`，与遮罩同级、靠 DOM 顺序（先创建遮罩、后创建标签层）胜出；同时仍低于 `entry-banner-overlay` 的 9，保证 SUPER HARD 横幅照样盖住它。
+- 新增回归断言（`test/playable-session-config.test.js`）：角标不得有背景块、描边里 8 个硬边层的最大偏移 ≤ 0.05em、叠放层级必须等于遮罩层且小于横幅层。以后再把黑边调粗或把层级调低，测试会直接失败。
+- 验证：两关分别截图（第一关 6 车位 `Level 1`、第二关 4 车位 `Level 99`，横幅消失后复拍）确认描边与亮度都对；`node --test` 360/360；两包各 31/33。
+
+## Completed On 2026-10-27 - Q22 顶部关卡号改为大号描边字
+
+- 用户要求顶部数字改成参考图那种样式：大号白字 + 深色描边，不用深色胶囊底。
+- `src/styles.css` 的 `.stage-label`：去掉 `background` / `border-radius` / `padding`，字号从 `clamp(11px, 3.1vmin, 22px)` 提到 `clamp(21px, 7.1vmin, 48px)`，描边用 8 向 `text-shadow`（`±0.095em`，色 `#12203a`）加一层投影，保证白字压在草地和路面上都清晰。
+- 文案改为标题式 `Level 1` / `Level 99`（需求表原文是小写，参考成片是 `Level 3`，按成片走），位置仍 `x: 0.5` 居中、`y` 从 0.045 挪到 0.06 给大字留出上边距。
+- 验证：两关截图确认样式生效且不遮挡轨道；`node --test` 359/359（会话测试补了文案与居中位置的断言）；两包重新导出各 31/33。
+
+## Completed On 2026-10-26 - Q22 指引与轨道改为与交付包一致
+
+- 用户要求「指引和上面的轨道」沿用他给的那个 lv2 单关包。逐项比对后确认了差异，并已对齐：
+  - **轨道**：两个单关包都渲染 `dualQueue3`，而 Q22 会话把四个舞台都强制成了 `dualQueue2`。`dualQueue2` 与 `dualQueue3` 共用同一张轨道贴图，差别在走线（curve `offsetZ` 0.6 vs 0.85、queueCurves 的 offsetZ 0.9/0.9 vs 0.95/1.0、offsetX 0.6/-0.5 vs 0.6/-0.6），所以形状略有不同。四个舞台已改为 `dualQueue3`。
+  - **指引高亮框**：参考包是紧贴车身的窄框（`holeRadius: 5`、`holeScaleX: 0.54`、`holeScaleY: 0.4`），仓库是偏大的方块（16 / 0.62 / 0.62）。已改成参考值，实测两边渲染框一致：参考 63×37、当前 62×37，比例 1.69 vs 1.68。开场引导时长也从 3s 改为参考包的 4s。
+- **没有照抄的一点**：参考包把引导指向 5 号车，而 5 号车开局被 6 号车挡住，实测 `clickVehicle(5)` 返回 `{ok:false, reason:'blocked'}`，玩家照提示点不会有反应。所以只搬了高亮框样式与时长，指向仍落在开局可动车上（矩形版 6 号、特殊版 159 号）。换 `dualQueue3` 后重新验证过四关的引导目标均 `OK`。
+- 关卡数据经比对与参考包**逐字节一致**（12 辆车、两队列各 60 人、`mapScale 1.33`、`ConveyorBelt3`），差异只在指引参数与轨道布局，不涉及关卡本身。
+- 验证：`node --test` 359/359（`guide-hand.test.js` 的高亮框断言同步到新值）；两包重新导出各 31/33；实测第一关 6 车位、第二关 4 车位，角标 `level 1` → `level 99` 正常。
+- 产物：`artifacts/playable-exports/q22/BL-Q22V1-...-0-0.html`、`BL-Q22V2-...-0-0.html`。
+- **关于第二关难度（已修正结论）**：我的离线贪心/加权/随机重启在 4 车位下打不通 lv154 与 lv12，但把车位加到 5~10 个同样打不通，且四关按色统计的座位总数与乘客总数完全相等（380/380、438/438），所以既不是车位不够，也不是数据缺口。参考交付包本身就是 4 车位可交付状态，数据与配置也与之一致，因此这不是「死局」，是我的离线策略不足。能否通关需人工实测判定。
+
+## Completed On 2026-10-26 - Q22 视觉调整：角标居中、加速键右上、车阵收进边界、车位数按关切换
+
+- 用户三处反馈，全部来自对比参考图：难度角标要在顶部**居中**（原来在左上/右上角）、倍速按钮放**右上角**、车阵整体**缩小**（原来看起来出界）。
+- 三个改动：
+  - **角标居中**：`artifacts/playable-session.json` 里四个舞台的 `labels` 全部改成 `x: 0.5, y: 0.045, align: center`。
+  - **倍速键右上**：`speedToggle` 从「默认关闭 + 84%/14% 兜底」改为 `enabled: 1, x: 916, y: 118`（设计空间 1080×2160）。`test/speed-toggle.test.js` 的「默认隐藏」断言同步改为「默认显示且在右上角」，仍在 XML 里保留「缺键 → 隐藏」的既有语义。
+  - **车阵收进边界**：这是真 bug，不是观感。按真实手机比例（390×844）复测，lv154 的 7.1 世界单位宽车阵左右边距是 **0px**，最外侧车辆被切掉。之前 500×757 的截图视口比手机宽，把问题掩盖了。最终取 `vehicleArea.positionUnitScale: 0.8 → 0.7`、`modelScale: 0.7 → 0.64`、`camera.fitHeight: 15.9 → 16.4`，实测左右各留 23px（5.9%）。参数是靠三个变体实拍量边距选出来的，不是估的。
+- **车位数按关切换（用户补充）**：第一关 6 车位、第二关 4 车位。原来 `parkingSpots.count` 只读全局，两关只能共用一个值。新增 `src/stage-scene.js`：把「当前舞台场景」从 `scene-view.js` 抽出来（渲染层与模型层都要读，不能让两者互相 import），`resolveParkingSpots()` / `resolveParkingStartX()` 优先用舞台的 `count`。会话 schema 增加 `stage.scene.parkingSpots.count`（1–10 整数校验）。
+- 顺带修掉一个真 bug：`game.getSpotPosition()` 一直用固定的 `spots.startX`，而画面用的是自动居中推出的左边缘。4 车位时两者差 0.075，6 车位时差 0.875——车会停在车位旁边。现在两边共用 `resolveParkingStartX()`。
+- 实测（无头 Chrome，390×844）：第一关 `spots: 6`、6 个车位可见；转场后第二关 `spots: 4`、4 个车位可见；`level 1` → `level 99` 角标切换正常。
+- 验证：`node --test` 359/359（新增「舞台车位数对渲染与模型同时生效」一条，含 6/4 两种行起点与「缺键不覆盖全局」）；两包导出各 31/33（余 2 项人工）。
+- 产物：`artifacts/playable-exports/q22/BL-Q22V1-...-0-0.html`（lv2 → lv154）、`BL-Q22V2-...-0-0.html`（BL-2610142 → lv12）。
+- **第二关难度**：离线求解器打不通 lv12 与 lv154，但参数扫描与座位配平校验都表明关卡数据没问题（详见 `findings.md` 同日条目）。不作死局结论，留给人工实测。
+
+## Completed On 2026-10-26 - Q22 两版重做：矩形版换回游戏内 lv2，命名与需求表对齐
+
+- 用户拿到的两个 HTML 是**单关**包，不是 Q22 要求的「2 关打包长流程」。核对包内容：一个装 lv154（unityId 154，50 辆），另一个装游戏内 lv2（unityId 9804，12 辆，两关都是 `4`…`6` 车位、`preRoll` 关闭）。它们恰好是矩形版的两关，但各自只跑一关。
+- 同时发现三处与需求不符：
+  - **矩形版第一关装错关卡**：`q22-rect` 原本指向 `level2`，而本仓库的 `level2` 是 Q7V1改（unityId 52，84 辆），不是需求要的「游戏内 lv2」。真正的游戏内 lv2 只存在于远端卷（unityId 9804）。已把远端文档取回存成 `artifacts/web-levels/level9804.json`，会话改指它。
+  - **版本号反了**：需求表里矩形（lv2+lv154）是版本 1、特殊（BL-2610142+lv12）是版本 2，而两版会话的 `exportNaming.materialCode` 正好相反，已交付的文件名互相错位。已对调为 `q22-rect → Q22V1`、`q22-special → Q22V2`。
+  - **矩形版引导车点不动**：原配置 `vehicleId: 43` 来自旧的 level2（Q7V1改）。换成 lv2 后开局只有 6/7/8 可动，因此改指 6。
+- 新增回归断言（`test/playable-session-config.test.js`）：两个 Q22 会话的每一关，`firstClickGuide.vehicleId` 必须真实存在且开局 `getBlockers()` 为空、`clickVehicle()` 返回 `ok`。以后换关卡数据若把引导指到被挡车，测试会直接失败。
+- 产物（AppLovin 单 HTML，均 31/33，余 2 项人工）：
+  - `artifacts/playable-exports/q22/BL-Q22V1-N-EN-PL-WXJ-TJW-AL-0-0.html` — lv2 → lv154，`level 1` / `level 99` 角标，4 车位
+  - `artifacts/playable-exports/q22/BL-Q22V2-N-EN-PL-WXJ-TJW-AL-0-0.html` — BL-2610142 → lv12，同上
+- 端到端实测（无头 Chrome + `window.__busLoop`）：V1 第一关 12 辆车全部开出后自动转场，`installState().levelKey` 由 `level9804` 变 `level30`，`SUPER HARD` 横幅出现、角标换成 `level 99`，车位仍是 4 个。
+- **第二关难度**：离线贪心在 4 车位下停在开出约 19 辆；把车位改成 5/6 也未走通。当时怀疑是 `ConveyorBelt3` 缺布局导致，后经比对参考交付包（同样用 `dualQueue3`、数据逐字段一致）推翻了这个推断。当前结论：不作死局判定，需人工实测。
+- 验证：`node --test` 358/358。
+
+## Completed On 2026-10-26 - Parking spots update live and stay centred
+
+- 需求：车位参数要能实时预览，并且默认居中。
+- 两个独立根因：
+  - **不实时**：`buildSpots()` 只在建场景时按 `parkingSpots.count` 创建一次 3D 对象，`applyTuning()` 只更新已有对象的位置，所以改「车位数」必须刷新才可见。改为 `ensureSpotRootCount()` 按需扩缩池子（缩容只隐藏不移除，避免快照里按车位索引的引用悬空），由 `applyTuning` 每次调用。
+  - **不居中**：车位 X 从固定 `startX` 起算，默认 `-1.5` 是按 `count: 4` 调出来的巧合值；改成 2/6/8 时整排立刻偏到一侧。新增 `parkingSpots.autoCenter`（默认 1），开启时 `startX = -((count-1)*spacing)/2`，由导出函数 `resolveParkingStartX` 计算；关闭则用回手填的 `startX`。
+- 编辑器：「车位」分组新增「自动居中」开关；开启时「起点 X」置灰不可拖（`.editor-field.is-readonly`），避免调了没反应。
+- 顺带修掉一个连带 bug：`upgradeSpotViews()` 原本按 `spotRoots` 全量重建描边，只跑一次；新增的车位因此只有灰色底板、没有白色描边（8 车位截图可见右侧 4 个是实心块）。改为增量补描边，并在 `applyTuning` 里于扩容后调用。
+- 验证：`node --test` 357/357（新增 2 条：任意 count/spacing 下中心恒为 0、车位池随 count 增减且 `applyTuning` 会调用扩容）；浏览器实测拖动车位数 2→4→6→8→3，`visibleRoots` 逐个跟随且中心始终为 0；截图确认 8 车位整排对称且每个都有白色描边。
+
+## Deployed On 2026-10-26 - Strict guide targeting live (20261026-1201)
+
+- 上一条的引导严格指向改动已上线。版本 `20261026-1201`，线上 `index-Dm74dX1B.js` / `scene-editor-Db5jKg0o.js`（入口 chunk 与本地 `server-dist` 逐字一致）。
+- 线上校验：编辑器 chunk 内含「本关无此车」兜底选项与 3 处 `vehicle-id-select`；主 chunk 内 `queueHeads`（旧回退逻辑）计数为 0，两个目标解析函数均在位。
+- 线上端到端实测：在 level33 上连续配置 5 个 ID（全部是被挡住的车），高亮逐个指向配置值本身，`PASS`。
+- **打包踩坑**：`artifacts/` 下残留了上次部署留下的 `busloop-level-editor-20261023.zip`（25 MB，未被 git 追踪），第一次打包把整个 `artifacts/` 打进去，包体从 28 MB 涨到 53 MB。已加排除规则 `artifacts/*.zip` 并重打。打包后应检查「包内最大文件」而不是只看总大小。
+- 验证：`node --test` 355/355。
+
+## Completed On 2026-10-26 - Guides point at the configured car instead of substituting
+
+- 用户录屏暴露问题：编辑「开场引导动画 → 目标车 ID」从 1 改成 2，画面上的高亮框和小手纹丝不动，一直停在同一条绿车上。核对关卡数据后确认——level18 的 #1 和 #2 都被 7 辆车挡住，旧逻辑 `resolveActionableFirstClickGuideTarget` 在指定车不可移动时会**静默回退**到「能开出去且颜色匹配传送带头部」的车，面板上的 ID 数字不动，所以改 ID 看不出任何反应。
+- 用户选择方案 A（严格指向）：`resolveGuideHandTarget` 默认不再要求 `requireMovable`，指向被挡车也照样高亮；`resolveActionableFirstClickGuideTarget` 退化为别名，回退逻辑与「传送带颜色优先级」整体删除。指到被挡车时玩家点一下会看到撞击动画，正好学到阻挡规则，且在 `durationSeconds` 后引导自然结束，不会卡死。
+- 连带修两个会造成同样困惑的问题：
+  - 「小手提示 → 引导车 ID」原来是自由数字输入框（1–200），可填出关卡里不存在的 ID，而填错时小手静默不显示。改为与「目标车 ID」一致的下拉框，选项来自当前关卡真实车辆。
+  - 保存的 ID 若不属于当前关卡，下拉框会追加一个「N (本关无此车)」选项，而不是静默显示成第一辆车。
+  - 改「引导车 ID」时自动把 `vehicleGuideHand.levelKey` 设为当前选中关卡——原来它固定在 `level36`，导致在别的关卡改了 ID 小手也不出现。
+- 验证：`node --test` 355/355（`guide-hand.test.js` 的目标解析断言改写为严格语义，含「被挡车仍指向自己」「传送带颜色不得改变目标」）；浏览器实测连续配置 6 个 ID（其中 5 个被挡），高亮逐个准确跟随。
+
+## Deployed On 2026-10-26 - New icon is Android-only; iOS keeps the original art (20261026-1028)
+
+- 用户澄清：新图标是 **Android 版**，iOS 继续用原来那张。因此把上一版误改的 `public/assets/icon-ios.png` 与 `public/assets/applovin/icon_q75.jpg` 还原成 HEAD 原文件（md5 `6044d8c4…` / `c3cbdcbb…`），只保留 `public/assets/icon-android.jpg` 为新图（md5 `7c1d33d0…`）。
+- 加载页 Icon 一并回退，理由：它原本和 iOS 图标是同一张图，`applyLoadingBranding()` 在 `branding.loading.icon` 为空时才回落到品牌 Icon；若只把 iOS 还原而加载页留新图，iOS 包会出现「品牌位旧图 + 加载页新图」的混搭。
+- 版本号 → `20261026-1028`，`PLAYABLE_REMOTE_EDITOR=1 npm run build` 通过，打包 27.7 MB / 700 条目（排除规则含 `artifacts/*.zip`，避免把 25 MB 嵌套分发包带进去）上传 NAS → 部署复用 12142。zip：`http://10.0.0.6:8081/e7/e7eb34702ee287118c05ed035698134c.zip`。
+- 线上验证：chunk `index-Df1jrcYV.js`、`scene-editor-BBMFUN6W.js` 与本地 `server-dist` **sha256 逐字节一致**；编辑器标题 `v20261026-1028`；三个图标资源线上 md5 与本地全部一致。
+- 变体隔离验证（本地真实导出）：Android 包内新图 1 次 / 旧 Android 图 0 次 / 旧 iOS 图 0 次；iOS 包内旧 iOS 图 1 次 / 新 Android 图 0 次。两个包都 PASS 31/33（余 2 项人工），体积 3,551,700 B 与 3,532,147 B。
+- `git diff` 确认 `public/assets/` 下只有 `icon-android.jpg` 变化，iOS 与加载页图标与 HEAD 完全一致。`node --test` 355/355。
+- 未在线上通过界面切换 Icon 下拉框验证：该控件落在可视区外，而改动它会触发编辑器的自动保存、写进远端关卡的调参。为避免污染用户的关卡数据，改用本地导出验证变体隔离（结论同上）。
+
+## Deployed On 2026-10-26 - New Bus Loop icons live as 20261026-1018
+
+- 这一版把三张图标都换成了新图，随后按用户澄清回退为「仅 Android 换新」，详见上一条。
+- 版本号 `src/build-version.js` → `20261026-1018`，打包 27.7 MB / 700 条目上传 NAS → 部署复用 12142。zip：`http://10.0.0.6:8081/47/4741f27e1a7f8a7d19ae0f913cedb2d2.zip`。
+- 打包踩坑：首次打包 53 MB，因为把 `artifacts/busloop-level-editor-20261023.zip`（25 MB 嵌套分发包）也带了进去。排除规则要加 `artifacts/*.zip`，否则部署包体积翻倍。
+
+## Completed On 2026-10-26 - Default branding icons switched to the new Bus Loop store art
+
+- 用户提供 Google 商店最新图标（`Bus Loop Google商店最新icon/512x512-2.jpg`）。当前结论：该图仅用于 Android 版本，iOS 与加载页沿用原有美术。
+- Android 资源 `public/assets/icon-android.jpg`（4:4:4 渐进 JPEG q88，106,774 B，512×512），编码风格对齐旧文件。素材取目录里按目标尺寸导出的 `512x512-2.jpg`，比从 1024 下采样少一次重采样。
+- `icon-crowd.jpg` / `main-loading-icon-crowd.jpg` 未动，Crowd 套系不受影响。
+- `npm run check:applovin` 的 `no root-relative asset URLs` 一项失败与图标无关——用 HEAD 原版图标重打包同样失败，来源是工作区未提交的 `src/color-atlases.js` 把 `"/assets/applovin/textures"` 目录字面量留在产物里（不在 HTML 标签中，平台校验器只拦 http(s) 外链，导出交付门禁 PASS）。
+
+## Deployed On 2026-10-23 - Black/white cars ship blue: fixed and live as 20261023-1607
+
+- 版本号 `src/build-version.js` → `20261023-1607`，`PLAYABLE_REMOTE_EDITOR=1 npm run build` 通过，打包 26.4 MB / 601 条目（排除 `node_modules`、`dist`、`server-dist`、`.git` 与 `artifacts/` 下的 playable-exports/backups/asset-compress-tests/applovin；`public/assets/applovin` 的 36 个贴图保留）上传 NAS → 部署复用 12142。zip：`http://10.0.0.6:8081/bf/bfaff3c46669b24d8bf7276ccd48730b.zip`。
+- 线上 chunk：`index-DqF5BdzL.js`、`scene-editor-B1a-wOVb.js`，两者与本地 `server-dist` **sha256 逐字节一致**；编辑器标题显示 `v20261023-1607`。
+- **线上实测（关键验收）**：用真实导出接口 POST `/__playable-export` 导出 level38（BL-2610132，90 辆，22 黑 + 31 白），走的是线上容器里那份**仍旧陈旧的数据卷 catalog**。产物 `colorTextures` 为 26 项、20 张图集齐全；在真实 Chrome 里按 `material.map.source` 反查，`colour 17 -> atlas {"17":22}`、`colour 18 -> {"18":31}`，11 个色号全部对位，判定 PASS。
+- 也就是说修复不依赖数据卷更新：旧的 `artifacts/level-catalog.js` 留在原处，新导出的包已经正确。旧包需重新导出才会变好。
+
+## Completed On 2026-10-23 - 修复黑车白车导出变蓝（色卡图集缺槽位）
+
+- 用户反馈：线上编辑器里 BL-2610132（level38）黑白车正常，导出的单 HTML 里全变蓝。核查确认**不是调色问题**，是导出包的 `colorTextures` 只有 11 项（色号 0–10），而该关用色号 `17`（黑，22 辆）和 `18`（白，31 辆），渲染器 `?? vehicleColorTextures[0]` 静默回落到蓝色。
+- 缺槽位来自远端数据卷：`Dockerfile` 把 catalog 指向 `/app/artifacts/level-catalog.js`，`start.sh` 只用 `.seeded-v1` 做一次性播种，该卷里的 catalog 停留在色卡补充（10-13 加入色号 17–25）之前。`generate-active-level.mjs` 的 web 关卡路径固定用 `LEVEL_CATALOG.level5` 当 assets 基底，于是车辆带 17/18 而图集表只有 11 项。编辑器预览走镜像内新 catalog，所以两边不一致。
+- 新增 `src/color-atlases.js` 作为色号→图集的唯一来源（26 槽，11–16 显式留空给特殊车辆），并提供 `resolveColorAtlasPaths` / `isColorAtlasTableComplete`。`scripts/generate-active-level.mjs` 的 web 关卡与 catalog 两条路径都过 `completeColorAtlases()`；`src/level-data.js` 的 `setActiveLevel` 与初始 `LEVEL_1` 也补齐，编辑器预览路径同样不会回落。
+- 验证（真实 Chrome 按 `material.map.source` 反查图集绑定）：修复前 `colour 17 -> atlas {"0":22}`、`colour 18 -> atlas {"0":31}`；修复后用「旧 catalog + 远端 level38 文档」复现场景导出，`colour 17 -> {"17":22}`、`colour 18 -> {"18":31}`，其余色号逐一对位。`node --test` 355/355（新增 `test/color-atlases.test.js` 7 条）。
+- 部署注意：仅重新部署镜像不够修线上旧包，新导出才生效；数据卷里的旧 catalog 也可换新（或删除 `.seeded-v1` 重新播种），但本修复已让导出不再依赖它的新旧。
+
+## Deployed On 2026-10-23 - Seat-count badge corners are real geometry (20261023-1524)
+
+- 用户反馈车位数字牌「边框不是很圆润、有点奇怪」。放大实测确认：牌面在 720×1280 下只有约 42×24 屏幕像素，圆角靠纹理 alpha 的二值 `alphaTest` 裁剪，逐像素吸附成明显的阶梯。此前试过的 `alphaToCoverage` 与 alpha 羽化都收效有限——它们只能缓解，不能消除这个分辨率下的量化。
+- 改法：底牌从「贴图平面 + alpha 裁剪」换成真正的 `ShapeGeometry` 圆角矩形（`createCountBoardPlateGeometry`），由渲染器的 MSAA 按实际落地分辨率光栅化圆角。圆角半径按牌高比例表达（`radius / height`），因此不受 `width/depth` 非等比缩放影响。
+- 顺带修掉两个由此暴露的细节：
+  - 几何牌铺满整个牌框，而原来的 `depth` 对应的是整张 256 高图集，直接沿用会让牌面接近正方形。缩放改为 `depth × (COUNT_BOARD_PLATE_BOX.height / 256)`。
+  - 通用牌不再有贴图，改为纯色 tint；豪华车仍用 Unity 的金色图集，通过 `cropCountBoardTextureToCard` 按卡片框裁 UV 映射到同一几何上。无纹理时的颜色判断从「是否等于豪华纹理」改为「是否有纹理」，否则会把牌面误判成豪华色（白）。豪华亮度调参也只在有纹理时应用，避免几何牌被调成灰色。
+- 验证：720×1280 实拍，牌面 42×24（宽高比 1.75，参考图 1.76），四角为平滑弧线无阶梯；`36`/`8`/`120` 三种位数均居中且不越界。`node --test` 348/348（两条断言改为校验几何圆角与缩放，新增纹理裁剪与颜色分支断言）。部署版本 `20261023-1524`，包 26.2 MB / 549 条目，线上 `index-BGd9c_Q0.js` + `scene-editor-CwtK2ByZ.js`，编辑器标题 `v20261023-1524`，线上实测牌面 `ShapeGeometry`、无 texture、宽高比 1.75。
+
+## Completed On 2026-10-23 - Sharing package for the editor, plus the export blocker it uncovered
+
+- 用户要一份「给别人用」的编辑器压缩包。产物：`artifacts/busloop-level-editor-20261023.zip`（25 MB，520 条目，sha256 `e66fe9a7…565c`）。保留 `src/`、`scripts/`（13 个仍在用的）、`public/assets/`、`test/`、`artifacts/` 下的关卡数据与编辑器资源、`deploy-tools/build-verified-playable-packages`、`tools/spatial-conveyor-import-support`、`Dockerfile`/`start.sh`、编辑器使用说明与玩法规则，并新写了一份包内 `README.md`。剔除了 `node_modules`、`dist`/`server-dist`、`artifacts/playable-exports`、`web-level-backups`、`backups`、`asset-compress-tests`、一次性提取/修复脚本、`.tmp.mjs` 探针与内部规划文档。
+- **顺手修掉一个真实导出故障**：`npm run export:playable` 在本仓库基线就会失败，报 `FINAL_PAYLOAD_DUPLICATE_WASTE`。原因是 `public/assets/applovin/icon_q75.jpg`（51,911 B）与 `speed-toggle-bg_q90.webp`（19,258 B）在成品里各被内联两次——加载图标同时出现在 `index.html` 和 `branding.loading.icon` 调参字面量里，倍速按钮底图在 `.speed-toggle` 与 `.speed-toggle:hover` 里各写了一遍 url。两处都超过 4 KB 重复浪费阈值。
+  - `scripts/package-applovin-single-html.mjs`：`reuseDocumentImageAsset` 的复用名单从 `branding-icon`/`branding-logo` 扩到含 `loading-icon`。加载图标运行时拿 `getAttribute('src')` 与调参值比较，所以必须复用文档里的同一个 data URI，否则比较不等会反复回写。
+  - `src/styles.css`：倍速底图收成自定义属性 `--speed-toggle-background` 声明一次，基础规则与 `:hover` 都引用它。
+- 验证：修复前 `export:playable --platform applovin` 报 `FINAL_PAYLOAD_DUPLICATE_WASTE, FINAL_PAYLOAD_DUPLICATE_WASTE`；修复后 31/33 PASS（余 2 项为人工项），成品 3,551,580 B。`node --test` 348/348。压缩包解压到全新目录后 `npm ci` → `npm run build` → `npm test`（348/348）→ `export:playable`（31/33 PASS）→ dev 服务 6 个编辑器接口全 200。
+- `scripts/export-playable-package.mjs` 的 `resolveSkillTools()` 新增仓库内 `deploy-tools/build-verified-playable-packages` 作为第二个候选根目录（在环境变量之后、家目录技能目录之前），这样收包人不必设 `BUILD_VERIFIED_PLAYABLE_SKILL_ROOT` 也能导出。
+
+## Deployed On 2026-10-23 - Vehicle renumbering live as 20261023-1415
+
+- 版本号 `src/build-version.js` → `20261023-1415`，`PLAYABLE_REMOTE_EDITOR=1 npm run build` 通过，打包 28.4 MB / 756 条目（排除 `node_modules`、`dist`、`server-dist`、`.git` 与 `artifacts/` 下的 exports/backups/appasset-compress-tests/applovin）上传 NAS → 部署复用 12142。zip：`http://10.0.0.6:8081/82/8263b451cd0230793c187a0a47d86c08.zip`。
+- 线上 chunk：`index-WGMOtQ9j.js`、`level-layout-editor-IsrfbyWf.js`、`level-editor-model-oBTP4A0M.js`、`scene-editor-DgsMighn.js`、`level-layout-editor-CUwzXtJF.css`，五个文件与本地 `server-dist` **sha256 逐字节一致**。编辑器标题显示 `v20261023-1415`。
+- 线上实测（level30，50 辆 / 380 乘客）：定位 #25 → 删除，车辆 50→49、乘客 380→374，状态栏「已删除并重排车辆序号（现 49 辆）」，编号压成连续 1–49（#50 已不存在）；撤销后 #50 恢复、`is-dirty=false`；「车辆序号重排」按钮在已连续关卡上正确提示「已经是连续的，无需重排」。关闭编辑器未保存，`GET /__level-authoring/level30` 仍为 50 辆 / 380 乘客（revision 未变）。
+
+## Completed On 2026-10-23 - Vehicle numbering now stays compact after a delete
+
+- 用户反馈删除车辆后序号不自动排序。新增两条路径：删除（含框选删除、剪切、Delete/Backspace）在同一个事务里把剩余车辆压成连续的 1..N；「排列」下新增「车辆序号重排」按钮，用于补齐旧关卡里已有的空号。
+- 编号按**当前 id 升序**重排，所以删掉 #3 只是让 #4 顶上，画布上的相对顺序不变。`editor.autoRenumberVehicles`（默认开，关卡概览「画布设置」里可关）只控制删除时的自动压缩，手动按钮始终可用。
+- 引用必须同步，否则会串号：`vehicleDepthes` 的键与值、`mechanism.pairVehicleId`、以及 `tuning.vehicleGuideHand/firstClickGuide.vehicleId` 都在 `renumberVehicleIds()` 里成组改写。深度图是**混合命名空间**（值可能是车辆 id 也可能是非停车区容器 id），所以按「先车辆、后退回容器」解析，容器引用原样保留。
+- 删除时先清掉深度图里指向已删车辆/容器的条目再压缩，顺序反过来会让空出来的 id 落到旧阻挡者身上。整个删除+重排是单个 undo 步骤；撤销/重做通过历史条目携带（必要时取反的）id 映射，让 `SCENE_TUNING` 里的引导车 id 跟着走。
+- 编辑器侧：`LevelEditorModel.removeSelected()` 返回、`renumberVehicles()` 返回映射，`consumeRenumber()` 在每次 render 前把映射交给 `main.js` 的 `onVehiclesRenumbered`，后者改写 `SCENE_TUNING` 的引导车 id 并 `immediate` 落盘。
+- 验证：`node --test` 348/348（新增 5 条模型测试 + 6 条编辑器接线断言）；`npm run build` 通过。真实关卡 level27 实测删 #146 后 24 → 23 辆连续 1-23、`validateLevelDocument` 通过、深度图无孤儿引用、undo 完全还原。
+
+## Deployed On 2026-10-23 - x1/x2 speed switch now hidden by default (20261023-1248)
+
+- 用户确认倍数按钮要默认隐藏。改动三处：`src/scene-tuning.js` 的 `speedToggle.enabled` 默认 1 → 0；`src/main.js` 的 `applySpeedToggleTuning` 缺字段时回落到 `?? 0`（原来 `?? 1`，会让任何不带该字段的旧 profile 又把按钮亮出来）；新增 `migrateSpeedToggleHiddenTuning` / `migrateSpeedToggleHiddenProfiles` + 标记 `bus-loop-speed-toggle-hidden-v1`。
+- **迁移不能省**：以前默认是开，所以每次保存都把 `enabled: 1` 写进了缓存，只改默认值对已有 profile 完全无效。迁移用一次性标记整体清一遍（全局缓存 + 每个关卡 profile），标记只在 `restoreSelectedLevelTuning` 末尾写一次，否则第一个 profile 就把标记吃掉、后面的继续保留旧值。标记守卫也保证运营事后手动开启不会被下次刷新改回关。
+- 编辑器里的开关仍然是 **引导 → 倍速按钮 → 启用**，需要时随时可以打开（实测开启→刷新→仍为开启，关闭→刷新→保持隐藏）。
+- 验证：本地实测迁移后 `enabled=0`、按钮 `hidden=true`，手动开启后刷新仍为 1；`node --test` 343/343（新增 1 条断言覆盖默认值与迁移接线，并把原「默认暴露 x2 按钮」的断言改成默认隐藏）。部署版本 `20261023-1248`，包 26.2 MB / 549 条目（已排除 `server-dist`），线上 `index-DsmJ-Fry.js` + `scene-editor-DJEBHxZ4.js`，编辑器标题 `v20261023-1248`；线上实测 `speedToggle.enabled=0`、按钮 `display:none`，9 个关卡 profile 中 `enabled:1` 的剩 0 个。
+
+## Deployed On 2026-10-23 - Version 20261023-1159 to the remote editor (10.0.0.54:12142)
+
+- 版本号 `src/build-version.js` → `20261023-1159`，打包 26.2 MB（549 条目）上传 NAS → 部署复用 12142。zip 来源 `http://10.0.0.6:8081/39/39b9abfbaf2cdb09ea133dd44c03634c.zip`。
+- **打包踩坑（本次踩到）**：第一次打包把 `server-dist` 也塞进去了，产物 45.3 MB，里面每个贴图都重复一份（`public/` 与 `server-dist/` 各一份）。Docker 里会自己跑 `PLAYABLE_REMOTE_EDITOR=1 npm run build`，`server-dist` 属于本地构建残留，必须排除。排除后 26.2 MB，与历史包一致。
+- 线上验证：首页 chunk `index-BJhnuZzA.js`，懒加载 `scene-editor-CK2dJnj1.js` 内含版本串 `20261023-1159`、`attachTuningToExportedLevel`、`saveImportedLevelTuning`；编辑器标题显示 `v20261023-1159`。
+- 线上功能实测（level30，50 辆车）：点击「导出关卡」得到的下载内容含 `tuning`（`parkingSpots.count=4`、`vehicleArea.y=0.035`、`camera.fovDegrees=2.2`、`seatCountBoard.width=0.52`），`level.selected` 已剥离，状态栏提示「已导出 level154.json（含画面/车位/车辆参数）」。把该文件改成标记值（车位 6、startX -2.4、vehicleArea.y 0.077、camera 3.4）再导入，新关卡逐项还原，运行时实际生成 6 个车位。测试产生的 level45 及其 profile 已删除，页面已切回 level30。
+
+## Completed On 2026-10-23 - Level JSON export now carries scene tuning, import restores it
+
+- 用户反馈「导出关卡」的 JSON 不含车位/车辆/画面参数，导出再导入后这些全丢。核查确认：导出接口 `/__level-authoring-export/:key` 只从 `artifacts/web-levels/<key>.json` 读文件原样返回，而场景调优在**浏览器 localStorage** 的 `bus-loop-level-tuning-v1` 里，服务端拿不到；导入又用 `nextImportedLevelKey()` 分配**新 key**，新 key 没有 profile，`getLevelTuningForSelection` 回落到 `DEFAULT_SCENE_TUNING`——所以同一台浏览器里往返也一样丢。
+- 方案是关卡 JSON 增加**可选** `tuning` 字段（向后兼容，旧文件照常导入）：
+  - `src/level-editor-model.js`：`createLevelDocument` 透传 `tuning`（仅接受普通对象），`retargetLevelDocument` 换 key 时一并带上，布局编辑器保存不会把它丢掉。
+  - `src/scene-editor.js`：新增 `attachTuningToExportedLevel(raw, key, tuning)`，导出时在客户端把当前关卡 tuning 合并进下载内容（服务端仍然只存布局）；导入时在切关卡**之前**调用 `saveImportedLevelTuning(newKey, source.tuning)`，否则切换读到的还是空 profile。
+  - `src/main.js`：新增 `saveImportedLevelTuning`，以 `DEFAULT_SCENE_TUNING` 为底做 deepMerge + `pruneUnknownTuning`，所以老版本导出的文件缺字段时也能得到合理值。
+  - `vite.config.js`：`validateWebLevelDocument` 放行可选 `tuning`，但拒绝数组/标量/null。
+- 顺带修掉导出文件名重复后缀：服务端对 authored JSON 返回 `level18 (level18.asset).json`，此前直接 `${name}.json` 会得到 `.json.json`。
+- 验证：浏览器真实点击「导出关卡」，下载文件含 `tuning`（`parkingSpots`、`vehicleArea`、`camera` 齐全，`level.selected` 已剥离）；再把该文件走真实导入链路导入，新关卡恢复全部参数。用非默认值二次验证（车位 7、startX -2.25、vehicleArea.y 0.091、camera 3.15、牌宽 0.61）全部还原，运行时实际生成 7 个车位。`node --test` 342/342（新增 3 条），`npm run build` 通过。测试产生的 level24/25 及其 profile 已清理。
+
+## Completed On 2026-10-23 - Seat-count badge redrawn to match the game's number card
+
+- 用户对比正式游戏截图指出车位数字牌观感不对：数字太小、描边发黑，两位数和 30 以上还会挤出牌面。逐像素量了参考图和我们的渲染，差异有三处：数字白芯只占卡高 0.27–0.39（参考 0.529）、描边偏粗且带黑边、底牌宽高比 1.0–1.17（参考 1.49）。
+- 底牌改为代码绘制（`COUNT_BOARD_PLATE_BOX` + `createCountBoardPlateTexture`），不再采样 `count_al.png`。根因是该 PNG **透明像素存的是黑色 RGB**，缩小采样时把黑混进圆角边缘，形成一圈脏边。卡片仍占 256×256 图集里的 256×152 框，宽高比 1.5。
+- 数字改为**与底牌共面**的 `Mesh`（原来是朝向相机的 `Sprite`）：车位带 yaw 旋转，billboard 不跟透视压缩，数字就显得比牌宽。文字画布改成 256×256（2 的幂，才有 mipmap），数字按实测 ink 居中到卡框，不再靠 `textBaseline='middle'` 猜位置。
+- 字号改为按量测自适应：`fitCountBoardFontSize` 用 `measureText` 的 actualBoundingBox 求能塞进卡宽/卡高的最大字号，描边固定为字号的 11%。1/2/3 位数都能落在牌内（`100`/`120` 已验证）。
+- `seatCountBoard.textScale` 语义变成「相对底牌倍率」，默认 1.47 → 1；`main.js` 新增 `migrateSeatCountBoardTextScaleTuning`（同时覆盖全局缓存与按关卡 profile），只改写旧默认值 1.47，运营设过的值不动。`artifacts/scene-tuning.json` 同步为 1。
+- 豪华车计数牌（`count_limousine.png`）同样存黑底透明像素，用 `whitenTextureClearTexels` 在加载后重绘，保留原有金色美术。
+- 验证：720×1280 实拍截图量到卡牌 42×28（宽高比 1.50 vs 参考 1.49），数字白芯占卡宽 0.524 / 卡高 0.393，`40` 与参考 `30` 等宽缩放后观感一致；`node --test` 337/339（2 条 runtime smoke 因 Chrome 调试端口启动超时，单独跑该文件 12/12 通过）；`npm run build` 通过。
+
+## Completed On 2026-10-22 - Sticky x1/x2 speed switch added to the playable and editor
+
+- 参考包（`mraid-proxy.dmint.dev/.../3f8bee42`）是一个 Cocos 创意，内嵌 ZIP 解包后确认它的「2 倍数」是 `SpeedButtonView` + `ConveyorSpeedScaleModel`：单击在 x1/x2 之间切换（`enable_speed_scale_ui` 控制是否显示，`enable_double_tap_to_switch_speed_multiplier` 允许双击切），按钮由蓝色胶囊底 + 普通/加速两个图标 + `x1`/`x2` 文本组成。按钮美术直接从该包取（`ButtonBG`、`icon_play`、`icon_boost`）。
+- 我们的实现在 `src/speed-toggle.js` + `src/main.js`：**缩放整个模拟时钟**而不是只加速传送带。原因是我们的主节奏是车辆行驶与上下客，只加传送带倍率玩家几乎看不出变化。`game.update` 单次上限 0.1 s，所以帧循环把 `delta × timeScale` 拆成 ≤0.05 s 的子步，否则低帧率下 x2 会被截断。长按加速保持原语义（只作用于传送带），与倍速互不影响。
+- 按钮 `#speed-toggle` 默认在画面右上角（`z-index: 9`，低于结算面板 / CTA 的 12–13），点击只切倍速：**不派发平台 challenge 事件**，否则一次 x1/x2 翻转会被记成「开始挑战」污染漏斗。重置回到 x1。
+- 开关与调优：`speedToggle.{enabled,x,y,width,height,multiplier}` 默认显示、2 倍、右上角；编辑器「引导」分类下新增「倍速按钮」分组。关闭时按钮隐藏并立刻回到 x1。
+- 导出：三个按钮资源加进 `BASE_RUNTIME_ASSET_PATHS`。漏掉这一步导出包会把它们替换成 1 字节占位，按钮变空白。
+- 验证：`node --test` 337/337（新增 4 条，含「x2 的子步推进正好是 x1 的两倍」）；浏览器实测点击后 `aria-pressed=true`、标签 `x2`、`timeScale()=2`，1.5 s 墙钟分别推进 1.5 s / 3.07 s；编辑器改倍率到 3 后实测 `timeScale()=3`，关闭开关按钮隐藏且回到 x1；`npm run build`、`package:applovin`（3.476 MiB，三个资源已内联）、`check:applovin` 全项 PASS；`check-playable-runtime` 对导出 HTML 判定 PASS。
+
+## Completed On 2026-10-22 - Tap sound attached to the correct slot, deployed
+
+- 用户指出上一轮把音效挂错了位置：`点车1.mp3` 才是点车音效。核对 md5 确认——`点车1.mp3`、上一轮的 `车辆出.mp3`、以及当时挂在开出位的 `vehicle_out.mp3` **三者是同一个文件**（`0c8661f8…`，0.392 s），也就是说上一轮把一个点车音效挂到了开出位。
+- 修正：点车音效落为 `public/assets/unity/audio/vehicle_tap.mp3`（同一声源），`bus_full` 恢复为原来的 `/assets/unity/audio/bus_full.mp3`（2.43 s），`vehicle_out.mp3` 删除。音效名 `vehicle_tap` 配上 `vehicle-dispatched` 事件、`audio.vehicleTapDelay`、`audio.vehicleTapVolume`（默认 1）与「音效音量(倍数)」分组。
+- **打包踩坑（本轮实际踩到）**：`PLAYABLE_REMOTE_EDITOR=1 npm run build` 输出到 `server-dist`，但 `package:applovin` 默认只读 `dist`。用远端模式构建后直接打包，拿到的是上一次普通构建的旧 `dist`——产物里出现已删除的 `vehicle_out.mp3`、缺少 `bus_full.mp3`，音频数 5 而不是 6。判断方法：按已知文件字节数反算 base64 长度（`ceil(n/3)*4`）逐个比对，而不是只看数量。
+- 验证：`node --test` 333/333；清理 `dist` 内残留音频后重新普通 build + `package:applovin`，6 个音频且含 `bus_full`(86920) 与 `vehicle_tap`(17356)；`check:applovin` 24 项 PASS。
+- 部署：版本 `20261022-1548`，线上 `index-CZ0gIxvW.js` / `scene-editor-OOaEiy13.js`；已验证版本号、`vehicleTapVolume` 在位、`bus_full.mp3` 在位、`vehicle_out` 计数 0、`effects.smokeTrail` 在位。
+- 线上 level18 仍在（112 辆 / 394+394，source=web）——数据卷未被本次部署覆盖，符合 `start.sh` 只在首次播种的行为。
+
+## Completed On 2026-10-22 - Tap sound removed, departure sound kept, deployed to production
+
+- 用户改口：只要车辆开出的新音效，点车音效不要了，并同步线上。之前那次点车音效的改动被完整回退：`vehicle_tap` 音效条目（19 处关卡配置）、`audio-controller` 的 `vehicle-dispatched` 分支、`getVolumeScale` 音量倍数机制、`audio.vehicleTapDelay` / `audio.vehicleTapVolume` 两个调优字段、「音效音量(倍数)」编辑器分组、2 条测试，以及 `public/assets/unity/audio/vehicle_tap.mp3` 全部删除。测试数从 333 回到 331，正好对上移除的 2 条。
+- 保留的改动是 `bus_full` → `/assets/unity/audio/vehicle_out.mp3`（0.392 s）。旧 `bus_full.mp3` 仍在磁盘，回退只需改路径。
+- 部署：版本号 `20261022-1537`，28.4 MB 包（排除 node_modules/dist/server-dist 与 artifacts 下的产物目录，`public/assets/applovin` 的 36 个贴图文件经校验仍在包内），NAS → mcp_deploy_sse 复用 12142。线上 chunk `scene-editor-B2Vv3K25.js` 内确认版本号 `20261022-1537`、含 `effects.smokeTrail`、`vehicleTap` 计数为 0。
+- **踩坑（已存记忆）**：`/app/artifacts` 是宿主机持久卷，`start.sh` 只在首次用镜像播种。新关卡文件打进 zip **不会**出现在线上——部署后 level18 在列表里可见（source=catalog）但 `GET` 返回 404。必须额外 `POST /__level-authoring/import`（带 `targetLevelKey`）写入数据卷。本次已推送，线上 level18 为 112 辆车 / 394+394 乘客，source 变为 web。
+- 顺带修掉一次自己的误操作：用 `rg -r` 想搜关键词却触发了替换，导致 `src/generated-active-level.js` 被改写；已用 `npm run generate` 重新生成修复，并确认全仓库无 `vehicle_tap` / `vehicleTap` 残留。
+
+## Completed On 2026-10-22 - Vehicle departure sound replaced
+
+- 用户提供 `车辆出.mp3`（0.392 s，44.1 kHz 立体声），要求替换车辆开出音效。
+- 新文件落为 `public/assets/unity/audio/vehicle_out.mp3`，`src/level-catalog.js` 里 19 处 `bus_full` 的 clips 改成新路径（音效名仍是 `bus_full`，所以事件接线、延迟参数 `audio.busFullDelay`、音量都不动）。`src/generated-active-level.js` 已重新生成。
+- 旧的 `bus_full.mp3`（2.429 s / 65 KB）保留在磁盘上未删除，回退只需把 19 处路径改回去。
+- 验证：`node --test` 333/333（`LEVEL_1.assets.audio.bus_full` 断言同步为新路径）；浏览器实测运行时读到新路径、资源 200 且解码为 0.392 s 双声道、真实派车会发出 `vehicle-full` 事件；`npm run build` 通过；AppLovin 包 3.352 MiB（比替换前小 67 KB，与 65 KB→13 KB 的 base64 差值吻合，证明旧音效已被新音效替换而不是叠加）；`check:applovin` 24 项 PASS。
+
+## Completed On 2026-10-22 - Vehicle trail smoke exposed in the editor
+
+- 需求：车后拖尾烟雾的参数也要能在编辑器里调。此前 `ParticleTrail`（`smokeTrail`）的数值全部写死在 `src/vehicle-effects.js` 的 `UNITY_EFFECTS.smokeTrail`，编辑器只有「离场烟雾粒子」（`ribbonSmoke`，车辆离场时车位上的爆发烟），两者不是同一个效果。
+- 新增调优段 `effects.smokeTrail`（11 项）：每秒粒子数、寿命上下限、初始大小上下限、漂移速度倍数、尾部 Z 偏移、高度 Y 偏移、散开倍数、重力、不透明度。默认值逐项等于原 Unity 数值，所以升级后画面不变。
+- `VehicleEffects` 新增 `smokeTrailTuning()` 解析：每个字段缺失或非法时回落到 `UNITY_EFFECTS.smokeTrail` 原值；`lifetimeMax < lifetimeMin`、`sizeMax < sizeMin` 时取较大值，避免随机区间塌缩成常量（否则烟雾会变成一颗颗等大等寿命的点）。
+- 编辑器新增「行驶尾烟 ParticleTrail」分组。
+- 验证：`node --test` 333/333（新增 2 条：编辑器参数确实覆盖默认值、上下限颠倒时不塌缩）；浏览器实测 11 个滑块渲染正常、默认值与旧值一致、拖到 80 后运行时读取到 80；同一辆车在同一路径下，速率 5 时粒子峰值 1、速率 120 时峰值 30，确认参数真实影响渲染；`npm run build` 与 `package:applovin` 通过（3.419 MiB），`check:applovin` 24 项 PASS。
+- 导出兼容：`validateTuning` 以当前默认值为模板，新字段已进 `DEFAULT_SCENE_TUNING`，旧缓存里的调优快照会由 `pruneUnknownTuning` 自愈，不需要手写迁移。
+
+## Completed On 2026-10-22 - Vehicle tap sound with an editor volume control
+
+- 用户提供 `点车.mp3`（0.836 s，44.1 kHz 立体声），要求加在点击车辆上，并提供音量调节。
+- 资源落到 `public/assets/unity/audio/vehicle_tap.mp3`，音效名 `vehicle_tap`，基础音量 0.7，在 `src/level-catalog.js` 的 19 处关卡音频配置里同步加入（web 关卡从目录模板继承 `assets`，只改一处会让部分关卡没有音效）。
+- 触发点选 `vehicle-dispatched`：这是 `clickVehicle` 真正派车成功后才发的事件，所以点被挡的车、点空位都不会响。
+- 音量做的是**倍数**不是绝对值：`GameAudioController` 新增 `getVolumeScale(name)`，最终增益是 `关卡基础音量 × 倍数`，滑杆置 1 时保持 Unity 原始音量平衡。默认 `audio.vehicleTapVolume = 1`，另加 `audio.vehicleTapDelay` 与其它音效对齐。
+- 编辑器新增「音效音量(倍数)」分组，并在「音效延迟」里加了点击车辆一项。
+- 修掉一个真实缺陷：`Number(undefined)` 是 `NaN`，`?? 1` 兜不住，倍数缺失时会把音效静音；改为先判 `Number.isFinite`。
+- 验证：`node --test` 331/331（新增 2 条：每次派车各响一次、倍数为 1/0.5/2 时增益为 0.4/0.2/0.8）；`npm run build` 通过；`npm run package:applovin` 产物 3.418 MiB，`audio:audio/mpeg` 内联从 5 个变 6 个且含 `vehicle_tap`；`npm run check:applovin` 24 项全 PASS；浏览器实测资源 200、解码成功、关卡音频配置含该音效。
+
+## Completed On 2026-10-21 - Dense vehicle field generator (level18 reaches 112 cars)
+
+- 需求：按参考图把红框停车区铺满车辆。核对后确认**编辑器本身没有车辆数量上限**（实测往 level27 加到 104 辆仍能通过 `validateLevelDocument`），真正的约束是画面空间与「车全部互锁」的可解性，所以这次交付的是可复算的车阵生成器，不是放宽某个限制值。
+- 新增 `scripts/generate-dense-vehicle-field.mjs`：按实测车道参数铺车（横向 0.28、纵向 0.60），六色按角度分块，乘客队列按「解锁顺序」编排，最后用真实引擎的 `getBlockers` 跑贪心剥离，只要还剩一辆车解不出来就判失败（退出码 2）。
+- 参数是扫出来的，不是猜的：纵向 0.49 会让下一排压到车头并互相阻挡（88 辆里只有 3 辆能动）；两套网格叠在一起更差（156 辆 0 辆能动）；分带混朝向只有 38 辆。最终 yaw 0 / 横向 0.28 / 纵向 0.60 得 112 辆、`stuck=0`。
+- 颜色与队列必须分开处理：车色按角度分块（参考图是色块，不是马赛克），队列按解锁顺序发放。平均发牌会让传送带出现够不到的颜色、四个车位瞬间塞满（24 色平均版第 4 次点击就结束；改成解锁顺序后 26 次，同口径下真实 level12 是 29 次）。
+- `artifacts/web-levels/level18.json` 从 68 辆 / 400 乘客升到 112 辆 / 788 座位，队列 394/394，`validateLevelDocument` 无错无警告，浏览器截图确认停车区铺满。
+- 验证：`node --test` 329/329。
+- 注意：可解性门禁只保证「所有车最终都能开出来」，不等于整关一定能打赢；传送带与车位容量仍需人工试玩确认。
+
+## Completed On 2026-10-21 - Crowd branding assets and shared Android/iOS export set
+
+- 用户提供 Crowd 的 logo/icon PSD，要求加入品牌更换选项，并单独做一套「iOS 与 Android 共用同一个试玩包」的导出。资源压平为 `public/assets/icon-crowd.jpg`（512×512）与 `public/assets/main-loading-icon-crowd.jpg`（1024×500）；PSD 原件未入库。
+- 编辑器 `Icon/Logo调整`：`Icon 版本` 增加 Crowd；新增 `Logo 版本`（`branding.logo.asset`，可选 Bus Fever / Crowd）。运行时会按该字段切换品牌 Logo，并同步到 Game Over 面板的 Logo。
+- 导出新增「导出套系」：`bus` 保持原来的 Android + iOS 两套（14 个产物）；`crowd` 只出一套（7 个平台各 1 个），文件名后缀 `-Crowd`，聚合包 `bus-loop-crowd-all-platforms.zip`，`manifest.json` 记录 `brandingSet` 与 `brandingVariant: crowd`。Crowd 套导出时自动烘焙 Crowd Icon 与 Logo，不依赖编辑器当前预览的选项。
+- 导出源缓存 key 加入套系 variants，避免 Bus 与 Crowd 互相复用已烘焙品牌图的源码缓存；单 HTML 打包同时复用文档里的 `branding-icon` 与 `branding-logo`，Logo 不再重复内嵌一份 base64。
+- Verification: `node --test` 329/329；`npm run check:applovin` 24 项 PASS；本地 `--branding-set crowd` AppLovin 包 3,504,573 B，Crowd icon/logo 各内嵌 1 次、无 Android/iOS 图标；Crowd 全平台导出 7 产物、Bus 全平台仍为 14 产物。
+- 注意：Crowd 套会把仍是默认值的底部文案与加载页标题改成 `Bus Crowd`；若已自定义文案则保持原样。加载页图标跟随品牌 Icon（不重复内嵌字节）。
+
+## Completed On 2026-10-21 - starLoop conveyor layout removed
+
+- 用户决定不再做星形轨道。已删除全部相关改动：`src/conveyor-layouts.js` 的 `starLoop` 条目（文件已回滚到 HEAD）、`src/scene-tuning.js` 的默认调参、`src/scene-editor.js` 的下拉选项、`src/mechanism-resources.js` 的导出白名单、`src/playable-session-config.js` 的合法布局集合、`test/game-model.test.js` 的相关断言，以及素材 `public/assets/unity/conveyors/Loop_07_q80.webp` 和 `artifacts/conveyor-art-sources/`。
+- 未部署线上，线上从未包含此布局的最终版本。
+
+## Completed On 2026-10-21 - Q22 two-stage progressive playable, both versions exported
+
+- 需求 Q22（简单关 + 困难关长流程，全程 4 车位，开局置灰单车高亮，转场标 super hard，红圈区域写 level 1 / level 99）按「直接做试玩、不走编辑器 UI」实现，两版各出一包。
+- 新增 `src/playable-session-config.js` + `artifacts/playable-session.json`：一份会话文档描述舞台序列，每个舞台带自己的关卡、传送带布局、开场引导/横幅开关和 HUD 角标；`scripts/generate-active-level.mjs` 烘焙成 `PLAYABLE_STAGES`。
+- 关键修复：传送带布局和背景原本只读全局 `SCENE_TUNING`，多舞台会两关共用一张图、一条轨道。改为舞台优先（`setActiveStageScene`，`src/scene-view.js`），并在每个舞台显式声明 `scene.conveyorLayout`。截图验证前 level27 确实错误地用了 `dualQueue3`。
+- 多舞台闸门：原来 `installGate` 阈值按单关车数（64）烘死，118 辆的长流程会在第二关中段就弹商店并吞掉点击。生产构建在多舞台时改为全程总车数。
+- 赢局不再直接结算：第一舞台胜利后延迟 900ms 等最后一辆车退场，再切关并播放第二舞台的 SUPER HARD 横幅；`reset()` 会同时恢复第一舞台的传送带、引导与角标。
+- 两个版本：`q22-special` = level27(BL-2610142) → level12；`q22-rect` = level2(Q7V1改) → level30(level154)。会话自带 `exportNaming`（Q22V1 / Q22V2），否则两包会撞同一个文件名。
+- Verification: `node --test` 328/328；`npm run check:applovin` 24 项全 PASS；两包 `export:playable` 均 31/33（余 2 项为人工项）、运行时门禁 PASS。
+- 产物：`artifacts/playable-exports/q22/BL-Q22V1-N-EN-PL-WXJ-TJW-AL-0-0.html`、`BL-Q22V2-N-EN-PL-WXJ-TJW-AL-0-0.html`。
+- 已知待定：level154 原始声明 `ConveyorBelt3`，代码里没有该布局，当前两版统一用 `dualQueue2` 渲染；截图确认赛道与队列位置正常，但若美术要求贴合原关卡需另做该布局。SUPER HARD 横幅上的红圈为需求方参考图标注，本实现用 `stage.labels` 在左上/右上角写 level 1 / level 99。
+
+### 用户反馈「这个车为何点不了」的两个真实原因（已修）
+
+- **引导指到被挡车。** 阶段一原配置 `firstClickGuide.vehicleId = 140`，而 140 开局被 139 挡住，遮罩把点击全吞掉，玩家照提示点只会没反应。`src/scene-view.js` 新增 `resolveActionableFirstClickGuideTarget`：首选仍是指定车，若不可移动则回退到「当前可派车」中队列头颜色匹配的那辆。level27 现在是 159。
+- **引导期间连高亮车也点不了。** `handleVehicleClick` 原来按 `isVehicleInputLocked()` 一刀切返回 `opening-guide`。改为放行 `view.isFirstClickGuideTarget(id)`，其余仍锁；CSS 的 `is-input-blocking` 从整块遮罩挪到四块镂空外的遮罩片，洞内点击落到 canvas。浏览器实测：引导期间点 159 成功进 1 号车位。
+- **level27 数据死锁。** 150 与 151 两台蓝车的出场路径互相刮到（Tarjan SCC 检出唯一双节点环），任何顺序都点不动，整关无解。把 151 平移 `(-0.04, -0.04)` 后 SCC 为空；四关（level27/12/2/30）现均无环。这是关卡数据问题，不是引擎问题，需回流到编辑器的 BL-2610142。
+- 会话支持 `"preRoll": 0`：渐进关卡已有置灰引导和转场横幅，前贴只是延迟首次点击。两版 Q22 已关闭并确认产物内 `assets/preroll/` 引用为 0。
+- Verification: `node --test` 328/328（`test/guide-hand.test.js` 的引导回退断言已按新语义改写）；`npm run check:applovin` 24 项 PASS；两包重新导出 `conclusion: PASS`。
+
+## Completed On 2026-10-20 - Stale cached tuning keys no longer block export
+
+- 线上导出连续报「tuning.<字段> is not supported」（先是 `conveyorLayouts.starLoop`，后是 `parkingSpots.hideOutlineWhenOccupied`），服务端耗时 0 秒。
+- 根因不是导出器 bug：`loadSavedTuning()` / `restoreSelectedLevelTuning()` 会把 localStorage 里的整份调优快照 `deepMerge` 进 `SCENE_TUNING`，而任何**已从源码删除的字段**仍留在缓存/关卡 profile 里，合并后又被 `validateTuning` 按当前默认值逐键校验，一个未知键就整包拒绝。旧版本只要删过调优字段，用户的浏览器就会永久卡在无法导出。
+- 修复（通用，不针对具体字段）：新增 `src/tuning-migrations.js` 的 `pruneUnknownTuning(target, template)`，按当前 `DEFAULT_SCENE_TUNING` 递归删掉本版本不再定义的键并返回是否有改动。
+  - `loadSavedTuning()`：全局缓存合并后清理；有改动则把清理结果写回 `bus-loop-scene-tuning-v3`，避免每次刷新重复清理。
+  - `restoreSelectedLevelTuning()`：进入时**遍历所有关卡 profile** 逐个清理并写回（只清当前关卡不够，切关卡后会重新带回脏数据）；合并选中关卡后再清理一次运行时对象。
+  - `getLevelTuningForSelection()`：交给导出的 profile 副本同样先清理。
+- 验证：`node --test` 319/319（新增 `test/tuning-migrations.test.js` 5 条，含「有脏键时 validateTuning 抛错、prune 后通过」与「starLoop 这类真实布局必须保留」）；线上实测：先向 localStorage 注入 `hideOutlineWhenOccupied` 复现故障，刷新后缓存与 9 个 profile 全部自动清理，`window.__busLoop.tuning` 无脏键且 starLoop 保留，页面内 POST `/__playable-export` 返回 200；线上导出 AppLovin 包 200（3.4 MB），运行时门禁 13/13 PASS。
+- 版本号 `20261020-1841`，部署 `busloop-editor-prune-20261020-1842.zip`（http://10.0.0.6:8081/ce/ce56d3a3e8e75800143d985bdc4bea72.zip）；远端 `index-BP-OhN0u.js` / `scene-editor-aWEBOXaf.js`。
+- 以后删除调优字段不需要再手写迁移：缓存会在加载时自愈。若仍出现同类报错，说明该请求不是从页面发出的，直接查请求体即可。
+
+## Completed On 2026-10-20 - Seat count badges render under the cars
+
+- 用户截图：车位白线已修好，但「16」座位数标牌仍压在车上（红车盖住标牌或标牌盖住车）。
+- 根因与车位描边完全相同：`createSeatCountBoard()` 的底板 `MeshBasicMaterial` 是 `transparent: true`，文字 `SpriteMaterial` **默认也是透明的**。three.js 把透明材质统一排在不透明物体之后绘制，`renderOrder` 对跨 pass 无效。
+- 修复（`src/scene-view.js`）：底板与文字都改为不透明 + `alphaTest: 0.02` 裁剪，`SpriteMaterial` 显式写 `transparent: false`；两者都加 `depthTest: false` / `depthWrite: false`，渲染顺序用新常量 `SEAT_COUNT_BOARD_RENDER_ORDER = -9`——比车位描边的 `-10` 靠后（标牌画在白线之上），但仍在所有车辆之前。
+- 徽标贴图 `count_al.png` 实测 alpha 为硬边 0/255，不透明裁剪不会出现边缘缺口。
+- 验证：`node --test` 314/314（新增 1 条徽标层级契约测试）；线上导出 AppLovin 包 200（3.4 MB），运行时门禁 13/13 PASS。
+- 版本号 `20261020-1810`，部署 `busloop-editor-badge-star-20261020-1811.zip`（http://10.0.0.6:8081/30/305aa764a8498849158cae695c7768d0.zip）；远端 `index-De3QvxM8.js`。
+
+### 部署事故（已修复，勿重犯）
+
+- 打包时直接 tar 整个工作区，把并行会话尚未完成的 starLoop 轨道（`conveyor-layouts.js`、`scene-tuning.js`、`mechanism-resources.js`、`scene-editor.js`、`Loop_07_q80.webp`）一起推上了线。
+- 为「撤回」又反向操作了一次：基于旧包重建、只注入标牌补丁，结果线上没了 starLoop，而用户浏览器 localStorage 里的调优带着 `conveyorLayouts.starLoop`，导出直接被 `validateTuning` 拦成「tuning.conveyorLayouts.starLoop is not supported」。
+- 正确做法：**部署前先确认工作区里哪些改动是本任务的、哪些是并行会话的**；若误部署，应按工作区当前真实状态重新构建部署（本次 `20261020-1810` 即如此），而不是拼一个「只含本任务改动的旧包」——后者会让线上模块与用户本地已保存的调优结构不一致。
+
+## Completed On 2026-10-20 - New "starLoop" conveyor layout (local only, not deployed)
+
+> 2026-10-21：该布局已按用户要求全部删除，下面的记录仅作历史留存。
+
+- 用户提供了一张星形回环传送带贴图（1614×975、透明背景、中心镂空星形），要求加成一款可选轨道。新增布局 `starLoop`（编辑器标签「星形轨道 StarLoop」），容量 33、两条队列各 23、出口区间 0.7085–0.8585（落在带子底部缺口）。
+- 素材处理：原图两臂被画面上沿截断，脚本从顶部行复制延伸 780px 补齐，得到 `public/assets/unity/conveyors/Loop_07_q80.webp`（1614×1755，127 KB）；原始图与延伸图分别存于 `artifacts/conveyor-art-sources/StarLoop_source.png`、`StarLoop.png`。
+- 中心线不是描控制多边形，而是**按星形孔轮廓沿法线量出带宽中点再反解三次均匀 B 样条控制点**（19 点）。原因：Dreamteck 闭合 B 样条的控制点不等于曲线上的点，直接抄图形点位会让小人在尖角处跑出带子。拟合残差中位 5.4px；浏览器内对环线 61 个、队列 62 个采样点做贴图 alpha 检测，越界 0。
+- 世界标定：带宽按 1.0 世界单位（与现有四套一致）反推像素比 `1/243`；贴图底边对齐现有布局的 `z=-0.175`。
+- 改动文件：`src/conveyor-layouts.js`（新增条目）、`src/scene-tuning.js`（`conveyorLayouts.starLoop` 默认调参，缺省会因 `setAtPath` 找不到父节点而报错）、`src/scene-editor.js`（下拉选项）、`src/mechanism-resources.js`（**导出白名单**，漏加会让导出包把贴图替换成 1 字节占位图）、`test/game-model.test.js`（id 列表/容量断言、编辑器接线断言）。
+- 验证：`node --test` 314/314；临时把 `conveyorLayout.selected` 设为 starLoop 后 `npm run build` + `package:applovin`，产物 3.29 MiB 且贴图以 WebP data URI 内联，运行时门禁 13/13 PASS；随后已把选中项与 `artifacts/selected-level.txt` 还原为 `dualQueue3` / `level13`，未部署线上。
+
+## Completed On 2026-10-20 - Parking bays are fixed-size and always render under every car
+
+- 用户两次否决了「描边随车缩放」和「离场车被描边遮住是可接受表现」。最终要求：**车位固定美术原始尺寸，永不跟随车辆；车位层级永远低于车，离场车也要压着车位开出去。**
+- 删除跟随缩放：`updateSpotOutlineSize`、`measureVehicleModelSize`、`measureSpotOutlineBase`、`SPOT_OUTLINE_FIT` 全部移除。此前空车位会把描边缩放重置为 `1`，而模板在 `normalizeObject` 里已放大到 2.2 倍，于是空车位只有应有大小的约 45%——这就是「车位怎么这么小」的直接原因。
+- 白框压车有两个独立成因，必须同时修：① `parkingMaterial` 是 `transparent: true`，three.js 把透明物体统一排在不透明物体之后，任何 `renderOrder` 都无效；改为纯 `alphaTest` 不透明材质。② 离场车按 `vehicleDeparturePath.y = -1` 行驶，比车位（约 0.03）更低，深度测试下描边更靠近镜头而盖住车；描边材质改为 `depthTest: false` + `depthWrite: false` + `renderOrder: -10`，作为纯地面图层先绘制。
+- 连带修复：`backgroundPlane` 同为透明材质，车位转不透明后背景会反过来盖住车位。现在仅在 `opacity < 1` 时启用 transparent，保证绘制顺序为 背景 → 车位 → 车/小人。
+- 验证：开发版逐帧截图确认「停车 / 上客 / 离场」三态白框均在车下方；`node --test` 313/313（原「描边随车缩放」契约测试改写为「固定尺寸 + 层级」断言，新增 1 条离场层级测试）；`npm run build` + `package:applovin`，`check-applovin-package` 全部 PASS。
+- 已部署 `busloop-editor-spot-fixed-20261020.zip`（http://10.0.0.6:8081/ba/bad5e3f639d3f9cf7ef4ffe6304b299d.zip），版本号 `20261020-1545`；远端 `index-CKvuEtiT.js` 与 `scene-editor-CzJFnpFd.js` 均与本地 `PLAYABLE_REMOTE_EDITOR=1` 构建字节一致，`updateSpotOutlineSize` 已不在产物中；线上导出 AppLovin 包 200（3.2 MB），运行时门禁 13/13 PASS。
+
+## Completed On 2026-10-20 - Parking bays fit the car; no passenger left behind on departure
+
+- 车位描边（用户截图「车和车位对不上」）：共用白线美术按标称车绘制，实测 10 座车覆盖只有 0.47×0.40，车明显溢出车位框；层级与中心对齐本身正常（描边在车底下方 4mm、中心偏差 0.001）。现在描边随车位上的车等比放大到 1.08 倍，空车位保持原尺寸。实现：`src/scene-view.js` 的 `updateSpotOutlineSize()` / `measureVehicleModelSize()`。
+- 尺寸测量踩坑：`userData.templateSize` 是 Unity 碰撞尺寸（0.27×0.678），比渲染车模小得多；世界 AABB 又会被 16° 车位偏航撑大。正确做法是在模型本地坐标量、再乘实时渲染缩放。
+- 离场残留小人（用户截图「最后一帧后面有个小人」）：上车行人的视觉目标固定为车位坐标，车开走后仍会走到空车位并站住。现在 `updateBoardingViews()` 发现该车已 `departing`/`done` 就立即回收未落地行人并补发上车音效。
+- 同时修正上一轮碰撞特效：改为以「车心指向真正阻挡物」的方向、放到车身轮廓之外，避免车库体积与车身重叠时闪光压在车上。
+- 验证：真实 Chrome 连跑 3 辆 10 座车，离场后行人残留均为 0；描边覆盖率 1.08×1.08；`node --test` 312/312（新增 4 条契约测试）。
+- 已部署 `busloop-editor-bayfit-20261020.zip`（http://10.0.0.6:8081/5e/5e885031513ba33d485b457484cb977e.zip），版本号 `20261020-1131`；远端 `index-XddRySYl.js` 含 `measureVehicleModelSize` 与 `resolveHitContact`，线上导出 AppLovin 包 200（3.1 MB），运行时门禁 13/13 PASS。
+
+## Completed On 2026-10-19 - Garage/conveyor hit effects land on the blocked car
+
+- 现象（用户截图）：点车阵里被挡住的车，撞击白光和粒子出现在上方传送带出口的地砖上，远离被点的车。
+- 根因：引擎的 `contactPosition` 是关卡源空间坐标，`vehicle-effects.js` 误当世界坐标直接渲染。车→车碰撞用两个 view 的中点所以正常，只有容器（车库/传送带墙/门）碰撞会飘。
+- 修复：`VehicleEffects` 增加 `mapContactPoint` 注入点，`src/scene-view.js` 传入 `mapMotionPoint` 把源空间点映射到场景。`test/vehicle-effects.test.js` 新增 1 条映射契约测试（含「车→车碰撞不走映射」的断言）。
+- 验证：Q21（level20）真实 Chrome A/B，同一次车库阻挡：修复前特效距车 6.89 世界单位，修复后 0.38。`node --test` 310/310。
+- 已部署 `busloop-editor-hitcontact-20261019.zip`（http://10.0.0.6:8081/db/db257a3663663f6d0d02e1f4849bc8ac.zip），版本号 `20261019-1826`；远端 `index-DLcCCGrd.js` 含映射逻辑，`scene-editor-C1cxENRn.js` 显示新版本号；线上导出 AppLovin 包 200（3.1 MB，含映射代码），运行时门禁 13/13 PASS。
+
+## Superseded 2026-10-19 - (replaced by the entry below) Departure line was raised to the vehicle layer
+
+- 曾把 `vehicleDeparturePath.y` 从 -1 提到 0.035 让线去贴合车辆层。方向错误：用户要求的是线保持原位、车降到线上，已撤销，详见下条。
+
+## Completed On 2026-10-19 - Departing cars ride the authored departure line again
+
+- 现象（用户截图）：满载离场不再沿编辑器那条黄色离场路径走，线单独横在车下方的路面上。
+- 根因：同日的车位层级修复把离场车辆高度从 `vehicleDeparturePath.y`（-1）改成了 `vehicleArea.y`（0.035），线没动，于是车与线在屏幕上错开约 60 个设计像素。`-1` 不是"把线藏到地面下"：线材质带 `depthTest:false`，一直可见，该值表示这条离场车道在屏幕上低于车位行。
+- 修复（用户确认方向）：**线不动，车降到线上**。`src/scene-view.js` 离场分支恢复 `const departureY = SCENE_TUNING.vehicleDeparturePath?.y ?? SCENE_TUNING.vehicleArea.y`；`src/scene-tuning.js` 与 `artifacts/scene-tuning.json` 的默认值回到 -1；`src/main.js` 的 `migrateDepartureRouteHeightTuning/Profiles` 把上一版误写进全局缓存与关卡 profile 的 0.035 改回作者值（自定义高度不动）；编辑器标签改为「离场高度（线与车）」。
+- 验证：真实 Chrome 中量测同一路段，修复前车/线相差 53.5 CSS px，修复后差 0；整段离场（倒车 → 转弯 → 右行 → 驶出）四个阶段逐点采样 dy 均为 0。`node --test` 309/309（新增 1 条契约测试，锁定"离场车用 `vehicleDeparturePath.y`"与缓存的 0.035→作者值迁移）。
+- 已部署 `busloop-editor-departure-online-20261019.zip`（http://10.0.0.6:8081/6d/6d306498d772826c1e1675d6400d758e.zip），版本号 `20261019-1802`；远端 `index-DBVeHSWX.js` 含 `y:-1` 与 `vehicleDeparturePath?.y??P.vehicleArea.y`，线上导出 AppLovin 包 200（4.6 MB），运行时门禁 13/13 PASS。
+
+## Completed On 2026-10-19 - Parking outlines render below the vehicle layer (cars drive over them)
+
+- 现象：车辆停在车位上时白线穿过车身；改完之后满载离场的车更严重——整辆车被画到车位线下面。
+- 最终方案（用户确认）：**车位描边常显，但放在车辆下一层**，车从上面开过去。之前试过的「占用时隐藏描边」已被否决并完整撤除（`hideOutlineWhenOccupied`、`updateSpotOutlineVisibility`、编辑器开关均已删除）。
+- 描边层级（`src/scene-view.js`）：`upgradeSpotViews()` 把描边 Y 压到原厚度的 `SPOT_OUTLINE_FLATTEN_Y_SCALE`（2%），顶面沉到车底下方 `SPOT_OUTLINE_CLEARANCE_Y`（4mm）。实测描边顶面 0.031、车底 0.035。占位方块 `buildSpots()` 同步改为薄片。对齐用车位根局部坐标计算，因为 `applyTuning()` 之后才设置车位世界位置。
+- 离场穿模根因（`src/scene-view.js`）：`vehicleDeparturePath.y = -1` 是**预览线**的高度（编辑器标签「线条高度」，调成 -1 是为了让线沉到地面下），但离场分支把它当成车辆高度，整辆车被画到 y=-1。改为 `const departureY = SCENE_TUNING.vehicleArea.y`，预览线继续用自己的值。
+- 版本号 `20261019-1437`；部署 `busloop-editor-spot-layer-20261019.zip`（http://10.0.0.6:8081/be/be01a675b427b799cf16abda58ca3ba0.zip），端口 12142 + 持久化 artifacts 卷；远端 `index-Zjnq2HIK.js`(889988B) 与 `scene-editor-ByO26QHy.js`(65948B) 均与本地构建字节一致。
+- 验证：`node --test` 319/319（含新增层级契约测试，并修正一条原本断言了 `vehicleDeparturePath.y` 驱动车辆这一 bug 行为的旧断言）；线上导出 AppLovin 包 200（14.8s），产物含 `K=x.vehicleArea.y` 离场分支且无隐藏逻辑，运行时门禁 13/13 PASS；浏览器实测线上编辑器 `v20261019-1437`，满载离场车辆停在 y=0.035、描边完整可见无遮挡。
+- 注意：`vehicleDeparturePath.y` 只影响预览线，不要再拿它当车辆高度；车位描边厚度改大后会重新出现压车问题。
+
+## Completed On 2026-10-19 - Boarding sound offset default changed to -0.25
+
+- `passengers.aboardSoundOffset` 默认值从 0 改为 -0.25（秒），小人进车音效默认提前 0.25 秒；滑杆范围与含义不变（-1 ~ 1，负=提前）。
+- 旧缓存迁移（`src/main.js`）：新增 `migrateAboardSoundOffsetTuning` / `migrateAboardSoundOffsetProfiles`，把全局调优缓存与关卡级 profile 快照里遗留的 `0` 改成 -0.25，避免旧浏览器一直用旧默认覆盖新值；操作者自定义的非 0 值保持不动。
+- 版本号 `src/build-version.js` 更新为 `20261016-1900`，线上编辑器标题显示 `SCENE EDITOR v20261016-1900`。
+- 部署 `busloop-editor-aboard-default-20261016.zip`（http://10.0.0.6:8081/df/df2ada2fff16d738f0cbe131bcb94b1a.zip），端口 12142 + 持久化 artifacts 卷；远端 `index-B9K2OHzr.js` 与本地 `PLAYABLE_REMOTE_EDITOR=1 npm run build` 字节一致。
+- 验证：`node --test` 305/305；线上导出 AppLovin 包 200（13.4s），产物含 `aboardSoundOffset:-.25`，运行时门禁 13/13 PASS；浏览器实测线上编辑器版本号与滑杆值均为新值。
+- 新规则：**以后每次线上修改都要同步更新 `src/build-version.js` 并重新部署**，让编辑器标题的版本号能对应到具体构建。
+
+## Removed On 2026-10-19 - Third-party playable event injection
+
+- 该功能（`scripts/applovin-event-injector.mjs`、`POST /__applovin-events/inject`、编辑器「给外部试玩注入事件」按钮、`X-Applovin-Events` 覆盖率响应头）是为"给别家试玩补 AppLovin 打点"这个外部场景加的，本项目没有该需求，用户确认移除。
+- 已删除：注入器模块与 `test/applovin-event-injector.test.js`；`vite.config.js` 的注入端点、`MAX_APPLOVIN_INJECT_BYTES`、`decodePlayableUploadName` 与覆盖率响应头；`scripts/export-playable-package.mjs` 的 `analyzeApplovinCoverage` 调用与 manifest 覆盖率字段；`src/scene-editor.js` 的按钮/状态节点与注入处理函数；`src/styles.css` 的 `.editor-inject-*` 样式。
+- 保留：「导出包自带 AppLovin 12 个标准事件」这行静态说明。它描述的是真实事实——`src/platform-bridge.js` 在编译期就打齐 12 个事件，不需要任何后处理。
+
+## Superseded 2026-10-19 - AppLovin 12-event coverage surfaced in the export panel; third-party playable injection
+
+- 曾被部署（版本号 `20261019-1055`）后又按用户要求整体移除，内容见上方 Removed 条目。
+## Completed On 2026-10-16 - CTA label no longer wraps into overlapping lines on Windows
+
+- 现象（用户 Windows 截图）：CTA 按钮上 "Play Now" 文字糊成一团、像是叠字。根因：调参值 `cta.fontHeight = 16`（行高）远小于 `cta.fontSize = 63`（字号），而按钮宽度刚好卡在文字临界点——Mac 上恰好单行没事，Windows 上字体度量/回退稍宽就折成两行，两行字叠在一起。
+- 修复（`src/styles.css` + `src/main.js`）：`.cta-button` 加 `white-space: nowrap` 禁止折行；新增 `fitCtaLabel()` 在标签宽度超出按钮可用宽时按比例缩字号（复用 branding 文字的既有 fit 模式）；`document.fonts.ready` 后再跑一次 fit，防止先用回退字体度量导致误缩。
+- 验证：真实导出产物上，基线（Poppins）字号 24.15px 单行不变；模拟宽字体回退（Georgia + 字距）触发真实重排后自动缩到 20.27~21.83px 并保持单行；恢复字体后回到基线。截图对照无叠字。
+- 部署 `busloop-editor-cta-fit-20261016.zip`（http://10.0.0.6:8081/2a/2a32e69089816fd6f9c06996b8945acd.zip），沿用端口 12142 与持久化 artifacts 卷；远端 chunk `index-yWJAc9Ye.js` 与本地一致。线上导出 AppLovin 包 200 且压缩产物中可见 `.cta-button{...white-space:nowrap...}` 与自适应字号逻辑，运行时门禁 13/13 PASS。
+- Verification: `node --test` 303/303（含新增 nowrap / `fitCtaLabel` 契约断言）；本地产物与线上产物浏览器实测 + 截图对照通过。
+
+## Completed On 2026-10-16 - Boarding sound gains a timing offset parameter
+
+- 新增 `passengers.aboardSoundOffset`（秒，-1 ~ 1，默认 0）：控制小人进车音效相对于"到达车位"时刻的偏移——负值提前、正值延后、0 与原来一致。编辑器「小人模型」分组新增「进车音效偏移(负=提前)」滑杆。
+- 实现（`src/scene-view.js`）：音效触发从"到达帧直接回调"改为独立时间轴 `startedAt + delay + duration + offset`；`updateBoardingViews` 顶部先排空到期挂起音效（正偏移用），到达帧若音效尚未触发则转入 `pendingBoardingSounds`，`clearBoardingViews` 同步清理。
+- 浏览器实测（开发服务器 + 确定性步进）：offset 0 时音效与到位差在 ±0.08s（一个渲染帧）内；-0.6 时音效提前 0.52–0.64s；+0.4 时延后 0.36–0.48s；三种情形下画面到位（烟雾）时刻均不受影响。
+- 部署 `busloop-editor-aboard-sound-20261016.zip`（http://10.0.0.6:8081/8c/8c1d107c971bded1338b086e0f32eff1.zip），沿用端口 12142 与持久化 artifacts 卷；远端 chunk `index-CKKQ579W.js` 与本地一致。线上导出 AppLovin 包 200（18s）且产物含新参数键，运行时门禁 13/13 PASS。
+- Verification: `node --test` 303/303（新增 1 条契约回归）；本地浏览器三种偏移实测 + 线上导出复验通过。
+
+## Completed On 2026-10-15 - AppLovin challenge funnel now instrumented in editor exports
+
+- 起因：投放侧 AppLovin 报表按 Axon 事件汇总（`Challenge failed/retry/solved/pass 25/50/75` 及各自 rate），但我们的包只发 6 个核心事件，这些列永远不会出数。参考生产包（Coolplayable Tile Journey）确认了完整事件名与两个门控。
+- `src/platform-bridge.js` 新增 `challengeProgress(percent)`（按安装门槛进度发 `CHALLENGE_PASS_25/50/75`）、`challengeSolved()`、`challengeFailed()`；`retry()` 现在发 `CHALLENGE_RETRY`。照抄参考包两条门控：`CHALLENGE_SOLVED` 之后抑制 start/fail/retry/progress（避免重玩污染通关率）；`CTA_CLICKED` 先于任何 `CHALLENGE_STARTED` 时先补发 `CHALLENGE_STARTED`、再延迟 200ms 发 CTA。`CHALLENGE_FAILED` 在 `ENDCARD_SHOWN` 之前发出，与参考包一致。
+- `src/main.js` 接线：`markInstallVehicle` 按 `successfulOperationCount / threshold * 100` 上报进度并在达成时发 solved；终局胜局在 `showResultOverlay('You Win!', { failed: false })` 前发 solved；失败覆盖层默认 `failed: true` 发 failed；重开按钮 `reset()` 触发 retry。
+- 其他平台桥（basic/unityads/mintegral + 基于 basic 的 google-ads/meta/moloco/tiktok）补齐同名 no-op 方法，保持接口一致。
+- 校验：`APL-STA-004` 事件链扩展为全部 12 个事件名（含挑战漏斗），未打点的包会被导出前的本地规则拦下；新增 `test/playable-export.test.js` 端到端打点契约（规则事件清单 + bridge 语义 + main.js 接线）。
+- 部署 `busloop-editor-challenge-events-20261015.zip`（http://10.0.0.6:8081/84/8419ad7dd1d7d8d9a05ff3e5362d378f.zip），沿用端口 12142 与持久化 artifacts 卷。远端 chunk `index-ri5jFKSl.js` 与本地 `PLAYABLE_REMOTE_EDITOR=1 npm run build` 一致。
+- 线上复验：从 `http://10.0.0.54:12142/__playable-export` 导出 AppLovin 包（200，13.3s），产物含全部 12 个事件、运行时门禁 13/13 PASS；注入 `ALPlayableAnalytics` 探针后真实跑通两局，观察到完整序列 `LOADING → LOADED → DISPLAYED → CHALLENGE_RETRY → CHALLENGE_STARTED → CHALLENGE_PASS_25 → ENDCARD_SHOWN → CHALLENGE_FAILED → CHALLENGE_RETRY → CHALLENGE_PASS_50 → CHALLENGE_PASS_75 → CHALLENGE_SOLVED → ENDCARD_SHOWN → CTA_CLICKED`，并验证 solved 后重开不再产生挑战事件。
+- 注意：家目录 `~/.codex/skills/build-verified-playable-packages` 是 8 月旧副本；本地复现远端导出时必须设 `BUILD_VERIFIED_PLAYABLE_SKILL_ROOT=$PWD/deploy-tools/build-verified-playable-packages`（容器 Dockerfile 正是这样配置的），否则会用到旧规则、看不到 APL-STA-004 的新要求。
+- Verification: `node --test` 302/302；`verify_ruleset.py` 通过；本地与线上导出 + 浏览器端到端打法复检通过。
+
 ## Completed On 2026-10-15 - Export slowness measured; phantom level fixed
 
 - 用户反馈线上导出很慢。远端实测（1 核容器）：全平台**冷启动 103–119 秒**、同参数重复**13–21 秒**。原因是每次导出对 7 个平台各跑一次完整 Vite 构建（打包 + 内联），源码缓存只对「一键导出全部」生效；单平台导出每次都重建。本地同配置对照：冷 20.4s → 热 5.3s，比例一致。结论：首次导出属于预期成本，不能靠调并发解决（容器只有 1 CPU）；已在编辑器导出状态栏加实时计时（「正在打包…（已用 N 秒）」）并在完成提示里附服务端耗时，避免看起来像卡死。
@@ -1961,3 +2606,152 @@ Full 2026-07-07 progress log was archived to:
 - AppLovin 以及六个平台桥接现在在宿主 API 不存在时，都通过已插入 DOM 的安全 `<a>` 链接打开配置的商店地址；真实广告容器仍优先走原生平台桥接。
 - Verification: 平台桥接/导出/runtime smoke `50/50`，`npm run build`、AppLovin 打包与静态检查通过；线上 `http://10.0.0.54:12142/` 更新后，实际导出 AppLovin HTML `HTTP 200`、4,783,020 bytes，包含 MRAID 与浏览器回退路径。
 
+
+## Completed On 2026-10-28 - Tap sound survives a stale catalog
+
+- 修复远端导出的试玩包没有点车音效：关卡 `assets.audio` 原先只来自 catalog，而远端数据卷里的 catalog 停在 `vehicle_tap` 加入之前，于是 `vehicle-dispatched` 事件照常触发、控制器却查不到 clip 并静默 return。
+- 新增 `src/level-audio-config.js`（关卡音效的代码内唯一来源 + `resolveLevelAudioConfig`/`isLevelAudioConfigComplete`）；`scripts/generate-active-level.mjs` 两条解析路径改走 `completeLevelAssets()`，`src/level-data.js` 的关卡激活改走 `withCompleteLevelAssets()`，`src/main.js` 组装控制器时对合并后的音效表再补一次；`scripts/package-applovin-single-html.mjs` 的资源白名单补上全部关卡 clip。关卡自带的 clip 与音量优先，不覆盖。
+- Verification: `node --test` 380/380（新增 `test/level-audio-config.test.js` 10 条，含"旧 catalog 下音效不被删掉"）；用删掉 19 处 `vehicle_tap` 的旧 catalog 复跑生成器，5 个关卡均恢复为 4 个音效；旧 catalog 与正式 catalog 各导出一次 AppLovin 包，sha256 完全相同；真实 Chrome 打开两份成品点车均播放 0.392 s 的 `vehicle_tap`；`check:applovin` 23 PASS / 1 FAIL（既有 `/assets/applovin/textures` 根相对常量）。
+- Next: 远端编辑器需要重新部署才会用上新构建；数据卷里的旧 catalog 不再是音效缺失原因，但 `src/level-catalog.js` 的音效改动与 `public/assets/unity/audio/vehicle_tap.mp3` 仍是未提交状态，干净检出会重现问题，需一并提交。
+
+## Completed On 2026-10-29 - 圣诞雪橇与圣诞小人素材接入
+
+- 新增 `public/assets/unity/christmas/`：`Sled_001.fbx`（三材质槽共用同一张 `Idle_boy_Santa.png` 图集）、`Arrow_06.fbx`（专属箭头）、`Idle_boy_Santa_vatmesh.bin`（VATM v2，621 顶点 / 3066 索引）、`Idle_boy_Santa_anim_map.vatq`（102 帧，RGB8 + zlib）。
+- 新增 `scripts/extract-unity-santa-vat.mjs`，把 Unity 的 `Idle_boy_Santa_mesh.asset` + `Idle_boy_Santa_positions.ssvat`（SSVT v1）转成运行时容器。索引与 UV 已与 `Idle_boy_Santa.FBX` 对照一致（bbox 与 UV 范围逐项吻合）。
+- 色号 `16` 注册为圣诞运行时车型（非可涂装色）：`src/level-data.js`、`src/level-editor-model.js`、`scripts/unity-level-importer.mjs` 同步放行；`src/level-image-recognizer.js` 显式排除 16，避免红车被识图误判为圣诞。
+- 渲染接入：`src/mechanism-resources.js` 新增 `christmas` 机制族与资源清单（导出白名单自动覆盖）；`src/scene-view.js` 新增 `loadChristmasAssets`、圣诞乘客 VAT 配置（idle 1–61 行 / move 62–81 行）、专属箭头与车辆/材质选择，并把圣诞纳入「不使用乘客实例化」的分支。关卡编辑器新增「添加圣诞雪橇」与机制下拉项。
+- 验证：`node --test` 406/406 通过（新增 `test/christmas-assets.test.js` 6 条）；本地浏览器加载含 4 辆圣诞雪橇的临时关卡，`unityAssetsFailed: false`，雪橇/材质/VAT 乘客/专属箭头全部就位，点击后正常发车、4 名圣诞小人登车、车辆进入 `done`；截图确认红白雪橇与普通红车可区分。
+
+## Completed On 2026-10-29 - 圣诞小人不可见修复上线
+
+- 现象：圣诞雪橇与车头箭头正常，但传送带上的圣诞小人只剩影子，人物完全看不见。
+- 根因：`scripts/extract-unity-santa-vat.mjs` 把 VATM v2 的 `vatIndex` 写成 `Float32Array`，而 `loadVatGeometry` 用 `DataView.getUint32` 读取。1.0 被存成 `0x3F800000`，读回来是 1065353216，shader 据此算出天文数字的 UV，所有顶点塌缩到一点——网格仍在、可见性为 true，只是没有面积，所以只剩影子。
+- 修复：改成 `Uint32Array`；`test/christmas-assets.test.js` 增加 `vatIndex[0..3]` 与末位必须是连续整数的断言，防止再次写成浮点。
+- 验证：`node --test` 406/406；线上 `level802` 快进模拟后 `vatIndex` 读回 `[0,1,2,3]`，34 个圣诞乘客实例中 8 个在带可见，截图确认白帽红袍小人正常显示。线上版本 `20261029-1741`。
+
+## In Progress On 2026-10-29 - starLoop 样条贴合（仅本地，未上线）
+
+- 现象：星形跑道的小人贴着一侧走，星形五个内凹处没有"往里走"的感觉，凹口外侧留大片空白。
+- 量化：原样条在车道带内的位置在 16%~55% 之间跳动（理想 50%），标准差极大。
+- 处理：按原画车道带做径向中线投影后重算 20 个控制点，再向内侧偏置到带内 35% 位置（已在原地画上验证 0/3000 出轨、离边 48px）。修改 `src/conveyor-layouts.js` 的 `starLoop.splinePoints`。
+- 状态：按用户要求「轨道那部分别加到线上版本」，本次未部署；本地 `node --test` 406/406 通过。上线前需先确认上方 V 形口的观感是否可接受。
+
+## Completed On 2026-10-29 - 圣诞车箭头方向修正上线
+
+- 现象：圣诞雪橇车顶上方的箭头指向与车辆实际行驶方向相反。
+- 根因：素材几何朝向不同。`Arrow_01`（其它所有车型共用）尖端朝 `-Z`，而交付的 `Arrow_06` 尖端朝 `+Z`。两者共用同一个 `facing.arrowYawDegrees`，于是圣诞车的箭头正好差 180°。
+- 修复：在 `src/scene-view.js` 里先把 `arrowFbx.rotation.y = Math.PI`，再交给 `toStaticMeshGroup` 烘焙进几何体。**必须放在烘焙前**：`toStaticMeshGroup` 复制的是每个子节点的 `matrixWorld`，如果去转烘焙后的模板，那个 180° 会与共享的 `arrowYawDegrees` 叠加成 360°，等于没改。
+- 验证：`node --test` 407/407（新增箭头朝向断言，直接解析两个 FBX 的 Z 向宽度剖面确认尖端方向）；线上 `level802` 读回两个箭头的局部尖端均为 `-Z`。线上版本 `20261029-1752`。
+
+## Completed On 2026-10-29 - 本地关卡与远端命名对齐、补齐 12 个远端缺失关卡
+
+- 背景：远端（10.0.0.54:12142）关卡被他人大量改名，本地 `artifacts/web-levels/` 的显示名与远端对不上，且部分本地关卡远端完全没有。
+- 处理 1（重名标记）：13 个与远端重名的本地关卡，显示名追加 `（原）`——`level3`(Q7V3 原名)、`level4`、`level7`、`level9`、`level12`、`level19`、`level20`、`level23`、`level27`、`level803`、`level805`、`level9804`、`level999`。**只改 `displayName` 字段，关卡数据一字未动**；原有备份在 `artifacts/backups/pre-rename-2026-10-29T11-37-12-787Z/`。
+- 处理 2（跳过项）：`level18`/`level30`/`level36` 虽与远端同名，但内容（去掉 key/editor 后）逐字节一致，按用户要求不改名。
+- 处理 3（上传）：远端缺的 12 个本地关卡经 `/__level-authoring/import` 新建，服务端分配新 key：`level1→level63`、`level2→level64`、`level6→level65`、`level11→level66`、`level14→level67`、`level44→level69`、`level45→level70`、`level47→level71`、`level48→level72`、`level49→level73`、`level50→level74`、`level51→level75`。
+- 验证：12 条回读内容与本地逐字节一致（车辆数/乘客数/全部字段），远端归一化重名 0 条；本地 28 个关卡归一化重名 0 条；`node --test` 407/407。
+- 注意：远端对长连接不稳，导入请求可能在**写盘成功后**断开连接（HTTP 层报错但数据已落盘）。批量上传必须"每次先查列表再决定是否发"，不能盲目重试，否则会产生重复关卡。以上传脚本的幂等写法见本次会话。
+
+## Completed On 2026-10-29 - Unity 原版恢复并加「（原）」标记上传
+
+- 问题：远端 5 个关卡仍用原版名字展示，但内容已被网页文档覆盖成完全不同的关卡——`level7`(名字 level7 (level7.asset)、实际 94 车 / 原版 83)、`level9`(90/37)、`level10`(65/64)、`level13`(94/75)、`level18`(112/68)。名字与内容脱钩。
+- 处理：从 `src/level-catalog.js` 用 `createLevelDocument()` + `validateLevelDocument()` 重建 Unity 原版，以「（原）」后缀作为新关卡上传（**不碰现有条目**）：`level76`=level7（原）、`level77`=level9（原）、`level78`=level10 (level10.asset)（原）、`level79`=level13 (level13.asset)（原）、`level80`=level18 (level18.asset)（原）。
+- 判定方法：车辆**空间位置**匹配（`round(x*100)_round(z*100)`），不能用车辆 id——编辑器会重编号，用 id 比对会得出"完全不同"的假结论。浮点数按 1e-4 容差。
+- 验证：5 个原版回读位置重合 100%、队列长度与原版一致；远端 101 条归一化重名 0 条；原有 5 个被覆盖条目逐字节未变。
+- 归档：重建与复制出的原版文档在 `artifacts/backups/unity-originals-2026-10-29/`。
+- 仍缺失：`level2`（远端 level45，112 车）在本地与 Unity 目录都找不到原版来源，无法恢复。
+
+## Completed On 2026-10-30 - 编辑器关卡总览（布局缩略图选关）
+
+- 问题：编辑器的关卡下拉框只有名字，两个名字相近的关卡无法区分，要确认某个布局是哪一关只能逐个点开等待加载。
+- 方案：新增编辑器内的「关卡总览」覆盖层，用俯视 SVG 缩略图平铺展示每一关，支持搜索（名称/编号/用户/传送带/车辆数）、排序（编号/名称/创建时间/车辆数）、点击直接切关。浅色主题，与编辑器面板一致。
+- 渲染逻辑抽到 `src/level-layout-thumbnail.js`（纯函数，无 DOM/THREE），同时被编辑器总览和 `scripts/build-level-contact-sheet.mjs` 对照表脚本复用，避免两份实现漂移。
+- 新增服务端接口 `GET /__level-authoring-overview`：每次请求都重新读取关卡卷（web 卷优先、其次导入关卡、最后构建内 catalog），因此新导入/保存/删除的关卡无需重新打包就会出现在总览里。实测：导入临时关卡后总览从 42 关变 43 关并带缩略图，删除后回到 42 关。
+- 关键修正：缩略图取景**只用车辆坐标**，不含 `splinePoints`。传送带样条在 z≈15、车阵在 z≈0，早期版本把两者一起算，导致画面纵向被拉长 20 个单位、车辆缩成一小团（画布占用仅约 3%）。修正后占用 86–91%。
+- 顺带修复：选中关卡指向已删除的 key（实测 localStorage 残留 `level9005`）时，总览底部明确提示「当前选中的 level9005 已不存在」，不再静默不高亮任何卡片。
+- 验证：`node --test` 419/419（新增 `test/level-layout-thumbnail.test.js` 12 条）；浏览器实测打开总览 42 关全部渲染、搜索「南瓜」命中 2 条、按车辆数排序正确、点击 level36 卡片后选中值变为 level36 且弹窗随刷新关闭、新导入关卡自动出现。
+- 注意：`/__level-authoring-overview` 每次会为所有关卡生成 SVG，当前 42 关约 380 KB、耗时数百毫秒；关卡数继续增长时若变慢，可加缓存或改为按需渲染。
+
+## Completed On 2026-10-30 - 关卡总览部署上线（线上 20261030-1059）
+
+- 部署：打包 30 MB（排除 `node_modules`/`dist`/`server-dist`/`artifacts` 大目录与对照表 HTML）→ NAS → `mcp_deploy_sse` 复用 12142。线上 chunk `index-BjdSBNQX.js` 与本地 `server-dist` 一致。
+- 线上实测（100 关）：总览 100 张卡片全部渲染、0 错误；加载约 1 秒；搜索「（原）」命中 5 条、搜索「Unity」命中 9 条、清空回到 100；按车辆数排序正确；点击 level36 后下拉框从 level48 变为 level36，弹窗随刷新关闭。
+- 第一次部署（`20261030-1055`）后发现搜索「Unity」返回 0——徽章文字没进搜索索引。已修复并二次部署为 `20261030-1059`。
+- 部署包注意：`artifacts/level-contact-sheet*.html` 是本地产物（1.1 MB/份），必须排除，否则平白增加包体。
+
+## Completed On 2026-10-30 - 单队列关卡补齐第二列乘客（A-1 等 5 关）
+
+- 问题：车辆少的关卡里两条队列严重不对等，一列挤满、一列几乎空着（A-1 实测 22 / 0）。
+- 根因：**素材只有一条队列，但渲染的传送带是双队列**。`ConveyorBelt1` 的 5 个关卡（A/B/E 的 level1、level2）`.asset` 里 `fixedPassengerSequence` 只录了 queueId 0，而 `conveyor-layouts.js` 里所有布局都是 2 条 `queuePaths`、2 个 `entryPercents`。运行时按素材长度建队列，于是队列 1 从头到尾没有任何人，皮带也只从入口 0 进人。
+- 附带发现的真实数据问题：451 个双队列关卡里有 54 关两列人数比 > 0.3（最极端 A-56 是 207 vs 47）。这是素材本身的编排，不是运行时分配错误——双队列关卡按素材原样保留，不做重排。
+- 修复：`game-model.js` 新增并导出 `distributeQueuesAcrossLanes(queues, laneCount)`。队列数少于可见通道数时按**轮询发牌**拆分——不是对半切，这样两列都保留素材原本的颜色进程，不会一列全是前期色、一列全是后期色。总数严格守恒，不增不减。
+- 接线：`initializeQueues()` 用皮带决定的通道数（`queueCapacities.length` / `entryPercents.length`）作为目标，`reset()` 复用记住的 `queueLaneCount`。直连入口（`directEntrance`）仍然合并成一条。
+- 验证：`node --test` 444/444（新增 1 条，覆盖轮询拆分、总量守恒、双通道都进料、皮带填满 36/36）；浏览器实测 A-1 从「22 / 0」变成「22 / 20」，两列颜色进程一致，皮带两侧同时进人。
+
+## Completed On 2026-10-30 - 背景地平线自动对齐（换背景不再把车顶到马路上）
+
+- 问题：同一关卡换背景后构图变了（秋景图正常、紫色地牢图地面整体上移，车阵看起来贴在路面上）。根因不是参数被改，而是**素材本身的地平线高度不同**：秋景/BG01/BG02 的「路面→地面」分界线在图像高度约 51.7%，紫色地牢在约 42.6%。贴图平面尺寸固定，所以地牢图的地面线整体高了 9 个百分点 ≈ 2.04 世界单位。
+- 方案：新增 `src/background-alignment.js`。每张背景带一个实测 `horizon`（地面线高度的图像比例），渲染时按与参考图的差值自动滑动背景平面；`resolveBackgroundOffsetY = 调参 Y + 自动滑移 + 手动微调`。**滑移是渲染时派生的，不写回调参**，所以旧存档照常工作、换背景不会残留上一次的修正量。
+- 检测方法：亮度剖面 + `自下而上最后一道强阶跃`（阈值 = 最强阶跃的 55%）。向上扫描会误判——雪地、亮窗、发光墙都是亮区；取最后一组前先按组找起点消除半窗口系统偏差。整图无强阶跃（纯色墙/渐变）时返回 null，保持原位置不猜。
+- 编辑器：切背景时自动带上该图 `horizon` 并清零 `horizonTrim`；新增「地平线校正」滑杆（-6~6，单位与 Y 坐标一致）供人工微调。自定义背景在导入时用同一检测器测量，经 `X-Background-Horizon` 头传给服务端，存进图片旁的 `.json` 元数据，列表接口回传。
+- 关键修正：`Number(null) === 0` 曾让"未测量"被当成地平线 0 而把平面甩出屏幕；`resolveBackgroundOffsetY` 现在先判 null/空串再转数值。调用点也必须传 `{ background }` 而不是裸对象——传裸对象时函数读到 `{}`，表现为「逻辑写了但线上没生效」。
+- 验证：`node --test` 441/441（新增 `test/background-alignment.test.js` 13 条）；浏览器实测三种背景的地平线屏幕行：参考图 0.4379、秋景 0.4439、地牢（修复前 0.3045 → 修复后 0.4227），背景平面 Y 从 +1.527 移到 -0.537；校正滑杆 ±1 精确移动 1 世界单位；参考图本身零位移。
+- **补充（同日第二次部署 20261030-1505）**：远端 29 张历史自定义背景全都没有地平线元数据，按文件名匹配内置表也匹配不到（远端存的是操作者文件名，如 `bg-a495f7accb-…-Codex-2026-9-20-17_51_34.jpg`，本地是 `bg-a495f7accb-…-20260921-162136.jpg`）。两处修正：① 表改为**按内容哈希前缀**查（`bg-<sha256前10位>-…`），同一张图重命名后仍能对上；② 新增 `ensureBackgroundHorizon()` 兜底，未测量的背景在浏览器里就地检测，结果写入 `bus-loop-background-horizons-v1` 本地缓存和调参，启动时与切背景时都会触发。纯色占位图（远端第一张是纯绿）检测返回 null，保持原位不猜。
+- 再踩一坑：`view` 是 `startRuntime()` 的局部变量，兜底函数里直接引用会抛 ReferenceError 并被 catch 吞掉——表现为「缓存和调参都写进去了，但画面没重排」。改为调用方传 `onMeasured` 回调。测试里加断言禁止回到裸 `view?.resize()`。
+- 第二次部署验证：线上同内容不同文件名的地牢背景平面 Y = -0.537（参考图 1.527），与本地一致；校正滑杆 +1 → 0.463 精确 1 世界单位；线上截图确认路面/地面分界与参考图同高。`node --test` 443/443。
+
+
+## Completed On 2026-10-30 - 游戏内关卡选择器部署上线（线上 20261030-1404）
+
+- 部署：`PLAYABLE_REMOTE_EDITOR=1 npm run build` → 打包 28 MB（排除 `node_modules`/`dist`/`server-dist`/`.git`/`artifacts/playable-exports`/`artifacts/backups`/`artifacts/applovin`/`artifacts/*.zip`/`artifacts/level-contact-sheet*.html` 与临时 probe 脚本）→ NAS → `mcp_deploy_sse` 复用 12142。
+- 打包坑：**zip 根目录必须直接含 `Dockerfile`/`start.sh`/`package.json`**。第一次把内容套进 `busloop-editor-package/` 子目录，远端报 `lstat /root/deploy_workspace/bus-loop-playable-editor/Dockerfile: no such file or directory`；去掉外层目录重新打包即成功。
+- 线上验证（v20261030-1404，chunk `index-Dh6WAPO_.js` 与本地 `server-dist` 一致）：`/__official-levels` 返回 A 203 / B 203 / E 50；A 章 203 卡（194 可导入、9 暂不支持）、E 章 50 卡（41 可导入）；gzip 生效（1.38 MB → 261 KB）；浏览器实测按钮存在于关卡面板、页签切换正常、不支持卡片带原因。
+- 守卫实测：无操作用户 import → 403；`../../Dockerfile` → 400 `Invalid official level file`；未知章节 → 404。
+- 线上导入实测：A-1 导入为 `level1001`（6 车）→ 重复导入返回 200/`replaced: true`（原地刷新不堆副本）→ `/__level-authoring` 列表可见（`source: catalog`、带归属名）→ `/__unity-levels/level1001` 回读一致 → DELETE 清理后列表回到 101 关。
+
+## Completed On 2026-10-30 - 编辑器「游戏内关卡」选择器（正式关卡素材直接选）
+
+- 需求：把游戏正式版本自带的关卡（用户提供的 `busloop正式关卡（素材用）`）做成编辑器里的独立入口，不再需要手动导入 `.asset`。
+- 素材：`official-levels/Level_Escape_A|B|E`，共 456 个 `.asset`（9.9 MB 纯关卡文件，11 MB 含目录）。**故意放在仓库根而不是 `artifacts/`**：远端编辑器的 `artifacts` 是持久卷且只在首次播种，放进去的新文件不会上线。
+- 编号命名空间：运行时/导出/网页关卡接口都要求 `level<数字>`。章节字母转序号 + 关卡号补三位，引导关用 `9` 标记：`A/level12`→`level1012`、`B/level12`→`level2012`、`E/level47`→`level5047`、`A/guidelevel4`→`level19004`。显示名 `A-12（游戏内）`。
+- 实现：解析逻辑从 `scripts/extract-unity-levels.mjs` 抽到 `scripts/unity-level-parser.mjs`（纯函数，无文件访问），提取脚本改为调用它，产物逐字段不变（`test/official-levels.test.js` 对 level33 做全字段比对）。新增 `scripts/official-levels.mjs`（章节发现、缓存、缩略图、路径安全读取）与 `src/official-levels-picker.js`（章节页签/搜索/卡片/导入）。
+- 接口：`GET /__official-levels`、`GET /__official-levels/<章>`、`POST /__official-levels/<章>/<文件>/import`。导入沿用既有 `importUnityLevelAsset`，重复导入同一关卡原地刷新；网页关卡占用同编号时直接 409，避免被 web 卷静默遮蔽。
+- 暂不能导入的关卡仍然显示：容器类型 4/5（新机制）或座位/乘客不匹配的关卡渲染真实布局并标「暂不支持」+ 原因（A/B 各 9 关、E 9 关）。A-129 实测提示 `Vehicle 46 uses unsupported container type 4.`。
+- 性能：整章 203 关解析并渲染 SVG 约 0.2 秒，单章 JSON 1.4 MB；`sendJson` 对 ≥64 KB 的响应加 gzip（实测 1.38 MB → 261 KB），其它接口不受影响。
+- 验证：`node --test` 428/428（新增 8 条）；远端编辑器模式构建通过且选择器是独立 chunk；浏览器实测打开 A 章 203 张卡片全部渲染、搜索/徽章正确、点击 A-1 卡片后完成导入→切关→刷新（`selected-level` 变为 `level1001`）。测试写入的关卡与归属已全部回滚。
+- 已知限制：官方关卡导入后仍受「操作用户」与归属保护，未填名字会先提示；章节缓存按文件 size/mtime 失效。
+
+## Completed On 2026-11-02 - Q24 开场引导 + 开局圣诞老人
+
+- 需求 1：开场队列里要有圣诞老人。队列生成器新增 `--lead` 语义（`rebuildQueues` 的 `leadColorIndex`/`leadSeats`）：把雪橇车的 10 个座位（色号 16）写在队首，其余按 peel 波次跟后。实测 `passengerQueues[0]` 前 10 位全是 16，传送带开局就是一群戴白帽红袍的圣诞老人。
+- 需求 2：开场高亮雪橇、置灰其余车、加手指指引。用编辑器「开场引导动画」那组参数：目标车 162、3.0 s、遮罩 0.67、光效边距 17、圆角 12、宽高 0.62。`firstClickGuide` 与 `vehicleGuideHand` 同时写入调参与会话 stage.opening；手指偏移沿用共享值（0.25/0.38/0.46），成片里手指落在雪橇右上方、不压车顶箭头。
+- **前置改动（关键）**：圣诞盘面是封闭车环、雪橇在正中心，原版中心车（救护车）本来就开不出来——沿任何朝向都被 3–6 辆车挡住，微移同色车也没有空位（车道 0.28 间距、车宽 0.27）。既然引导要指向雪橇，它必须开局可点，所以生成器改为朝车位方向（yaw 0）并移除碰撞图报出的挡路车（本次 4 辆）。移除后 66 车、408 座，`clearable 66/66`，开局 `sled blockers: none`。
+- **顺带修掉一个会漏包的隐患**：上一版导出包的运行时其实是资源加载失败后的几何兜底（`isAmbulanceVehicle is not defined` 混进产物），但旧门禁全绿——画布非空、无 404、无 console.error。现在 `check-playable-runtime.mjs` 增加 `RUNTIME-ASSETS-001`，读 `view.unityAssetsFailed`；`scene-view.js` 同时记录 `unityAssetsError`，失败时报告具体原因。
+- 验证：`node --test` 447/447；成品包实测首帧即引导态（雪橇高亮框 + 其余车置灰 + 手指），传送带头部 10 个圣诞老人；自动打法首点击中雪橇（第 1 次操作），打完 64/64 车、`installReady` 成立。全平台 7 包导出，14 份运行时报告（含新增 ASSETS 项）全 PASS，所有单 HTML 均 < 5 MB（最大 4.85 MB）。
+
+## Completed On 2026-11-02 - Q24 圣诞 BGM（现成音源，首次点车开播）
+
+- 需求：加圣诞背景音乐，点击第一辆车时开始播放。
+- **音源改用现成录音**：现场素材里找到工作室自己的 `40 Jingle Bells.wav`（Q193 素材包，同目录的爱给网节日包也是同一首），不再用合成版本。Jingle Bells 是 1857 年公有领域作品，且这条录音团队已在自己的试玩里用过，可以随广告包分发。原始 37 s / 24bit / 立体声 10.8 MB，压缩前 2.3 MB，无法直接交付。
+- 循环制备：`scripts/prepare-christmas-bgm.py` 从音源自动估计速度与节拍相位，取 **12 小节 = 27.59 s** 为循环长度，并把循环点之后的一小节交叉淡化到开头，使首尾样本连续。实测浏览器解码后接缝跳变 0.018、曲内最大相邻差 0.235，即接缝约为曲内最大跳变的 7%，无爆音；前导/尾随静音各 0.02 ms。**交叉淡化方向不能反**：把「尾巴淡入到开头」会留下整段幅度的接缝（先做错过一版，seamJump 0.159）。
+- 交付规格：单声道 40 kbps MP3、138 KB。这是被 `COMMON-ART-001`（成品 ≤5 MB）逼出来的：56 kbps 时包体 4.92 MB 只剩 84 KB 余量，40 kbps 后 4.84 MB、余量 400 KB。
+- 播放逻辑：`src/audio-controller.js` 的 `playBgm/stopBgm/isBgmPlaying`，音源 `loop = true`、独立 gain 淡入 0.8 s，且不进 `audioConfig` 预加载池；`resetEventHistory` 不碰它，重开/换关都不重启。
+- 触发点：`src/main.js` 的 `startBackgroundMusic()` 只在 `game.clickVehicle` 返回 `ok` 后调用，播放前先 `audio.unlock()`。加载阶段完全静音，满足「交互前不得有音频」。
+- 调参：`audio.bgm.{enabled,asset,volume,fadeInSeconds}`，默认关闭；编辑器新增「背景音乐(BGM)」分组。Q24 开启、音量 0.42、淡入 0.8 s。
+- 打包：`package-applovin-single-html.mjs` 在 BGM 启用时把它加入内联清单，否则单 HTML 会去请求不存在的根相对路径。
+- 验证：`node --test` 446/446。dev 与成品包各实测一次：点车前循环音源 0 个；首次点车后创建且只创建 1 个 27.59 s 循环源；重复点车、`reset()` 都不新建不中断。全平台 7 包导出，14 份运行时报告（含 iOS）全 PASS，所有单 HTML 均 < 5 MB。
+
+## Completed On 2026-10-30 - Q24（圣诞中心雪橇）：对角渐变、11 段命名、Android/iOS 单包
+
+- 需求：以编辑器里的圣诞节关卡（远端 `level26-圣诞节` / 本地 catalog `level26`，70 车环形）为底，中心车改为圣诞雪橇，四周做五色渐变，背景换圣诞彩灯。
+- 关卡：`artifacts/web-levels/level2601.json`（`displayName: Q24V1-圣诞中心雪橇`），生成器 `scripts/create-christmas-sled-level.mjs`。中心车 `id 162` 改为 `colorIndex 16 / mechanism christmas / 10 座`（雪橇模板按 10 座烘焙，用 6 座会车体比碰撞盒大一圈）。
+- **轨道：`dualQueue3`**（按需求方给的截图比对）。判定方法：对每条传送带贴图做 alpha 连通域分析，量内岛的宽高比与「左右两瓣 + 中间凹口」的下沉量；参考截图是宽扁 U 形 + 双瓣内岛，只有 `dualQueue3`（内岛 247×172px、凹口 −0.22）对得上，`dualQueue2` 是单椭圆内岛（256×91、−0.48）。切换后出包截图已核对：内岛呈双瓣带凹口，U 形更宽，与参考一致。
+- **轨道位置上移 0.25 世界单位**（需求方反馈偏低）。三处必须同步平移，否则乘客路径会和美术错位：`conveyorLayouts.dualQueue3.art.z`、`curve.offsetZ`、两条 `queueCurves[].offsetZ`。现值 `art.z -4.4` / `curve.offsetZ 0.6` / 队列 `0.7, 0.75`。调法是先用 `setTuning` 扫 −0.4 / −0.8 / −1.2 看趋势，再按「轨道底边到车位顶的像素间隙」对齐编辑器截图，最后定 0.25。
+- **渐变方向：左上 → 右下对角**（按需求方最终确认，不是横向也不是环形）。排序键是 `x - z`（+X 屏幕右、+Z 屏幕上），另 69 车切五段：深红 → 红 → 米白 → 绿 → 森林绿。用 Q7V3 自己的色号与车身染色（4/2/21/1/8），乘客同色染色。实测对角分带 13/13/13/13/13 车、主色依次 4/2/21/1/8。
+- 队列：按引擎 peel 波次生成——每波是当时全部可释放的车，波内按颜色分组，两带按当前长度轮流承接。色块段数 11/17，与 Q7V3 的 20/30 同量级；按设计顺序实跑可 70/70 清空、队列归零、`status=won`。
+- 坑 1：中心车从 6 座改 10 座后车长多 0.19，和左下方三辆车锁成 10 车 blocker 环。雪橇沿 -Z 推 0.03（车长 3%，画面看不出）即恢复全清。
+- 坑 2（导出真 bug）：单 HTML 打包器 `replaceBundledDynamicAssetUrls` 只改写 `/assets/unity/mechanisms` 前缀的模板字符串，圣诞资源在 `/assets/unity/christmas` 下，`Idle_boy_Santa.png` 以根相对 URL 留在包里、运行时报 404。已改成根列表 `DYNAMIC_MECHANISM_ROOTS`。
+- **命名改为 11 段**：`需求-素材-前贴-N-语言-PL-设计师-需求人-渠道-步数-体力`。前贴段后固定追加 `N`，末尾步数/体力默认 `N`（不再被空值裁掉）。`PLAYABLE_NAMING_PATTERN` 同步；编辑器「导出命名」分组恢复「步数」「体力」两个输入框。
+- **Android/iOS 合并为一个产物**：Bus 套系由 `-Android` / `-iOS` 两份变成一份，`branding.icon.deviceAssets` 携带两端 icon，运行时按 UA 选 icon，商店链接沿用已有的 UA 选择。打包器把两张 icon 都内联；runtime smoke 对同一文件跑 Android 与 iOS 两份报告（7 平台共 14 份，全部 PASS）。编辑器「导出套系」文案同步改成「共用一套」。
+- 验证：`node --test` 428/428。全平台 7 个包，文件名与需求给的 7 条逐字一致（Mintegral 按平台规则用下划线）：`BL-2610295-Q158V1-N-N-EN-PL-WXJ-TJW-{FB,GG,AL,UN,MO,MT,TT}-N-N`。本地规则 235/249 PASS，14 份运行时报告全 PASS；成品包实测 Android 出 JPG icon + Play 链接、iOS 出 PNG icon + App Store 链接；Moloco/UnityAds 单 HTML 也逐个复验。
+- 交付配置：`artifacts/q24-christmas-tuning.json`（完整快照）；会话 `q24-christmas` 的 `exportNaming.materialCode` 设为 `Q158V1`（会话值会覆盖调参，别再只改调参）。远端编辑器 `level21` 已更新为对角渐变版。

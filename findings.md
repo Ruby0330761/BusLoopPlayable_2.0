@@ -1,5 +1,220 @@
 # Findings
 
+## 2026-11-02 步数限制是玩法字段，不是车型；雪橇和救护车必须分开判定
+
+- **`ambulanceStepLimit` 是运行时唯一的步数字段，但它同时被当成车型开关。** `scene-view` 原本写 `const isAmbulance = Number.isInteger(vehicle.ambulanceStepLimit)`，`deriveLevelMechanics` 也按同一个字段统计救护车。结果：给圣诞雪橇加 35 步，雪橇会被换成救护车 FBX、拉进救护车乘客与倒计时音效，包体会凭空多出 292 KB 且画面变成救护车。
+- 正确模型是两层：关卡文档用 `mechanism.stepLimited` 表示「这辆车吃步数」，`levelDocumentToRuntime` 再据此写 `ambulanceStepLimit`；视觉家族看 `mechanism.type`。`isAmbulanceVehicle` 现在先读 `mechanism.type`，只有完全没有 mechanism 的旧 catalog 数据才回退到「有步数就算救护车」。
+- **红心徽标是通用 UI，不是救护车资源。** 单独把 `Main_Gamepanel_BubbleLove.png` 复制成 `/assets/unity/christmas/textures/step_heart.png` 挂进 `christmas` 清单，比让圣诞关卡去拉整个 ambulance 资源族干净；雪橇专属徽标还通过 `createAmbulanceStepBoard(bubbleTexture)` 显式传入。
+- **「35 步跳转」的两半必须一起对：** 关卡里的 `stepLimit` 只负责红心倒数和失败判定，真正跳商店的是 `installGate.successfulOperationThreshold`。两处数字不一致时，红心还没走完就先跳（或走完了不跳）。`stepLimitedSledJumpOwnsEnding` 只在「有步数限制的非救护车 + 门槛等于步数」时压掉失败卡，否则第 35 步会同时出现商店跳转和 Game Over。
+- **预算必须能覆盖阻塞闭包。** 中心雪橇的 6 台直接阻挡车背后是 28 台车的闭包；生成器用 `countCarsToClear` 做传递闭包计数并拒绝 `closure > stepLimit` 的关卡，避免做出「数学上救不出来」的板子。注意「按 peel 顺序排到雪橇可点」需要 60 次，但玩家的最优路线只需 28 次，所以校验用闭包而不是播放顺序。
+
+**Why:** 前三项都不会报错——雪橇只是悄悄换成救护车模型、红心不出现、包体变大，静态检查全绿。
+
+**How to apply:** 再给非救护车加步数限制时，只写 `mechanism.stepLimited + stepLimit`，不要改 `mechanism.type`；出包后确认 `Ambulance_001` / `Idle_girl_rescuer` 不在成品里，`stepBubble` 指向 `step_heart`。
+
+## 2026-11-02 封闭车环的「中心车」永远开不出来；资源加载失败必须当失败
+
+- **中心救援玩法的中心车在原始盘面里是不可点的。** 圣诞盘面是一圈车围成的封闭环，中心车朝任何方向开出去都会撞上 3–6 辆车（实测扫了 3020 个位置 × 24 个朝向，最好情况仍有 2 辆阻挡）。想把中心车做成开场引导目标，必须先按碰撞图开一条车道，而不是「挪一点位置」——车道间距 0.28、车宽 0.27，根本没有挪动空间。
+- **开场引导必须指向真正可点的车。** 引导同时锁输入（`isVehicleInputLocked`），指向被挡的车会变成「点不动的高亮」，比没有引导更糟。生成器现在把雪橇转成朝车位（yaw 0）并按 `getBlockers` 移除挡路车，同时把移除后的可解性重新校验一遍。
+- **页面「没报错但画面退化」是最难发现的一类。** 这次产物里混进了 `isAmbulanceVehicle is not defined`，三维资源全部回退成无贴图几何体：画布非空、无 404、无 console.error，旧的 13 项运行时检查全绿。新增 `RUNTIME-ASSETS-001` 直接读 `view.unityAssetsFailed`，并让 `scene-view` 把 `unityAssetsError` 一起吐出来。
+- 顺带：`rebuildQueues` 支持把指定色号排到队首，用于「开场队列里要出现圣诞老人」。
+
+**Why:** 前两条决定「引导指向谁」，第三条决定「怎么知道资源真的加载了」。三者都不会在类型检查或单元测试里暴露。
+
+**How to apply:** 做中心车玩法时先跑一次 blocker 扫描确认中心车可点；加引导前核对锁定逻辑；出包后除看 PASS，还要确认 `RUNTIME-ASSETS-001` 是 pass 而不是被跳过。
+## 2026-11-02 BGM 必须挂在可信手势之后，且不能进预加载池
+
+- **素材来源要先翻工作区再动手创作。** 这次的圣诞曲其实早就在别的项目素材包里（`NutsSortJourney.../Q193bab文件夹/(素材)/40 Jingle Bells.wav`，旁边还有爱给网的《铃儿响叮当》）。先全局找 mp3/wav/m4a 再决定是否合成，能省掉自造音源带来的听感和授权解释成本。
+- **现成 cue 直接循环一定爆音。** 这条录音音乐在 30.2 s 结束、后面是房间底噪，从最后一个样本绕回开头会跨乐句跳变。必须按小节找循环长度（用 onset 包络估速度 + 相位，取整小节），再把循环点之后的一小节交叉淡化进开头。交叉淡化方向是「后面的素材淡出、开头淡入」，反了会留下整段幅度的接缝（实测 seamJump 0.159 vs 正确 0.018）。
+- **大小硬门槛是 5 MB（COMMON-ART-001，blocker）。** 27.6 s 立体声 320 kbps 光 base64 就 1.4 MB；56 kbps 单声道时成品 4.92 MB 只剩 84 KB 余量，40 kbps 才回到 4.84 MB。加 BGM 前先算：`base64 后字节 ≈ mp3 字节 × 1.34`，再从成品预算里减。
+
+- **音频门控是硬规则，不是建议。** 平台检查里 `COMMON-STA-003` 要求 AudioContext 只在 pointerdown/click/touchstart 之后恢复；运行时门禁 `RUNTIME-AUDIO-001` 更严，交互前出现任何 `AudioContext.resume` / `decodeAudioData` / `BufferSource.start` 都判失败。所以 BGM 只能在「点击成功」之后启动，放 load、preload 或 `unlock()` 里都会挂检查。
+- **BGM 要独立于特效池。** `audioConfig` 那套是解锁即预加载 + `resetEventHistory()` 清空音源（重开/换关会调）。把音乐塞进去，重开就会重启音乐、换关会断。现在单独存 `this.bgm`，`resetEventHistory` 刻意不碰它。
+- **音乐资源不会自动内联。** 单 HTML 打包器只收集关卡文档、CSS、tuning 里的背景/icon/logo 和机制清单；BGM 路径在 `audio.bgm.asset` 里，必须显式 add，否则成品包请求根相对路径，控制台只留一行 404 警告，不报错、不阻断导出。
+- **合成音乐的两个典型坑**：包络每 N 个样本重置成常量（听起来像每个音都在咔哒）；旋律表长度超过循环长度（越界截断 + 出现空洞）。前者要在 sample 级做指数衰减，后者要保证 beat 偏移全部落在 `[0, 循环拍数)` 内，并把尾音折回开头做无缝循环。
+
+**Why:** 这四条都静默——不挂检查、不报错、听着「有声音」但循环处咔哒或中途空一段，只有逐个样本量 RMS 和跨接缝跳变才看得出来。
+
+**How to apply:** 给新关卡加 BGM 时：开 `audio.bgm.enabled`、确认调参里有 asset、跑一次导出再看 `reports/*runtime*.json` 的 `RUNTIME-AUDIO-001/002`，最后在真实浏览器里数「循环音源只在首次点车后出现一次」。
+## 2026-10-30 命名 11 段与 Bus 单包双端：会话会覆盖调参，变体数组会丢设备列表
+
+- **命名末尾两段不能再靠"空值裁掉"**。需求方给的交付名是 11 段（`需求-素材-前贴-N-语言-PL-设计师-需求人-渠道-步数-体力`），前贴后固定 `N`、末尾步数/体力无值写 `N`。`buildPlayableArtifactName` 里这两段必须用 `|| 'N'` 兜底；用 `??` 会让编辑器清空输入后整段消失，文件名少两段但静态检查照样通过。
+- **`artifacts/playable-session.json` 的 `exportNaming` 覆盖 tuning**。`applySessionExportNaming` 是展开合并，会话里写了 `materialCode` 就赢过 `--tuning-json`。改交付命名时两处都要改，否则会导出 `Q24V1` 而你以为改成了 `Q158V1`。
+- **Bus 双端合并的正确落点是"资源 + 运行时"，不是"两份文件"**。`branding.icon.deviceAssets` 存两端 icon，`resolveBrandingIconAsset` 在非编辑器构建里按 UA 选；打包器的 `collectAssetUrls` 要把 `deviceAssets` 的值一起收集，否则只内联当前那一个，另一端是根相对 URL。编辑器内保持 Icon 版本选择器优先，否则操作员一换预览就跳回去。
+- **变体数组必须携带 `runtimeDevices`**。单平台导出走默认 `buildVariants`，全平台走 `brandingVariants.map(({id, suffix}) => ...)`——后者只挑两个字段会把设备列表丢掉，于是同一份双端包只跑了一个 UA 的 smoke，报告全绿却没有 iOS 证据。现在两处都传，且第二份报告作为 `runtime-ios.json` 一并归档。
+
+**Why:** 这四个问题都静默：文件名少段、会话覆盖调参、另一端资源缺失、少跑一份 smoke，静态规则全都 PASS，只有逐字比对交付名或在真机 UA 下打开才暴露。
+
+**How to apply:** 出包后先逐字比对文件名与需求清单；再对同一份 HTML 分别用 Android/iOS UA 打开，确认 icon 的 MIME 与 CTA 商店域名都跟着变。
+## 2026-10-30 单 HTML 打包器的机制资源根是硬编码的；雪橇换座会造出 blocker 环
+
+- **`replaceBundledDynamicAssetUrls` 只认 `/assets/unity/mechanisms`。** 机制素材在 bundle 里是 `${ROOT}/models/x.fbx` 这种模板字符串，完整 URL 从不出现，所以普通字符串替换扫不到；打包器专门用「根前缀 + 尾部」正则在回写 data URI。圣诞资源挂在 `/assets/unity/christmas` 下，于是清单里内联了、bundle 里却没替换，成品运行时去请求 `/assets/unity/christmas/textures/Idle_boy_Santa.png` 报 404。现在根改成 `DYNAMIC_MECHANISM_ROOTS` 列表；**以后新增任何顶层资源根的机制族，必须同时加进这张表**，否则静态检查全绿、只有运行时门禁能抓到。
+- **雪橇是 10 座车体。** `scene-view` 用 `prepareVehicleTemplate(vehicleFbx, 10)` 烘焙，车长按 10 座缩放。把 6 座的中心车直接改成雪橇，碰撞盒仍是 6 座，视觉会比碰撞盒大一截；改成 10 座才是对的，但车长 +0.19 会让中心车和左下方三辆车锁成 10 车 blocker 环（`clearable 60/70`）。沿 -Z 平移 0.03 即解开，画面几乎看不出。
+- **渐变配色不能靠 colorIndex 的裸图集。** Q7V3 的深红/红/森林绿是用 `colorOverrides.body` 染色出来的，对应索引 4/2/8 的裸图集其实是红/粉/棕。想复现色参图必须连 `passengerColorOverrides` 一起带，否则车和乘客颜色对不上。
+
+**Why:** 前两条都不会在开发模式暴露——本地 404 只是控制台一行、合成包才致命；座位数和碰撞盒的关系也不在关卡文档里。
+
+**How to apply:** 出包前跑 `check-playable-runtime.mjs`（它会抓 404）；把关卡里的特殊车换成雪橇时，先确认 `clearable == total`，不成立就微调 0.03 级别的位置再复核。
+## 2026-10-29 VATM 的 vatIndex 必须写 uint32；星形跑道样条要按车道带中线算
+
+- **`vatIndex` 是整数列号，不是浮点数。** `loadVatGeometry` 用 `DataView.getUint32` 读 VATM v2 尾部那段；如果生成端写成 `Float32Array`，1.0 的字节是 `0x3F800000`，读回来是 1065353216，shader 用 `(vatIndex + 0.5) / textureWidth` 采样就飞到纹理之外，所有顶点塌缩到一点。渲染结果是**网格存在、`visible === true`、包围盒正常，但屏幕上一个像素都没有**，只留下脚下那片影子。排查这类"人不见了但影子还在"时，先打印 `geometry.attributes.vatIndex` 的前几个值。
+- **跑道样条的贴合度要用"带内位置百分比"量，不能只看"是否出轨"。** `starLoop` 的旧样条 100% 落在车道带内，但位置在 16%~55% 之间跳（理想 50%），表现就是小人一会贴内沿一会贴外沿，星形凹口处外侧留下大片空白。正确做法：以星形孔的质心为原点、按角度做射线，取车道带的 `[进入, 离开]` 区间中点，把控制点投影到这个中线上；需要"更往里"时再按 `start + (end-start) * bias` 取偏置，bias 0.35 仍有 48px 离边余量。
+- 画的核对脚本思路：把控制点经 `toWorldPoint` + `transformCurveCoordinates` 转到世界坐标，再按 `art` 平面的 `x/z/width/depth` 映射到原画像素，直接采样 PNG 的 alpha 判断是否在路面上。
+
+**Why:** 这两个问题都不会报错——一个静默渲染成"不存在"，一个静默渲染成"不好看"，静态检查和运行时冒烟都发现不了。
+
+**How to apply:** 新增 Unity VAT 乘客时，转换完先断言 `vatIndex` 前几位是 `0,1,2,3`；调整跑道样条时，先算带内位置百分比与标准差，再决定往哪个方向偏。
+
+## 2026-10-29 圣诞素材：一个 FBX 三材质槽共用一张图集，色号 16 不能进识图调色板
+
+- `Sled_001.FBX` 的三个材质槽（`Material #202` / `08 - Default1` / `20 - Default`）全部指向 `Textures/Car_0307/Idle_boy_Santa.png`，所以运行时**车辆和乘客共用同一张贴图**；`Sled_001/002/003.mat` 引用的贴图 GUID 也完全一致（`fd38e7d65d43beb4593f978ec8ff4126`），交付里只给一张图是完整的，不是缺文件。
+- Unity 的 mesh 顶点数据是**按 stream 分块连续存放**，不是逐顶点交错：stream 0（position/normal/tangent）占满 `vertexCount * 32` 字节后，stream 1 的 UV 才从 `vertexCount * stride` 开始。按交错读会把 UV 读成位置数据（表现为 bbox 越界、UV 出现负数）。`m_DataSize` 还可能比 `vertexCount * stride` 多几个字节的尾部对齐填充，不能拿它反推 stride。
+- 乘客动画 `Idle_boy_Santa_positions.ssvat` 是 SSVT v1：`magic + version + vertexCount + frameCount`，随后每帧每顶点 4 个 half float（xyz + 常量 w=1）。102 帧按 `Idle_boy_Santa_animation.asset` 切分：0 静置、1–61 `Passenger_Idle`、62–81 `Passenger_Move`、82–101 `MoveToBus`；运行时只用 idle/move。
+- **色号 16 必须从识图调色板里排除**。把它作为普通 `VEHICLE_COLOR_OPTIONS` 条目后，`#C62828` 与红色（`#B10F11`）足够接近，照片里的红车会被 `nearestPaletteColor` 判成圣诞，既有识图回归测试直接红。正确模型是「运行时车型」：允许出现在关卡数据与导入器里，但不参与照片颜色识别、也不进可涂装色列表。
+
+**Why:** 这类补充素材的贴图与坐标约定不在代码里，只能从交付原文推导；错了不会报错，只会静默渲染成怪形状或错色。
+
+**How to apply:** 再加同类 Unity 顶点动画乘客时，直接用 `scripts/extract-unity-santa-vat.mjs` 当模板，并先跑一遍「bbox/UV 与同资源 FBX 对照」再接入。
+
+## 2026-10-29 `ConveyorBelt_Footage*` 家族跑道的饱满度校准、3D 身高视差与 `passengerViews` 池尾部清理
+
+- **Prefab 局部坐标到 `conveyor-layouts.js` 场景坐标的基准转换**：`ConveyorBelt_Footage.prefab`（starLoop）、`ConveyorBelt_Footage2.prefab`（heartLoop）、`ConveyorBelt_Footage3.prefab`（catLoop）共用 `Loop_13` 精灵变换（`localPosition: (0, -0.24, 1.8), localScale: 0.43`），局部点到场景坐标的基准公式为 `out_x = 0.826305 * raw_x - 0.004829, out_z = 0.826305 * raw_z + 14.2367365`，对应 `art: { x: 0, y: -0.045, z: -5.3394, width: 16.685, depth: 10.3288 }` 与全图 `spriteRect (2100 × 1300)`。
+- **为什么原版参考图（Level 85/102/156）显得小人饱满而原始 Prefab 点位显得内缩**：
+  1. 三次均匀 B 样条对星角、心瓣、猫耳等高曲率处有削峰内缩效应，且 `Footage3` 猫头顶控制点 `6/7/8` 在原 Prefab 里掉到了 `y=833`（低于猫头内框 `y=822`）；必须将控制点向外白边方向外扩，并把猫头顶修正为 `y≈788` 的平滑单弧。
+  2. **3D 小人身高带来的屏幕纵向视差（Parallax）**：小人高 `0.48`，在 61° 俯视相机下，圆球头顶比脚底在屏幕上方（贴图 `-y`）偏移约 `22~26px`。若不补偿，上半圈头顶会冒出上白边而脚底留灰缝，下半圈则会往内圈缩而外侧留灰边。将主环控制点整体向贴图 `+y` 下移约 `22px` 并微扩下半圈横向宽度即可消除视差。
+  3. **内圈白框孔洞需与小人内包络线等距**：原贴图内圈孔洞偏小，导致上半圈灰带宽度超过 4 人排宽（`~115px`）。对环道内部做平滑径向放大（外圈权重平滑衰减为 0，保持外白边与手臂不变），使内圈白框紧贴小人内侧脚底，即可实现外贴外白边、内贴内白框的饱满效果。
+- **切换不同容量跑道时必须隐藏 `this.passengerViews` 池的尾部多余视图**：`SceneView.update` 在遍历 `snapshot.slots` 后必须将 `index >= snapshot.slots.length` 的视图置为 `visible = false`，否则从 60 容量的 `catLoop` 切到 45 容量的 `heartLoop` 会在入口处残留 15 排僵死小人。
+
+## 2026-10-26 同一个「level2」在仓库和远端是两张不同的盘面
+
+- 需求 Q22 写的「游戏内 lv2」指的是 Unity 里序号 2 的那张矩形盘面：12 辆车、每辆 10 座、只有 4 个颜色（3/2/3/4 辆），远端编辑器里存成 `level45`，`displayName: "level2"`、`unityId: 9804`。
+- 但本仓库的 `artifacts/web-levels/level2.json` 是 `displayName: "Q7V1改"`、`unityId: 52`、84 辆车的另一张盘面。会话配置一旦写成 `levelKey: "level2"`，导出出来的就是 Q7V1改，与需求方给的那个单关包完全不是同一关。
+- 判别方法：不要按 `key` 或 `displayName` 认关卡，要看 `unityId` + 车辆数。需求方给的包可以从 HTML 里抽出关卡字面量（`{id:<unityId>,mapScale,...}`）反查。
+- 处理：远端文档取回后存为 `artifacts/web-levels/level9804.json`（`key` 改成 `level9804`，`displayName` 保留 `level2`），Q22 矩形版指向它。远端卷不会被镜像重新播种，所以新增关卡文件只影响本地与后续部署包。
+
+## 2026-10-26 lv154 / lv12 在 4 车位下我的离线求解器打不通（未定性为死局）
+
+- Q22 的两张困难关：lv154（50 辆、380 座、9 色、队列 178+202）和 lv12（94 辆、438 座、9 色）。
+- 用 `BusLoopGame` 离线模拟，多种策略都提前判负：队列头部颜色优先、传送带颜色加权（权重 3/10）、前瞻窗口 4~30、随机重启 40 次。lv154 最好约 19 辆（剩 35），lv12 最好 30 辆（剩 68）。判负条件是「车位全停满 + 传送带 32 格全满 + 无可上客车」，属于资源耗尽。
+- **这不是死局的证据**：把车位数拉到 5/6/8/10 依然打不通，说明瓶颈不是车位。而且按色统计，四关的座位总数与乘客总数完全相等（lv154 380/380、lv12 438/438），没有任何颜色缺座，关卡数据本身是配平的。
+- **以下两条早期的推断已被推翻**：
+  - 「与 `ConveyorBelt3` 缺布局有关」——不对。参考交付包同样用 `dualQueue3` 渲染，且我已确认我们的 lv154 / lv2 关卡数据与参考包逐字段一致（车辆 50 辆、队列、`mapScale 1.33` 全部相同）。数据与配置都不是差异来源。
+  - 「大概率死局」——证据不足，应改为「我的离线策略不够好」。Q22 的参考包在 4 车位下本来就是可交付的状态，真实玩家能否通关需要人工实测，不能用贪心求解器下结论。
+- 教训：离线求解器只能证明「这样打不通」，不能证明「打不通」。把求解失败写成关卡死局前，先做一次配平校验（每色座位数 ≥ 该色乘客数）和参数扫描，这两项都通过时，结论应该指向求解器而不是关卡。
+
+## 2026-10-23 黑车白车导出后变蓝：数据卷里的旧 catalog 只带 11 张色卡图集
+
+- 现象：线上编辑器里 BL-2610132（level38）黑车、白车显示正常，导出的单 HTML 里它们全变成蓝色。
+- 根因不在调色，而在**色卡图集数组缺槽位**。该关使用色号 `17`（黑，22 辆）与 `18`（白，31 辆），但导出包里 `colorTextures` 只有 **11 项**（色号 0–10）。`scene-view.js` 取图集写的是 `this.vehicleColorTextures[i] ?? this.vehicleColorTextures[0]`，索引越界就静默回落到 0 号，即蓝色。
+- 缺槽位的来源：`Dockerfile` 设了 `PLAYABLE_LEVEL_CATALOG_PATH=/app/artifacts/level-catalog.js`，而 `/app/artifacts` 是**数据卷**，`start.sh` 只在首次播种（`.seeded-v1` 标记）时把镜像里的 catalog 拷过去，之后永不更新。该卷里的 catalog 停留在色卡补充（10-13 加入色号 17–25）之前。`generate-active-level.mjs` 的 web 关卡路径固定用 `LEVEL_CATALOG.level5` 当 assets 基底，于是关卡车辆带 17/18，图集表却还是 11 项。编辑器预览走镜像内新打包的 catalog，所以两边表现不一致。
+- 复现方法（不要靠猜）：拿旧版 catalog 文本当 `PLAYABLE_LEVEL_CATALOG_PATH`，把远端 `GET /__level-authoring/<key>` 的文档拼成一个 level 条目跑 `generate-active-level.mjs`，生成的 `PLAYABLE_LEVEL_SEQUENCE[0].assets.colorTextures.length` 就是 11。
+- 实测证据（真实 Chrome 打开成品，按 `material.map.source` 反查图集槽位）：坏包 `colour 17 -> atlas {"0":22}`、`colour 18 -> atlas {"0":31}`；修复后 `colour 17 -> {"17":22}`、`colour 18 -> {"18":31}`，其余色号一一对应。
+- 修复：新增 `src/color-atlases.js` 作为色号→图集的**唯一来源**（26 槽，11–16 显式留空给特殊车辆）。`scripts/generate-active-level.mjs` 的两条解析路径（web 关卡与 catalog 关卡）都过 `completeColorAtlases()`；`src/level-data.js` 的 `setActiveLevel` 与初始 `LEVEL_1` 也补齐，所以编辑器预览路径同样不会回落。
+- 教训：**色卡表不能只存在生成的 catalog 里**。任何"随关卡数据一起下发的资源清单"一旦和远端数据卷里的旧副本绑定，就会在补资源时静默退化；资源清单要放在代码里，缺槽位要在运行时补齐而不是靠 `?? [0]`。
+- 顺带确认的边界：`?? [0]` 这类回退不会报错也不会打日志，静态检查和运行时冒烟都不会发现——这类"颜色不对"只能用渲染后反查材质绑定的方式验证。
+
+
+## 2026-10-23 导出被 payload 扫描拦下：CSS 重复 url 与 loading 图标各算一次重复内联
+
+- `export:playable --platform applovin` 曾在本仓库基线直接失败，报 `FINAL_PAYLOAD_DUPLICATE_WASTE, FINAL_PAYLOAD_DUPLICATE_WASTE`。`deploy-tools/.../scan_candidate_payloads.py` 的默认阈值是 **4,096 B**：成品里同一段 base64 出现第二次、且浪费字节 ≥ 4 KB，就阻断导出。
+- 两个肇事资源分别是 `public/assets/applovin/icon_q75.jpg`（51,911 B）和 `speed-toggle-bg_q90.webp`（19,258 B），都是**合法资源**，问题只在被嵌入两次：
+  - 加载图标：`index.html` 的 `<img id="loading-icon">` 与 `SCENE_TUNING.branding.loading.icon` 各一份——前者是 DOM，后者是 JS 字面量。
+  - 倍速底图：`src/styles.css` 的 `.speed-toggle` 与 `.speed-toggle:hover` 各写了一遍 `url(...)`。第二条是为了擦掉共享 `button:hover` 的 `translateY(-1px)`（会顶掉居中用的 `translate(-50%,-50%)`），不是冗余规则，所以不能删 hover；改成 CSS 自定义属性只声明一次 url。
+- `reuseDocumentImageAsset` 的复用名单必须包含 `loading-icon`，而且**不能改成删掉调参里的 icon 字段**：`main.js` 用 `loadingIcon.getAttribute('src') !== iconSource` 判断是否回写，字面量与 DOM 不同就会每次启动重设一遍。
+- 定位方法：别猜。`python3 deploy-tools/build-verified-playable-packages/scripts/scan_candidate_payloads.py --artifact <成品> --platform applovin --output /tmp/p.json` 会列出重复组的 sha256、浪费字节和 `origins`（`#data-uri-N` 序号）；拿 sha256 去 `public/` 逐个比对即可锁定具体文件。
+
+## 2026-10-21 Crowd 试玩是 iOS/Android 共用一套包
+
+- Bus Fever 的交付习惯是「同一份 HTML 只换 Icon 与商店链接，出 `-Android` / `-iOS` 两包」。Crowd 不是这样：它只有一套品牌资源，两个商店看到同一个包，所以导出器需要区分「套系（branding set）」而不是固定按两个变体展开。
+- 实现：`PLAYABLE_BRANDING_SETS.bus` = android/ios 两个变体；`PLAYABLE_BRANDING_SETS.crowd` = 单个 `crowd` 变体，同时覆盖 `branding.icon.asset` 与 `branding.logo.asset`。Bus 变体只换 Icon，Logo 继续跟随编辑器的 `Logo 版本`，避免旧流程被暗改。
+- 关键坑：导出源缓存会把「首个变体的品牌图」烘进 HTML 再复用。缓存 key 必须包含 variants，否则先导 Bus 再导 Crowd 会拿到 Bus 品牌图（或反过来）。
+- 另一个坑：单 HTML 打包时文档里的 `<img id="branding-icon"|"branding-logo">` 已经内联为 data URI，tuning 字面量若再嵌一份同样的 base64，包体会翻倍（Logo 约 170 KB）。两处都要用 `reuseDocumentImageAsset` 指回 DOM。
+- 品牌文案：Crowd 套会把仍是默认值（`Bus Fever Party!` 或空）的底部文本与加载页标题改成 `Bus Crowd`，自定义文案保持不动。加载页图标跟随品牌 Icon，不能把同一张图既写进 `<img>` 又写进 tuning 字面量——payload 扫描会以 `FINAL_PAYLOAD_DUPLICATE_WASTE` 拒绝。
+
+## 2026-10-20 车位描边比车小；离场瞬间残留上车小人
+
+- **描边尺寸**：车位白线是共用美术，按"一辆标称车"画的。实测 10 座车车身 0.762×1.753（车位本地空间），描边只有 0.36×0.70，覆盖率 0.47×0.40——车明显溢出自己的车位框。层级本身没问题：描边顶面在车底下方 4mm，中心偏差 0.001。
+- 修复：`src/scene-view.js` 新增 `updateSpotOutlineSize()` + `measureVehicleModelSize()`，把描边按车位上的车等比放大（`SPOT_OUTLINE_FIT = 1.08`），空车位保持原尺寸。修复后覆盖率 1.08×1.08，描边仍贴地。
+- **关键坑**：不能用 `userData.templateSize` 算尺寸——它是 Unity 碰撞尺寸（0.27×0.678），比渲染出来的车模小得多，用它会把描边缩小到 0.47 倍。也不能用世界 AABB：车位有 16° 偏航，AABB 会撑大。正确做法是在模型本地坐标量尺寸、再乘实时渲染缩放。
+- **残留小人**：上车行人的视觉目标固定为**车位坐标**，与车本身脱钩。车离开时若还有行人没走完，他们会继续走到空车位并停在那里（截图里"车最后一帧后面站个小人"）。修复：`updateBoardingViews()` 检测到该车已进入 `departing`/`done` 就立即回收未落地的行人，并补发上车音效避免音效丢失。
+- 验证：真实 Chrome 连跑 3 辆 10 座车，离场后 `boardingViews` 残留均为 0；描边覆盖率 1.08；`node --test` 312/312。
+
+## 2026-10-19 车库/容器碰撞点坐标空间用错：特效飘到传送带出口
+
+- 现象：点车阵里被挡住的车，撞击白光和飞散粒子出现在画面上方的传送带出口旁，离被点的车很远（用户截图红框）。
+- 根因：`findCollisionContact()` 返回的 `contactPosition` 是**关卡源空间坐标**（与 `vehicle.x/z` 同一套），但 `vehicle-effects.js` 的 `spawnHit` 注释假设它已是世界坐标，直接 `new THREE.Vector3(x, y, z)` 丢进场景。车辆→车辆碰撞走的是两个 view 的中点（世界坐标），所以只有**容器类碰撞（车库/传送带墙/门）**会错位。
+- 实测（Q21 level20，真实 Chrome）：同一辆车被车库挡住，接触点源空间 `(1.96, -0.19)` 映射到世界后是 `(3.14, 6.36)`。特效距被撞车 **6.89** 个世界单位；修复后 **0.38**（正好在车头接触点）。Node 侧遍历 6 个容器阻挡样本，误差 6.7–11.2 单位。
+- 修复：`VehicleEffects` 新增 `mapContactPoint` 注入点，`scene-view.js` 传入 `mapMotionPoint`（源空间 → 镜像/旋转/缩放后的世界空间）。没有注入时保持旧行为（测试与离线用法不受影响）。
+- 排查提示：任何来自 `game-model` 的坐标（`contactPosition`、`vehicle.x/z`、`spot.x/z`）都是源空间，必须经 `mapMotionPoint`/`mapVehicleAreaBasePoint` 才能进 Three.js 场景。不要因为某个字段"看起来像世界坐标"就直接用。
+
+## 2026-10-19 碰撞：特效丢失来自事件覆盖，距离过远来自未限制的冲撞行程
+
+- "点了车有碰撞但看不到效果"：`vehicle-effects.js` 的 `spawnSnapshotEvents` 只读 `snapshot.lastEvent`，同帧内碰撞接触事件被后面的"小人上车"覆盖时，撞击粒子就不会生成。与音效是同一个根因，现已让它消费整帧 `frameAudioEvents` 里的全部 `vehicle-collision-contact`（去重键不变）。
+- "碰撞效果距离很远"：碰撞判定选中的障碍可能在很远处。实测 10 座车 id=4 的阻挡者是 1.428 单位外的 6 座车（正前方 0.1 单位就有别的车），车要冲过去 0.954 单位（约 1.4 倍自身车长）才触发撞击，视觉上就是"特效出现在很远的地方"。
+- 修复方式：新增 `collision.maxBumpDistance`（默认 0.5，0=不限制）。它只限制**冲撞动画的行程**，阻挡判定完全不变——车会提前在障碍前停下触发撞击；真实间隙保存在 `collision.actualDistance` 供排查。
+- 实测：上限 0.5 时动画最远 0.5，未限制时最远 0.716；16 次与 19 次碰撞全部正常生成特效。
+- 注意：阻挡者的选择本身没有改动（仍按碰撞图 + 前方扫描，取最近接触）。如果某些位置"明明贴着却被远处车挡"，那是布局/碰撞图问题，需要看具体车位坐标再调。
+
+## 2026-10-19 离场终点 Z 偏移方向反了；预览线与实际路径改为共用构建函数
+
+- 现象：编辑器里调「离场终点 Z 偏移」，车不是往想的方向走——用户反馈"出去的时候太靠上"。
+- 根因：`exitTargetZOffset` 直接加在源空间 z 上（`forwardStart.z + offset`），而源空间经过 `vehicleArea.mirrorZ = true` 与 `rotationDegrees` 之后方向是反的。实测：offset = +1.0 时终点屏幕 y 从 251 变成 218（上移），offset = -1.0 时变成 309（下移）——与编辑器字段语义相反。
+- 修复：新增 `buildDepartureForwardPoints()` 统一做视觉方向 → 源空间的换算（`z = forwardStart.z - exitTargetZOffset`），并让 `game-model.js`（真实行驶）与 `scene-view.js`（编辑器预览线）都调用它。此前两处各写一遍同样的坐标算式，是这类方向错误容易复发的地方。
+- 实测（修复后）：offset -1 → 终点 y=192（上），0 → 251，+1 → 309（下），符合"正值=往下（远离镜头）"的直觉。
+- 附带确认：预览线和车辆实际路径逐点吻合（起点 99,232 → 倒车到 80,251 → 右行到 399,251），不存在"预览画一条、车走另一条"的问题。
+- 若仍想让整条离场轨迹整体下移，用「倒车距离」（backDistance，实测 0.5→1.2 让离场线从 y=251 降到 y=276）；它移动的是倒车终点和整条右行段，比终点 Z 偏移影响更全面。
+
+## 2026-10-19 离场车必须降到线的高度上行驶，不能把线抬到车层
+
+- 现象：满载车辆离场时不再贴着编辑器画的黄色离场路径走，线单独横在车下方的路面上。
+- 根因：当天的车位层级修复为了修"车位描边压车"，把离场高度从 `vehicleDeparturePath.y`（-1）改成了 `vehicleArea.y`（0.035）。线的位置没动，于是车和线在屏幕上错开约 60 个设计像素（390 宽视口实测 22～53 CSS px）。注意：`-1` 并不是"把线藏到地面下"——线材质带 `depthTest:false`，它一直是可见的，`-1` 的语义是"这条离场车道在屏幕上比车位行更低"。
+- **正确修法（用户确认）：线保持原位，让车降到线的高度行驶**，即离场分支用 `vehicleDeparturePath.y`。曾试过的"把 `vehicleDeparturePath.y` 提到 0.035 让线来贴车"是方向反的，已撤销。
+- 实现：`src/scene-view.js` 的离场分支恢复 `const departureY = SCENE_TUNING.vehicleDeparturePath?.y ?? SCENE_TUNING.vehicleArea.y`；`src/main.js` 的 `migrateDepartureRouteHeightTuning/Profiles` 负责把被错误写进缓存的 0.035（= 车辆层高度）改回作者值，操作者自定义的其他高度不动。
+- 编辑器字段标签改为「离场高度（线与车）」，因为这个值同时决定线的位置和车辆的离场高度。
+- 实测（真实 Chrome，390 宽）：车与线在同一路段屏幕 y 差值为 0，车沿线下行；修复前差 53.5 CSS px。
+- 相关：车位描边仍压在车辆层之下，离场车降到 `-1` 后在车位附近与描边重叠时会被描边遮住——这是"车走在这条车道"的必然结果，用户已确认接受。
+
+## 2026-10-19 音效"有的不响"来自帧内事件覆盖；偏移参数本身已实测生效
+
+- `lastEvent` 每帧只保留最后一次赋值，而一帧内可能同时发生"车辆满载开走"和"小人上车"。音效层读 `lastEvent` 时，先发生的事件被后面的覆盖 → 开出音效/撞击音效被吞。实测修复前 4 次出发只响 2 次。
+- 修复：引擎新增 `frameAudioEvents`，每帧清空并累积所有音效相关事件（`recordEvent` 写入），快照暴露该列表；运行时逐个播放列表内事件，再补播 `lastEvent`（音频层按事件键去重，不会重复）。
+- 音效延迟参数（`audio.busHitDelay/busFullDelay/passengerUpDelay`，正值=推后）通过 `GameAudioController` 的 `getDelay` → `source.start(context.currentTime + delay)` 实现；`passengers.aboardSoundOffset`（负值=提前）仍然控制进车音效的触发时刻。
+- 偏移有效性实测（线上导出包）：`aboardSoundOffset = -0.25` 时，音效触发比小人到位时刻早 0.21～0.31 秒，证明参数链路正常。旧导出包不含此能力，必须重新导出。
+- 感知提示：进车动画本身约 0.4～0.5 秒；若仍觉得晚，把偏移调到 -0.4 ~ -0.5 可让音效贴近"小人开始移动"的那一刻。音效文件自带 32～42ms 开头静音，属正常范围。
+
+## 2026-10-19 车位与车辆的上下层级：描边贴地、车辆在地面层
+
+- 车位"穿模"不是落位偏移：实测车辆中心与车位中心屏幕投影重合（408.5 vs 408.6）。根因是车位描边模型本身是一块有厚度（约 5cm）的立体贴片，顶面高于车底，斜视角下白线就画到了车身上。车位框 0.532 × 0.949 也比车身小（6 座车 0.665 × 0.947），但即使改尺寸也解决不了"白线在车身上"的层级问题。
+- 用户确认的方案是**描边常显、放在车辆下一层**，车从上面开过去。实现：描边 Y 压到 2% 厚度，顶面沉到车底下方 4mm（描边顶 0.031 / 车底 0.035）。曾试过的"占用时隐藏描边"被否决并完整撤除。
+- **`vehicleDeparturePath.y` 同时控制离场路径线的高度和离场车辆的行驶高度**（两者必须一致，否则车会脱离线）。车位层级修复期间曾把车辆离场高度改成 `vehicleArea.y`，导致车与线分离，现已恢复为该值。它曾被误认为"调到 -1 是为了让线看不见"——线材质带 `depthTest:false`，-1 只是让线在屏幕上更低，落在路面上。
+- 车位描边对齐必须在车位根的局部坐标里算，因为 `applyTuning()` 在 `upgradeSpotViews()` 之后才设置车位世界位置；直接量世界坐标会得到旧值。
+- 若日后调大 `parkingSpots` 的 Y 或描边厚度、或把车辆层压到 0.035 以下，压车问题会复发。
+
+### 2026-10-20 修正：车位固定原始尺寸，且必须在所有车辆之下（含离场车）
+
+- 上一版"离场车被描边遮住是可接受表现"的结论**已被用户否决**。真正的要求是：**车位大小固定为美术原始尺寸，永不跟随车辆缩放；车位层级永远低于车，离场车也必须压着车位开出去**。
+- 车位曾是"跟随车辆大小"（`updateSpotOutlineSize` + `measureVehicleModelSize` + `SPOT_OUTLINE_FIT`）。这带来两个 bug：空位时把描边缩放重置为 `1`，而模板在 `normalizeObject` 里被缩放到 2.2 倍，等于把空车位缩到原大小约 45%；有车时又按车身重算，占位/空位尺寸不一致。现已整套删除，描边保持 `parkingTemplate` 的原始缩放。
+- 白框压到车上有两个独立原因，必须同时修：
+  1. `parkingMaterial` 是 `transparent: true`。three.js 把透明物体统一排在不透明物体之后，所以无论怎么调 `renderOrder` 都会画在车身上。改为纯 `alphaTest` 裁剪的不透明材质。
+  2. 离场车按 `vehicleDeparturePath.y = -1` 行驶，比车位（约 0.03）更低，深度测试下描边反而更靠近相机、盖住车。因此描边材质设 `depthTest: false, depthWrite: false` 并 `renderOrder = -10`，作为纯地面图层先画。
+- 同一原因：`backgroundPlane` 也是透明材质，改成不透明裁剪后它会反过来盖住车位，所以背景在 `opacity < 1` 时才启用 transparent，正常为 1 时走不透明通道。顺序必须是 背景 → 车位 → 车/小人。
+- 不要再用"调整描边 Y"或"提高离场高度"来修层级：Y 只影响斜视角下的投影位置，不解决绘制顺序；离场高度又和离场路径线绑定。
+
+## 2026-10-16 CTA 文字在 Windows 上叠字的机制与修复边界
+
+- CTA 调参值 `fontHeight`（16）远小于 `fontSize`（63）是刻意为之的视觉样式（描边字紧贴），但这意味着**任何折行都会让两行字直接重叠**。文字恰好卡在按钮可用宽的临界点（设计上约 302px 可用、文字约 300px 级），因此平台字体度量差异就决定了单行还是糊字。
+- Mac 显示正常不等于跨平台安全：同一 HTML 在 Windows 的引擎/字体回退下宽度略增即折行。这类"临界宽度 + 极短行高"组合是 Web 试玩在双端投放时的高危样式。
+- 修复选择了"禁止折行 + 超宽按比例缩字号"而不是增大行高：缩字号保留了作者调好的按钮比例与描边位置；增大行高会改变用户已确认的视觉。`document.fonts.ready` 之后必须重跑一次 fit，否则会以回退字体度量做错误收缩。
+- 编辑器中的字号/行高字段仍可自由调；nowrap 与自适应只兜底"文字超出按钮"这一种情况，不改变正常参数下的外观。
+
+## 2026-10-15 AppLovin 报表的挑战漏斗列对应 Axon 事件，我们的包只发 6 个核心事件
+
+- 投放侧 AppLovin HTML 素材报表（HTML ID / HTML name + `Challenge failed/retry/solved/pass 25/50/75` 及各自 rate）是按 Axon 事件名汇总的：`CHALLENGE_FAILED`、`CHALLENGE_RETRY`、`CHALLENGE_SOLVED`、`CHALLENGE_PASS_25/50/75`。
+- `src/platform-bridge.js` 只发 `LOADING/LOADED/DISPLAYED/CHALLENGE_STARTED/ENDCARD_SHOWN/CTA_CLICKED`；近期导出包（`BL-Q8V5-...-AL-all.html`、`BL-Q1V1-...-AL-0-0.html`）已核实同样只有这 6 个事件名。因此这些挑战列对全部 `BL-*-AL-*` 创意不会出数，不是上报延迟。
+- 生产参考：Coolplayable「Tile Journey」AppLovin 包实现了完整事件集，并带两个门控——`CHALLENGE_SOLVED` 之后抑制 `STARTED/FAILED/RETRY/PASS_*`；`CTA_CLICKED` 先于任何 `CHALLENGE_STARTED` 时先补发 `CHALLENGE_STARTED`，再延迟 200ms 发 CTA。
+- 已落地（2026-10-15）：bridge 增加 `challengeProgress/challengeSolved/challengeFailed`，进度按安装门槛 `successfulOperationCount/threshold` 的 25/50/75%，胜负接 `showResultOverlay` 的胜/负分支，`CHALLENGE_RETRY` 接 `reset()`；`APL-STA-004` 规则链扩展为 12 个事件，线上编辑器已重新部署生效。
+- 复盘教训：本地复现远端导出必须显式设置 `BUILD_VERIFIED_PLAYABLE_SKILL_ROOT` 指向仓库的 `deploy-tools/build-verified-playable-packages`，否则 `scripts/export-playable-package.mjs` 会回退到 `~/.codex/skills` 下的旧技能副本，用旧规则集导致检查结果和远端不一致。
+
 ## 2026-10-15 导出耗时的真实分布：冷启动每平台一次 Vite 构建，约 2 分钟；重复导出约 15 秒
 
 - 远端（1 核容器）实测：`__playable-export-all` 冷启动 103–119 秒，同参数第二次 13–21 秒（`X-Playable-Source-Cache: miss → hit`）。单平台导出**不吃**源码缓存，每次都会重建该平台；只有「一键导出全部」在第二次起复用已构建 HTML（只按变体重写图标/商店链接）。本地对照（并发 1，同 env）：cold 20.4s / warm 5.3s。
@@ -1009,3 +1224,40 @@ Full detailed 2026-07-07 findings were archived to:
 - `src/platform-bridges/basic.js` 统一提供已插入 DOM 的 `<a>` 预览跳转；各平台桥接仅在原生 API 不存在时使用该回退，容器内仍保持原平台 CTA 契约。
 - 真实广告平台仍需在官方预览中验收；浏览器回退只解决导出文件直接打开测试时的跳转问题。
 
+
+## 2026-10-23 车辆序号重排必须同步三类引用
+
+- 车辆 id 不只是画布上的标签，它同时是运行时寻址（`clickVehicle(id)`、`getVehicle(id)`、碰撞/车库 `vehicleIds`）、Unity 导出 `vehicles[].id`、以及 `vehicleDepthes` 的键和值。删除后随手改号会打断这三处，所以重排要在同一个事务里成组改写。
+- `vehicleDepthes` 的值是**混合命名空间**：既可能是车辆 id，也可能是非停车区容器 id（level20 里车辆 1/2 与车库 1/2 撞号，深度图里 313 条车辆引用、10 条容器引用）。重排时先按车辆解析、再退回容器，容器引用必须原样保留，否则车库/闸门阻挡关系会被误改。
+- 车辆文档数组顺序在所有现有 web 关卡里都等于 id 升序（level48/49/50/51 也无例外地保持递增），因此「按当前 id 排序后重排为 1..N」既消除了空号，又不会改变运营在画布上看到的相对顺序。
+- 引导车 id 存在 `SCENE_TUNING`（及导出 JSON 的 `tuning` 快照）里，不在关卡文档的 vehicles 中，重排必须通过回调把它一起搬走并落盘，否则删车后引导手指会指向另一辆车。带 `levelKey` 且不等于当前关卡的那份配置属于别的关卡，不能动。
+- 删除时先清理深度图里对已删车辆/容器的引用再压缩编号，顺序反过来会把空出来的 id 分配给仍活着的车，让已删除的阻挡者重新变成真实阻挡。
+
+
+## 2026-10-28 点车音效导出后消失：catalog 数据卷滞后，音效表也只在 catalog 里
+
+- 现象：编辑器预览里点车有声，远端导出的包里没有。用户 15:33 下载的 `BL-Q1V1-…-AL-0-0 (4).html` 里音频配置只有 `bus_hit` / `passenger_up` / `bus_full` 三项、5 段 `data:audio/mpeg`；`vehicle_tap` 只出现在代码分支（`vehicle-dispatched` 事件、`vehicleTapDelay`/`vehicleTapVolume`），没有对应的 `vehicle_tap:{clips:…}`。
+- 根因与 2026-10-23「黑白车导出变蓝」是同一个：`Dockerfile` 把 `PLAYABLE_LEVEL_CATALOG_PATH` 指向 `/app/artifacts/level-catalog.js`，而 `/app/artifacts` 是数据卷，`start.sh` 只按 `.seeded-v1` 首次播种。卷里的 catalog 停留在 `vehicle_tap` 加入之前，于是 web 关卡的 `assets.audio` 基座（`levelDocumentToRuntime(document, LEVEL_CATALOG.level5)`）没有这一条。音频文件和代码都在，只是关卡数据不引用它，打包器按关卡文档扫描资源，自然也不会内联。
+- **静默失败**：`GameAudioController.play()` 查不到 `audioConfig[name]` 时直接 return，既不报错也不 `console.warn`，静态检查和 runtime smoke 都不会发现——这和色卡 `?? [0]` 是同一类"不报错的退化"。
+- 严格复现：把 `src/level-catalog.js` 里 19 处 `vehicle_tap` 删掉当旧 catalog，设 `PLAYABLE_LEVEL_CATALOG_PATH` 跑 `generate-active-level.mjs`，5 个关卡全部只剩三个音效名，与远端导出逐项一致。
+- 修复：新增 `src/level-audio-config.js` 作为关卡音效的代码内唯一来源（照 `color-atlases.js` 的先例），`generate-active-level.mjs` 的两条解析路径过 `completeLevelAssets()`，`src/level-data.js` 的 `setActiveLevel`/初始 `LEVEL_1` 用 `withCompleteLevelAssets()` 补齐，`src/main.js` 组装控制器时对合并后的音效表再补一次（会话关卡合并绕过了 `setActiveLevel`）。关卡自带的值优先，不覆盖。
+- 打包器另外要补一条：`package-applovin-single-html.mjs` 的资源白名单加上 `LEVEL_AUDIO_CONFIG` 的全部 clip。运行时会补齐音效表，所以关卡文档没写的 clip 也可能被播放；只按文档扫描会让兜底路径指向单文件广告里不存在的根相对 URL。
+- **clip 路径必须写成完整字面量**，不能用 `${ROOT}/name.mp3`：单 HTML 打包器按精确 URL 匹配内联，模板字符串压缩后会留成 `${ms}/bus_hit_V5.mp3`，任何替换都改不到。这也是 `mechanism` 资源要在 `replaceBundledDynamicAssetUrls()` 里特殊处理的原因。
+- 验证：旧 catalog 与正式 catalog 各导出一次 `export:playable --platform applovin`，`sha256` 完全相同（`e72e79b8…`，3,960,348 B）——产物已与 catalog 版本无关。真实 Chrome 打开两份成品，真实手势解锁后点引导车，音频探针各抓到一次 `createBufferSource.start()`，buffer 时长 0.392 s（`vehicle_tap.mp3` 实际长度）。`check:applovin` 23 PASS / 1 FAIL，失败项为既有的 `/assets/applovin/textures` 根相对常量，改动前的产物也有同一处。
+- 教训：任何"随关卡数据下发的资源清单"都会跟远端数据卷的旧副本一起退化。色卡那次把表搬进代码只解决了一半，音效表当时没做——**新增的音效/资源一旦靠 catalog 承载，就同时补一条代码内兜底**。
+
+## 2026-10-28 共享编辑器里别人的关卡会被覆盖：版本校验挡的是「旧」，挡不住「别人」
+
+- 现象：别人新建的关卡经常被别人保存时覆盖。编辑器是多人共用的内网工具（同一个 artifacts 卷），关卡就是 `artifacts/web-levels/<key>.json`。
+- 根因不是并发写，而是**缺少写入者身份**。`saveWebLevelDocument` 只有 `baseRevision` 校验，它挡的是「你手上的版本已经过期」；两个人先后打开同一个关卡、各自改完保存，第二个人的 revision 是当时最新的，于是**合法地**覆盖了第一个人。`deleteWebLevelDocument`、两个导入路径同样没有任何身份判断。
+- 修复：新增写入归属（ownership），不是鉴权。
+  - `scripts/level-ownership.mjs` 持有规则：名字规范化（折叠空白、去控制字符、截断 40）、比较键 `levelOwnerKey`（小写化，`WXJ` 与 `wxj` 是同一人）、注册表形状、`resolveLevelWrite` 返回 claim/allow/refuse，以及冲突文案。
+  - `vite.config.js` 在保存（PUT）、网页关卡导入、Unity `.asset` 导入、两种删除上统一 `requireRequestLevelOwner(request)`（缺名字 403）＋`assertLevelWritable(levelKey, owner)`；写成功后才 `claimLevelOwner`，删除时释放归属。
+  - 注册表落在 `artifacts/level-owners.json`，和关卡同卷、随部署保留。**不写进关卡文档**：`createLevelDocument` 按固定字段表重建文档，任何塞进去的 owner 字段都会在下次保存时被丢掉。
+  - `src/level-owner.js` 是浏览器侧的一半：名字存 `bus-loop-level-owner-v1`，`X-Level-Owner` 头（URL 编码，中文名字不依赖 header 编码），以及和服务端一致的规范化/比较键。
+- **第一版在这里错了**：当时让「没有归属的旧关卡由第一个写入者自动认领」，理由是省掉迁移。实际效果是用户照样能改别人的关卡，因为 42 个已有关卡全都没有归属，谁先保存谁就把它吞下来，而且完全没有提示。现在的规则是：**没有登记归属的关卡默认只读**，保存和删除都返回 403 `LEVEL_UNCLAIMED`；要接手必须走独立的 `POST /__level-authoring/<key>/claim`，界面上是「认领此关卡」按钮，带确认弹窗，且只能认领不存在归属的真实关卡（认领别人的关卡 403，认领不存在的 key 404）。
+- 新关卡不受这条限制：文件还不存在就没有可保护的东西，创建者直接拥有，所以「新建关卡」不会被护栏挡住。判断依据是 `pathExists(<key>.json)`，而不是 `createOnly` 参数——后者可以由客户端伪造。
+- 名字大小写必须不敏感：第一版用了严格相等，实测 `WXJ` 存进去后自己用 `wxj` 保存会被 403 锁在门外——对防误覆盖的护栏来说这是不必要的伤害。现在是「存储保留首次输入的写法，比较不区分大小写」。
+- 选择器里每个关卡都显示归属（`名称 · WXJ`），删除前会提示「该关卡属于 X」，这样「为什么我存不了」在尝试之前就能看到。
+- 边界：这是护栏不是鉴权。任何客户端都能伪造 `X-Level-Owner`；它让「我不是故意改这个关卡」变成不可能，让「我要接手」变成显式动作。真正的多租户隔离需要登录体系。
+- 验证：`node --test` 393/393（新增 `test/level-ownership.test.js` 13 条）；对本机 dev server 跑了 13 项 HTTP 端到端：匿名写 403、首写认领 201、列表带 owner、他人 PUT/DELETE 403 且文件未变、本人可写、`wxJ` 视为同一人、删除后释放可被他人认领。

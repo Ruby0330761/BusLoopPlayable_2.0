@@ -30,6 +30,8 @@ public/assets/applovin/textures/BG02_split01_winter.png
 !artifacts/unity-level-sources/**
 !artifacts/web-levels/
 !artifacts/web-levels/**
+!official-levels/
+!official-levels/**
 !artifacts/spatial-conveyors/
 !artifacts/spatial-conveyors/**
 !artifacts/editor-backgrounds/

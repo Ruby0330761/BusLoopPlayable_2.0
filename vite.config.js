@@ -1,5 +1,6 @@
 import { spawn } from 'node:child_process';
 import { createHash } from 'node:crypto';
+import { gzipSync } from 'node:zlib';
 import { copyFile, mkdir, mkdtemp, readdir, readFile, rename, rm, stat, unlink, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
@@ -16,6 +17,11 @@ import {
   importUnityLevelAsset
 } from './scripts/unity-level-importer.mjs';
 import {
+  listOfficialChapters,
+  readOfficialChapter,
+  readOfficialLevelAsset
+} from './scripts/official-levels.mjs';
+import {
   PRE_ROLL_COMPRESSION_VERSION,
   PRE_ROLL_MAX_COMPRESSED_BYTES,
   compressPreRollBuffer
@@ -24,6 +30,21 @@ import {
   findLevelNameConflict,
   normalizeLevelDisplayName
 } from './scripts/level-name-registry.mjs';
+import { renderLevelSvg, summarizeLevel } from './src/level-layout-thumbnail.js';
+import {
+  LEVEL_OWNER_ERROR_CODES,
+  LEVEL_OWNER_HEADER,
+  createOwnerRegistry,
+  formatOwnerConflict,
+  formatOwnerRequired,
+  formatUnclaimedConflict,
+  getLevelOwner,
+  levelOwnerKey,
+  normalizeLevelOwner,
+  recordLevelOwner,
+  releaseLevelOwner,
+  resolveLevelWrite
+} from './scripts/level-ownership.mjs';
 
 const BUILTIN_LEVEL_IDS = new Set([
   'level5', 'level7', 'level8', 'level9', 'level10', 'level12', 'level13', 'level15',
@@ -33,6 +54,9 @@ const BUILTIN_LEVEL_IDS = new Set([
 const LEVEL_ARTIFACT_PATH = path.resolve('artifacts', 'unity-levels.json');
 const WEB_LEVEL_ROOT = path.resolve('artifacts', 'web-levels');
 const WEB_LEVEL_BACKUP_ROOT = path.resolve('artifacts', 'web-level-backups');
+// Sidecar to the level files: which operator last claimed each level. It sits on
+// the same artifacts volume as the levels, so it survives redeploys with them.
+const LEVEL_OWNER_REGISTRY_PATH = path.resolve('artifacts', 'level-owners.json');
 const MAX_WEB_LEVEL_BYTES = 2 * 1024 * 1024;
 const BACKGROUND_ASSET_ROOT = path.resolve('artifacts', 'editor-backgrounds');
 const MAX_BACKGROUND_ASSET_BYTES = 512 * 1024;
@@ -69,6 +93,8 @@ const PLAYABLE_EXPORT_PLATFORMS = new Set([
   'moloco',
   'tiktok'
 ]);
+// Bus Fever uploads split Android/iOS art; Crowd is one package for both stores.
+const PLAYABLE_BRANDING_SETS = new Set(['bus', 'crowd']);
 let playableExportInFlight = false;
 
 const FBX_BINARY_IMAGE_BRANCH = `\t\t} else { // Binary Format
@@ -149,8 +175,10 @@ function spatialRevision(source) {
   return createHash('sha256').update(source).digest('hex');
 }
 
+const WEB_LEVEL_ID_PATTERN = /^level[1-9]\d*$/;
+
 function validateWebLevelId(levelId) {
-  if (!/^level[1-9]\d*$/.test(levelId)) throw new Error('Web level id must use level<number>.');
+  if (!WEB_LEVEL_ID_PATTERN.test(levelId)) throw new Error('Web level id must use level<number>.');
   return levelId;
 }
 
@@ -169,6 +197,14 @@ function validateWebLevelDocument(document, levelId) {
   }
   if (!Array.isArray(document.passengerQueues) || document.passengerQueues.length > 20) {
     throw new Error('Web level passenger queues are invalid.');
+  }
+  // Scene tuning is optional (older level files do not carry it) but must be a
+  // plain object when present: the playable exporter merges it over the
+  // defaults and an array or scalar would silently discard every scene value.
+  if (document.tuning !== undefined && (document.tuning === null
+    || typeof document.tuning !== 'object'
+    || Array.isArray(document.tuning))) {
+    throw new Error('Web level scene tuning is invalid.');
   }
   const ids = new Set();
   for (const vehicle of document.vehicles) {
@@ -302,9 +338,147 @@ async function getWebLevelAvailability(levelId, displayName) {
     : { available: true, reason: null, conflict: null };
 }
 
-async function saveWebLevelDocument(levelId, { document, baseRevision, createOnly = false }) {
+async function readLevelOwnerRegistry() {
+  try {
+    return createOwnerRegistry(JSON.parse(await readFile(LEVEL_OWNER_REGISTRY_PATH, 'utf8')));
+  } catch (error) {
+    // A missing registry is normal (nothing claimed yet). A corrupt one must not
+    // lock every level, so it falls back to "nothing owned" and is rewritten on
+    // the next claim.
+    if (error.code === 'ENOENT' || error instanceof SyntaxError) return createOwnerRegistry(null);
+    throw error;
+  }
+}
+
+async function writeLevelOwnerRegistry(registry) {
+  const source = `${JSON.stringify(createOwnerRegistry(registry), null, 2)}\n`;
+  await mkdir(path.dirname(LEVEL_OWNER_REGISTRY_PATH), { recursive: true });
+  const temporaryPath = `${LEVEL_OWNER_REGISTRY_PATH}.${process.pid}.tmp`;
+  try {
+    await writeFile(temporaryPath, source, 'utf8');
+    await rename(temporaryPath, LEVEL_OWNER_REGISTRY_PATH);
+  } catch (error) {
+    await unlink(temporaryPath).catch(() => {});
+    throw error;
+  }
+}
+
+// The operator name travels in a header, URL-encoded so a non-ASCII name does
+// not depend on header encoding. A missing header is a 403 that names the
+// missing field: silently accepting the write is the behaviour being removed.
+function readRequestLevelOwner(request) {
+  const raw = request.headers?.[LEVEL_OWNER_HEADER];
+  if (typeof raw !== 'string' || !raw) return '';
+  try {
+    return normalizeLevelOwner(decodeURIComponent(raw));
+  } catch {
+    return normalizeLevelOwner(raw);
+  }
+}
+
+function requireRequestLevelOwner(request) {
+  const owner = readRequestLevelOwner(request);
+  if (!owner) {
+    const error = new Error(formatOwnerRequired());
+    error.statusCode = 403;
+    throw error;
+  }
+  return owner;
+}
+
+// One place for "may this request write this level", so every write path
+// (save, import, delete) answers the same question the same way.
+async function assertLevelWritable(levelKey, owner) {
+  const registry = await readLevelOwnerRegistry();
+  const decision = resolveLevelWrite({ registry, levelKey, owner });
+  if (!decision.allowed) {
+    const message = decision.reason === 'owner-required'
+      ? formatOwnerRequired()
+      : decision.reason === 'unclaimed'
+        ? formatUnclaimedConflict(levelKey)
+        : formatOwnerConflict(levelKey, decision.existingOwner);
+    const error = new Error(message);
+    error.statusCode = 403;
+    error.code = decision.reason === 'owner-required'
+      ? LEVEL_OWNER_ERROR_CODES.ownerRequired
+      : decision.reason === 'unclaimed'
+        ? LEVEL_OWNER_ERROR_CODES.unclaimed
+        : LEVEL_OWNER_ERROR_CODES.ownedByOther;
+    error.existingOwner = decision.existingOwner;
+    throw error;
+  }
+  return decision;
+}
+
+async function claimLevelOwner(levelKey, owner) {
+  const registry = await readLevelOwnerRegistry();
+  const current = getLevelOwner(registry, levelKey);
+  // Case-insensitive, so re-saving as "wxj" never rewrites the stored "WXJ".
+  if (current && levelOwnerKey(current) === levelOwnerKey(owner)) return;
+  await writeLevelOwnerRegistry(recordLevelOwner(registry, levelKey, owner));
+}
+
+async function releaseLevelOwnerOnDelete(levelKey) {
+  const registry = await readLevelOwnerRegistry();
+  if (!getLevelOwner(registry, levelKey)) return;
+  await writeLevelOwnerRegistry(releaseLevelOwner(registry, levelKey));
+}
+
+// Registration of a level that has no owner yet. Only an unregistered level can
+// be claimed: claiming an owned one would let anyone take a colleague's work, so
+// that case is refused and the message names the current owner.
+async function claimUnregisteredLevel(levelKey, owner) {
+  validateWebLevelId(levelKey);
+  const registry = await readLevelOwnerRegistry();
+  const existingOwner = getLevelOwner(registry, levelKey);
+  if (existingOwner) {
+    const error = new Error(formatOwnerConflict(levelKey, existingOwner));
+    error.statusCode = 403;
+    error.code = LEVEL_OWNER_ERROR_CODES.ownedByOther;
+    error.existingOwner = existingOwner;
+    throw error;
+  }
+  // A claim on a level that does not exist would reserve a name for a file that
+  // never appears, so require the level to be real (web volume or import artifact).
+  const [webLevels, importedLevels] = await Promise.all([
+    readWebLevelIdentities(),
+    readImportedLevelIdentities()
+  ]);
+  if (![...webLevels, ...importedLevels].some((level) => level.key === levelKey)) {
+    const error = new Error(`关卡 ${levelKey} 不存在，无法认领。`);
+    error.statusCode = 404;
+    throw error;
+  }
+  await writeLevelOwnerRegistry(recordLevelOwner(registry, levelKey, owner));
+  return { key: levelKey, owner: normalizeLevelOwner(owner) };
+}
+
+async function pathExists(filePath) {
+  try {
+    await stat(filePath);
+    return true;
+  } catch (error) {
+    if (error.code === 'ENOENT') return false;
+    throw error;
+  }
+}
+
+async function saveWebLevelDocument(levelId, { document, baseRevision, createOnly = false, owner = '' }) {
   validateWebLevelId(levelId);
   validateWebLevelDocument(document, levelId);
+  // A brand-new level has no file yet, so there is nothing to protect: its
+  // creator owns it outright. Any level that already exists goes through the
+  // ownership check, and an unregistered one is refused until it is claimed.
+  if (!normalizeLevelOwner(owner)) {
+    const error = new Error(formatOwnerRequired());
+    error.statusCode = 403;
+    error.code = LEVEL_OWNER_ERROR_CODES.ownerRequired;
+    throw error;
+  }
+  const existsBefore = await pathExists(path.join(WEB_LEVEL_ROOT, `${levelId}.json`));
+  if (existsBefore) {
+    await assertLevelWritable(levelId, owner);
+  }
   if (createOnly) {
     const availability = await getWebLevelAvailability(levelId, document.displayName);
     if (!availability.available) {
@@ -365,6 +539,9 @@ async function saveWebLevelDocument(levelId, { document, baseRevision, createOnl
     await unlink(temporaryPath).catch(() => {});
     throw error;
   }
+  // Claim after the bytes are on disk: a failed write must not reserve a level
+  // name that its creator never managed to save.
+  if (owner) await claimLevelOwner(levelId, normalizeLevelOwner(owner));
   return { document, revision: spatialRevision(source), targetPath, created: !currentSource };
 }
 
@@ -387,7 +564,7 @@ async function nextAvailableLevelId() {
   return `level${number}`;
 }
 
-async function importWebLevelDocument(document, targetLevelId = null, displayName = null) {
+async function importWebLevelDocument(document, targetLevelId = null, displayName = null, owner = '') {
   const isCreate = targetLevelId == null;
   const resolvedLevelId = isCreate ? await nextAvailableLevelId() : targetLevelId;
   validateWebLevelId(resolvedLevelId);
@@ -407,18 +584,22 @@ async function importWebLevelDocument(document, targetLevelId = null, displayNam
   const result = await saveWebLevelDocument(resolvedLevelId, {
     document: normalizedDocument,
     baseRevision: currentSource ? spatialRevision(currentSource) : null,
-    createOnly: isCreate
+    createOnly: isCreate,
+    owner
   });
   return { ...result, replaced: Boolean(currentSource) };
 }
 
-async function deleteWebLevelDocument(levelId) {
+async function deleteWebLevelDocument(levelId, { owner = '' } = {}) {
   validateWebLevelId(levelId);
   if (BUILTIN_LEVEL_IDS.has(levelId)) {
     const error = new Error('内置 Unity 关卡不能删除。');
     error.statusCode = 400;
     throw error;
   }
+  // Deleting an unregistered level would be as destructive as overwriting it,
+  // so it is refused until the level is claimed.
+  await assertLevelWritable(levelId, owner);
   const targetPath = path.join(WEB_LEVEL_ROOT, `${levelId}.json`);
   const source = await readFile(targetPath, 'utf8').catch((error) => {
     if (error.code === 'ENOENT') return null;
@@ -430,6 +611,9 @@ async function deleteWebLevelDocument(levelId) {
     throw error;
   }
   await unlink(targetPath);
+  // Deleting frees the name, so a later import of the same file is not blocked
+  // by an owner that no longer has a level.
+  await releaseLevelOwnerOnDelete(levelId);
   return { key: levelId, deletedPath: targetPath };
 }
 
@@ -437,7 +621,113 @@ function sendJson(response, statusCode, payload) {
   response.statusCode = statusCode;
   response.setHeader('Content-Type', 'application/json; charset=utf-8');
   response.setHeader('Cache-Control', 'no-store');
-  response.end(JSON.stringify(payload));
+  const body = Buffer.from(JSON.stringify(payload), 'utf8');
+  // The official-level chapter payload carries one inline SVG per card and is
+  // over a megabyte of repetitive markup, which matters on the remote editor's
+  // public URL. Compress the large JSON responses only.
+  const acceptsGzip = /\bgzip\b/.test(String(response.req?.headers?.['accept-encoding'] ?? ''));
+  if (acceptsGzip && body.byteLength >= 64 * 1024) {
+    response.setHeader('Content-Encoding', 'gzip');
+    response.setHeader('Vary', 'Accept-Encoding');
+    response.end(gzipSync(body));
+    return;
+  }
+  response.end(body);
+}
+
+// Layout thumbnails for the editor's level overview.
+//
+// The editor must show every level it can open, including ones created after the
+// running build was packaged, so this resolves each key through the same
+// web-volume-then-catalog precedence the runtime uses instead of baking previews.
+// A level whose document cannot be read is reported with an error rather than
+// silently dropped — a missing thumbnail is otherwise indistinguishable from a
+// level that does not exist.
+async function buildLevelThumbnails() {
+  const [identities, owners] = await Promise.all([
+    readEditableLevelIdentities(),
+    readLevelOwnerRegistry()
+  ]);
+  const active = await readActiveLevelSummary();
+  const items = [];
+  for (const identity of identities) {
+    if (!identity.displayName) continue;
+    const item = {
+      key: identity.key,
+      displayName: identity.displayName,
+      source: identity.source,
+      updatedAt: identity.updatedAt ?? null,
+      owner: getLevelOwner(owners, identity.key) || null,
+      active: active.key === identity.key
+    };
+    try {
+      const document = await readLevelDocumentForPreview(identity.key);
+      items.push({
+        ...item,
+        ...summarizeLevel(document),
+        conveyorBeltName: document.conveyorBeltName ?? '',
+        mapScale: document.mapScale ?? null,
+        svg: renderLevelSvg(document, { width: 240, height: 176, className: 'level-thumb' })
+      });
+    } catch (error) {
+      items.push({ ...item, error: error.message });
+    }
+  }
+  return items;
+}
+
+// The level the playable currently exports, so the overview can point at it.
+async function readActiveLevelSummary() {
+  try {
+    const selected = (await readFile(path.resolve('artifacts', 'selected-level.txt'), 'utf8')).trim();
+    return { key: selected };
+  } catch {
+    return { key: '' };
+  }
+}
+
+// Read one level definition with the same precedence the runtime uses: the web
+// volume shadows the baked catalog. Kept separate from readWebLevelDocument so a
+// catalog-only level still renders.
+async function readLevelDocumentForPreview(levelKey) {
+  // The web volume only holds `level<number>` files; the built-in catalog also
+  // carries keys like `currentLevel12`. Validate first so that lookup answers
+  // "not a web level" instead of "invalid id".
+  if (WEB_LEVEL_ID_PATTERN.test(levelKey)) {
+    try {
+      const { document } = await readWebLevelDocument(levelKey);
+      return document;
+    } catch (error) {
+      if (error.code !== 'ENOENT') throw error;
+    }
+  }
+  const imported = await readImportedUnityLevelDefinition(levelKey);
+  if (imported) return imported;
+  const catalog = await readCatalogLevelDefinition(levelKey);
+  if (catalog) return catalog;
+  const error = new Error('找不到关卡数据');
+  error.statusCode = 404;
+  throw error;
+}
+
+let catalogModulePromise = null;
+async function readCatalogLevelDefinition(levelKey) {
+  catalogModulePromise ??= import(`${pathToFileURL(LEVEL_CATALOG_PATH).href}?levels=${Date.now()}`)
+    .then((module) => module.LEVEL_CATALOG ?? {})
+    .catch(() => ({}));
+  return (await catalogModulePromise)[levelKey] ?? null;
+}
+
+// Ownership refusals carry a code so the editor can offer the right next step:
+// "claim this unregistered level" is a different action from "you are not its
+// owner". Every other error keeps the plain { error } shape callers already read.
+function sendJsonLevelError(response, error) {
+  const payload = { error: error.message };
+  if (error.code && Object.values(LEVEL_OWNER_ERROR_CODES).includes(error.code)) {
+    payload.code = error.code;
+    if (error.existingOwner) payload.owner = error.existingOwner;
+  }
+  sendJson(response, error.statusCode ?? 400, payload);
 }
 
 const BACKGROUND_MIME_TYPES = new Map([
@@ -723,6 +1013,13 @@ function parsePositiveHeaderNumber(value) {
   return Number.isFinite(number) && number > 0 ? Math.round(number) : null;
 }
 
+// Fractions (the measured background horizon) must survive the header round-trip,
+// so this variant keeps decimals instead of rounding to an integer.
+function parseUnitIntervalHeader(value) {
+  const number = Number(value);
+  return Number.isFinite(number) && number > 0 && number < 1 ? number : null;
+}
+
 function backgroundMimeFor(filename) {
   return BACKGROUND_MIME_TYPES.get(path.extname(filename).toLowerCase()) ?? 'application/octet-stream';
 }
@@ -741,9 +1038,12 @@ async function listEditorBackgroundAssets() {
       const filePath = path.join(BACKGROUND_ASSET_ROOT, entry.name);
       const fileStat = await stat(filePath);
       let label = `自定义 ${path.basename(entry.name, path.extname(entry.name)).replace(/^bg-[a-f0-9]{10}-(?:\d+x\d+-)?/iu, '')}`;
+      let horizon = null;
       try {
         const metadata = JSON.parse(await readFile(`${filePath}.json`, 'utf8'));
         if (typeof metadata.label === 'string' && metadata.label.trim()) label = `自定义 ${metadata.label.trim()}`;
+        const stored = Number(metadata.horizon);
+        if (Number.isFinite(stored) && stored > 0 && stored < 1) horizon = stored;
       } catch {
         // Older imported backgrounds have no metadata sidecar.
       }
@@ -754,6 +1054,7 @@ async function listEditorBackgroundAssets() {
         bytes: fileStat.size,
         width: BACKGROUND_CANVAS_WIDTH,
         height: BACKGROUND_CANVAS_HEIGHT,
+        ...(horizon != null ? { horizon } : {}),
         mtimeMs: fileStat.mtimeMs
       };
     }));
@@ -761,7 +1062,7 @@ async function listEditorBackgroundAssets() {
     .map(({ mtimeMs: _mtimeMs, ...item }) => item);
 }
 
-async function saveEditorBackgroundAsset({ filename, bytes, width, height }) {
+async function saveEditorBackgroundAsset({ filename, bytes, width, height, horizon = null }) {
   if (!Buffer.isBuffer(bytes) || bytes.byteLength === 0) throw new Error('Background image is empty.');
   if (bytes.byteLength > MAX_BACKGROUND_ASSET_BYTES) {
     const error = new Error('Background image is still too large after compression.');
@@ -782,13 +1083,26 @@ async function saveEditorBackgroundAsset({ filename, bytes, width, height }) {
     await unlink(temporaryPath).catch(() => {});
     throw error;
   }
+  // The artwork's own playfield boundary travels with the file. The renderer
+  // slides the plane by its difference against the reference set, so an image
+  // drawn with its ground higher in the frame no longer pushes the cars onto the
+  // road. Stored beside the image, not inside it, so the JPEG stays clean.
+  const detectedHorizon = Number(horizon);
+  const storedHorizon = Number.isFinite(detectedHorizon) && detectedHorizon > 0 && detectedHorizon < 1
+    ? Math.round(detectedHorizon * 10000) / 10000
+    : null;
+  if (storedHorizon != null) {
+    await writeFile(`${targetPath}.json`, `${JSON.stringify({ label, horizon: storedHorizon }, null, 2)}\n`, 'utf8')
+      .catch(() => {});
+  }
   return {
     filename: outputName,
     label: `\u81ea\u5b9a\u4e49 ${label}`,
     value: editorBackgroundAssetUrl(outputName),
     bytes: bytes.byteLength,
     width,
-    height
+    height,
+    horizon: storedHorizon
   };
 }
 
@@ -1107,7 +1421,7 @@ export default defineConfig({
           response.statusCode = 204;
           response.end();
         } catch (error) {
-          sendJson(response, error.statusCode ?? 400, { error: error.message });
+          sendJsonLevelError(response, error);
         }
       });
 
@@ -1184,7 +1498,7 @@ export default defineConfig({
             });
             sendJson(response, 201, { item });
           } catch (error) {
-            sendJson(response, error.statusCode ?? 400, { error: error.message });
+            sendJsonLevelError(response, error);
           }
           return;
         }
@@ -1194,7 +1508,7 @@ export default defineConfig({
             const result = await deleteEditorPreRollAsset(filename);
             sendJson(response, 200, result);
           } catch (error) {
-            sendJson(response, error.statusCode ?? 400, { error: error.message });
+            sendJsonLevelError(response, error);
           }
           return;
         }
@@ -1204,7 +1518,7 @@ export default defineConfig({
             const result = await renameEditorPreRollAsset(body?.filename, body?.label);
             sendJson(response, 200, { item: result });
           } catch (error) {
-            sendJson(response, error.statusCode ?? 400, { error: error.message });
+            sendJsonLevelError(response, error);
           }
           return;
         }
@@ -1239,11 +1553,12 @@ export default defineConfig({
               filename: decodeBackgroundFilename(request),
               bytes: await readRequestBuffer(request, MAX_BACKGROUND_ASSET_BYTES, 'Background image'),
               width: parsePositiveHeaderNumber(request.headers['x-background-width']),
-              height: parsePositiveHeaderNumber(request.headers['x-background-height'])
+              height: parsePositiveHeaderNumber(request.headers['x-background-height']),
+              horizon: parseUnitIntervalHeader(request.headers['x-background-horizon'])
             });
             sendJson(response, 201, { item });
           } catch (error) {
-            sendJson(response, error.statusCode ?? 400, { error: error.message });
+            sendJsonLevelError(response, error);
           }
           return;
         }
@@ -1253,7 +1568,7 @@ export default defineConfig({
             const result = await deleteEditorBackgroundAsset(filename);
             sendJson(response, 200, result);
           } catch (error) {
-            sendJson(response, error.statusCode ?? 400, { error: error.message });
+            sendJsonLevelError(response, error);
           }
           return;
         }
@@ -1263,7 +1578,7 @@ export default defineConfig({
             const result = await renameEditorBackgroundAsset(body?.filename, body?.label);
             sendJson(response, 200, { item: result });
           } catch (error) {
-            sendJson(response, error.statusCode ?? 400, { error: error.message });
+            sendJsonLevelError(response, error);
           }
           return;
         }
@@ -1319,6 +1634,12 @@ export default defineConfig({
               error.statusCode = 400;
               throw error;
             }
+            const brandingSet = payload.brandingSet ?? 'bus';
+            if (!PLAYABLE_BRANDING_SETS.has(brandingSet)) {
+              const error = new Error('不支持该导出套系。');
+              error.statusCode = 400;
+              throw error;
+            }
             let levelDocument = null;
             if (payload.levelDocument !== undefined) {
               const selectedLevelKey = payload.tuning.level?.selected;
@@ -1351,6 +1672,7 @@ export default defineConfig({
               ...(exportAll ? {} : { platform: payload.platform }),
               tuning: payload.tuning,
               levelDocument,
+              brandingSet,
               signal: exportAbortController.signal,
               // The editor's export action is a packaging/download operation.
               // Platform checks remain available through the CLI, but must not
@@ -1416,10 +1738,28 @@ export default defineConfig({
         }
         if (pathname === '/__level-authoring' && request.method === 'GET') {
           try {
-            const items = (await readEditableLevelIdentities())
+            const [identities, owners] = await Promise.all([
+              readEditableLevelIdentities(),
+              readLevelOwnerRegistry()
+            ]);
+            const items = identities
               .filter((level) => level.displayName)
+              // The picker shows who owns each level, so "why can I not save
+              // this one" is answerable before the save is refused.
+              .map((level) => ({ ...level, owner: getLevelOwner(owners, level.key) || null }))
               .sort((first, second) => Number(first.key.slice(5)) - Number(second.key.slice(5)));
-            sendJson(response, 200, { items });
+            sendJson(response, 200, { items, currentOwner: readRequestLevelOwner(request) || null });
+          } catch (error) {
+            sendJson(response, 500, { error: error.message });
+          }
+          return;
+        }
+        // Layout overview for the level panel. It re-reads the volumes on every
+        // request, so a level imported or deleted moments ago is already in the
+        // list without rebuilding the editor.
+        if (pathname === '/__level-authoring-overview' && request.method === 'GET') {
+          try {
+            sendJson(response, 200, { items: await buildLevelThumbnails() });
           } catch (error) {
             sendJson(response, 500, { error: error.message });
           }
@@ -1427,10 +1767,11 @@ export default defineConfig({
         }
         if (pathname === '/__level-authoring/import' && request.method === 'POST') {
           try {
+            const owner = requireRequestLevelOwner(request);
             const body = JSON.parse(await readRequestBody(request, MAX_WEB_LEVEL_BYTES, 'Web level JSON'));
             const document = body?.document ?? body;
             const targetLevelId = body?.targetLevelKey ?? null;
-            const result = await importWebLevelDocument(document, targetLevelId, body?.filename);
+            const result = await importWebLevelDocument(document, targetLevelId, body?.filename, owner);
             sendJson(response, result.created ? 201 : 200, {
               level: {
                 key: result.document.key,
@@ -1444,12 +1785,11 @@ export default defineConfig({
               savedPath: path.relative(process.cwd(), result.targetPath).replaceAll('\\', '/')
             });
           } catch (error) {
-            sendJson(response, error.statusCode ?? 400, { error: error.message });
+            sendJsonLevelError(response, error);
           }
           return;
         }
-        const levelExportMatch = pathname.match(/^\/__level-authoring-export\/(level[1-9]\d*)$/);
-        if (levelExportMatch && request.method === 'GET') {
+        const levelExportMatch = pathname.match(/^\/__level-authoring-export\/(level[1-9]\d*)$/);        if (levelExportMatch && request.method === 'GET') {
           try {
             const key = levelExportMatch[1];
             let source;
@@ -1480,7 +1820,20 @@ export default defineConfig({
         const webLevelStatusMatch = pathname.match(/^\/__level-authoring-status\/(level[1-9]\d*)$/);
         if (webLevelStatusMatch && request.method === 'GET') {
           try { sendJson(response, 200, await getWebLevelAvailability(webLevelStatusMatch[1], requestUrl.searchParams.get('name'))); }
-          catch (error) { sendJson(response, error.statusCode ?? 400, { error: error.message }); }
+          catch (error) { sendJsonLevelError(response, error); }
+          return;
+        }
+        // Explicit takeover of a level that has no registered owner. Levels that
+        // predate the ownership guard are read-only until this succeeds, so a
+        // normal save can never capture a colleague's older level.
+        const webLevelClaimMatch = pathname.match(/^\/__level-authoring\/(level[1-9]\d*)\/claim$/);
+        if (webLevelClaimMatch && request.method === 'POST') {
+          try {
+            const owner = requireRequestLevelOwner(request);
+            sendJson(response, 200, await claimUnregisteredLevel(webLevelClaimMatch[1], owner));
+          } catch (error) {
+            sendJsonLevelError(response, error);
+          }
           return;
         }
         const webLevelMatch = pathname.match(/^\/__level-authoring\/(level[1-9]\d*)$/);
@@ -1491,24 +1844,26 @@ export default defineConfig({
         }
         if (webLevelMatch && request.method === 'PUT') {
           try {
+            const owner = requireRequestLevelOwner(request);
             const body = JSON.parse(await readRequestBody(request, MAX_WEB_LEVEL_BYTES, 'Web level'));
-            const result = await saveWebLevelDocument(webLevelMatch[1], body);
+            const result = await saveWebLevelDocument(webLevelMatch[1], { ...body, owner });
             sendJson(response, result.created ? 201 : 200, {
               document: result.document,
               revision: result.revision,
               savedPath: path.relative(process.cwd(), result.targetPath).replaceAll('\\', '/')
             });
           } catch (error) {
-            sendJson(response, error.statusCode ?? 400, { error: error.message });
+            sendJsonLevelError(response, error);
           }
           return;
         }
         if (webLevelMatch && request.method === 'DELETE') {
           try {
-            const result = await deleteWebLevelDocument(webLevelMatch[1]);
+            const owner = requireRequestLevelOwner(request);
+            const result = await deleteWebLevelDocument(webLevelMatch[1], { owner });
             sendJson(response, 200, { key: result.key });
           } catch (error) {
-            sendJson(response, error.statusCode ?? 400, { error: error.message });
+            sendJsonLevelError(response, error);
           }
           return;
         }
@@ -1525,6 +1880,7 @@ export default defineConfig({
         }
         if (pathname === '/__unity-levels/import' && request.method === 'POST') {
           try {
+            const owner = requireRequestLevelOwner(request);
             const filename = decodeLevelFilename(request);
             const source = await readRequestBody(request, MAX_UNITY_LEVEL_BYTES, 'Unity level');
             const displayName = path.basename(filename, path.extname(filename));
@@ -1554,19 +1910,97 @@ export default defineConfig({
             // name refreshes that level in place instead of stacking another
             // copy beside it (the level20/level35 pile-up).
             const targetKey = importedConflict?.key ?? await nextAvailableLevelId();
+            // A same-named re-import refreshes that level in place, which is a
+            // write to someone's level; a brand-new key has no owner yet and is
+            // claimed by the importer once it is written.
+            if (importedConflict) await assertLevelWritable(targetKey, owner);
             const result = await importUnityLevelAsset({
               filename,
               source,
               targetKey,
               displayName
             });
+            await claimLevelOwner(targetKey, owner);
             sendJson(response, 201, {
               level: { ...result.level, displayName: result.level.displayName || filename.replace(/\.asset$/i, '') },
               replaced: result.replaced,
               savedPath: path.relative(process.cwd(), result.outputPath).replaceAll('\\', '/')
             });
           } catch (error) {
-            sendJson(response, error.statusCode ?? 400, { error: error.message });
+            sendJsonLevelError(response, error);
+          }
+          return;
+        }
+        // Official in-game level library. The assets ship inside the image, so
+        // this is a read-only browse plus an explicit "import this one" action;
+        // nothing lands in the authoring catalog until an operator asks for it.
+        if (pathname === '/__official-levels' && request.method === 'GET') {
+          try {
+            sendJson(response, 200, { chapters: await listOfficialChapters() });
+          } catch (error) {
+            sendJson(response, 500, { error: error.message });
+          }
+          return;
+        }
+        const officialChapterMatch = pathname.match(/^\/__official-levels\/([A-Za-z])\/?$/);
+        if (officialChapterMatch && request.method === 'GET') {
+          try {
+            sendJson(response, 200, await readOfficialChapter(officialChapterMatch[1]));
+          } catch (error) {
+            sendJson(response, error.statusCode ?? 500, { error: error.message });
+          }
+          return;
+        }
+        const officialImportMatch = pathname.match(/^\/__official-levels\/([A-Za-z])\/([^/]+)\/import$/);
+        if (officialImportMatch && request.method === 'POST') {
+          try {
+            const owner = requireRequestLevelOwner(request);
+            const asset = await readOfficialLevelAsset(officialImportMatch[1], decodeURIComponent(officialImportMatch[2]));
+            const [webLevels, importedLevels] = await Promise.all([
+              readWebLevelIdentities(),
+              readImportedLevelIdentities()
+            ]);
+            const conflict = findLevelNameConflict([...webLevels, ...importedLevels], {
+              levelId: asset.key,
+              displayName: asset.displayName
+            });
+            if (conflict) {
+              const error = new Error(`游戏内关卡名称「${asset.displayName}」已被 ${conflict.key} 使用，请先整理该关卡。`);
+              error.statusCode = 409;
+              throw error;
+            }
+            // Web documents shadow the imported catalog at runtime, so a same-key
+            // web level would make this import look successful and then load the
+            // other level. Refuse instead of writing a shadowed duplicate.
+            const webKeyConflict = webLevels.find((level) => level.key === asset.key);
+            if (webKeyConflict) {
+              const error = new Error(`编号 ${asset.key} 已被网页关卡「${webKeyConflict.displayName || asset.key}」占用。请先改名或删除该网页关卡再导入。`);
+              error.statusCode = 409;
+              throw error;
+            }
+            // The key is derived from chapter + level number, so importing the
+            // same asset twice refreshes it in place instead of stacking copies.
+            const existing = importedLevels.some((level) => level.key === asset.key);
+            if (existing) await assertLevelWritable(asset.key, owner);
+            const result = await importUnityLevelAsset({
+              filename: asset.fileName,
+              source: asset.source,
+              targetKey: asset.key,
+              displayName: asset.displayName
+            });
+            await claimLevelOwner(asset.key, owner);
+            sendJson(response, existing ? 200 : 201, {
+              level: {
+                ...result.level,
+                displayName: result.level.displayName || asset.displayName,
+                chapter: asset.chapter,
+                sourceFile: asset.fileName
+              },
+              replaced: result.replaced,
+              savedPath: path.relative(process.cwd(), result.outputPath).replaceAll('\\', '/')
+            });
+          } catch (error) {
+            sendJsonLevelError(response, error);
           }
           return;
         }
@@ -1586,15 +2020,18 @@ export default defineConfig({
         }
         if (unityDeleteMatch && request.method === 'DELETE') {
           try {
+            const owner = requireRequestLevelOwner(request);
             if (BUILTIN_LEVEL_IDS.has(unityDeleteMatch[1])) {
               const error = new Error('内置 Unity 关卡不能删除。');
               error.statusCode = 400;
               throw error;
             }
+            await assertLevelWritable(unityDeleteMatch[1], owner);
             const result = await deleteUnityLevel(unityDeleteMatch[1]);
+            await releaseLevelOwnerOnDelete(unityDeleteMatch[1]);
             sendJson(response, 200, { key: result.key });
           } catch (error) {
-            sendJson(response, error.statusCode ?? 400, { error: error.message });
+            sendJsonLevelError(response, error);
           }
           return;
         }
@@ -1639,7 +2076,7 @@ export default defineConfig({
               savedPath: path.relative(process.cwd(), result.targetPath).replaceAll('\\', '/')
             });
           } catch (error) {
-            sendJson(response, error.statusCode ?? 400, { error: error.message });
+            sendJsonLevelError(response, error);
           }
           return;
         }
@@ -1661,7 +2098,7 @@ export default defineConfig({
             savedPath: path.relative(process.cwd(), result.outputPath).replaceAll('\\', '/')
           });
         } catch (error) {
-          sendJson(response, error.statusCode ?? 400, { error: error.message });
+          sendJsonLevelError(response, error);
         }
       });
     };
