@@ -630,7 +630,14 @@ const FIELD_GROUPS = [
       ['Logo Width', 'gameOver.logoWidth', 40, 720, 1],
       ['Logo Height', 'gameOver.logoHeight', 40, 720, 1],
       ['Logo Radius', 'gameOver.logoRadius', 0, 120, 1],
-      ['Logo Speed', 'gameOver.logoAppearSpeed', 0.1, 5, 0.01]
+      ['Logo Speed', 'gameOver.logoAppearSpeed', 0.1, 5, 0.01],
+      // Retry restarts a failed run. It only appears on the failure card, never
+      // on a win, so the store button keeps owning the successful ending.
+      ['\u91cd\u8bd5\u6309\u94ae\u663e\u793a', 'gameOver.retryEnabled', 0, 1, 1, null, 'toggle'],
+      ['\u91cd\u8bd5 X', 'gameOver.retryX', 0, 1080, 1],
+      ['\u91cd\u8bd5 Y', 'gameOver.retryY', 0, 2160, 1],
+      ['\u91cd\u8bd5\u5bbd\u5ea6', 'gameOver.retryWidth', 120, 900, 1],
+      ['\u91cd\u8bd5\u51fa\u73b0\u901f\u5ea6', 'gameOver.retryAppearSpeed', 0.1, 5, 0.01]
     ]
   },
   {

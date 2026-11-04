@@ -78,6 +78,7 @@ const preRollOverlay = $('#pre-roll-overlay');
 const preRollVideo = $('#pre-roll-video');
 const gameOverOverlay = $('#game-over-overlay');const gameOverTitle = $('#game-over-title');
 const gameOverLogo = $('#game-over-logo');
+const gameOverRetryButton = $('#game-over-retry');
 const stageChoiceOverlay = $('#stage-choice-overlay');
 const stageChoiceTitle = $('#stage-choice-title');
 const stageChoiceGrid = $('#stage-choice-grid');
@@ -1403,6 +1404,34 @@ function applyGameOverTuning() {
   gameOverOverlay.style.setProperty('--game-over-logo-height', scaledPx(logoHeight, uiScale));
   gameOverOverlay.style.setProperty('--game-over-logo-radius', scaledPx(Math.max(0, Number(gameOver.logoRadius) || 0), uiScale));
   gameOverOverlay.style.setProperty('--game-over-logo-appear-duration', durationCss(gameOver.logoAppearSpeed, 1.45));
+
+  // The Retry pill is authored at 1400x383, so its height follows the tuned
+  // width instead of being an independent number that could distort the art.
+  if (gameOverRetryButton) {
+    const retryWidth = Math.max(40, Number(gameOver.retryWidth) || 420);
+    const retryHeight = retryWidth * (383 / 1400);
+    const retryX = Number.isFinite(Number(gameOver.retryX)) ? Number(gameOver.retryX) : designWidth / 2;
+    const retryY = Number.isFinite(Number(gameOver.retryY)) ? Number(gameOver.retryY) : designHeight * 0.84;
+    const renderedWidth = retryWidth * uiScale;
+    const renderedHeight = retryHeight * uiScale;
+    const left = clampConfigNumber(
+      retryX * (stageWidth / designWidth),
+      renderedWidth / 2,
+      stageWidth - renderedWidth / 2,
+      stageWidth / 2
+    );
+    const top = clampConfigNumber(
+      retryY * (stageHeight / designHeight),
+      renderedHeight / 2,
+      stageHeight - renderedHeight / 2,
+      stageHeight * 0.84
+    );
+    gameOverRetryButton.style.setProperty('--game-over-retry-left', `${left}px`);
+    gameOverRetryButton.style.setProperty('--game-over-retry-top', `${top}px`);
+    gameOverRetryButton.style.setProperty('--game-over-retry-width', `${renderedWidth}px`);
+    gameOverRetryButton.style.setProperty('--game-over-retry-height', `${renderedHeight}px`);
+    gameOverRetryButton.style.setProperty('--game-over-retry-appear-duration', durationCss(gameOver.retryAppearSpeed, 1.45));
+  }
 }
 
 function isIOSDevice() {
@@ -2516,6 +2545,12 @@ async function startRuntime() {
     gameOverOverlay.classList.remove('is-active', 'is-title-fading', 'is-cta-ready');
     void gameOverOverlay.offsetWidth;
     gameOverOverlay.classList.add('is-active');
+    // Retry only makes sense on a loss: a won run's next step is the store
+    // button or the stage picker, and offering "play again" there would race
+    // the end-of-ad flow.
+    if (gameOverRetryButton) {
+      gameOverRetryButton.hidden = !failed || !Boolean(SCENE_TUNING.gameOver?.retryEnabled ?? 1);
+    }
 
     const gameOver = SCENE_TUNING.gameOver ?? {};
     const titlePopMs = durationFromSpeed(gameOver.titlePopSpeed, 1.35) * 1000;
@@ -2529,6 +2564,7 @@ async function startRuntime() {
     clearGameOverTimers();
     gameOverOverlay?.classList.remove('is-active', 'is-title-fading', 'is-cta-ready');
     if (gameOverOverlay) gameOverOverlay.hidden = true;
+    if (gameOverRetryButton) gameOverRetryButton.hidden = true;
     applyCtaTuning();
   }
 
@@ -2562,6 +2598,14 @@ async function startRuntime() {
   }
   $('#reset-button')?.addEventListener('click', reset);
   $('#end-reset-button').addEventListener('click', reset);
+  // Retry restarts the run the player just lost. reset() already rebuilds the
+  // level, the session and the queues, and tells the platform bridge, so a
+  // retry is reported as CHALLENGE_RETRY rather than a fresh challenge start.
+  gameOverRetryButton?.addEventListener('click', (event) => {
+    event.stopPropagation();
+    audio.unlock();
+    reset();
+  });
   ctaButton?.addEventListener('click', (event) => {
     event.stopPropagation();
     InstallFullGame();
@@ -2650,6 +2694,20 @@ async function startRuntime() {
     step: (seconds, increment = .05) => {
       for (let time = 0; time < seconds; time += increment) game.update(increment);
       return game.snapshot();
+    },
+    // QA hook for the failure card: a headless check cannot always drive a real
+    // loss (it depends on the board and the random queue), and the Retry button
+    // only exists on that card. This runs the same show path a lost run uses.
+    forceGameOver: (reason = 'game-over') => {
+      showResultOverlay(reason === 'ambulance-exceed-step' ? 'Ambulance Failed' : 'Game Over');
+      return { overlayHidden: gameOverOverlay?.hidden ?? null };
+    },
+    // Companion hook for the win card, so a check can prove Retry is absent
+    // there without playing a whole board out.
+    forceWinOverlay: () => {
+      hideGameOver();
+      showResultOverlay('You Win!', { failed: false });
+      return { overlayHidden: gameOverOverlay?.hidden ?? null };
     },
     // QA hooks for the post-stage picker: a headless run has to be able to
     // reach the choice page and take a specific map without playing it out.

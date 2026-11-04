@@ -1,5 +1,14 @@
 # Playable Project Progress
 
+## Deployed On 2026-11-04 - 失败页新增 Retry 再试一次（v20261104-1437）
+
+- 需求：闯关失败后可以再试一次，按钮用需求方给的红色药丸图（图上已带 Retry 字样）。
+- 交互：`Game Over` 与 `Ambulance Failed` 两种失败卡片在标题淡出后显示 Retry；点击走与「再玩一次」相同的 `reset()`，重置关卡、会话、安装门计数与倍速状态，并向平台桥接发 `CHALLENGE_RETRY`。胜利卡片不显示 Retry——那里由 Play Now / 选关页接管。
+- 资源：原图黑底 3458×1820，按 alpha 裁到 2822×773 后转 1400px WebP（38.5 KB），存为 `public/assets/unity/ui/Main_Prop_RedBtn_q90.webp`，并加入 `BASE_RUNTIME_ASSET_PATHS` 导出白名单（否则单文件包里的按钮会是空白热区）。
+- 调参：`gameOver.retryEnabled / retryX / retryY / retryWidth / retryAppearSpeed`，编辑器 Game Over 分组下新增五个控件；按钮高度按 383/1400 的原始比例随宽度推导，不单独暴露高度以免拉伸变形。
+- 验证：`node --test --test-concurrency=1` 490/490；AppLovin 本地导出 PASS（32/34，余 2 项人工），单 HTML 3.79 MB 且红色按钮已内联为 data URI；真实浏览器实测失败卡片 Retry 不透明可点（`elementFromPoint` 命中自身）、点击后 overlay 关闭且状态回到 `playing`、胜利卡片 Retry 保持隐藏；线上实拍确认位置在 Play Now 上方不重叠。
+- 部署：版本 `20261104-1437`，zip `http://10.0.0.6:8081/e9/e99ad2c98e9a459614ab0732efe09432.zip`，复用 12142。
+
 ## Deployed On 2026-11-04 - 导出目录改为 NAS 交单结构（v20261104-1214）
 
 - 需求：导出内容要与上传 NAS 的目录对应，一个平台一个渠道简称文件夹；BL 同样如此。

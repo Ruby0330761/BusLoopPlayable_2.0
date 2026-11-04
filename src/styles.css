@@ -517,6 +517,41 @@ button:hover { transform: translateY(-1px); background: #fff; }
   opacity: 1;
   transform: translate(-50%, -50%) scale(1);
 }
+/* A failed run needs a way to play again; before this the only exit from the
+   failure card was the store button, so a lost player had to reload the ad.
+   The supplied art is a red pill with "Retry" baked in, so the button carries
+   no text node of its own — it must not also render a label. It sits after the
+   overlay in the DOM, so the "ready" state is a sibling rule, not a descendant
+   one. */
+.game-over-retry {
+  position: absolute;
+  z-index: 13;
+  left: var(--game-over-retry-left, 50%);
+  top: var(--game-over-retry-top, 84%);
+  width: var(--game-over-retry-width, 350px);
+  height: var(--game-over-retry-height, 96px);
+  display: block;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent url('/assets/unity/ui/Main_Prop_RedBtn_q90.webp') center / 100% 100% no-repeat;
+  box-shadow: none;
+  opacity: 0;
+  transform: translate(-50%, -50%) scale(.88);
+  transition:
+    opacity var(--game-over-retry-appear-duration, .65s) ease,
+    transform var(--game-over-retry-appear-duration, .65s) cubic-bezier(.19, 1, .22, 1);
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.game-over-retry[hidden] { display: none; }
+.game-over-overlay.is-cta-ready + .game-over-retry {
+  opacity: 1;
+  transform: translate(-50%, -50%) scale(1);
+}
+.game-over-overlay.is-cta-ready + .game-over-retry:active {
+  transform: translate(-50%, -50%) scale(.96);
+}
 .cta-button {
   position: absolute;
   z-index: 13;

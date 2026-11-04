@@ -307,7 +307,11 @@ export const BASE_RUNTIME_ASSET_PATHS = Object.freeze([
   '/assets/applovin/speed-toggle-bg_q90.webp',
   '/assets/applovin/speed-toggle-icon-normal.png',
   '/assets/applovin/speed-toggle-icon-boost.png',
-  '/assets/unity/ui/Main_Prop_GreenBtn.png'
+  '/assets/unity/ui/Main_Prop_GreenBtn.png',
+  // The failure card's Retry pill. It is referenced only from styles.css, so
+  // leaving it out of this list would ship a packaged ad whose Retry button is
+  // a blank transparent hit area.
+  '/assets/unity/ui/Main_Prop_RedBtn_q90.webp'
 ]);
 
 export const PRE_ROLL_ASSET_PATHS = Object.freeze([

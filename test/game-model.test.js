@@ -1437,7 +1437,12 @@ test('editor sizing, source background ratio, and passenger shadow anchor stay w
     logoWidth: 645,
     logoHeight: 587,
     logoRadius: 30,
-    logoAppearSpeed: 1.45
+    logoAppearSpeed: 1.45,
+    retryEnabled: 1,
+    retryX: 540,
+    retryY: 1790,
+    retryWidth: 420,
+    retryAppearSpeed: 1.45
   });
   assert.deepEqual(LEVEL_1.passengerQueue, { spacing: 0.4, screenEdgeOffsetSpacing: 4 });
   assert.equal(LEVEL_1.conveyorPathLength, 4.591284809513923);
@@ -1458,10 +1463,12 @@ test('editor sizing, source background ratio, and passenger shadow anchor stay w
   assert.ok(publicAssetExists('/assets/main-loading-icon-crowd.webp'));
   assert.ok(publicAssetExists('/assets/main-guide-hand.png'));
   assert.ok(publicAssetExists('/assets/unity/ui/Main_Prop_GreenBtn.png'));
+  assert.ok(publicAssetExists('/assets/unity/ui/Main_Prop_RedBtn_q90.webp'));
   assert.match(indexSource, /id="loading-screen"/);
   assert.match(indexSource, /id="game-over-overlay"/);
   assert.match(indexSource, /Game Over/);
   assert.match(indexSource, /id="game-over-logo"/);
+  assert.match(indexSource, /id="game-over-retry"/);
   assert.match(indexSource, /id="cta-button"/);
   assert.match(indexSource, /<div id="game-over-overlay"[\s\S]*?<\/div>\s*<button id="cta-button"/);
   assert.match(indexSource, /Play Now/);
@@ -1511,6 +1518,10 @@ test('editor sizing, source background ratio, and passenger shadow anchor stay w
   assert.match(editorSource, /gameOver\.titleFontSize/);
   assert.match(editorSource, /gameOver\.logoX/);
   assert.match(editorSource, /gameOver\.logoAppearSpeed/);
+  assert.match(editorSource, /gameOver\.retryEnabled/);
+  assert.match(editorSource, /gameOver\.retryX/);
+  assert.match(editorSource, /gameOver\.retryWidth/);
+  assert.match(editorSource, /gameOver\.retryAppearSpeed/);
   assert.match(editorSource, /lighting\.directional\.color/);
   assert.match(editorSource, /lighting\.directional\.intensity/);
   assert.match(editorSource, /lighting\.directional\.position\.x/);
@@ -2939,4 +2950,32 @@ test('a single-queue level fills every visible queue lane', async () => {
   const usedEntries = new Set(filled.map((slot) => slot.entryIndex));
   assert.equal(filled.length, 36, 'the belt should be full');
   assert.deepEqual([...usedEntries].sort(), [0, 1], 'both entry points must feed the belt');
+});
+
+test('the failure card offers a Retry that restarts the run, and a win never shows it', async () => {
+  const mainSource = readFileSync('src/main.js', 'utf8');
+  const indexSource = readFileSync('index.html', 'utf8');
+  const stylesSource = readFileSync('src/styles.css', 'utf8');
+
+  // The button has to exist outside the overlay: the overlay owns the mask and
+  // the pop animation, and a button inside it would inherit the fading title
+  // stacking. It is a sibling, so the ready state uses `+`, not a descendant.
+  const overlayEnd = indexSource.indexOf('</div>', indexSource.indexOf('id="game-over-overlay"'));
+  assert.ok(indexSource.indexOf('id="game-over-retry"') > overlayEnd);
+  assert.match(stylesSource, /\.game-over-overlay\.is-cta-ready \+ \.game-over-retry/);
+  assert.doesNotMatch(stylesSource, /\.game-over-overlay\.is-cta-ready ~ \.game-over-retry/);
+
+  // A loss must show it; a win must not, because the store button owns that ending.
+  assert.match(mainSource, /gameOverRetryButton\.hidden = !failed \|\| !Boolean\(SCENE_TUNING\.gameOver\?\.retryEnabled \?\? 1\)/);
+  assert.match(mainSource, /showResultOverlay\('You Win!', \{ failed: false \}\)/);
+  assert.match(mainSource, /function hideGameOver\(\)[\s\S]{0,400}gameOverRetryButton\.hidden = true/);
+
+  // Tapping it restarts the run through the same reset path as the other replay
+  // buttons, so the session, install gate and speed state are all rebuilt.
+  assert.match(mainSource, /gameOverRetryButton\?\.addEventListener\('click',[\s\S]{0,200}reset\(\);/);
+
+  // The pill art carries its own "Retry" lettering, so the button must not also
+  // render a text label or the word would appear twice.
+  assert.match(indexSource, /id="game-over-retry"[^>]*>\s*<\/button>/);
+  assert.match(stylesSource, /Main_Prop_RedBtn_q90\.webp/);
 });
