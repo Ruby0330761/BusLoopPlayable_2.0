@@ -242,6 +242,13 @@
 - `reuseDocumentImageAsset` 的复用名单必须包含 `loading-icon`，而且**不能改成删掉调参里的 icon 字段**：`main.js` 用 `loadingIcon.getAttribute('src') !== iconSource` 判断是否回写，字面量与 DOM 不同就会每次启动重设一遍。
 - 定位方法：别猜。`python3 deploy-tools/build-verified-playable-packages/scripts/scan_candidate_payloads.py --artifact <成品> --platform applovin --output /tmp/p.json` 会列出重复组的 sha256、浪费字节和 `origins`（`#data-uri-N` 序号）；拿 sha256 去 `public/` 逐个比对即可锁定具体文件。
 
+## 2026-11-04 全局 `button:hover` 会把图片按钮刷成白块
+
+- 现象：结束页 Retry 按钮（红色药丸背景图）鼠标悬停时整块变成白色矩形。
+- 根因：`src/styles.css` 里有一条全局 `button:hover { transform: translateY(-1px); background: #fff; }`，任何靠 `background-image` 表达的按钮都会被它覆盖，同时 `translateY(-1px)` 还会顶掉用 `translate(-50%,-50%)` 做的居中。
+- 这不是第一次：倍速按钮（`.speed-toggle:hover`）早就因为同一条规则专门重声明了背景与居中。**任何新加的图片按钮都必须在自己的 `:hover`/`:focus-visible` 里重新声明 background 与 transform**，否则默认态正常、一悬停就走样。
+- 排查提示：这类问题在静态检查里完全看不出来，因为 CSS 语法与资源都在；只有在真实浏览器里 hover 后读 `getComputedStyle(...).backgroundImage` 才会暴露——变白时它会是 `none` 或纯色而不是 url。
+
 ## 2026-10-21 Crowd 试玩是 iOS/Android 共用一套包
 
 - Bus Fever 的交付习惯是「同一份 HTML 只换 Icon 与商店链接，出 `-Android` / `-iOS` 两包」。Crowd 不是这样：它只有一套品牌资源，两个商店看到同一个包，所以导出器需要区分「套系（branding set）」而不是固定按两个变体展开。

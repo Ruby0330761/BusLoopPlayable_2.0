@@ -1440,7 +1440,7 @@ test('editor sizing, source background ratio, and passenger shadow anchor stay w
     logoAppearSpeed: 1.45,
     retryEnabled: 1,
     retryX: 540,
-    retryY: 1790,
+    retryY: 1360,
     retryWidth: 420,
     retryAppearSpeed: 1.45
   });
@@ -2978,4 +2978,23 @@ test('the failure card offers a Retry that restarts the run, and a win never sho
   // render a text label or the word would appear twice.
   assert.match(indexSource, /id="game-over-retry"[^>]*>\s*<\/button>/);
   assert.match(stylesSource, /Main_Prop_RedBtn_q90\.webp/);
+
+  // The shared `button:hover` rule paints `background: #fff`, which turned this
+  // button into a blank white pill. The art and the centering transform both
+  // have to be restated in the hover rule.
+  assert.match(
+    stylesSource,
+    /\.game-over-retry:hover,\s*\n\.game-over-retry:focus-visible \{\s*\n\s*background: transparent url\('\/assets\/unity\/ui\/Main_Prop_RedBtn_q90\.webp'\) center \/ 100% 100% no-repeat;/
+  );
+
+  // Default placement is under the logo, not on the CTA strip: the button's
+  // default y is derived from the logo's bottom edge, and the shipped value sits
+  // above the CTA row.
+  assert.match(mainSource, /const logoBottom = [\s\S]{0,260}?const retryDefaultY = logoBottom \+/);
+  const { SCENE_TUNING: tuning } = await import('../src/scene-tuning.js');
+  const logoBottom = tuning.gameOver.logoY + tuning.gameOver.logoHeight / 2;
+  const retryHeight = tuning.gameOver.retryWidth * (383 / 1400);
+  const retryTop = tuning.gameOver.retryY - retryHeight / 2;
+  assert.ok(retryTop > logoBottom, `Retry (${retryTop}) must start below the logo bottom (${logoBottom})`);
+  assert.ok(tuning.gameOver.retryY < tuning.cta.y, 'Retry must sit above the CTA row');
 });

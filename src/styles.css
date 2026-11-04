@@ -549,6 +549,18 @@ button:hover { transform: translateY(-1px); background: #fff; }
   opacity: 1;
   transform: translate(-50%, -50%) scale(1);
 }
+/* The shared button:hover rule paints `background: #fff`, which replaces this
+   button's art with a blank white pill and would also drop the centering
+   translate. Both have to be restated here — the same trap the speed toggle hit. */
+.game-over-retry:hover,
+.game-over-retry:focus-visible {
+  background: transparent url('/assets/unity/ui/Main_Prop_RedBtn_q90.webp') center / 100% 100% no-repeat;
+  transform: translate(-50%, -50%);
+}
+.game-over-overlay.is-cta-ready + .game-over-retry:hover,
+.game-over-overlay.is-cta-ready + .game-over-retry:focus-visible {
+  transform: translate(-50%, -50%) scale(1.03);
+}
 .game-over-overlay.is-cta-ready + .game-over-retry:active {
   transform: translate(-50%, -50%) scale(.96);
 }

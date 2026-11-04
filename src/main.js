@@ -489,6 +489,20 @@ function migrateCtaScreenPositionTuning(source) {
   return changed;
 }
 
+// The first Retry build parked the pill at y=1790, which sits on the CTA strip.
+// A saved profile would keep that value forever, so the one shipped default is
+// rewritten to the new under-the-logo position. A value an operator chose is
+// left alone: only that exact legacy default is migrated.
+const LEGACY_RETRY_Y = 1790;
+const MIGRATED_RETRY_Y = 1360;
+function migrateGameOverRetryPositionTuning(source) {
+  const gameOver = source?.gameOver;
+  if (!gameOver) return false;
+  if (Number(gameOver.retryY) !== LEGACY_RETRY_Y) return false;
+  gameOver.retryY = MIGRATED_RETRY_Y;
+  return true;
+}
+
 function migrateCustomBackgroundSourceSize(source) {
   const background = source?.background;
   if (!background?.asset?.startsWith(CUSTOM_BACKGROUND_ASSET_PREFIX)) return false;
@@ -682,6 +696,7 @@ function loadSavedTuning() {
       const spatialSpeedMigrated = migrateSpatialSpeedTuning(savedTuning);
       const speedToggleHiddenMigrated = migrateSpeedToggleHiddenTuning(savedTuning);
       const ctaScreenPositionMigrated = migrateCtaScreenPositionTuning(savedTuning);
+      const gameOverRetryPositionMigrated = migrateGameOverRetryPositionTuning(savedTuning);
       const customBackgroundSourceMigrated = migrateCustomBackgroundSourceSize(savedTuning);
       const exportNamingMigrated = migrateExportNamingTuning(savedTuning);
       const aboardSoundOffsetMigrated = migrateAboardSoundOffsetTuning(savedTuning);
@@ -712,6 +727,7 @@ function loadSavedTuning() {
         || spatialSpeedMigrated
         || speedToggleHiddenMigrated
         || ctaScreenPositionMigrated
+        || gameOverRetryPositionMigrated
         || customBackgroundSourceMigrated
         || exportNamingMigrated
         || aboardSoundOffsetMigrated
@@ -747,6 +763,7 @@ function loadSavedTuning() {
     migrateSpatialSpeedTuning(legacy);
     migrateSpeedToggleHiddenTuning(legacy);
     migrateCtaScreenPositionTuning(legacy);
+    migrateGameOverRetryPositionTuning(legacy);
     migrateCustomBackgroundSourceSize(legacy);
     migrateExportNamingTuning(legacy);
     migrateAboardSoundOffsetTuning(legacy);
@@ -1411,7 +1428,13 @@ function applyGameOverTuning() {
     const retryWidth = Math.max(40, Number(gameOver.retryWidth) || 420);
     const retryHeight = retryWidth * (383 / 1400);
     const retryX = Number.isFinite(Number(gameOver.retryX)) ? Number(gameOver.retryX) : designWidth / 2;
-    const retryY = Number.isFinite(Number(gameOver.retryY)) ? Number(gameOver.retryY) : designHeight * 0.84;
+    // Default sits just under the logo: the logo is centred at gameOver.logoY
+    // with gameOver.logoHeight, so its bottom edge is the anchor. Anchoring to a
+    // percentage of the screen instead put the button near the CTA strip.
+    const logoBottom = (Number.isFinite(Number(gameOver.logoY)) ? Number(gameOver.logoY) : designHeight * 0.4)
+      + (Number.isFinite(Number(gameOver.logoHeight)) ? Number(gameOver.logoHeight) : 587) / 2;
+    const retryDefaultY = logoBottom + 30 + retryHeight / 2;
+    const retryY = Number.isFinite(Number(gameOver.retryY)) ? Number(gameOver.retryY) : retryDefaultY;
     const renderedWidth = retryWidth * uiScale;
     const renderedHeight = retryHeight * uiScale;
     const left = clampConfigNumber(

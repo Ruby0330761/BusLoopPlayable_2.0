@@ -1,5 +1,14 @@
 # Playable Project Progress
 
+## Deployed On 2026-11-04 - Retry 位置改到 Logo 下方 + 修复 hover 变白（v20261104-1451）
+
+- 反馈两处：Retry 位置偏低（压在车阵上部、靠近 CTA 条），且鼠标悬停时按钮整块变白。
+- 位置：默认 `retryY` 由 1790 改为 1360，并且默认值改为「按 Logo 底边推导」（`logoY + logoHeight/2 + 30 + 按钮高度/2`），以后调 Logo 大小按钮会跟着走，不再写死屏幕百分比。实测 Retry 顶边 511、Logo 底边 490、CTA 顶边 769，确实在 Logo 下方且不碰 CTA。
+- 变白根因：全局 `button:hover { background: #fff }` 把背景图整块覆盖了。这是项目里第二次踩（倍速按钮也中过）。修为在 `.game-over-retry:hover/:focus-visible` 重新声明背景图与居中 transform，只放大 1.03 倍作为反馈。
+- 迁移：新增 `migrateGameOverRetryPositionTuning`，把已保存档案里的旧默认值 `1790` 改成 `1360`；只迁移这一个精确值，操作员自己调过的位置保留。主缓存与旧版 `v2` 缓存两条载入路径都接了。
+- 验证：`node --test --test-concurrency=1` 490/490（新增断言：hover 规则必须重声明背景图、默认位置必须在 Logo 底边以下且高于 CTA）；真实浏览器实测 hover 后 `backgroundImage` 仍是红色药丸、底色透明、仅 1.03 倍缩放；线上同样验证通过。
+- 部署：版本 `20261104-1451`，zip `http://10.0.0.6:8081/72/728ca78e427089dfe5662d774c0ab101.zip`，复用 12142。
+
 ## Deployed On 2026-11-04 - 失败页新增 Retry 再试一次（v20261104-1437）
 
 - 需求：闯关失败后可以再试一次，按钮用需求方给的红色药丸图（图上已带 Retry 字样）。

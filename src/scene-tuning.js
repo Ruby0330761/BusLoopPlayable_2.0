@@ -150,7 +150,7 @@ export const SCENE_TUNING = {
     "logoAppearSpeed": 1.45,
     "retryEnabled": 1,
     "retryX": 540,
-    "retryY": 1790,
+    "retryY": 1360,
     "retryWidth": 420,
     "retryAppearSpeed": 1.45
   },
