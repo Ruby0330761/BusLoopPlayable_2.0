@@ -1,5 +1,16 @@
 # Playable Project Progress
 
+## Deployed On 2026-11-04 - BFT 命名与 BL 完全同构（v20261104-1154）
+
+- 反馈：BFT 导出目录少了 `2610293`，内部文件名带了多余的 `-Crowd` 后缀，且需求人/需求编号被套系改写。
+- 根因三处叠加：`PLAYABLE_BRANDING_SETS.crowd` 里 `exportNaming: { requirementCode: 'BFT', requester: 'ZZN' }` 把调参里的 `BFT-2610293` / `TJW` 整段覆盖；`suffix: '-Crowd'` 又给每个文件名追加后缀；于是容器名 `BFT-20261104-WXJ.zip`（缺需求序号），内部是 `BFT-Q184V1-...-ZZN-...-N-Crowd.zip`。
+- 修复：BFT 套系不再带 `suffix` 与 `exportNaming`，与 BL 完全同构——需求编号、需求人、步数标签全部取自导出调参。容器走 `<requirementCode>-<YYYYMMDD>-<designer>`，所以现在两边都是 `BFT-2610293-20261104-WXJ.zip`。
+- 同时修掉两个会静默改名的缺陷：
+  - 会话里的 `materialCode` 原本无条件覆盖调参。当前激活 BL 会话时导出 BFT，会得到 `BFT-2610293-Q159V1-*`（需求与素材对不上）。现在会话只填「调参仍是模板默认值」的情况，操作员选定过的素材号优先。
+  - 导出源码缓存键不含平台列表：先单平台导出再「一键导出全部」会命中只含一个平台的缓存，报 `Cached applovin build is missing`。平台列表已并入指纹。
+- 验证：`node --test --test-concurrency=1` 487/487；线上单平台导出 `BFT-2610293-Q184V1-N-N-EN-PL-WXJ-TJW-FB-35moves-N.zip`，「一键导出全部」`BFT-2610293-20261104-WXJ.zip`，解包后 7 个文件名与需求清单逐字一致（Mintegral 按规则转下划线）。
+- 部署：版本 `20261104-1154`，zip `http://10.0.0.6:8081/76/76c3b86044ef503f2f8e8c3cf24043f7.zip`，复用 12142。
+
 ## Deployed On 2026-11-04 - BL/BFT 导出合并为一份包，编辑器标签改为 BL / BFT
 
 - 需求：BL 的安卓与 iOS 不再分开导出，合并成一份包，按玩家机型显示对应 icon 与跳转链接；导出套系与 Icon/Logo 下拉的显示名改为 BL / BFT。

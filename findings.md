@@ -144,6 +144,16 @@
 - **UI 文案不等于数据**：`BL 安卓` / `BL iOS` 只是预览选择器，不代表导出变体。任何时候看到「按机型切换」的需求，检查的落点应是导出器写出的 `deviceAssets` 两个槽位，而不是编辑器下拉框。
 - 该行为目前没有自动化门禁，本次用独立 Chrome + `Emulation.setUserAgentOverride` 实测（iOS PNG 122,838 字符 / Android JPG 119,191 字符）；改品牌注入后要重跑这条手测。
 
+## 2026-11-04 品牌套系不该改写交付命名；会话素材号只能是默认值
+
+- **品牌套系只决定图标/Logo/商店链接，不决定需求编号。** `PLAYABLE_BRANDING_SETS.crowd` 曾经硬编码 `exportNaming: { requirementCode: 'BFT', requester: 'ZZN' }` 和 `suffix: '-Crowd'`，把调参里的 `BFT-2610293` / `TJW` 整段覆盖，还让文件名多一段后缀。结果容器叫 `BFT-20261104-WXJ.zip`（缺需求序号），内部是 `BFT-Q184V1-...-ZZN-...-N-Crowd.zip`，与 BL 的命名格式完全不同构。现在 BFT 套系不带 `exportNaming`、不带 `suffix`，命名完全跟随导出调参。
+- **会话的 `materialCode` 是默认值，不是覆盖。** `applySessionExportNaming` 原本无条件覆盖。当前激活的是 BL 的 `q159-christmas` 会话（`Q159V1`）时导出 BFT（`Q184V1`），会得到 `BFT-2610293-Q159V1-*`——需求编号和素材编号互相矛盾，而所有静态检查照样通过。判断条件：调参里的素材号与模板默认值不同，就说明操作员明确指定过，会话不得覆盖。CLI `--material` 同理。
+- **导出源码缓存键必须含平台列表。** 先单平台导出，再点「一键导出全部」，后者命中前者只含一个平台的缓存，直接报 `Cached applovin build is missing`。这个错误只在同一进程的连续导出里出现，所以本地单跑一条命令测不出来。
+
+**Why:** 这三个问题都只改名字、不改内容，静态检查与运行门禁都不会报错，只有把交付目录和需求清单逐字比对才能发现。
+
+**How to apply:** 收到「命名格式不对」的反馈时，先看容器名与内部文件名是否同源（都取自调参），再看品牌套系有没有 `exportNaming`/`suffix` 覆盖；验证要覆盖「单平台 → 全平台」连续导出，而不只是单独跑一条。
+
 ## 2026-10-30 单 HTML 打包器的机制资源根是硬编码的；雪橇换座会造出 blocker 环
 
 - **`replaceBundledDynamicAssetUrls` 只认 `/assets/unity/mechanisms`。** 机制素材在 bundle 里是 `${ROOT}/models/x.fbx` 这种模板字符串，完整 URL 从不出现，所以普通字符串替换扫不到；打包器专门用「根前缀 + 尾部」正则在回写 data URI。圣诞资源挂在 `/assets/unity/christmas` 下，于是清单里内联了、bundle 里却没替换，成品运行时去请求 `/assets/unity/christmas/textures/Idle_boy_Santa.png` 报 404。现在根改成 `DYNAMIC_MECHANISM_ROOTS` 列表；**以后新增任何顶层资源根的机制族，必须同时加进这张表**，否则静态检查全绿、只有运行时门禁能抓到。

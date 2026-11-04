@@ -85,7 +85,6 @@ export const PLAYABLE_BRANDING_SETS = Object.freeze({
   crowd: Object.freeze([
     Object.freeze({
       id: 'crowd',
-      suffix: '-Crowd',
       iconAsset: '/assets/icon-crowd.jpg',
       // Both store slots point at the same art. This is not cosmetic: the base
       // tuning carries Bus's per-device icons, and the workspace applies tuning by
@@ -98,10 +97,10 @@ export const PLAYABLE_BRANDING_SETS = Object.freeze({
       logoAsset: '/assets/main-loading-icon-crowd.webp',
       storeLinks: CROWD_STORE_LINKS,
       runtimeDevices: Object.freeze(['android', 'ios']),
-      // Crowd keeps its own naming identity instead of inheriting the Bus one.
-      // BFT is the Crowd requirement prefix the delivery sheets use (e.g.
-      // BFT-26101615), and ZZN is the Crowd requester.
-      exportNaming: Object.freeze({ requirementCode: 'BFT', requester: 'ZZN' }),
+      // BFT names its packages exactly like BL does; the requirement code
+      // (`BFT-2610293`), requester and step tag all come from the tuning the
+      // operator exported. This set must not invent `BFT`/`ZZN`, or a delivery
+      // is renamed into a different requirement than the one being worked on.
       // Only replaces the untouched Bus default; a custom line is left alone.
       textContent: 'Bus Crowd',
       defaultTextContent: 'Bus Fever Party!',
@@ -1182,13 +1181,19 @@ function applyNamingOverride(tuning, namingOverride) {
   };
 }
 
-function applySessionExportNaming(tuning, sessionConfig, { keepMaterialCode = false } = {}) {
+// The session pins the material code so an unsuffixed export still gets the
+// right one (Q22 ships two variants from one repository). It is a *default*,
+// though: once the operator names a material code that differs from the template
+// default, that is the delivery being exported and the session must not rename
+// it. Without this, exporting BFT (Q184V1) while a BL session is active produced
+// BFT-2610293-Q159V1-* -- the requirement and the material disagreed.
+export function applySessionExportNaming(tuning, sessionConfig, { keepMaterialCode = false, template = null } = {}) {
   const naming = sessionConfig?.session?.exportNaming;
   if (!naming || !isPlainObject(naming) || Object.keys(naming).length === 0) return tuning;
-  // The session pins the material code so an unsuffixed export still gets the
-  // right one. A CLI variant that names its own material code must win, or every
-  // variant of that session collapses onto the same number.
-  const merged = keepMaterialCode
+  const templateMaterial = String(template?.exportNaming?.materialCode ?? '').trim();
+  const tuningMaterial = String(tuning?.exportNaming?.materialCode ?? '').trim();
+  const operatorChoseMaterial = Boolean(tuningMaterial) && tuningMaterial !== templateMaterial;
+  const merged = keepMaterialCode || operatorChoseMaterial
     ? Object.fromEntries(Object.entries(naming).filter(([key]) => key !== 'materialCode'))
     : naming;
   if (Object.keys(merged).length === 0) return tuning;
@@ -1215,7 +1220,8 @@ async function readPlayableSessionConfig(projectRoot) {
   return { key, session, config };
 }
 
-async function exportInputFingerprint(projectRoot, tuning, levelDocument = null, variants = null) {  const candidates = [
+async function exportInputFingerprint(projectRoot, tuning, levelDocument = null, variants = null, platforms = null) {
+  const candidates = [
     path.join(projectRoot, 'artifacts', 'selected-level.txt'),
     path.join(projectRoot, 'artifacts', 'level-catalog.js'),
     path.join(projectRoot, 'artifacts', 'unity-levels.json'),
@@ -1278,7 +1284,10 @@ async function exportInputFingerprint(projectRoot, tuning, levelDocument = null,
   return createHash('sha256')
     // The cached sources are built with the first variant's branding art, so a
     // Bus and a Crowd export of the same tuning must never share cache entries.
-    .update(`${EXPORT_SOURCE_CACHE_VERSION}\n${JSON.stringify(tuning)}\n${JSON.stringify(variants)}\n${JSON.stringify(levelDocument)}\n${JSON.stringify(artifactStates)}\n${JSON.stringify(sourceStates)}`)
+    // The platform list is part of the key too: a single-platform export only
+    // builds that platform's HTML, and reusing it for an all-platform run failed
+    // with "Cached <platform> build is missing" for the other six.
+    .update(`${EXPORT_SOURCE_CACHE_VERSION}\n${JSON.stringify(platforms)}\n${JSON.stringify(tuning)}\n${JSON.stringify(variants)}\n${JSON.stringify(levelDocument)}\n${JSON.stringify(artifactStates)}\n${JSON.stringify(sourceStates)}`)
     .digest('hex');
 }
 
@@ -1330,7 +1339,7 @@ async function exportPlatforms({ projectRoot, tuning, levelDocument = null, plat
   try {
     safeTuning = validateTuning(
       applyNamingOverride(
-        applySessionExportNaming(tuning ?? template, sessionConfig, { keepMaterialCode }),
+        applySessionExportNaming(tuning ?? template, sessionConfig, { keepMaterialCode, template }),
         namingOverride
       ),
       template
@@ -1341,7 +1350,7 @@ async function exportPlatforms({ projectRoot, tuning, levelDocument = null, plat
     throw error;
   }
   const skill = await resolveSkillTools();
-  const sourceCacheKey = variants ? await exportInputFingerprint(resolvedRoot, safeTuning, levelDocument, variants) : null;
+  const sourceCacheKey = variants ? await exportInputFingerprint(resolvedRoot, safeTuning, levelDocument, variants, platforms) : null;
   const cachedSources = sourceCacheKey ? getCachedExportSources(sourceCacheKey) : null;
   const workspace = cachedSources
     ? { tempRoot: await mkdtemp(path.join(os.tmpdir(), 'bus-loop-playable-export-')), workRoot: null }

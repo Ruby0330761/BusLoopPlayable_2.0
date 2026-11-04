@@ -11,6 +11,7 @@ import { runInNewContext } from 'node:vm';
 
 const execFileAsync = promisify(execFile);
 import {
+  buildDeliveryPackageLabel,
   buildPlayableArtifactName,
   CROWD_STORE_LINKS,
   createBrandingVariantTuning,
@@ -785,21 +786,76 @@ test('UnityAds packages carry no AppLovin marker, even from shared asset paths',
   );
 });
 
-test('Crowd packages use the BFT product code while Bus keeps BL', async () => {
+test('BFT packages keep the requirement identity the tuning carries', async () => {
   const { createBrandingVariantTuning } = await import('../scripts/export-playable-package.mjs');
   const { SCENE_TUNING } = await import('../src/scene-tuning.js');
   const bus = createBrandingVariantTuning(SCENE_TUNING, 'bus');
   assert.equal(bus.exportNaming.requirementCode, SCENE_TUNING.exportNaming.requirementCode);
   const crowd = createBrandingVariantTuning(SCENE_TUNING, 'crowd');
-  // Crowd is a separate product; its delivery sheets use BFT and ZZN.
-  assert.equal(crowd.exportNaming.requirementCode, 'BFT');
-  assert.equal(crowd.exportNaming.requester, 'ZZN');
-  // The rest of the naming stays whatever the editor holds.
+  // BFT delivery names follow exactly the same shape as BL: requirement code,
+  // requester and step tag all come from the exported tuning. A set that
+  // invented `BFT`/`ZZN` renamed a delivery into a different requirement.
+  assert.equal(crowd.exportNaming.requirementCode, SCENE_TUNING.exportNaming.requirementCode);
+  assert.equal(crowd.exportNaming.requester, SCENE_TUNING.exportNaming.requester);
   assert.equal(crowd.exportNaming.materialCode, SCENE_TUNING.exportNaming.materialCode);
   assert.equal(crowd.exportNaming.designer, SCENE_TUNING.exportNaming.designer);
-  // Bus must not pick up the Crowd identity.
-  assert.equal(bus.exportNaming.requester, SCENE_TUNING.exportNaming.requester);
-  assert.notEqual(bus.exportNaming.requester, 'ZZN');
+  assert.equal(crowd.exportNaming.steps, SCENE_TUNING.exportNaming.steps);
+
+  // A BFT tuning keeps its own full identity through the branding variant.
+  const bftTuning = {
+    exportNaming: {
+      ...SCENE_TUNING.exportNaming,
+      requirementCode: 'BFT-2610293',
+      materialCode: 'Q184V1',
+      requester: 'TJW',
+      steps: '35moves'
+    }
+  };
+  const bft = createBrandingVariantTuning(bftTuning, 'crowd');
+  assert.equal(
+    buildPlayableArtifactName(bft, 'meta'),
+    'BFT-2610293-Q184V1-N-N-EN-PL-WXJ-TJW-FB-35moves-N.zip'
+  );
+  assert.equal(
+    buildPlayableArtifactName(bft, 'applovin'),
+    'BFT-2610293-Q184V1-N-N-EN-PL-WXJ-TJW-AL-35moves-N.html'
+  );
+  // Mintegral still normalizes hyphens, but carries no branding suffix.
+  assert.equal(
+    buildPlayableArtifactName(bft, 'mintegral'),
+    'BFT_2610293_Q184V1_N_N_EN_PL_WXJ_TJW_MT_35moves_N.zip'
+  );
+  // The container uses the same requirement code, so the folder and its files
+  // name the same requirement.
+  assert.equal(
+    buildDeliveryPackageLabel({ requirementCode: bft.exportNaming.requirementCode, designer: 'WXJ', deliveryDate: '2026-11-04' }),
+    'BFT-2610293-20261104-WXJ'
+  );
+});
+
+test('a session material code is a default, not an override of the exported level set', async () => {
+  const { applySessionExportNaming } = await import('../scripts/export-playable-package.mjs');
+  const template = { exportNaming: { ...EXPORT_NAMING, materialCode: 'Q1V1' } };
+  const session = { session: { exportNaming: { materialCode: 'Q159V1' } } };
+
+  // The Q22 workflow relies on this: same repository, one material number per
+  // session, and the tuning still holds the template default.
+  assert.equal(
+    applySessionExportNaming(template, session, { template }).exportNaming.materialCode,
+    'Q159V1'
+  );
+  // Exporting BFT while a BL session is active must not rename the delivery to
+  // the session's material number; the requirement and material would disagree.
+  const bftTuning = { exportNaming: { ...EXPORT_NAMING, materialCode: 'Q184V1' } };
+  assert.equal(
+    applySessionExportNaming(bftTuning, session, { template }).exportNaming.materialCode,
+    'Q184V1'
+  );
+  // An explicit CLI material code behaves the same way.
+  assert.equal(
+    applySessionExportNaming(template, session, { template, keepMaterialCode: true }).exportNaming.materialCode,
+    'Q1V1'
+  );
 });
 
 test('the bottom caption is centred on the CTA', async () => {
