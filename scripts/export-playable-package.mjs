@@ -174,8 +174,42 @@ export function buildDeliveryPackageLabel({
   return label;
 }
 
-export function buildPlayableArtifactName(tuning, platform, suffix = '', { compactGoogleAds = false } = {}) {
-  if (!SUPPORTED_PLATFORMS.includes(platform)) {
+// The hand-over folder is `<requirement>-<material>`, e.g. `BFT-26102313-Q170V1`
+// or `BL-2610295-Q158V2`. It matches the NAS `试玩/<requirement>-<material>/`
+// directory an operator uploads into, so the exported folder can be dropped onto
+// the share without renaming anything.
+export function buildDeliveryFolderName({ requirementCode, materialCode } = {}) {
+  const requirement = String(requirementCode ?? '').trim();
+  const material = String(materialCode ?? '').trim();
+  if (!requirement) return '';
+  const folder = material ? `${requirement}-${material}` : requirement;
+  if (!/^[A-Za-z0-9._-]+$/u.test(folder)) {
+    throw new TypeError(`Delivery folder name contains unsupported characters: ${folder}`);
+  }
+  return folder;
+}
+
+// NAS channel folders use the delivery channel abbreviations, not the internal
+// platform ids: `applovin` -> `AL`, `google-ads` -> `GG`, and so on. Uploading
+// follows this exact spelling, so an export that groups by it needs no renaming.
+export const PLAYABLE_CHANNEL_FOLDER_FALLBACKS = Object.freeze({
+  applovin: 'AL',
+  'google-ads': 'GG',
+  meta: 'FB',
+  mintegral: 'MT',
+  moloco: 'MO',
+  tiktok: 'TT',
+  unityads: 'UN'
+});
+
+export function resolveChannelFolder(tuning, platform) {
+  const configured = String(tuning?.exportNaming?.channels?.[platform] ?? '').trim();
+  return validateExportNamingPart(configured, `tuning.exportNaming.channels.${platform}`)
+    || PLAYABLE_CHANNEL_FOLDER_FALLBACKS[platform]
+    || platform.toUpperCase();
+}
+
+export function buildPlayableArtifactName(tuning, platform, suffix = '', { compactGoogleAds = false } = {}) {  if (!SUPPORTED_PLATFORMS.includes(platform)) {
     throw new TypeError(`Unsupported playable platform: ${platform ?? '<missing>'}.`);
   }
   if (typeof suffix !== 'string' || (suffix && !/^[A-Za-z0-9_-]+$/u.test(suffix))) {
@@ -1519,12 +1553,25 @@ export async function exportPlayablePackage({
   });
   try {
     const [result] = built.results;
-    const filePath = await publish(result.filePath, path.join(destinationRoot, result.fileName));
+    // Single-platform downloads use the same layout as the all-platform set:
+    // `<requirement>-<material>/<CHANNEL>/<file>`. An operator exporting one
+    // channel at a time then drops that channel folder into the same NAS
+    // requirement directory, instead of scattering files at the download root.
+    const requirementPrefix = String(built.tuning?.exportNaming?.requirementCode ?? '').trim();
+    const materialPrefix = String(built.tuning?.exportNaming?.materialCode ?? '').trim();
+    const deliveryFolder = buildDeliveryFolderName({
+      requirementCode: requirementPrefix,
+      materialCode: materialPrefix
+    });
+    const channelFolder = resolveChannelFolder(built.tuning, platform);
+    const relativePath = deliveryFolder
+      ? path.join(deliveryFolder, channelFolder, result.fileName)
+      : path.join(channelFolder, result.fileName);
+    const filePath = await publish(result.filePath, path.join(destinationRoot, relativePath));
     const publishedIdentity = await verifyPublishedArtifact(filePath, result, `${platform} artifact`);
     // A Crowd run of the same platform must not overwrite the Bus check reports.
     // The label follows the delivery requirement code when the build defines one,
     // so `applovin-BFT-2610293-*` matches the artifact it describes.
-    const requirementPrefix = String(built.tuning?.exportNaming?.requirementCode ?? '').trim();
     const reportLabel = brandingSet === DEFAULT_PLAYABLE_BRANDING_SET
       ? platform
       : `${platform}-${requirementPrefix || brandingSet}`;
@@ -1533,6 +1580,9 @@ export async function exportPlayablePackage({
       ...result,
       brandingSet,
       filePath,
+      relativePath,
+      channelFolder,
+      deliveryFolder,
       sourceCacheHit: built.sourceCacheHit,
       ...publishedIdentity,
       checkSummary: { ...result.checkSummary, reportPath: reportPaths.static, reportPaths }
@@ -1583,6 +1633,20 @@ export async function exportAllPlayablePackages({
   });
   try {
     const checksSkipped = built.results.some(({ checkSummary }) => checkSummary.conclusion === 'SKIPPED_LOCAL_CHECKS');
+    const requirementPrefix = String(built.tuning?.exportNaming?.requirementCode ?? '').trim();
+    const materialPrefix = String(built.tuning?.exportNaming?.materialCode ?? '').trim();
+    const designer = String(built.tuning?.exportNaming?.designer ?? '').trim();
+    // Reports keep the dated label so two exports of the same requirement on
+    // different days do not overwrite each other's evidence.
+    const packageLabel = buildDeliveryPackageLabel({
+      requirementCode: requirementPrefix,
+      designer,
+      deliveryDate
+    });
+    const deliveryFolder = buildDeliveryFolderName({
+      requirementCode: requirementPrefix,
+      materialCode: materialPrefix
+    });
     const manifest = {
       schemaVersion: 'bus-loop-playable-export-set-v1',
       resourceMode: EXPORT_RESOURCE_MODE,
@@ -1613,30 +1677,43 @@ export async function exportAllPlayablePackages({
         }
       }))
     };
-    await writeFile(path.join(built.stageRoot, 'manifest.json'), `${JSON.stringify(manifest, null, 2)}\n`, 'utf8');
-    // The delivery package (this container, and the folder it is handed over in)
-    // is named `requirement-date-designer`, e.g. BL-2610296-20261102-WXJ. The
-    // packaged files inside keep the 11-segment requirement-sheet naming. The
-    // container used to borrow the internal branding-set id, so a Crowd set
-    // shipped as `BL-crowd-all-platforms.zip` beside BFT-* files.
-    const requirementPrefix = String(built.tuning?.exportNaming?.requirementCode ?? '').trim();
-    const designer = String(built.tuning?.exportNaming?.designer ?? '').trim();
-    const packageLabel = buildDeliveryPackageLabel({
-      requirementCode: requirementPrefix,
-      designer,
-      deliveryDate
-    });
-    const aggregateName = packageLabel
-      ? `${packageLabel}.zip`
-      : (brandingSet === DEFAULT_PLAYABLE_BRANDING_SET
-        ? `${BUS_BRANDING_LABEL}-all-platforms.zip`
-        : `${BUS_BRANDING_LABEL}-${brandingSet}-all-platforms.zip`);
+    // The manifest stays beside the archive, not inside it. The NAS uploader
+    // refuses a whole folder that contains a file it cannot assign to one of the
+    // seven channels, so shipping manifest.json inside the delivery forced every
+    // hand-over to strip it first.
+    await mkdir(destinationRoot, { recursive: true });
+    await writeFile(path.join(destinationRoot, `${packageLabel || 'playable'}-manifest.json`), `${JSON.stringify(manifest, null, 2)}\n`, 'utf8');
+    // The delivery mirrors the NAS hand-over layout exactly:
+    //
+    //   <requirement>-<material>/     e.g. BL-2610295-Q158V2
+    //     AL/ BFT-...-AL-N-N.html
+    //     GG/ BFT-...-GG-N-N.zip
+    //     ...
+    //
+    // so an operator can upload the folder onto `试玩/` with no renaming and the
+    // NAS uploader finds one platform per channel folder. Every branding set uses
+    // this same shape; BL and BFT differ only in their own branding assets.
+    const aggregateName = deliveryFolder
+      ? `${deliveryFolder}.zip`
+      : `${BUS_BRANDING_LABEL}-playable.zip`;
+    // The channel folders live inside a folder named after the delivery, so
+    // unzipping produces exactly `BFT-2610293-Q184V1/AL/...` and the result can be
+    // dropped straight onto the share.
+    const bundleRoot = path.join(built.stageRoot, 'delivery-bundle');
+    const deliveryRoot = path.join(bundleRoot, deliveryFolder || 'playable');
+    await mkdir(deliveryRoot, { recursive: true });
+    for (const item of built.results) {
+      const channelFolder = resolveChannelFolder(built.tuning, item.platform);
+      const channelRoot = path.join(deliveryRoot, channelFolder);
+      await mkdir(channelRoot, { recursive: true });
+      await copyFile(path.join(built.stageRoot, item.fileName), path.join(channelRoot, item.fileName));
+    }
     const aggregateStage = path.join(built.workspace.tempRoot, aggregateName);
     await deterministicZip(
       built.skill.zip,
-      built.stageRoot,
+      bundleRoot,
       aggregateStage,
-      ['manifest.json', 'reports', ...built.results.map((item) => item.fileName)],
+      [deliveryFolder || 'playable'],
       signal,
       built.zipTimestamp
     );

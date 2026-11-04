@@ -2,7 +2,7 @@
 
 ## 适用范围
 
-Playable Ad Checker 是 exact final artifact 完成本地 `final-recheck` 后的可选外部补充验证，与官方 Preview、广告后台、代表设备和人工验收一起进入交付待办。未执行 Checker 不阻止本地 ruleset 已通过的候选包进入 `READY_FOR_MANUAL_PLATFORM_ACCEPTANCE`，但报告只能写“本地 ruleset 检查通过，Checker 尚未验证”。日常流程只使用 Checker 页面公开控件和可见 DOM；禁止读取、启动或修改 `/Users/hupo/workspace/project/playable_check`，禁止调用私有接口或绕过页面检查。
+Playable Ad Checker 是 exact final artifact 完成本地 `final-recheck` 后的可选外部补充验证，与官方 Preview、广告后台、代表设备和人工验收一起进入交付待办。未执行 Checker 不阻止本地 ruleset 已通过的候选包进入 `READY_FOR_MANUAL_PLATFORM_ACCEPTANCE`，但报告只能写“本地 ruleset 检查通过，Checker 尚未验证”。日常流程只使用 Checker 页面公开控件和可见 DOM；禁止读取、启动或修改任何外部 `playable_check` 源码副本，禁止调用私有接口或绕过页面检查。
 
 ## 本地 parity 与前置证明
 

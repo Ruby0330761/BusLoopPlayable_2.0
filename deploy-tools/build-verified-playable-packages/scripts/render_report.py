@@ -38,6 +38,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--applied-resource-root")
     parser.add_argument("--rollback-root")
     parser.add_argument("--platform-package-root")
+    parser.add_argument("--delivery-archive", help="archive_delivery_by_channel.py 产出的归档 receipt；提供后在平台包章节展示需求编号/渠道目录")
     parser.add_argument("--skill-ux-input", help="普通用户复验观察 JSON；提供时必须同时提供 --skill-ux-out")
     parser.add_argument("--skill-ux-out", help="固定五段式 Skill 用户体验复验报告")
     parser.add_argument("--execution-timeline", help="本轮结构化时间账本；提供后在首屏分开报告自动处理、用户等待、Checker 等待和返工")
@@ -889,6 +890,13 @@ def render_user_markdown(report: dict[str, Any]) -> str:
             lines.append(f"- {item.get('platform')}：[{Path(str(artifact.get('path') or 'artifact')).name}]({artifact.get('path')})")
     else:
         lines.append("- 当前没有可交付的平台包；请先处理上方阻塞。")
+    archive = report.get("deliveryArchive") or {}
+    if archive.get("status") == "ARCHIVED":
+        lines.extend([
+            "",
+            f"交付目录已按「需求编号/渠道缩写」归档：`{archive.get('requirementRoot')}`（{archive.get('requirementId')}）。",
+            "渠道目录：`AL` `GG` `FB` `MT` `MO` `TT` `UN`，未产出的渠道保留空目录。",
+        ])
     lines.extend([
         "",
         "## 外部验证待办",
@@ -1230,6 +1238,10 @@ def main() -> int:
             "reportPath": str(Path(args.md_out).expanduser().resolve()),
             "auditReportPath": str(audit_md_path),
         },
+        "deliveryArchive": (
+            json.loads(Path(args.delivery_archive).expanduser().read_text(encoding="utf-8"))
+            if args.delivery_archive else None
+        ),
         "localErrors": local_errors,
         "localValidationPassed": local_blocking_error_count == 0 and timeline_error is None,
         "errors": errors,

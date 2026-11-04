@@ -63,7 +63,7 @@
 - `index.html` 必须有合法 `ad.size`。
 - `index.html` 必须有合法 `ad.orientation`，值只允许 `portrait` 或 `landscape`，并与实际素材方向一致。
 - CTA 使用 `ExitApi.exit()` 或允许的 MRAID 等价桥接。
-- 仅允许官方 `exitapi.js` 外链；ZIP 基础名不超过 50 个字符。
+- 仅允许官方 `exitapi.js` 外链；ZIP 基础名不超过 128 个字符。
 - 由 `imageAsset` 配置驱动、经 JavaScript 动态创建或换皮的图片必须使用 `data:image/...` 或可证明的 `blob:` URL；不能依赖解压 HTTP 环境中可用、但 Google 预览容器无法重写的 ZIP 相对路径。
 
 ## Google Ads / Meta 动态图片共同验收

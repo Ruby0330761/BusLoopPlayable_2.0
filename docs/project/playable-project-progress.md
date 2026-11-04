@@ -1,5 +1,20 @@
 # Playable Project Progress
 
+## Deployed On 2026-11-04 - 导出目录改为 NAS 交单结构（v20261104-1214）
+
+- 需求：导出内容要与上传 NAS 的目录对应，一个平台一个渠道简称文件夹；BL 同样如此。
+- 结构（BL/BFT 完全一致）：
+  ```
+  <需求编号>-<素材编号>.zip
+    <需求编号>-<素材编号>/
+      AL/  GG/  FB/  MT/  MO/  TT/  UN/
+  ```
+  例如 `BFT-2610293-Q184V1/BFT-2610293-Q184V1-...-AL-35moves-N.html`，与 NAS `ua_video/BFT/试玩/BFT-2610293-Q184V1/AL/` 完全对应，解压后可直接上传、无需改名。
+- 实现：新增 `buildDeliveryFolderName()`（`<requirement>-<material>`）与 `resolveChannelFolder()`（优先取调参里的渠道简称，缺失时回退到 AL/GG/FB/MT/MO/TT/UN）。一键导出把每个平台产物复制进对应渠道文件夹再打包；单平台导出的落地路径同样带上 `<需求-素材>/<渠道>/`。
+- 同时把 `manifest.json` 从包内移到目标目录旁（`<需求-日期-设计师>-manifest.json`）。NAS 上传工具遇到无法归类到七个渠道的文件会整批拒绝，之前每次交单都要先手工删掉 manifest。
+- 验证：`node --test --test-concurrency=1` 489/489；线上实测 BL 与 BFT 的一键导出均为 `BL-Q1V1/…`、`BFT-2610293-Q184V1/…` 的七渠道目录，文件与需求清单逐字一致。
+- 部署：版本 `20261104-1214`，zip `http://10.0.0.6:8081/8b/8bc2e504b4b7bb31eeb62516d16c1f3d.zip`，复用 12142。
+
 ## Deployed On 2026-11-04 - BFT 命名与 BL 完全同构（v20261104-1154）
 
 - 反馈：BFT 导出目录少了 `2610293`，内部文件名带了多余的 `-Crowd` 后缀，且需求人/需求编号被套系改写。

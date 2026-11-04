@@ -291,13 +291,15 @@ test('Crowd exports one shared Android/iOS package with its own icon and logo', 
   // BL no longer skips the branding-variant pass: one BL file must carry both
   // store icons so the runtime can pick one from the device UA.
   assert.doesNotMatch(exporter, /brandingSet === DEFAULT_PLAYABLE_BRANDING_SET\s*\?\s*null/);
-  // The download container and the check reports carry the delivery package
-  // label `<requirement>-<YYYYMMDD>-<designer>` (e.g. BL-2610296-20261102-WXJ),
-  // while the packaged files keep the 11-segment requirement-sheet naming.
+  // The download mirrors the NAS hand-over layout: a
+  // `<requirement>-<material>/<CHANNEL>/<file>` folder inside the archive, so the
+  // operator uploads it without renaming. The dated label remains for reports.
   assert.match(exporter, /BUS_BRANDING_LABEL = 'BL'/);
   assert.match(exporter, /export function buildDeliveryPackageLabel\(/);
-  assert.match(exporter, /const packageLabel = buildDeliveryPackageLabel\(/);
-  assert.match(exporter, /`\$\{packageLabel\}\.zip`/);
+  assert.match(exporter, /export function buildDeliveryFolderName\(/);
+  assert.match(exporter, /export function resolveChannelFolder\(/);
+  assert.match(exporter, /const deliveryFolder = buildDeliveryFolderName\(/);
+  assert.match(exporter, /`\$\{deliveryFolder\}\.zip`/);
   assert.match(exporter, /const label = packageLabel \|\|/);
   assert.match(exporter, /logoAsset: '\/assets\/main-loading-icon-crowd\.webp'/);
   assert.match(vite, /PLAYABLE_BRANDING_SETS = new Set\(\['bus', 'crowd'\]\)/);
@@ -856,6 +858,62 @@ test('a session material code is a default, not an override of the exported leve
     applySessionExportNaming(template, session, { template, keepMaterialCode: true }).exportNaming.materialCode,
     'Q1V1'
   );
+});
+
+test('the delivery folder and channel folders match the NAS hand-over layout', async () => {
+  const { buildDeliveryFolderName, resolveChannelFolder } = await import('../scripts/export-playable-package.mjs');
+  // The NAS keeps `试玩/<requirement>-<material>/<CHANNEL>/<file>`: one channel
+  // folder per platform, named with the delivery abbreviation rather than the
+  // internal platform id. Uploading needs no renaming when the export matches.
+  assert.equal(
+    buildDeliveryFolderName({ requirementCode: 'BFT-2610293', materialCode: 'Q184V1' }),
+    'BFT-2610293-Q184V1'
+  );
+  assert.equal(
+    buildDeliveryFolderName({ requirementCode: 'BL-2610295', materialCode: 'Q158V2' }),
+    'BL-2610295-Q158V2'
+  );
+  // Without a material code the requirement alone still names the folder.
+  assert.equal(buildDeliveryFolderName({ requirementCode: 'BL-2610295' }), 'BL-2610295');
+  assert.equal(buildDeliveryFolderName({}), '');
+
+  const naming = { channels: { applovin: 'AL', 'google-ads': 'GG', meta: 'FB', mintegral: 'MT', moloco: 'MO', tiktok: 'TT', unityads: 'UN' } };
+  const tuning = { exportNaming: naming };
+  const expected = {
+    applovin: 'AL',
+    'google-ads': 'GG',
+    meta: 'FB',
+    mintegral: 'MT',
+    moloco: 'MO',
+    tiktok: 'TT',
+    unityads: 'UN'
+  };
+  for (const [platform, folder] of Object.entries(expected)) {
+    assert.equal(resolveChannelFolder(tuning, platform), folder, platform);
+  }
+  // An operator-edited channel code is what the archive uses, because the same
+  // value also appears in the file name.
+  assert.equal(
+    resolveChannelFolder({ exportNaming: { channels: { applovin: 'AX' } } }, 'applovin'),
+    'AX'
+  );
+  // A tuning with no channel map still gets the standard abbreviations instead
+  // of the raw platform ids.
+  assert.equal(resolveChannelFolder({}, 'google-ads'), 'GG');
+  assert.equal(resolveChannelFolder({}, 'unityads'), 'UN');
+});
+
+test('all-platform and single-platform exports publish into channel folders', async () => {
+  const exporter = await readFile(new URL('../scripts/export-playable-package.mjs', import.meta.url), 'utf8');
+  // Both entry points use the same layout, so a single-channel download and a
+  // full set never disagree about where a file belongs.
+  assert.match(exporter, /const relativePath = deliveryFolder[\s\S]{0,200}channelFolder/);
+  assert.match(exporter, /const deliveryRoot = path\.join\(bundleRoot, deliveryFolder \|\| 'playable'\)/);
+  assert.match(exporter, /await mkdir\(channelRoot, \{ recursive: true \}\)/);
+  // The manifest is written beside the archive, never inside the delivery
+  // folder: the NAS uploader rejects any file it cannot assign to a channel.
+  assert.match(exporter, /-manifest\.json/);
+  assert.doesNotMatch(exporter, /deterministicZip\([\s\S]{0,200}'manifest\.json'/);
 });
 
 test('the bottom caption is centred on the CTA', async () => {

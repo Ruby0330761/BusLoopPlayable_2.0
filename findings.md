@@ -154,6 +154,17 @@
 
 **How to apply:** 收到「命名格式不对」的反馈时，先看容器名与内部文件名是否同源（都取自调参），再看品牌套系有没有 `exportNaming`/`suffix` 覆盖；验证要覆盖「单平台 → 全平台」连续导出，而不只是单独跑一条。
 
+## 2026-11-04 导出目录必须等于 NAS 交单目录，manifest 不能进包
+
+- NAS 实际的交单结构是 `ua_video/<产品>/试玩/<需求编号>-<素材编号>/<渠道简称>/<文件>`，渠道简称是 `AL/GG/FB/MT/MO/TT/UN`（不是内部 platform id `applovin/google-ads/...`）。旧导出把七个文件平铺在一个 zip 根目录里，交单前必须手工建七个文件夹再拖进去。
+- 现在 `exportAllPlayablePackages` 直接产出同名结构：`<需求>-<素材>.zip` → `<需求>-<素材>/<渠道>/<文件>`。单平台导出也落到 `<需求-素材>/<渠道>/<文件名>`，两边不会对不上。渠道名优先取调参里的 `exportNaming.channels.<platform>`（操作员可改），缺失才回退标准简称——因为同一个值也印在文件名里，两处必须一致。
+- **`manifest.json` 必须留在归档外**。`nas.py upload-playable` 遇到目录里无法归到七个平台的文件会整批失败（"could not be assigned to one of the seven playable platforms"），所以打包时把它写进 `destinationRoot` 而不是 `stageRoot`。
+- 缓存与命名之外还有一个纯路径 bug：聚合 zip 的临时文件路径曾写成 `${aggregateName}.zip`，而 `aggregateName` 已含 `.zip`，会得到 `.zip.zip`；解压预演时也要按「包内顶层是交付文件夹」来核对，否则看起来像少了一层。
+
+**Why:** 这些都属于「结构对但落点错」，逐个文件都能通过静态检查，只有真的解压后对着 NAS 目录比对才会发现。
+
+**How to apply:** 交单前解压确认三层结构 `<需求-素材>/<渠道>/<文件>`；`manifest.json` 只在解压目录之外。
+
 ## 2026-10-30 单 HTML 打包器的机制资源根是硬编码的；雪橇换座会造出 blocker 环
 
 - **`replaceBundledDynamicAssetUrls` 只认 `/assets/unity/mechanisms`。** 机制素材在 bundle 里是 `${ROOT}/models/x.fbx` 这种模板字符串，完整 URL 从不出现，所以普通字符串替换扫不到；打包器专门用「根前缀 + 尾部」正则在回写 data URI。圣诞资源挂在 `/assets/unity/christmas` 下，于是清单里内联了、bundle 里却没替换，成品运行时去请求 `/assets/unity/christmas/textures/Idle_boy_Santa.png` 报 404。现在根改成 `DYNAMIC_MECHANISM_ROOTS` 列表；**以后新增任何顶层资源根的机制族，必须同时加进这张表**，否则静态检查全绿、只有运行时门禁能抓到。
