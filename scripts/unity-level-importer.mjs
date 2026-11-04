@@ -44,10 +44,17 @@ function isSupportedColorIndex(colorIndex) {
 const PARKING_AREA_CONTAINER_TYPE = 1;
 const GARAGE_CONTAINER_TYPE = 2;
 const CONVEYOR_BELT_CONTAINER_TYPE = 3;
+// Authored containers the runtime now simulates. A gate queue lines cars up
+// nose-to-tail and lets the head leave; an elevator stacks two floors of cars
+// in one footprint and releases them a floor at a time.
+const GATE_QUEUE_CONTAINER_TYPE = 4;
+const ELEVATOR_CONTAINER_TYPE = 5;
 const SUPPORTED_CONTAINER_TYPES = new Set([
   PARKING_AREA_CONTAINER_TYPE,
   GARAGE_CONTAINER_TYPE,
-  CONVEYOR_BELT_CONTAINER_TYPE
+  CONVEYOR_BELT_CONTAINER_TYPE,
+  GATE_QUEUE_CONTAINER_TYPE,
+  ELEVATOR_CONTAINER_TYPE
 ]);
 const NUMBER_PATTERN = '[-+]?(?:\\d+(?:\\.\\d*)?|\\.\\d+)(?:e[-+]?\\d+)?';
 
@@ -199,6 +206,11 @@ function validateVehicles(source) {
     const rotation = requireVector(record.rotation, ['x', 'y', 'z', 'w'], `${label}.rotation`);
     const rotationMagnitude = Math.hypot(rotation.x, rotation.y, rotation.z, rotation.w);
     if (rotationMagnitude < 0.000001) throw invalid(`Vehicle ${id} has an invalid zero rotation.`);
+    // Elevators stack two floors in one footprint; the layer is what keeps a
+    // lower-deck car from being treated as an overlapping upper-deck one.
+    const elevatorLayer = record.elevatorLayer == null
+      ? 0
+      : requireInteger(record.elevatorLayer, `${label}.elevatorLayer`, { min: 0, max: 1 });
     return {
       id,
       seats,
@@ -207,6 +219,7 @@ function validateVehicles(source) {
       isTurnVehicle: Boolean(isTurnVehicle),
       containerType,
       containerId,
+      elevatorLayer,
       position,
       rotation
     };
@@ -381,7 +394,11 @@ function validatePassengerQueues(source, vehicles) {
   for (const colorIndex of colors) {
     const seats = seatCounts.get(colorIndex) ?? 0;
     const passengers = passengerCounts.get(colorIndex) ?? 0;
-    if (seats !== passengers) {
+    // Surplus seats are authored on purpose in the shipped level pack (a car
+    // group can outnumber the passengers of that colour). The runtime handles
+    // them by letting the leftover cars leave once their colour has nobody
+    // left to board, so only an actual seat shortage is fatal.
+    if (seats < passengers) {
       throw invalid(`Color ${colorIndex} has ${seats} seats but ${passengers} passengers.`);
     }
   }

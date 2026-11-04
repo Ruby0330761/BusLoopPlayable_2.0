@@ -8,7 +8,13 @@ function getEventKeys(event, time = '') {
   const timeKey = Number.isFinite(time) ? time.toFixed(3) : time;
   const keys = [];
   if (event.type === 'vehicle-collision-contact') {
-    keys.push({ name: 'bus_hit', key: `${event.type}:${event.vehicleId}:${event.targetId}:${timeKey}` });
+    // `lastEvent` keeps pointing at the contact while the bump animates, and the
+    // level clock advances every frame, so a time-based key re-fires the hit for
+    // the whole animation (measured: two plays 10 ms apart for one collision).
+    // The model stamps a monotonic id per contact; fall back to the vehicle pair
+    // only for a source that predates that field.
+    const identity = event.collisionEventId ?? `${event.vehicleId}:${event.targetId}`;
+    keys.push({ name: 'bus_hit', key: `${event.type}:${identity}` });
   }
   if (event.type === 'vehicle-dispatched') {
     keys.push({ name: 'vehicle_tap', key: `${event.type}:${event.vehicleId}:${timeKey}` });

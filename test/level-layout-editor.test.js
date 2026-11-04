@@ -119,6 +119,14 @@ test('scene editor and main runtime expose the full level layout workspace', () 
   assert.match(workspace, /fitReferenceLayerToView/);
   assert.match(workspace, /drawReferenceLayer/);
   assert.match(workspace, /drawVehicleSafeFrame/);
+  // Level layout cars are drawn as top-down vehicles: cabin roof, wheels and a
+  // heading arrow, so 4/6/10 seat boards are distinguishable at a glance.
+  assert.match(workspace, /drawVehicleSprite/);
+  assert.match(workspace, /vehicleCabinProfile/);
+  assert.match(workspace, /drawVehicleSeatBadge/);
+  assert.match(workspace, /function roundedRectPath/);
+  assert.match(workspace, /function shadeHexColor/);
+  assert.doesNotMatch(workspace, /context\.fillRect\(-size\.width \* scale \/ 2/);
   assert.match(workspace, /SCENE_TUNING\.vehicleArea\?\.sourceCube/);
   assert.match(workspace, /model\.activeContainerId === 0/);
   assert.doesNotMatch(workspace, /vehicle-safe-frame/);

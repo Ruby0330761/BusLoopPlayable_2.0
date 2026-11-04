@@ -103,6 +103,66 @@ function section(source, name, nextName) {
   return source.slice(start, end < 0 ? source.length : end);
 }
 
+// A container's nested `gateQueuePathPoints` list is written as an indented
+// block of `- {x: .., y: 0, z: ..}` entries, so `records()` (which only reads
+// single-line properties) cannot see it. Read it from the container's own
+// chunk instead.
+function parseGatePathPoints(block) {
+  const points = [];
+  const lines = block.split(/\r?\n/);
+  let inList = false;
+  for (const line of lines) {
+    if (/^    gateQueuePathPoints:/.test(line)) {
+      inList = true;
+      continue;
+    }
+    if (!inList) continue;
+    const entry = line.match(/^\s+- \{x:\s*(-?\d+(?:\.\d+)?(?:e[-+]?\d+)?),\s*y:\s*(-?\d+(?:\.\d+)?(?:e[-+]?\d+)?),\s*z:\s*(-?\d+(?:\.\d+)?(?:e[-+]?\d+)?)\}/i);
+    if (entry) {
+      points.push({ x: Number(entry[1]), z: Number(entry[3]) });
+      continue;
+    }
+    // Anything that is not a list item ends the nested list.
+    if (line.trim() !== '') inList = false;
+  }
+  return points;
+}
+
+// Split a section into one chunk per `  - id:` record so nested lists stay
+// attached to the container that owns them.
+function recordBlocks(block) {
+  const blocks = [];
+  let current = null;
+  for (const line of block.split(/\r?\n/)) {
+    if (/^  - id:/.test(line)) {
+      current = [];
+      blocks.push(current);
+    }
+    if (current) current.push(line);
+  }
+  return blocks.map((lines) => lines.join('\n'));
+}
+
+function recordId(block) {
+  return Number(block.match(/^  - id:\s*(-?\d+)/)?.[1]);
+}
+
+// The containers section is followed by other top-level sections, so stop at
+// the next `  name:` line instead of reading to the end of the file.
+function sectionBlock(source, name) {
+  const lines = source.split(/\r?\n/);
+  const start = lines.findIndex((line) => line.startsWith(`  ${name}:`));
+  if (start < 0) return '';
+  let end = lines.length;
+  for (let index = start + 1; index < lines.length; index += 1) {
+    if (/^  [A-Za-z][A-Za-z0-9_]*:/.test(lines[index])) {
+      end = index;
+      break;
+    }
+  }
+  return lines.slice(start, end).join('\n');
+}
+
 function scalar(source, name, fallback = null) {
   const match = source.match(new RegExp(`^  ${name}:\\s*(.*)$`, 'm'));
   if (!match) return fallback;
@@ -302,17 +362,43 @@ export function parseUnityLevelSource(source, {
     isLuxury: vehicle.colorIndex === LUXURY_COLOR_INDEX,
     containerType: vehicle.containerType,
     containerId: vehicle.containerId,
+    // Elevators stack two floors of vehicles at the same world coordinates.
+    // Floor 0 is the upper deck and the default for every ordinary car, so
+    // only a lower-deck car carries the field; that keeps existing generated
+    // catalogs byte-identical.
+    ...(Number(vehicle.elevatorLayer) > 0 ? { elevatorLayer: Number(vehicle.elevatorLayer) } : {}),
     ...(ambulanceStepLimits.has(vehicle.id)
       ? { ambulanceStepLimit: ambulanceStepLimits.get(vehicle.id) }
       : {})
   }));
-  const containers = records(section(source, 'containers', 'vehicleExt')).map((container) => ({
-    id: container.id,
-    type: container.type,
-    x: container.position?.x ?? 0,
-    z: container.position?.z ?? 0,
-    yaw: yawFromQuaternion(container.rotation ?? {})
-  }));
+  const containerSection = sectionBlock(source, 'containers');
+  const containerRecords = recordBlocks(containerSection);
+  const containers = records(containerSection).map((container) => {
+    const block = containerRecords.find((chunk) => recordId(chunk) === Number(container.id)) ?? '';
+    const type = Number(container.type);
+    // Gate/elevator fields are authored on every container by Unity but only
+    // mean something on types 4 and 5. Reading them unconditionally would put
+    // `gateQueueGap: 0` on every parking area and change generated catalogs
+    // byte for byte.
+    const gateQueuePathPoints = type === 4 ? parseGatePathPoints(block) : [];
+    return {
+      id: container.id,
+      type,
+      x: container.position?.x ?? 0,
+      z: container.position?.z ?? 0,
+      yaw: yawFromQuaternion(container.rotation ?? {}),
+      ...(gateQueuePathPoints.length >= 2 ? { gateQueuePathPoints } : {}),
+      ...(type === 4 && Number.isFinite(Number(container.gateQueuePathShape))
+        ? { gateQueuePathShape: Number(container.gateQueuePathShape) }
+        : {}),
+      ...(type === 4 && Number.isFinite(Number(container.gateQueueGap))
+        ? { gateQueueGap: Number(container.gateQueueGap) }
+        : {}),
+      ...(type === 5 && container.elevatorSize && (container.elevatorSize.x || container.elevatorSize.y)
+        ? { elevatorSize: { ...container.elevatorSize } }
+        : {})
+    };
+  });
   const passengerQueues = structuredClone(
     passengerQueueOverrides[resolvedKey] ?? parsePassengerQueues(source)
   );

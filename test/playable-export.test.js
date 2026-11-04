@@ -94,7 +94,7 @@ test('artifact names follow the playable request naming rule for every platform'
   }
 });
 
-test('artifact naming rejects unsafe paths and Google Ads names over 50 characters', () => {
+test('artifact naming rejects unsafe paths and Google Ads names over 128 characters', () => {
   assert.equal(validateExportNamingPart('  Q1V1  '), 'Q1V1');
   assert.equal(validateExportNamingPart('   '), '');
   for (const value of ['../Q1', 'Q1/V1', 'Q1\\V1', 'Q1..V1', 'Q1 V1', '\u4e2d\u6587']) {
@@ -102,9 +102,9 @@ test('artifact naming rejects unsafe paths and Google Ads names over 50 characte
   }
   assert.throws(
     () => buildPlayableArtifactName({
-      exportNaming: { ...EXPORT_NAMING, requirementCode: 'A'.repeat(28) }
+      exportNaming: { ...EXPORT_NAMING, materialCode: 'Q1V1'.repeat(16), designer: 'N'.repeat(64) }
     }, 'google-ads'),
-    /must not exceed 50 characters/
+    /must not exceed 128 characters/
   );
 });
 
@@ -133,10 +133,19 @@ test('one Bus package serves both stores and carries both icons', () => {
     android: '/assets/icon-android.jpg',
     ios: '/assets/icon-ios.png'
   });
-  // Crowd keeps a single icon and must not inherit the Bus device map.
+  // The BL logo travels with the BL set. Leaving it to the editor preview meant a
+  // BL export could ship with the BFT wordmark under the CTA.
+  assert.equal(bus.branding.logo.asset, '/assets/main-loading-icon-small.png');
+  // Crowd uses one icon for both stores, but it must still WRITE the per-device
+  // map: the workspace applies tuning by deep merge, which cannot delete a key,
+  // so leaving it out kept Bus's icons and the runtime picked them by UA (a Crowd
+  // build shipped with the Bus icon). Both slots now point at the Crowd art.
   const crowd = createBrandingVariantTuning({ branding: { icon: { deviceAssets: { android: '/a.jpg', ios: '/b.png' } } } }, 'crowd');
   assert.equal(crowd.branding.icon.asset, '/assets/icon-crowd.jpg');
-  assert.equal(crowd.branding.icon.deviceAssets, undefined);
+  assert.deepEqual(crowd.branding.icon.deviceAssets, {
+    android: '/assets/icon-crowd.jpg',
+    ios: '/assets/icon-crowd.jpg'
+  });
   // Both slots stay valid because a platform preview can run with the other device UA.
   const storeTuning = { storeLinks: { ...STORE_LINKS } };
   const busStores = createBrandingVariantTuning(storeTuning, 'bus').storeLinks;
@@ -157,13 +166,13 @@ test('one Bus package serves both stores and carries both icons', () => {
   // so a delivery name never silently loses the last two segments.
   assert.equal(buildPlayableArtifactName({ exportNaming: { ...EXPORT_NAMING, steps: '', stamina: '' } }, 'applovin'), 'AC-2607141-Q1V1-N-N-EN-PL-NLY-ZZN-AL-N-N.html');
   assert.match(buildPlayableArtifactName({ exportNaming: EXPORT_NAMING }, 'mintegral', '-Android'), /^[A-Za-z0-9_]+\.zip$/u);
-  // Google Ads caps the delivery name at 50 chars; the naming rule still has to
+  // Google Ads caps the delivery name at 128 chars; the naming rule still has to
   // reject a name that overruns it now that steps/stamina are not emitted.
   assert.throws(
     () => buildPlayableArtifactName({
-      exportNaming: { ...EXPORT_NAMING, materialCode: 'Q1V1'.repeat(4) }
+      exportNaming: { ...EXPORT_NAMING, materialCode: 'Q1V1'.repeat(16), designer: 'N'.repeat(64) }
     }, 'google-ads', '-Android'),
-    /must not exceed 50 characters/
+    /must not exceed 128 characters/
   );
 });
 
@@ -277,13 +286,30 @@ test('Crowd exports one shared Android/iOS package with its own icon and logo', 
     readFile(new URL('../vite.config.js', import.meta.url), 'utf8'),
     readFile(new URL('../src/scene-editor.js', import.meta.url), 'utf8')
   ]);
-  assert.match(exporter, /brandingSet === DEFAULT_PLAYABLE_BRANDING_SET\s*\?\s*null/);
-  assert.match(exporter, /`bus-loop-\$\{brandingSet\}-all-platforms\.zip`/);
+  assert.match(exporter, /variants: variants\.map\(\(\{ id, suffix, runtimeDevices \}\) => \(\{/);
+  // BL no longer skips the branding-variant pass: one BL file must carry both
+  // store icons so the runtime can pick one from the device UA.
+  assert.doesNotMatch(exporter, /brandingSet === DEFAULT_PLAYABLE_BRANDING_SET\s*\?\s*null/);
+  // The download container and the check reports carry the delivery package
+  // label `<requirement>-<YYYYMMDD>-<designer>` (e.g. BL-2610296-20261102-WXJ),
+  // while the packaged files keep the 11-segment requirement-sheet naming.
+  assert.match(exporter, /BUS_BRANDING_LABEL = 'BL'/);
+  assert.match(exporter, /export function buildDeliveryPackageLabel\(/);
+  assert.match(exporter, /const packageLabel = buildDeliveryPackageLabel\(/);
+  assert.match(exporter, /`\$\{packageLabel\}\.zip`/);
+  assert.match(exporter, /const label = packageLabel \|\|/);
   assert.match(exporter, /logoAsset: '\/assets\/main-loading-icon-crowd\.webp'/);
   assert.match(vite, /PLAYABLE_BRANDING_SETS = new Set\(\['bus', 'crowd'\]\)/);
   assert.match(vite, /brandingSet,/);
   assert.match(editor, /editor-export-set-select/);
   assert.match(editor, /brandingSet/);
+  // The operator-facing names are the product codes, not the internal set ids:
+  // BL ships one merged Android/iOS package, BFT the other game's package. The
+  // editor source keeps these labels as ASCII escapes, so match the escapes.
+  assert.match(editor, /BL \\u5b89\\u5353/);
+  assert.match(editor, /BL iOS/);
+  assert.match(editor, /BFT/);
+  assert.doesNotMatch(editor, /Bus Fever\\uff1aAndroid/);
 });
 
 test('tuning validation accepts known finite values without mutating input', () => {
@@ -472,8 +498,12 @@ test('packaging embeds only the selected configured pre-roll MP4', async () => {
     readFile(new URL('../src/mechanism-resources.js', import.meta.url), 'utf8')
   ]);
   assert.match(inliner, /\['\.mp4', 'video\/mp4'\]/);
-  assert.match(inliner, /PRE_ROLL_ASSET_PATHS\.includes\(SCENE_TUNING\.preRoll\?\.asset\)/);
-  assert.match(inliner, /isPreRollAssetPath\(SCENE_TUNING\.preRoll\?\.asset\)/);
+  // The packager and the checker must resolve the pre-roll the same way the
+  // runtime does, session opt-out included.
+  assert.match(inliner, /const selectedPreRollAsset = resolvePreRollAsset\(\s*SCENE_TUNING\.preRoll,\s*ACTIVE_PLAYABLE_SESSION\s*\)/u);
+  assert.match(checker, /const selectedPreRollAsset = resolvePreRollAsset\(SCENE_TUNING\.preRoll, ACTIVE_PLAYABLE_SESSION\)/u);
+  assert.match(inliner, /PRE_ROLL_ASSET_PATHS\.includes\(selectedPreRollAsset\)/u);
+  assert.match(inliner, /isPreRollAssetPath\(selectedPreRollAsset\)/u);
   assert.match(checker, /configured pre-roll video inlined/);
   for (const name of ['TP1327.mp4', 'TP1333.mp4', 'TP1334.mp4']) {
     assert.match(resources, new RegExp(name.replace('.', '\\.')));
@@ -792,4 +822,56 @@ test('a fixed stage sequence that enables the entry banner still ships its art',
   assert.match(packager, /PLAYABLE_STAGES\.some\(\(stage\) => stage\?\.opening\?\.entryBanner\?\.enabled\)/u);
   assert.match(packager, /PLAYABLE_STAGE_CHOICES\.some\(/u);
   assert.match(packager, /SCENE_TUNING\.entryBanner\?\.enabled \|\| stageBannerEnabled \|\| choiceBannerEnabled/u);
+});
+
+test('delivery variants are told apart by material code, and pre-roll by the trailing tag', async () => {
+  const { applyPlayableDeliveryVariant } = await import('../scripts/export-playable-package.mjs');
+  const base = {
+    exportNaming: { ...EXPORT_NAMING, steps: 'N', version: 'N' },
+    audio: { bgm: { enabled: 0, asset: '/assets/unity/audio/christmas_bgm.mp3' } },
+    preRoll: { enabled: 0, asset: '/assets/prerolls/TP1327.mp4' }
+  };
+  const TP1326 = '/assets/editor-prerolls/preroll-160feafb873e-TP1326.mp4';
+
+  // Plain and BGM variants share the trailing `N`; only the material code moves.
+  const plain = applyPlayableDeliveryVariant(base, { bgm: false, materialCode: 'Q158V1' });
+  assert.equal(plain.exportNaming.version, 'N');
+  assert.equal(plain.exportNaming.materialCode, 'Q158V1');
+  assert.equal(plain.audio.bgm.enabled, 0);
+  assert.equal(plain.preRoll.enabled, 0);
+
+  const withBgm = applyPlayableDeliveryVariant(base, { bgm: true, materialCode: 'Q158V2' });
+  assert.equal(withBgm.exportNaming.version, 'N');
+  assert.equal(withBgm.exportNaming.materialCode, 'Q158V2');
+  assert.equal(withBgm.audio.bgm.enabled, 1);
+
+  // Pre-roll is the only thing the trailing tag encodes.
+  const withPreRoll = applyPlayableDeliveryVariant(base, { bgm: false, preRollAsset: TP1326 });
+  assert.equal(withPreRoll.exportNaming.version, 'T');
+  assert.equal(withPreRoll.audio.bgm.enabled, 0);
+  assert.equal(withPreRoll.preRoll.enabled, 1);
+  assert.equal(withPreRoll.preRoll.asset, TP1326);
+
+  const both = applyPlayableDeliveryVariant(base, { bgm: true, preRollAsset: TP1326 });
+  assert.equal(both.exportNaming.version, 'T');
+  assert.equal(both.audio.bgm.enabled, 1);
+  assert.equal(both.preRoll.asset, TP1326);
+
+  assert.deepEqual(
+    [
+      buildPlayableArtifactName(plain, 'applovin'),
+      buildPlayableArtifactName(withBgm, 'applovin'),
+      buildPlayableArtifactName(withPreRoll, 'applovin'),
+      buildPlayableArtifactName(both, 'applovin')
+    ],
+    [
+      'AC-2607141-Q158V1-N-N-EN-PL-NLY-ZZN-AL-N-N.html',
+      'AC-2607141-Q158V2-N-N-EN-PL-NLY-ZZN-AL-N-N.html',
+      'AC-2607141-Q1V1-N-N-EN-PL-NLY-ZZN-AL-N-T.html',
+      'AC-2607141-Q1V1-N-N-EN-PL-NLY-ZZN-AL-N-T.html'
+    ]
+  );
+  // Building a variant must not mutate the base document.
+  assert.equal(base.exportNaming.version, 'N');
+  assert.equal(base.audio.bgm.enabled, 0);
 });

@@ -1,6 +1,6 @@
 {
   "level": {
-    "selected": "level2602"
+    "selected": "level2610296"
   },
   "preview": {
     "enabled": 1,
@@ -39,7 +39,7 @@
       "unityads": "UN"
     },
     "steps": "35moves",
-    "stamina": "N"
+    "version": "N"
   },
   "branding": {
     "icon": {
@@ -629,7 +629,7 @@
   },
   "vehicleGuideHand": {
     "enabled": 1,
-    "levelKey": "level2602",
+    "levelKey": "level2610296",
     "vehicleId": 116,
     "showAtStart": 1,
     "idleDelaySeconds": 5,

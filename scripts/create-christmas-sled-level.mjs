@@ -356,12 +356,16 @@ function main() {
   if (playOrder.stuck.length) {
     throw new Error(`Source field has ${playOrder.stuck.length} cars in blocker cycles: ${playOrder.stuck.slice(0, 10).join(', ')}`);
   }
-  // Leading the belt with the sled's own riders only makes sense when the sled
-  // can be tapped on the first frame. A blocked rescue sled would park ten
-  // Santa passengers at a belt head nobody can serve yet.
-  const queues = rebuildQueues(document, playOrder, args.keepSledBlocked
-    ? { leadColorIndex: null, leadSeats: 0 }
-    : { leadColorIndex: RESCUE_COLOR_INDEX, leadSeats: rescue.seats });
+  // Leading the belt with the sled's own riders is the requirement for both
+  // layouts: the opening queue has to show Santa. With the ring intact the sled
+  // is the rescue target rather than the first tap, so those ten passengers wait
+  // at the belt head until the way is clear — which is the centre-rescue fantasy
+  // rather than a mismatch, as long as the belt keeps enough room for the colours
+  // the player can actually serve (capacity 32, ten held back).
+  const queues = rebuildQueues(document, playOrder, {
+    leadColorIndex: RESCUE_COLOR_INDEX,
+    leadSeats: rescue.seats
+  });
 
   const errors = validateLevelDocument(document);
   if (errors.length) throw new Error(`Level validation failed:\n${errors.join('\n')}`);

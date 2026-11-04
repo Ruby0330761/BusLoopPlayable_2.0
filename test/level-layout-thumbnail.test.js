@@ -9,6 +9,8 @@ import {
   resolveVehicleColor,
   resolveVehicleSize,
   summarizeLevel,
+  vehicleArrowPoints,
+  vehicleCabinRect,
   vehiclePolygon
 } from '../src/level-layout-thumbnail.js';
 
@@ -41,6 +43,26 @@ test('colours resolve from the shared atlas table', () => {
   assert.match(resolveVehicleColor({ colorIndex: 99 }), /^#[0-9a-f]{6}$/i);
 });
 
+test('an authored colour override wins over the atlas index', () => {
+  // The red/green rescue boards recolour atlas slots per vehicle; reading only
+  // colorIndex painted those boards in the atlas pink and blue.
+  assert.equal(resolveVehicleColor({ colorIndex: 2, colorOverrides: { body: '#c9363e' } }), '#c9363e');
+  assert.equal(resolveVehicleColor({ colorIndex: 2, colorOverrides: { body: 'not-a-colour' } }), '#F338AF');
+});
+
+test('each car draws a cabin roof and a heading arrow inside its footprint', () => {
+  const project = createProjection({ minX: -5, maxX: 5, minZ: -5, maxZ: 5 }, 200, 200, 10);
+  for (const seats of [4, 6, 10]) {
+    const vehicle = { x: 0, z: 0, yaw: 0, seats };
+    assert.equal(vehicleCabinRect(vehicle, project).split(' ').length, 4);
+    assert.equal(vehicleArrowPoints(vehicle, project).split(' ').length, 3);
+  }
+  // The roof has to follow yaw, otherwise a turned car looks like a straight one.
+  const straight = vehicleCabinRect({ x: 0, z: 0, yaw: 0, seats: 6 }, project);
+  const turned = vehicleCabinRect({ x: 0, z: 0, yaw: 90, seats: 6 }, project);
+  assert.notEqual(straight, turned);
+});
+
 test('bounds ignore conveyor spline points so the car field fills the picture', async () => {
   // Catalog levels carry spline points (the conveyor runs at z≈15 while the
   // parked field sits near z≈0). Web-level fixtures do not, so this needs the
@@ -66,8 +88,10 @@ test('projection centres the level and keeps one scale for both axes', () => {
   const center = project.point(0, -1);
   assert.ok(Math.abs(center.x - 100) < 1e-6, 'x centre should land mid-canvas');
   assert.ok(Math.abs(center.y - 100) < 1e-6, 'z centre should land mid-canvas');
-  // +Z is drawn upward, so a higher z must produce a smaller SVG y.
-  assert.ok(project.point(0, 1).y < project.point(0, -3).y);
+  // The playable camera looks from the field's +Z side, so +Z runs DOWN the
+  // screen: a higher z must produce a LARGER SVG y. Getting this backwards
+  // mirrored every thumbnail vertically against the game.
+  assert.ok(project.point(0, 1).y > project.point(0, -3).y);
   // A square in world space stays square on screen.
   const dx = project.point(2, 0).x - project.point(0, 0).x;
   const dz = Math.abs(project.point(0, 2).y - project.point(0, 0).y);

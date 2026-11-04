@@ -10,6 +10,12 @@
 
 日常本地工具链保持 `networkPolicy=DENY`：不上传在线压缩、云转码或远程 AI 服务；不通过包管理器、浏览器或下载工具联网安装依赖；最终包不得运行时获取业务资源。普通视觉图片的 Tinify `POST /shrink` 是 Gate A 明确授权的唯一外部服务例外，计划标记 `TINIFY_ALLOWLIST_ONLY`，服务、上传清单和预计调用数进入 approval；Tinify 不登记为本地工具、不写入 toolchain lock，也不把云端请求伪装成本地执行。缺少工具时在内部 JSON 的 `missingCapabilities` 记录机器状态并暂停，普通用户提示不得显示内部错误码。
 
+## Tinify 凭据
+
+凭据解析顺序固定为：`TINIFY_API_KEY` 环境变量 > 用户配置文件 `~/.config/build-verified-playable-packages/tinify.json` > Skill 内置共享 key。用户配置缺失或 `apiKey` 为空时回落到内置 key，`keySource=skill-bundled-default`；不存在“未配置即停”的分支。
+
+内置 key 随 Skill 分发，压缩额度由所有使用者共享：容器镜像、分享包和团队副本都会带上它。需要独立额度或隔离计费时，用环境变量或用户配置文件覆盖；内置 key 的额度耗尽时按 `NOT_TESTED_QUOTA` 处理，不自动切换、不重试。凭据只用于 `POST /shrink` 和下载，任何证据文件都不得包含 key 明文。
+
 ## 本地工具锁
 
 `toolchain-lock.json` 必须记录工具名、精确版本输出、绝对 executable、可执行文件 SHA-256、来源、许可证、`offline=true`、argv 模板和参数。优先级固定为 Skill 内建脚本、项目锁定依赖、系统已安装工具；不得静默降级。

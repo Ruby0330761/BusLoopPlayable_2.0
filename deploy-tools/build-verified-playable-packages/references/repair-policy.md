@@ -48,6 +48,7 @@ Google/Meta 的动态图片 blocker 应优先定位平台 asset projector/adapte
 
 - 手改最终 HTML、bundle 或 ZIP 伪造通过。
 - 注入空 `gameEnd`、假 `install`、假 CTA 或假埋点。
+- 用占位调用、空函数或永不触发的代码凑满事件名。埋点缺口只允许走 `inject_applovin_events.py` 的真实锚点接线；缺锚点时必须 `BLOCKED` 并补事件映射，不得为了通过 `APL-STA-004` 写入无实际触发路径的调用。
 - 覆盖 `console.error`、吞异常或篡改报告。
 - 用 warning 代替 blocker，通过命名变化绕过规则。
 - 把 `UNREFERENCED` 解释为项目级无用，或实现 DELETE/清理模式。

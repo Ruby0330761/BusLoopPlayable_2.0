@@ -66,16 +66,19 @@ test('level36 uses an opening and five-second idle hand without a dimming mask',
   assert.equal(shouldBlockVehicleInput({
     firstClickGuideEnabled: 1,
     firstClickGuideDuration: 3,
+    firstClickGuideLockInput: 1,
     time: 2.99
   }), true);
   assert.equal(shouldBlockVehicleInput({
     firstClickGuideEnabled: 1,
     firstClickGuideDuration: 3,
+    firstClickGuideLockInput: 1,
     time: 3
   }), true);
   assert.equal(shouldBlockVehicleInput({
     firstClickGuideEnabled: 1,
     firstClickGuideDuration: 3,
+    firstClickGuideLockInput: 1,
     time: 3.01
   }), false);
   assert.equal(shouldBlockVehicleInput({ entryBannerActive: true, time: 10 }), true);
@@ -280,4 +283,43 @@ test('both guides point at the configured vehicle even when it is blocked', () =
     { vehicleId: 7 }
   );
   assert.equal(missing, null, 'an unknown vehicle id must not highlight some other vehicle');
+});
+
+test('the opening spotlight only locks the board when the level asks for it', () => {
+  // Centre-rescue levels spotlight a car that is deliberately unreachable at the
+  // start. Locking input for the spotlight's duration froze the game with nothing
+  // tappable, so the lock is opt-in per level.
+  assert.equal(shouldBlockVehicleInput({
+    firstClickGuideEnabled: true,
+    firstClickGuideDuration: 3,
+    firstClickGuideLockInput: 0,
+    time: 1
+  }), false);
+  assert.equal(shouldBlockVehicleInput({
+    firstClickGuideEnabled: true,
+    firstClickGuideDuration: 3,
+    firstClickGuideLockInput: 1,
+    time: 1
+  }), true);
+  assert.equal(shouldBlockVehicleInput({
+    firstClickGuideEnabled: true,
+    firstClickGuideDuration: 3,
+    firstClickGuideLockInput: 1,
+    time: 4
+  }), false);
+  // The entry banner still locks regardless of the guide setting.
+  assert.equal(shouldBlockVehicleInput({ entryBannerActive: true, time: 10 }), true);
+});
+
+test('the Christmas opening guide blocks input while the board is dimmed', async () => {
+  // Requirement: while the opening mask dims every other car, the player must
+  // not be able to tap them. The lock is what makes the dimmed state mean
+  // something; it releases when the guide's duration elapses.
+  const session = JSON.parse(await readFile('artifacts/playable-session.json', 'utf8'));
+  const opening = session.sessions['q24-christmas'].stages[0].opening.firstClickGuide;
+  assert.equal(Number(opening.enabled), 1);
+  assert.equal(Number(opening.maskEnabled), 1, 'the guide must dim the other cars');
+  assert.equal(Number(opening.lockInput), 1, 'a dimmed board must not accept taps');
+  assert.ok(Number(opening.durationSeconds) > 0);
+  assert.equal(Number(opening.vehicleId), 162);
 });

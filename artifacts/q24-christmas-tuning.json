@@ -39,7 +39,7 @@
       "unityads": "UN"
     },
     "steps": "N",
-    "stamina": "N"
+    "version": "N"
   },
   "branding": {
     "icon": {
@@ -628,10 +628,10 @@
     "speed": 11.7
   },
   "vehicleGuideHand": {
-    "enabled": 1,
+    "enabled": 0,
     "levelKey": "level2601",
     "vehicleId": 162,
-    "showAtStart": 1,
+    "showAtStart": 0,
     "idleDelaySeconds": 5,
     "offsetX": 0.25,
     "offsetY": 0.38,
@@ -657,7 +657,8 @@
     "holeOffsetX": 0,
     "holeOffsetY": 0,
     "holeScaleX": 0.62,
-    "holeScaleY": 0.62
+    "holeScaleY": 0.62,
+    "lockInput": 1
   },
   "hiddenVehicleReveal": {
     "durationSeconds": 0.45,

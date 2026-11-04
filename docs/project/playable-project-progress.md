@@ -1,5 +1,154 @@
 # Playable Project Progress
 
+## Deployed On 2026-11-04 - BL/BFT 导出合并为一份包，编辑器标签改为 BL / BFT
+
+- 需求：BL 的安卓与 iOS 不再分开导出，合并成一份包，按玩家机型显示对应 icon 与跳转链接；导出套系与 Icon/Logo 下拉的显示名改为 BL / BFT。
+- 导出器 `scripts/export-playable-package.mjs`：BL 以前走「不做品牌变体」的分支，直接沿用编辑器预览选中的那张 icon，选 iOS 预览导出时 Android 槽位也会拿到 iOS 图。现在 BL 与 BFT 一样必经 `createBrandingVariantTuning()`，两个 icon 槽位恒为 `icon-android.jpg` / `icon-ios.png`，BL 套系同时写死 `main-loading-icon-small.png`，不再受预览影响。
+- 编辑器 `src/scene-editor.js`：Icon 版本 = `BL 安卓` / `BL iOS` / `BFT`，Logo 版本 = `BL` / `BFT`（值不变，只改显示名，不改写任何关卡调参）；导出套系 = `BL：安卓 / iOS 合并一套` / `BFT：安卓 / iOS 合并一套`，说明文案同步。
+- 验证：`node --test test/playable-export.test.js` 38/38；全量 `node --test --test-concurrency=1` 485/486（唯一失败是 `level2610296` 的既有车色数据问题，与本次无关）。本地 BL AppLovin 导出 `conclusion PASS`、Android/iOS 两份 runtime 报告各 14/14。真实 Chrome 双 UA 实测同一份 BL 包：iOS 得到 `data:image/png`（122,838 字符）、Android 得到 `data:image/jpeg`（119,191 字符）；包内 icon/logo 的 md5 与 `icon-android.jpg` / `main-loading-icon-small.png` 逐字节一致，sdk 链接只有 BL 的 Play + App Store 两条。
+- 部署：版本 `20261104-1113`，zip `http://10.0.0.6:8081/ba/bad12ef2bba4bce57be6b1b0eaa0ab7c.zip`，复用 12142。线上 `index-BtaNUWaG.js` / `scene-editor-zK6qCjEh.js` 已含新标签，线上单平台导出实测输出 `BL-Q1V1-...-AL-N-N.html`，BFT 导出仍是 `BFT-...-Crowd` 且只带 BFT 图标/Logo/商店链接。
+- 注意：`scripts/check-playable-runtime.mjs` 目前没有断言「icon 按 UA 切换」，本次按机型切换是我用独立 Chrome 脚本实测的；以后再改品牌注入建议补一条门禁。
+
+## Completed On 2026-11-03 - 官方关卡全部可导入（闸机队列 / 双层升降舱 / 富余座位）
+
+- 目标：游戏内关卡面板不再有「暂不支持」，A/B/E 三章 456 个 `.asset` 全部可点击导入。
+- 补齐的运行时：**闸机队列(type 4)** 按 `gateQueuePathPoints` 首尾相接排布，车头离场后整队前移一个车长 + `gateQueueGap`；**双层升降舱(type 5)** 两层坐标重叠，只让活动层进入碰撞场，该层清空后自动提升下一层；**富余座位颜色**在乘客清零后允许未满载车辆正常离站，避免永久死锁。
+- 新增 `src/mechanic-containers.js`（纯几何：路径排序/采样、首尾排布、电梯层选择）。闸机重排对 7 条直线与曲线队列的作者坐标误差为 `0.0000`。
+- 解析层补齐 `gateQueuePathPoints` / `gateQueuePathShape` / `gateQueueGap` / `elevatorSize` / `elevatorLayer`，并只在类型 4/5 上写入，生成的 catalog 保持逐字节不变（`test/official-levels.test.js` 的 catalog 守卫仍通过）。
+- 三处校验同步改为「座位数必须 ≥ 乘客数」：导入器、解析器 `validateParsedLevel`、编辑器 `validateLevelDocument`（富余座位降为 warning）。
+- 渲染：`in-elevator` 层车辆不绘制，拾取时空层不参与 raycast，避免点到看不见的车。
+- 验证：`npm test` 484/484；447 个正式关卡全部通过 `validateUnityLevelSource` → `importUnityLevelAsset` → `new BusLoopGame`；线上接口 `/__official-levels/E` 返回 50 关且 `unsupported = 0`；浏览器实测 E-31 闸门车头交接、E-42 电梯分层隐藏与点击拒绝。
+- 未验证：闸机/电梯的官方玩法细节（是否需额外触发、车头离场目标）无公开资料，现有实现按关卡数据几何语义推导，需真实设备试玩确认手感。
+
+## Completed On 2026-11-03 - BL-2610296 清空雪橇周围一圈
+
+- 反馈：雪橇周围被车贴着，且朝向不对。核对 `level2610296` 发现：yaw=135（与参考图斜向一致，未改），但 0.8 半径内有 8 台车紧贴，最近仅 0.40。
+- 处理：以雪橇为中心清空 0.65 半径（移除 6 台，最近间距提到 0.71），随后按 peel 波次重建双队列以对齐座位/乘客数量，再把 10 位圣诞老人提到队首。现为 58 车（绿 30 / 粉 29 + 雪橇）。
+- 雪橇朝向保持 135°：实测 45° 也解但闭包更大（10 vs 4），90° 直接死锁；135° 与参考图斜向车身一致，故保留。
+- 验证：`node --test --test-concurrency=1` 484/484；本地实拍确认雪橇周围留出完整空地、红心 35 正常；两套各 14 份运行时报告全 PASS，单 HTML 3.89 / 3.77 MB，无 MP4。
+- 归档：`试玩成品/BUS/BL-2610296-20261102-WXJ`、`试玩成品/BFT/BFT-2610293-20261102-WXJ`。
+
+## Completed On 2026-11-03 - BL-2610296 布局回滚到 15:53 已确认版本
+
+- 用户指出 15:53 那版布局是对的，之后被改坏。核对方式：从 15:54 交付的 `BL-2610296-Q159V1-...-AL-...html` 里读出 `unityId: 26101623`，据此在远端关卡库反查到 **`level83`（显示名就叫 `BL-2610296`，64 车）**。这份就是用户认可的那盘。
+- 恢复：`artifacts/web-levels/level2610296.json` 直接由远端 level83 还原，只改 key 与显示名，**坐标、朝向、配色全部原样**。64 车：粉 32 / 绿 31 + 雪橇，`unityId` 保持 26101623。
+- 保留后续两项需求：圣诞老人 10 位仍在队列0 队首；雪橇 35 步红心。
+- **修掉一个真实回归**：`normalizeVehicle` 只在 `stepLimited` 为真时保留标记，从远端还原的雪橇虽带 `stepLimit: 35` 却会被判成非步数车，导致红心不倒数。现在 `type === 'christmas' && stepLimit != null` 也视为已 opt-in。
+- 验证：`node --test --test-concurrency=1` 473/473；两套各 14 份运行时报告全 PASS；BL 单 HTML 3.89 MB、BFT 3.77 MB，均无 MP4。
+- 交付命名（新规则）：容器/目录 `<需求编号>-<日期>-<设计师>`
+  - `试玩成品/BUS/BL-2610296-20261102-WXJ`
+  - `试玩成品/BFT/BFT-2610293-20261102-WXJ`
+- **教训**：这一轮我为了“贴合参考图”先后重造了六版布局（放射环、四朝向棋盘、三同心环、BL-2610224 重涂、Q8V2 清空中心、截图反推），全部被否。用户认可的布局一直就在远端库里（`level83`）。以后遇到“照图复刻”，先问/查是否存在同需求的既有产物，再动手造。
+
+## Completed On 2026-11-03 - 空车库不再在试玩首帧消失
+
+- 问题：编辑器里摆好车库但没往里面放车，试玩中看不到车库。
+- 根因：`refreshGarages()` 把「从未装车」的空车库当成「最后一辆车已驶出」，首帧即 `hidden = true` 并误发 `garageClearedIds`（连带清空音效）。
+- 修复：车库增加 `authoredEmpty` 标记；`refreshGarages()` 跳过这种车库，`buildGarageGraph()` 也不给它碰撞体（空布景车库压在车阵上会卡死底下的车）。有车的车库清空后照旧隐藏。
+- 编辑器：`validateLevelDocument` 新增 warning「车库 N 内没有车辆，试玩时它只作为布景显示」，不阻断导出。
+- 验证：`node --test test/vehicle-collision.test.js test/level-editor-model.test.js test/game-model.test.js test/level-layout-editor.test.js` 152/152；全量 `npm test` 473/473；真实浏览器复现（BL-2610296 / unityId 26101623 原文档）确认车库可见、计数牌为 0、车 36/40 可正常驶出。
+
+## Completed On 2026-11-03 - 交付包命名标准固定为 `<需求编号>-<日期>-<设计师>`
+
+- 用户明确的长期规则：**所有试玩交付的外层包/目录统一命名 `<需求编号>-<YYYYMMDD>-<设计师>`**，例 `BL-2610296-20261102-WXJ`。包**内部**的七个平台文件仍按需求表 11 段命名（`BL-2610296-Q159V1-N-N-EN-PL-WXJ-TJW-AL-35moves-N`）。
+- 实现：`scripts/export-playable-package.mjs` 新增导出函数 `buildDeliveryPackageLabel({requirementCode, designer, deliveryDate, now})`；容器名改为 `<label>.zip`，检查报告前缀也改成同一 label。CLI 新增 `--delivery-date`（`YYYYMMDD` 或 `YYYY-MM-DD`，缺省取当天）。
+- 本次产出：
+  - BL → 容器 `BL-2610296-20261102-WXJ.zip`，归档 `试玩成品/BUS/BL-2610296-20261102-WXJ`
+  - BFT → 容器 `BFT-2610293-20261102-WXJ.zip`，归档 `试玩成品/BFT/BFT-2610293-20261102-WXJ`
+  - 旧的 `*-20261103-WXJ` 目录已删除，避免两版并存。
+- 布局未被改动（已核对）：`level2610296` 的 67 台环车坐标与源盘 BL-2610224 逐台完全一致，朝向改动数为 0；当日唯一改动是队列（圣诞老人移到队首）。
+- 验证：`node --test --test-concurrency=1` 471/471；两套各 14 份运行时报告全 PASS，单 HTML 3.89 / 3.77 MB，均无 MP4。
+
+## Completed On 2026-11-03 - 交付容器与检查报告改用需求编号命名
+
+- 问题：交付文件名早已是 `BL-2610296-*` / `BFT-2610293-*`，但**下载容器和检查报告**仍用内部品牌 id —— Crowd 套件产出的容器叫 `BL-crowd-all-platforms.zip`，报告叫 `applovin-crowd-*`。容器名与内容自相矛盾。
+- 修复 `scripts/export-playable-package.mjs`：新增 `requirementPrefix`（取 `built.tuning.exportNaming.requirementCode`），容器名改为 `<需求编号>-all-platforms.zip`，报告前缀改为 `<platform>-<需求编号>`。没有需求编号时才回退到 `BL` / 品牌 id。
+- 结果：BL → `BL-2610296-all-platforms.zip` + `applovin-BL-2610296-*`；BFT → `BFT-2610293-all-platforms.zip` + `applovin-BFT-2610293-*`。七份交付文件名不变。
+- 验证：`node --test --test-concurrency=1` 471/471；两套各 14 份运行时报告（Android + iOS）全 PASS，单 HTML 3.89 / 3.77 MB，均无 MP4。归档：`试玩成品/BUS/BL-2610296-Q159V1-20261103-WXJ`、`试玩成品/BFT/BFT-2610293-Q184V1-20261103-WXJ`。
+
+## Completed On 2026-11-03 - 圣诞老人排到初始队列队首 + BL/BFT 双套件重出
+
+- 需求：把圣诞老人放进初始队列（开局就能在传送带上看到），并重出 BL 与 BFT 两套交付。
+- 队列调整：`level2610296` 的 10 位 16 号乘客原本散在队列1 的第 180–189 位，现在整段移到**队列0 队首**，其余乘客相对顺序不变、总数不变（224 / 198）。开局传送带上圣诞老人峰值 10 个。
+- 可解性复核：雪橇闭包 20 台，按「优先清闭包 + 优先取带首颜色」模拟，第 21 步点到雪橇、10 位圣诞老人全部登车、剩 15 步余量。之前一次「35 步内没点到雪橇」的模拟是策略问题（雪橇未优先），不是关卡不可达。
+- **修掉一个命名 bug**：`--material` 之前只进 `keepMaterialCode`、没进 `namingOverride`，导致品牌套系合并时把命令行命名覆盖回去——文件名对、manifest 和包内调参却是 `BFT`/`ZZN`。现在 `materialCode` 也进 override，manifest 报告覆盖后的最终值。
+- 交付：
+  - BL：`BFT` 不适用，产出 `BL-2610296-Q159V1-N-N-EN-PL-WXJ-TJW-{AL,FB,GG,MO,TT,UN,MT}-35moves-N`，单 HTML 3.89 MB，归档 `试玩成品/BUS/BL-2610296-Q159V1-20261103-WXJ`。
+  - BFT：`BFT-2610293-Q184V1-...`，Crowd 图标 + Crowd 商店链接、无 Bus 残留，单 HTML 3.77 MB，归档 `试玩成品/BFT/BFT-2610293-Q184V1-20261103-WXJ`。
+  - 两套各 14 份运行时报告（Android + iOS）全 PASS，本地规则 242/256，均不含 MP4。
+- 验证：`node --test --test-concurrency=1` 471/471；本地实拍确认传送带上为圣诞老人形象。
+
+## Fixed And Deployed On 2026-11-03 - 编辑器画布方向纠正（v20261103-1552）
+
+- 用户反馈「方向不太对 / 上下左右都翻转了」。实测确认：编辑器画布 Y 轴与试玩相机反向（试玩相机在场地 +Z 侧俯视，屏幕上 +Z 朝下），且车头箭头少了 180°。
+- 修法：`src/vehicle-area-transform.js` 新增 `worldToScreenPoint` / `screenToWorldPoint`（+Z 向下，与相机同向）和 `canvasYaw`（sprite 鼻尖在局部 -Y，必须转 `180 - 朝向`）。编辑器画布、参考垫图、缩略图 `createProjection` 全部改用同一约定。
+- 验证：用运行时相机把 68 辆车投到 NDC 当基准，与画布坐标比对——X/Y 相关系数均 1.000、象限一致 68/68、位置容差内 68/68（修复前 Y 相关为 -1.0）。新增 3 条回归测试（含"每辆车落在同一象限"和"红绿分组不左右互换"）；`node --test` 471/471；`PLAYABLE_REMOTE_EDITOR=1 npm run build` 通过。
+- 部署：版本 `20261103-1552`，zip `http://10.0.0.6:8081/8c/8cad5f010b778cca77567e43a11d0823.zip`，复用 12142。线上 `index-BSSeq5Sm.js` / `level-layout-editor-BsdvPMpI.js` / `scene-editor-BMHNnKhQ.js` 与本地构建 sha256 逐字节一致，页头 `v20261103-1552`，线上打开布局编辑器实拍确认方向与试玩一致。
+- 说明：本次只改编辑器/缩略图绘制，运行时试玩渲染未改动。
+
+## Completed On 2026-11-03 - BL-2610296 定稿：BL-2610224 环形布局 + 左绿右红
+
+- 需求最终澄清：布局要像参考图的**环形车带 + 中心大片空地**，配色按色卡图**左绿右红**，中心放圣诞车。
+- 底图：远端编辑器 `level44`（显示名 `BL-2610224`），69 车、中心留空 0.87、rmax 2.53、八向 yaw 齐全。它在远端全库的「空心度」扫描里排第一（hollow 0.34），是参考图那一盘。
+- 新关卡 `artifacts/web-levels/level2610296.json`：69 台环车保留原坐标与朝向，按 `x < 中心` 重涂为绿 32 / 红 35（`colorOverrides.body` 带乘客同色），中心新增 10 座圣诞雪橇（yaw 315、`stepLimited`、35 步），队列按 peel 波次重建为 214/208。
+- **必须在环上开两个口子**：中心插入雪橇后，右下方 #63/#64/#65/#68 形成局部互锁（11 台卡死）。实测只移除 `#63`、`#68` 两台即完全解开（0 卡死、10 波），因此保留最小改动。
+- 会话 `q159-christmas` → `level2610296`；调参 `parkingSpots.count = 6`、`installGate = 35`、`vehicleArea.positionUnitScale = 0.7`。
+- 验证：`node --test --test-concurrency=1` **468/468**；本地实拍确认环形 + 中心空地 + 雪橇红心 35 + 左绿右红；全平台导出 242/256、14 份运行时报告全 PASS、7 个文件名逐字一致、单 HTML 3.89 MB。成品覆盖 `/Users/von/wxj/试玩成品/BUS/bus-Q159V1-20261102-WXJ/`。
+- **教训**：这版之前做过五版都不对（放射环／四朝向棋盘／三同心环／level26 重涂／Q8V2 清空中心）。根因同一条——**没有把候选底图渲染出来与参考图并排比对**就动手。正确顺序是：拉远端全库 → 按几何特征（空心度、朝向族、车数）排序 → 渲染 top 候选 → 与参考图并排确认 → 才改关卡。
+
+## Deployed On 2026-11-03 - 编辑器小车模型 + 1:1 对齐上线（v20261103-1512）
+
+- 上线内容：飞书 261103 的「关卡布局用小车模型替代彩色方块、加朝向箭头、区分 4/6/10 座」+ 追加的「编辑器布局与试玩 1:1」两项一起发布到远端编辑器。
+- 版本号 `src/build-version.js` → `20261103-1512`（部署前先核对线上 chunk 为 `index-BM8JFI4H.js`、与本地 `server-dist` 一致，确认基线未落后于其他会话）。
+- `PLAYABLE_REMOTE_EDITOR=1 npm run build` 通过；部署包 29 MB / 1154 条目，排除 `node_modules`、`dist`、`server-dist`、`.git`、`artifacts/` 下的 playable-exports/backups/asset-compress-tests/applovin/web-level-backups/spatial-conveyor-backups/editor-prerolls/*.zip/tmp-probe，校验 `public/assets/applovin/textures` 29 个贴图仍在包内。
+- zip：`http://10.0.0.6:8081/c8/c8978959b6620e7761f8a085af8c154f.zip`，`mcp_deploy_sse` 复用 12142 端口与持久化 artifacts 卷。
+- 线上验收：页头版本 `SCENE EDITOR v20261103-1512`；`index-DhzUNvtn.js` / `level-layout-editor-tkhm5viT.js` / `scene-editor-CtC8BUJx.js` 三个 chunk 与本地构建 **sha256 逐字节一致**；线上打开「编辑关卡布局」实拍确认车阵为小车造型（四轮/车顶/白色朝向箭头/编号），与试玩画面同向；「关卡总览」111 个关卡卡片同为小车画法。
+
+## Completed On 2026-11-03 - 编辑器画布与试玩 1:1 对齐（飞书 261103 追加要求）
+
+- 追加要求：编辑关卡布局里的摆放必须和试玩里看到的一致，尽量 1:1。
+- **根因（之前一直没被发现）**：试玩从不直接画授权坐标。每辆车都要走 `mapVehicleAreaBasePoint`（围绕 positionPivot 乘 `positionUnitScale`、Unity→world 缩放、`mirrorZ` 镜像），再被整体旋转，朝向也跟着镜像（`180 - yaw`）。编辑器画布直接画授权坐标，所以整盘是试玩画面的**镜像 + 不同缩放版本**：相对位置对，但看着像另一套布局。
+- 新增 `src/vehicle-area-transform.js`，把「授权坐标 → 运行时显示坐标」收敛成唯一实现：`point` / `unproject` / `yaw`，外加 `collisionVehicleSize` 与 `displayVehicleSize`（试玩画的是归一化后的 3D 模型，`modelDepthBySeats × modelScale`，比 0.27×0.47 的碰撞盒长得多，用碰撞盒画会让车阵看起来比游戏里松散）。
+- 编辑器画布（`src/level-layout-editor.js`）所有点位改为走该变换：车辆、容器、路径、垫图、安全框、网格、相机平移；指针输入反向 `unproject` 回授权坐标，拖动/属性面板读写的仍是关卡文档坐标。座数角标阈值提到车高 ≥96px，默认缩放不再出现标签噪音。
+- 缩略图（`src/level-layout-thumbnail.js`）默认也走同一变换与运行时车尺寸（`transform: null` 可显式退回授权坐标），关卡总览、接触表与编辑器/试玩同向同密度。
+- 验证：新增 `test/vehicle-area-transform.test.js` 7 条，其中一条把每个关卡文档车辆与 `mapVehicleAreaBasePoint` 逐车比对——位置与朝向误差 < 1e-9（实测 8.9e-16）；`node --test` 468/468；`npm run build` 通过；本地实拍确认编辑器画布与试玩画面同向同排布，定位车辆 #20 显示授权坐标 `0.18 / 0.35`，拖动后正确写回授权坐标。
+- 说明：只改编辑器侧绘制与缩略图，运行时试玩渲染未改动，因此未重出交付包。
+
+## Completed On 2026-11-03 - BL-2610296 定稿：Q8V2 布局 + 中心圣诞雪橇
+
+- 需求最终确认：**参考 Q8V2 的布局，把中间那台车换成圣诞车**，配 35 步红心。
+- 底图：Q8V2 不在本地仓库，它在**远端编辑器的 `level11`**（`GET http://10.0.0.54:12142/__level-authoring/level11`）。64 车，粉 33 / 绿 31，斜向双列，双队列 218/218。
+- 新关卡 `artifacts/web-levels/level2610296.json`（`displayName: BL-2610296`）：取 Q8V2 原坐标不动，把几何中心那台 `id 30`（10 座，yaw 135）改为圣诞雪橇（`mechanism.type=christmas`、`stepLimited`、`stepLimit 35`），队列按 peel 波次重建为 222/214。雪橇开局 4 台直接阻挡、闭包 4 台，9 波清空、0 卡死。
+- 会话 `q159-christmas` → `level2610296`；调参 `parkingSpots.count = 6`、`installGate = 35`、`vehicleArea.positionUnitScale = 0.7`。
+- 验证：`node --test` **461/461**（并行跑时 runtime smoke 会因 Chromium 资源竞争超时，串行 `--test-concurrency=1` 全过）；本地实拍确认左粉右绿斜向车阵、中心雪橇带红心 35；全平台导出 242/256、14 份运行时报告全 PASS、7 个文件名逐字一致、单 HTML 3.89 MB。成品覆盖 `/Users/von/wxj/试玩成品/BUS/bus-Q159V1-20261102-WXJ/`。
+- **教训**：这一版之前我做了四版都不对（放射环、四朝向棋盘、三同心环、level26 重涂）。根因是同一条：没有先在仓库/远端里找“参考图对应的那张现成盘面”。以后接“照图做关卡”，第一步固定为：把候选底图渲成俯视图与参考图并排比对，确认形状一致再动手。作废的 `create-q159-rescue-level.mjs` 已删除。
+
+## Completed On 2026-11-03 - 关卡布局编辑器改为小车模型 + 朝向箭头（飞书 261103）
+
+- 需求（飞书「Bus编辑器问题反馈」→ 261103）：编辑关卡布局时目前用彩色方块摆车，**四人座和六人座没有区分、朝向也没有指示**，要求改成用小车模型代替方块并加朝向箭头（右图参考：俯视车、白色前向三角、车上带编号）。
+- 改动 `src/level-layout-editor.js`：新增 `vehicleCabinProfile` / `drawVehicleSprite` / `drawVehicleSeatBadge` / `roundedRectPath` / `shadeHexColor`。车辆改为俯视小车：四轮、渐变车漆、浅色车顶、前后风挡梯形玻璃、车顶接缝、三厢车尾厢线，车头正中白色三角箭头 + 深色描边。座位数用**轮廓比例**区分（4 座三厢短舱、6 座一厢长舱、10 座近满车顶 + 更多接缝），并在放大到车高 ≥62px 时显示「N 座」角标。低于 5px 车宽时退化为纯色块 + 箭头，避免密集车阵在拖动时糊成一片。
+- 改动 `src/level-layout-thumbnail.js`：总览/接触表缩略图同步换成小车画法（新增 `vehicleCabinRect`、`vehicleArrowPoints`），并修掉一个真 bug——缩略图只读 `colorIndex`，忽略了逐车 `colorOverrides.body`，导致红绿圣诞关卡在总览里显示成粉蓝。
+- 验证：`node --test` 458/458（新增 2 条缩略图测试：颜色覆盖优先、每辆车都画出车顶与箭头并跟随 yaw）；`npm run build` 通过；本地浏览器实拍确认默认缩放下车阵为小车造型、放大后 4/6/10 座轮廓与「N 座」角标可辨、点选/拖动/属性面板正常且未落盘。
+- 说明：本次只改编辑器内绘制，不涉及运行时试玩渲染，因此未重出交付包。
+
+## Completed On 2026-11-03 - BL-2610296 改用 level26 原始环形盘面（level2610296）
+
+- 需求：Q159 的关卡布局要参考图那一盘。**正确答案：参考图的底图就是仓库里的 `level26`**（圣诞环形盘面，70 车、中心留空、左粉右蓝），只需重涂成红绿、把中心车换成雪橇。
+- 新关卡：`artifacts/web-levels/level2610296.json`（`displayName: BL-2610296`），生成命令 `node scripts/create-christmas-sled-level.mjs --key level2610296 --display-name "BL-2610296" --palette redgreen --keep-sled-blocked --step-limit 35`。70 车，红 34 / 绿 35，雪橇 id 162 保持 315° 斜向，开局 6 台直接阻挡、需清 28 台可碰，35 步留 7 步余量，70/70 可全清。
+- 会话 `q159-christmas` 指向 `level2610296`；调参 `parkingSpots.count = 6`、`installGate = 35`、`vehicleArea.positionUnitScale = 0.7`。
+- 验证：`node --test` 459/459；本地实拍确认为环形、中心留空、红左绿右、红心 35；全平台导出 242/256、14 份运行时报告全 PASS、7 个文件名逐字一致，单 HTML 3.96 MB。成品覆盖 `/Users/von/wxj/试玩成品/BUS/bus-Q159V1-20261102-WXJ/`。
+- **教训（重要）**：我先后凭空造了放射环、四朝向棋盘、三同心环三版布局，用户三次指出不像。根因是一开始用“箭头朝向指纹”去官方关卡匹配、命中 A-195 后就顺着重建，而**朝向相似不等于布局形状相似**；真正的底图一直以 `LEVEL_CATALOG.level26` 形式在仓库里。以后接“照图做关卡”的需求，先把候选底图渲成俯视图与参考图并排比对，确认形状一致再动手。作废的 `create-q159-rescue-level.mjs` 已删除。
+
+
+## Completed On 2026-11-03 - 修复会话关闭前贴却仍被内联的 519 KB 浪费
+
+- 现象：Q159 会话 `preRoll: 0`（`ACTIVE_PLAYABLE_SESSION.preRollEnabled === false`），运行时 `main.js` 会把 `SCENE_TUNING.preRoll.enabled` 清零、从不播放，但成品单 HTML 里仍内联了 `TP1327.mp4`，占 519 KB。三个单 HTML 平台（AppLovin / Moloco / UnityAds）全部中招。
+- 根因：打包器 `package-applovin-single-html.mjs` 和静态检查器 `check-applovin-package.mjs` 都只读 `SCENE_TUNING.preRoll?.enabled`，没有读会话标记。**两个来源各说各话**：调参快照 `enabled: 1`，会话说关闭，于是素材被内联、运行时却不用。
+- 修复：`src/pre-roll.js` 新增 `resolvePreRollEnabled(tuning, activeSession)` / `resolvePreRollAsset(...)`，把「会话 opt-out 优先，其次看 tuning 开关，最后校验 asset 形状」收敛成唯一判定；打包器、检查器、运行时三处共用。新增 `test/pre-roll.test.js` 一条 opt-out 回归，并把 `test/playable-export.test.js` 的旧断言改为要求两侧都走 `resolvePreRollAsset`。
+- 收益：单 HTML 包体 4.62 MB → 3.95 MB（省 0.67 MB，其中视频 519 KB、其余为重复内联的连带减少），余量从 0.38 MB 变 1.05 MB。
+- 顺带修掉一个阻断：工作区的命名尾段已从 `stamina` 迁移为 `version`（`N/B/T/BT`），但 `artifacts/q159-christmas-tuning.json` 还写着 `stamina`，导致导出报 `tuning.exportNaming.stamina is not supported`。快照已迁移为 `version: "N"`，`test/christmas-rescue-level.test.js` 同步改断言。交付文件名不变（尾段仍是 `-N`）。
+- 验证：`node --test` 459/459；`PLAYABLE_SESSION_KEY=q159-christmas` 全平台重出，7 个包文件名与之前逐字一致、242/256、14 份运行时报告全 PASS；三个单 HTML 均确认 `video/mp4` 不再出现。成品已覆盖 `/Users/von/wxj/试玩成品/BUS/bus-Q159V1-20261102-WXJ/`。
+
 ## Completed On 2026-11-02 - Q159（圣诞中心救援 / 红绿双色 / 35 步红心）
 
 - 需求：中心救援 + 圣诞雪橇 + 限制步数（35 步跳转，红心显示在雪橇车上）；红绿双色；中心车辆为斜向雪橇；六车位；圣诞彩灯背景；11 段命名 `BL-2610296-Q159V1-...-35moves-N`。
@@ -2720,6 +2869,41 @@ Full 2026-07-07 progress log was archived to:
 - 性能：整章 203 关解析并渲染 SVG 约 0.2 秒，单章 JSON 1.4 MB；`sendJson` 对 ≥64 KB 的响应加 gzip（实测 1.38 MB → 261 KB），其它接口不受影响。
 - 验证：`node --test` 428/428（新增 8 条）；远端编辑器模式构建通过且选择器是独立 chunk；浏览器实测打开 A 章 203 张卡片全部渲染、搜索/徽章正确、点击 A-1 卡片后完成导入→切关→刷新（`selected-level` 变为 `level1001`）。测试写入的关卡与归属已全部回滚。
 - 已知限制：官方关卡导入后仍受「操作用户」与归属保护，未填名字会先提示；章节缓存按文件 size/mtime 失效。
+
+## Completed On 2026-11-02 - Q24 版本区分改为素材号（Q158V1 / Q158V2）
+
+- 需求：只改原版和原版+BMG 这两版；带 BGM 的改叫 V2，尾段仍然 `-N`。
+- 命名规则调整：**版本差异用素材编号区分，不再占用尾段**。`Q158V1` = 原版（无 BGM），`Q158V2` = 加 BGM；两版尾段都是 `-N`。尾段 `-T` 只表示前贴，不再有 `-B` / `-BT`。
+- 导出器新增 `--material <CODE>`：允许按构建指定素材号，并让它优先于会话里钉住的 `materialCode`（会话值只在该参数缺省时生效）。`applyPlayableDeliveryVariant` 的尾段推导简化为「有前贴 = T，否则 N」。
+- 产物：`BL-2610295-Q158V1-...-AL-N-N.html`（3.95 MB，无 BGM）、`BL-2610295-Q158V2-...-AL-N-N.html`（4.14 MB，含 BGM 音频）。逐版实测：V1 点车后无循环音源、`bgm.enabled=false`；V2 点车后创建 1 个 27.59 秒循环音源、`bgm.enabled=true`。
+- 交付目录：`/Users/von/wxj/试玩成品/BUS/BL-2610295-20261102-WXJ/` 现有四个子目录 `...-N`（Q158V1）、`...-V2`（Q158V2）、`...-T`、`...-BT`，各 7 产物 + manifest + 14 份运行时报告。
+- 验证：`node --test` 458/458。
+
+## Completed On 2026-11-02 - Q24 撞车音效只响一次 + 手指只在开局出现
+
+- 现象：撞车时「声音很乱」，一次碰撞连响好几下。
+- 根因：`vehicle-collision-contact` 是单次事件，但它会作为 `lastEvent` 在碰撞动画期间持续好几帧，而 `main.js` 每帧都把它交给音频层；`bus_hit` 的去重键里带了帧时间 `timeKey`，所以每帧都算新事件。实测一次碰撞播了 2 次（间隔 10 ms），浏览器里事件停留 4 帧。
+- 修复：`game-model` 给每次接触盖一个单调递增的 `collisionEventId`；`audio-controller` 的 key 改成 `vehicle-collision-contact:<id>`，不再含帧时间。旧数据没有该字段时退回 `vehicleId:targetId`。验证：同一次碰撞 4 帧事件、`distinctContactIds=1`，音频层只请求 1 次。
+- 手指指引收敛：`vehicleGuideHand`（待机手指，5 秒无操作就出现）在 Q24 置 `enabled=0 / showAtStart=0`，只保留 `firstClickGuide` 的开场那一次（3 秒、随置灰一起出现、一起消失）。实测 12 秒后画面无手指、无遮罩。
+- 验证：`node --test` 458/458（新增「一次碰撞只响一次」断言）；四版全平台重出，14 份运行时报告全 PASS；交付目录 `/Users/von/wxj/试玩成品/BUS/BL-2610295-20261102-WXJ/` 已用修复版覆盖。
+
+## Completed On 2026-11-02 - Q24 置灰期间锁输入 + 交付目录
+
+- 需求：开局置灰时不允许操作（原来只做视觉强调、不夺走点击），并且要把已出的几版一起改。
+- 改动：`firstClickGuide.lockInput` 在 Q24 调参与会话 stage.opening 里都置 1；`playable-session-config.js` 的 `FIRST_CLICK_GUIDE_KEYS` 与归一化逻辑补上该字段（之前会被 schema 拒绝）；`shouldBlockVehicleInput` 的锁只在 `lockInput` 为真时生效，字段默认 0，其他关卡行为不变。
+- 实测（成品包，四版逐个）：引导期间 `isVehicleInputLocked()=true`、遮罩可见，点任意可动车返回 `{ok:false, reason:'opening-guide'}`、点雪橇返回 `{ok:false, reason:'blocked'}`，`numberCountBus` 保持 0；3 秒后 `locked=false`、遮罩隐藏，点击恢复 `{ok:true, spotIndex:0}` 且计数变 1。
+- 交付目录：`/Users/von/wxj/试玩成品/BUS/BL-2610295-20261102-WXJ/`（试玩编号-日期-姓名缩写）。主目录放无 BGM 原始版 7 个产物 + manifest + reports；子目录 `带BGM-B`、`带前贴TP1326-T`、`带BGM和TP1326-BT` 各 7 个产物 + manifest + reports。
+- 验证：`node --test` 457/457（新增「置灰必须锁输入」断言）；四版全平台各 14 份运行时报告全 PASS，所有单 HTML < 5 MB；逐版字节校验 N 无媒体、B 有 BGM、T 有 TP1326、BT 两者都有。
+
+## Completed On 2026-11-02 - Q24 回归原始布局 + 四版交付（N/B/T/BT）
+
+- 需求方反馈：布局要原来的封闭车环、雪橇斜向摆放（核心玩法是中心救援）、BGM 与无 BGM 各出一版、再加一版 TP1326 前贴；版本差异只改名字最后一段。
+- 布局回退：`create-christmas-sled-level.mjs --keep-sled-blocked` 保留全部 70 车、雪橇停在中心 yaw 315°（斜向）、环上不开口。开局 `sled blockers: 89,101,139,140,141,143`，需要先清掉 28 辆车才够得到雪橇——这正是中心救援的操作要求。上一版为让引导目标可点而删掉的 4 辆车已全部恢复。
+- 开场圣诞老人保留：即使雪橇被挡，队列头部仍是 10 个圣诞老人（色号 16）。它们在传送带上等玩家把路清出来，符合「中心救援」的叙事，也不再是误导性的颜色错配。
+- **引导锁定改为可选**：新增 `firstClickGuide.lockInput`（默认 0，编辑器加了「锁定其他车辆」开关）。原来引导期会锁死所有车，而中心救援的引导目标本来就走不到，锁 3 秒等于开局白等。现在只高亮+置灰+手指，不夺走操作。
+- **交付版本后缀**：命名最后一段改为版本标签——`N` 普通、`B` 带 BGM、`T` 带 TP1326 前贴、`BT` 两者都有。导出器新增 `--bgm / --no-bgm / --preroll <file>`，`applyPlayableDeliveryVariant()` 一次推导前缀与开关，四个变体共用同一份调参文档。TP1326 从远端编辑器下载到 `artifacts/editor-prerolls/preroll-160feafb873e-TP1326.mp4`（3.6 s、720x1280）。
+- 产物：`artifacts/playable-exports/q24/` 四个 AppLovin 单包（3.95 / 4.14 / 4.62 / 4.80 MB），`artifacts/playable-exports/q24-all/{N,B,T,BT}/` 四套全平台包（各 7 个产物）。逐版校验字节：`N` 无 BGM 无前贴、`B` 有 BGM、`T` 有 TP1326、`BT` 两者都有。
+- 验证：`node --test` 456/456；四套全平台各 14 份运行时报告全 PASS，所有单 HTML < 5 MB；环形布局成品包实打到 64/64 门槛。
 
 ## Completed On 2026-11-02 - Q24 开场引导 + 开局圣诞老人
 

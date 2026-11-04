@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createPreRollController, normalizePreRollConfig } from '../src/pre-roll.js';
+import { createPreRollController, normalizePreRollConfig, resolvePreRollAsset, resolvePreRollEnabled } from '../src/pre-roll.js';
 
 class FakeClassList {
   values = new Set();
@@ -117,4 +117,21 @@ test('pre-roll uses native muted autoplay and enables sound only after a pointer
   assert.equal(video.muted, false);
   assert.equal(video.volume, 1);
   assert.equal(controller.isActive(), true);
+});
+
+test('a session that opts out of the pre-roll resolves to no asset', () => {
+  const tuning = { enabled: 1, asset: '/assets/preroll/TP1327.mp4' };
+  const optedOut = { key: 'q159-christmas', preRollEnabled: false };
+
+  // The runtime zeroes the tuning flag for such a session. The packager and the
+  // static checker read this helper instead of the raw flag, so a 519 KB MP4
+  // can no longer be inlined into a package that never plays it.
+  assert.equal(resolvePreRollEnabled(tuning, optedOut), false);
+  assert.equal(resolvePreRollAsset(tuning, optedOut), null);
+  assert.equal(resolvePreRollAsset(tuning, { preRollEnabled: true }), '/assets/preroll/TP1327.mp4');
+  assert.equal(resolvePreRollAsset(tuning, null), '/assets/preroll/TP1327.mp4');
+  // An explicit session opt-in still follows the tuning switch.
+  assert.equal(resolvePreRollAsset({ enabled: 0, asset: '/assets/preroll/TP1327.mp4' }, { preRollEnabled: true }), null);
+  // Unknown/unsupported assets never resolve, matching normalizePreRollConfig.
+  assert.equal(resolvePreRollAsset({ enabled: 1, asset: '/assets/other.mp4' }, null), null);
 });

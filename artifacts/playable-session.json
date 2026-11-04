@@ -6,7 +6,7 @@
       "stages": [
         {
           "id": "q159-christmas-rescue",
-          "levelKey": "level2602",
+          "levelKey": "level2610296",
           "opening": {
             "firstClickGuide": {
               "enabled": 0
@@ -41,7 +41,8 @@
               "vehicleId": 162,
               "durationSeconds": 3,
               "maskEnabled": 1,
-              "maskOpacity": 0.67
+              "maskOpacity": 0.67,
+              "lockInput": 1
             },
             "entryBanner": {
               "enabled": 0
@@ -60,7 +61,7 @@
       "exportNaming": {
         "materialCode": "Q158V1"
       },
-      "preRoll": 0
+      "preRoll": 1
     },
     "q23-choice": {
       "stages": [

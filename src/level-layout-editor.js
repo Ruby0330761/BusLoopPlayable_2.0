@@ -21,6 +21,13 @@ import {
 } from './level-editor-model.js';
 import { SCENE_TUNING } from './scene-tuning.js';
 import {
+  collisionVehicleSize,
+  displayVehicleSize,
+  screenToWorldPoint,
+  vehicleAreaTransformFor,
+  worldToScreenPoint
+} from './vehicle-area-transform.js';
+import {
   RECOGNITION_DEFAULTS,
   blobsToWorldVehicles,
   createImageWorldMapping,
@@ -339,24 +346,35 @@ function renderReferencePanel(root, layer) {
       : '<p class="level-layout-hint">支持 PNG、JPG、WebP，最大 20 MB。图片只作为编辑辅助，不会进入关卡数据。</p>'}`;
 }
 
+// Every authoring view goes through the same authored→runtime transform the
+// playable uses (see src/vehicle-area-transform.js); drawing raw authoring space
+// produced a mirrored field at a different scale, so the editor and the game
+// looked like different layouts. The cache lives inside that module because the
+// canvas queries it for every point of every car.
+function vehicleAreaDisplay() {
+  return vehicleAreaTransformFor(SCENE_TUNING.vehicleArea);
+}
+
 function worldToScreen(camera, rect, x, z) {
-  const scale = WORLD_SCALE * camera.zoom;
-  return {
-    x: rect.width * 0.5 + (x - camera.x) * scale,
-    y: rect.height * 0.5 - (z - camera.z) * scale
-  };
+  const point = vehicleAreaDisplay().point(x, z);
+  // +Z runs DOWN on screen: the playable camera sits on the field's +Z side
+  // looking back, so it is not the usual "z points up" top-down view.
+  return worldToScreenPoint(camera, rect, point.x, point.z, WORLD_SCALE * camera.zoom);
 }
 
 function screenToWorld(camera, rect, x, y) {
-  const scale = WORLD_SCALE * camera.zoom;
-  return {
-    x: camera.x + (x - rect.width * 0.5) / scale,
-    z: camera.z - (y - rect.height * 0.5) / scale
-  };
+  const point = screenToWorldPoint(camera, rect, x, y, WORLD_SCALE * camera.zoom);
+  return vehicleAreaDisplay().unproject(point.x, point.z);
 }
 
+// Hit testing and spacing stay in authored (collision) units; the picture uses
+// the runtime model size so the canvas matches the phone preview's density.
 function vehicleDimensions(vehicle) {
-  return { width: 0.27, length: vehicle.seats === 10 ? 0.6786 : vehicle.seats === 6 ? 0.486 : 0.4716 };
+  return collisionVehicleSize(vehicle);
+}
+
+function displayVehicleDimensions(vehicle) {
+  return displayVehicleSize(vehicle, SCENE_TUNING.vehicleArea);
 }
 
 function visibleVehicles(document, activeContainerId) {
@@ -461,13 +479,257 @@ function drawContainerBadge(context, text, x, y, color) {
   context.fillText(String(text), x, y + 0.5);
 }
 
-function drawArrow(context, length) {
+function roundedRectPath(context, x, y, width, height, radius) {
+  const limit = Math.min(width, height) / 2;
+  const r = Math.max(0, Math.min(radius, limit));
   context.beginPath();
-  context.moveTo(0, -length * 0.42);
-  context.lineTo(-0.055, -length * 0.24);
-  context.lineTo(0.055, -length * 0.24);
+  context.moveTo(x + r, y);
+  context.lineTo(x + width - r, y);
+  context.quadraticCurveTo(x + width, y, x + width, y + r);
+  context.lineTo(x + width, y + height - r);
+  context.quadraticCurveTo(x + width, y + height, x + width - r, y + height);
+  context.lineTo(x + r, y + height);
+  context.quadraticCurveTo(x, y + height, x, y + height - r);
+  context.lineTo(x, y + r);
+  context.quadraticCurveTo(x, y, x + r, y);
+  context.closePath();
+}
+
+function shadeHexColor(color, amount) {
+  const match = /^#([0-9a-f]{6})$/i.exec(String(color ?? ''));
+  if (!match) return color;
+  const value = Number.parseInt(match[1], 16);
+  const channels = [(value >> 16) & 255, (value >> 8) & 255, value & 255];
+  const target = amount >= 0 ? 255 : 0;
+  const weight = Math.abs(amount);
+  return `#${channels
+    .map((channel) => Math.round(channel + (target - channel) * weight).toString(16).padStart(2, '0'))
+    .join('')}`;
+}
+
+// Seat count also drives the silhouette, because the real footprints are only
+// 3% apart (4-seat 0.4716 vs 6-seat 0.486) so a plain coloured block gave the
+// operator no way to tell them apart. The cabin-to-bonnet split is the cue:
+// a 4-seat car is a three-box sedan (bonnet, cabin, boot), a 6-seat van is a
+// one-box shape whose cabin nearly fills the body, and a 10-seat bus runs the
+// cabin the whole way with visible roof seams.
+function vehicleCabinProfile(seats) {
+  if (Number(seats) === 6) {
+    return { roofFront: 0.38, roofRear: 0.38, roofWidth: 0.78, bodyRadius: 0.14, segments: 3, threeBox: false };
+  }
+  if (Number(seats) === 10) {
+    return { roofFront: 0.42, roofRear: 0.42, roofWidth: 0.84, bodyRadius: 0.08, segments: 4, threeBox: false };
+  }
+  return { roofFront: 0.26, roofRear: 0.28, roofWidth: 0.62, bodyRadius: 0.28, segments: 1, threeBox: true };
+}
+
+// The seat-count chip only appears well past the default board zoom. At the
+// working zoom it would sit on top of neighbouring cars, and the silhouette
+// already separates 4 / 6 / 10 seats; the chip is for close inspection.
+// `halfHeight` is the car's rotated screen half-extent, not its half length, so
+// the chip clears the corners of a diagonal car too.
+function drawVehicleSeatBadge(context, screen, halfHeight, seats) {
+  // At the default board zoom the field is dense and every label lands on a
+  // neighbour. The silhouette carries 4/6/10 already; the chip is for close
+  // inspection, so it only appears well past the working zoom.
+  if (halfHeight * 2 < 96) return;
+  const font = Math.max(7, Math.min(11, halfHeight * 0.26));
+  const text = `${seats} 座`;
+  context.save();
+  context.font = `700 ${font}px "Poppins Branding", Arial, sans-serif`;
+  context.textAlign = 'center';
+  context.textBaseline = 'middle';
+  const width = context.measureText(text).width + font * 0.9;
+  const height = font * 1.55;
+  const x = screen.x;
+  const y = screen.y - halfHeight - height * 0.65;
+  context.fillStyle = 'rgba(255, 255, 255, .95)';
+  roundedRectPath(context, x - width / 2, y - height / 2, width, height, height * 0.4);
+  context.fill();
+  context.strokeStyle = 'rgba(20, 34, 44, .35)';
+  context.lineWidth = 1;
+  context.stroke();
+  context.fillStyle = '#15242e';
+  context.fillText(text, x, y + 0.5);
+  context.restore();
+}
+
+function drawVehicleSprite(context, vehicle, { width, length, color, inverseColor, selected }) {
+  const w = width;
+  const l = length;
+  const profile = vehicleCabinProfile(vehicle.seats);
+  const bodyRadius = w * profile.bodyRadius;
+
+  // Below roughly four screen pixels the detailed sprite degenerates into
+  // mud, and a dense board redraws on every pointer move. Keep the outline and
+  // the heading arrow so the field still reads as oriented cars.
+  if (w < 5) {
+    roundedRectPath(context, -w / 2, -l / 2, w, l, bodyRadius);
+    context.fillStyle = color;
+    context.fill();
+    if (w >= 2.4) {
+      context.fillStyle = 'rgba(255, 255, 255, .9)';
+      context.beginPath();
+      context.moveTo(0, -l * 0.32);
+      context.lineTo(-w * 0.22, -l * 0.12);
+      context.lineTo(w * 0.22, -l * 0.12);
+      context.closePath();
+      context.fill();
+    }
+    return;
+  }
+
+  const roofHalfWidth = w * profile.roofWidth / 2;
+  const roofTop = -l * profile.roofFront;
+  const roofBottom = l * profile.roofRear;
+  const roofLength = roofBottom - roofTop;
+
+  // Wheels peek out from under the body at all four corners. Even a thin sliver
+  // is what makes the top-down shape read as a vehicle rather than a chip.
+  const wheelWidth = Math.max(2.2, w * 0.19);
+  const wheelLength = Math.max(3.2, l * 0.14);
+  const wheelInset = w * 0.5 - wheelWidth * 0.12;
+  const wheelOffset = l * (Number(vehicle.seats) === 10 ? 0.31 : 0.27);
+  context.fillStyle = 'rgba(16, 22, 28, .92)';
+  for (const side of [-1, 1]) {
+    for (const end of [-1, 1]) {
+      roundedRectPath(context, side * wheelInset - wheelWidth / 2, end * wheelOffset - wheelLength / 2, wheelWidth, wheelLength, wheelWidth * 0.42);
+      context.fill();
+    }
+  }
+
+  // Body paint: a light-to-dark sweep across the width reads as a curved panel.
+  const paint = context.createLinearGradient(-w / 2, 0, w / 2, 0);
+  paint.addColorStop(0, shadeHexColor(color, 0.34));
+  paint.addColorStop(0.38, shadeHexColor(color, 0.08));
+  paint.addColorStop(1, shadeHexColor(color, -0.3));
+  roundedRectPath(context, -w / 2, -l / 2, w, l, bodyRadius);
+  context.fillStyle = paint;
+  context.fill();
+  context.strokeStyle = selected ? '#05131c' : 'rgba(7, 26, 37, .78)';
+  context.lineWidth = selected ? Math.max(2.4, w * 0.11) : Math.max(0.8, w * 0.04);
+  context.stroke();
+
+  // Roof: a lighter inset panel. Its length relative to the body is the shape
+  // cue for the seat count, since the real footprints are only 3% apart.
+  context.fillStyle = shadeHexColor(color, 0.3);
+  roundedRectPath(context, -roofHalfWidth, roofTop, roofHalfWidth * 2, roofLength, w * 0.12);
+  context.fill();
+  context.strokeStyle = 'rgba(7, 26, 37, .28)';
+  context.lineWidth = Math.max(0.5, w * 0.02);
+  context.stroke();
+
+  // Windscreen and rear window: dark bands across the roof ends. They are the
+  // strongest "car from above" signal and stay readable at any zoom.
+  const glass = 'rgba(22, 33, 45, .9)';
+  const screenLength = Math.max(1.8, roofLength * 0.1);
+  const taper = w * 0.045;
+  context.fillStyle = glass;
+  context.beginPath();
+  context.moveTo(-roofHalfWidth + taper, roofTop);
+  context.lineTo(roofHalfWidth - taper, roofTop);
+  context.lineTo(roofHalfWidth, roofTop + screenLength);
+  context.lineTo(-roofHalfWidth, roofTop + screenLength);
   context.closePath();
   context.fill();
+  context.beginPath();
+  context.moveTo(-roofHalfWidth, roofBottom - screenLength);
+  context.lineTo(roofHalfWidth, roofBottom - screenLength);
+  context.lineTo(roofHalfWidth - taper, roofBottom);
+  context.lineTo(-roofHalfWidth + taper, roofBottom);
+  context.closePath();
+  context.fill();
+
+  // Roof seams for people carriers: the more rows of seats, the more divisions
+  // the cabin shows. A 10-seat bus is unmistakable beside a two-row car.
+  if (profile.segments > 1 && w >= 12) {
+    context.strokeStyle = 'rgba(7, 26, 37, .22)';
+    context.lineWidth = Math.max(0.5, w * 0.018);
+    const seamTop = roofTop + screenLength + w * 0.04;
+    const seamBottom = roofBottom - screenLength - w * 0.04;
+    for (let index = 1; index < profile.segments; index += 1) {
+      const y = seamTop + (seamBottom - seamTop) * (index / profile.segments);
+      context.beginPath();
+      context.moveTo(-roofHalfWidth + w * 0.05, y);
+      context.lineTo(roofHalfWidth - w * 0.05, y);
+      context.stroke();
+    }
+  }
+
+  // A sedan keeps a separate boot behind the cabin; vans and buses do not. That
+  // rear deck line is the fastest read of "small car" versus "people carrier".
+  if (profile.threeBox && w >= 12) {
+    const bootLine = l / 2 - l * 0.1;
+    if (bootLine > roofBottom) {
+      context.strokeStyle = 'rgba(7, 26, 37, .28)';
+      context.lineWidth = Math.max(0.5, w * 0.02);
+      context.beginPath();
+      context.moveTo(-w * 0.36, bootLine);
+      context.lineTo(w * 0.36, bootLine);
+      context.stroke();
+    }
+  }
+
+  // Heading arrow on the roof, pointing to +Z (up at yaw 0): a white triangle
+  // with a dark rim, so it stays visible on every paint colour including the
+  // cream and white atlases. It sits toward the nose, leaving the id readable.
+  const arrowTip = roofTop + roofLength * 0.16;
+  const arrowBase = roofTop + roofLength * 0.4;
+  const arrowHalf = Math.max(1.8, Math.min(w * 0.2, (arrowBase - arrowTip) * 0.62));
+  context.fillStyle = '#ffffff';
+  context.strokeStyle = 'rgba(7, 26, 37, .55)';
+  context.lineWidth = Math.max(0.5, w * 0.022);
+  context.beginPath();
+  context.moveTo(0, arrowTip);
+  context.lineTo(-arrowHalf, arrowBase);
+  context.lineTo(arrowHalf, arrowBase);
+  context.closePath();
+  context.fill();
+  context.stroke();
+
+  // Vehicle id sits under the arrow. White with a dark halo matches the
+  // in-game board and needs no extra chip behind it. It is skipped below
+  // readable size so a zoomed-out board stays a clean field of cars.
+  if (w >= 11) {
+    const idFont = Math.min(11, w * 0.42);
+    const idY = roofBottom - roofLength * 0.24;
+    context.font = `700 ${idFont}px "Poppins Branding", Arial, sans-serif`;
+    context.textAlign = 'center';
+    context.textBaseline = 'middle';
+    context.lineJoin = 'round';
+    context.strokeStyle = 'rgba(9, 17, 24, .8)';
+    context.lineWidth = Math.max(1.1, idFont * 0.38);
+    context.strokeText(String(vehicle.id), 0, idY);
+    context.fillStyle = inverseColor === '#ffffff' ? '#f2f6f9' : '#ffffff';
+    context.fillText(String(vehicle.id), 0, idY);
+  }
+
+  // Turning vehicles get a corner badge in the inverted paint colour, which
+  // stays readable regardless of the body colour.
+  if (vehicle.isTurnVehicle) {
+    const badgeRadius = Math.max(4, w * 0.2);
+    const badgeX = -w * 0.5 + badgeRadius * 0.66;
+    const badgeY = l * 0.5 - badgeRadius * 0.66;
+    context.fillStyle = inverseColor;
+    context.beginPath();
+    context.arc(badgeX, badgeY, badgeRadius, 0, Math.PI * 2);
+    context.fill();
+    context.strokeStyle = 'rgba(7, 26, 37, .5)';
+    context.lineWidth = Math.max(0.6, w * 0.025);
+    context.stroke();
+    context.fillStyle = '#0f172a';
+    context.font = `700 ${Math.max(6.5, badgeRadius * 1.15)}px "Poppins Branding", Arial, sans-serif`;
+    context.fillText('T', badgeX, badgeY + 0.5);
+  }
+
+  if (vehicle.isHidden) {
+    context.setLineDash([Math.max(2, w * 0.12), Math.max(1.5, w * 0.08)]);
+    context.strokeStyle = '#f5c542';
+    context.lineWidth = Math.max(1, w * 0.05);
+    roundedRectPath(context, -w / 2, -l / 2, w, l, bodyRadius);
+    context.stroke();
+    context.setLineDash([]);
+  }
 }
 
 function drawVehicleSafeFrame(context, camera, rect) {
@@ -501,9 +763,12 @@ function drawVehicleSafeFrame(context, camera, rect) {
 
 function fitReferenceLayerToView(layer, camera, rect) {
   if (!referenceLayerReady(layer)) return;
+  // The layer is authored-sized, so the fit budget is converted back into
+  // authored units; `camera` is in display space and has to be unprojected.
+  const display = vehicleAreaDisplay();
   const scale = WORLD_SCALE * camera.zoom;
-  const maxWidth = Math.max(1, rect.width * 0.82 / scale);
-  const maxHeight = Math.max(1, rect.height * 0.82 / scale);
+  const maxWidth = Math.max(1, rect.width * 0.82 / scale / display.scale);
+  const maxHeight = Math.max(1, rect.height * 0.82 / scale / display.scale);
   const aspect = layer.image.naturalWidth / layer.image.naturalHeight;
   if (maxWidth / maxHeight < aspect) {
     layer.width = maxWidth;
@@ -512,8 +777,9 @@ function fitReferenceLayerToView(layer, camera, rect) {
     layer.height = maxHeight;
     layer.width = maxHeight * aspect;
   }
-  layer.x = camera.x;
-  layer.z = camera.z;
+  const center = display.unproject(camera.x, camera.z);
+  layer.x = center.x;
+  layer.z = center.z;
   layer.scale = 1;
   layer.rotation = 0;
 }
@@ -676,13 +942,21 @@ function drawReferenceLayer(context, camera, rect, layer, gesture) {
   if (!referenceLayerReady(layer) || !layer.visible) return;
   const delta = gesture?.type === 'reference-drag' ? gesture.delta : { x: 0, z: 0 };
   const screen = worldToScreen(camera, rect, layer.x + delta.x, layer.z + delta.z);
-  const scale = WORLD_SCALE * camera.zoom;
+  const display = vehicleAreaDisplay();
+  // The layer is authored in the same space as the cars, so it has to follow the
+  // same mapping or the reference drifts off the field it is meant to trace.
+  const scale = WORLD_SCALE * camera.zoom * display.scale;
   const size = referenceLayerSize(layer);
   const width = size.width * scale;
   const height = size.height * scale;
   context.save();
   context.translate(screen.x, screen.y);
-  context.rotate(layer.rotation * Math.PI / 180);
+  // A heading and an image rotation are not the same thing: a sprite's nose
+  // needs the extra 180 of `canvasYaw`, but rotating a photo by 180 would turn
+  // it upside down. The trace image only takes the *delta* the map applies, so
+  // rotation 0 stays upright while dragging still turns the right way.
+  const imageRotation = -(display.yaw(layer.rotation) - display.yaw(0));
+  context.rotate(imageRotation * Math.PI / 180);
   context.globalAlpha = layer.opacity;
   context.drawImage(layer.image, -width * 0.5, -height * 0.5, width, height);
   context.globalAlpha = 1;
@@ -714,8 +988,12 @@ function drawCanvas(canvas, model, camera, gesture, garageTexture, conveyorTextu
 
   drawReferenceLayer(context, camera, rect, referenceLayer, gesture);
 
+  const display = vehicleAreaDisplay();
   const gap = model.document.editor.gridGap;
-  const scale = WORLD_SCALE * camera.zoom;
+  // `scale` converts authored units to pixels, `spriteScale` converts runtime
+  // display units (already scaled by positionUnitScale) to pixels.
+  const spriteScale = WORLD_SCALE * camera.zoom;
+  const scale = spriteScale * display.scale;
   if (gap * scale >= 8) {
     const radians = model.document.editor.gridRotation * Math.PI / 180;
     const axisX = { x: Math.cos(radians), z: Math.sin(radians) };
@@ -766,15 +1044,15 @@ function drawCanvas(canvas, model, camera, gesture, garageTexture, conveyorTextu
       const exit = worldToScreen(camera, rect,
         container.x + moving.x + Math.sin(radians) * GARAGE_PARK_POS,
         container.z + moving.z + Math.cos(radians) * GARAGE_PARK_POS);
-      const exitSize = vehicleDimensions({ seats: 10 });
+      const exitSize = displayVehicleDimensions({ seats: 10 });
       context.save();
-      context.translate(exit.x, exit.y); context.rotate(radians);
+      context.translate(exit.x, exit.y); context.rotate(display.canvasYaw(container.yaw) * Math.PI / 180);
       context.strokeStyle = '#1683e8'; context.lineWidth = 1.5;
-      context.strokeRect(-exitSize.width * scale / 2, -exitSize.length * scale / 2, exitSize.width * scale, exitSize.length * scale);
+      context.strokeRect(-exitSize.width * spriteScale / 2, -exitSize.length * spriteScale / 2, exitSize.width * spriteScale, exitSize.length * spriteScale);
       context.restore();
     }
     context.save();
-    context.translate(screen.x, screen.y); context.rotate(container.yaw * Math.PI / 180);
+    context.translate(screen.x, screen.y); context.rotate(display.canvasYaw(container.yaw) * Math.PI / 180);
     const drawX = -container.width * scale / 2; const drawY = -container.length * scale / 2;
     const drawWidth = container.width * scale; const drawHeight = container.length * scale;
     if (container.type === CONTAINER_TYPES.GARAGE && garageTexture?.complete && garageTexture.naturalWidth > 0) {
@@ -840,21 +1118,32 @@ function drawCanvas(canvas, model, camera, gesture, garageTexture, conveyorTextu
     const selected = model.selection.has(`vehicle:${vehicle.id}`);
     const moving = selected ? offset : { x: 0, z: 0 };
     const screen = worldToScreen(camera, rect, vehicle.x + moving.x, vehicle.z + moving.z);
-    const size = vehicleDimensions(vehicle);
+    // Cars are drawn at the runtime model size, in runtime units, so the field
+    // reads at the same density as the playable preview.
+    const size = displayVehicleDimensions(vehicle);
+    const spriteWidth = size.width * spriteScale;
+    const spriteLength = size.length * spriteScale;
+    // canvasYaw, not yaw: a canvas sprite's nose sits at local -Y, so the
+    // drawn sprite has to turn by 180 - heading to face where the playable faces.
+    const displayYaw = display.canvasYaw(vehicle.yaw);
     context.save();
-    context.translate(screen.x, screen.y); context.rotate(vehicle.yaw * Math.PI / 180);
+    context.translate(screen.x, screen.y); context.rotate(displayYaw * Math.PI / 180);
     const vehicleColor = vehicleDisplayColor(vehicle);
     const inverseColor = vehicle.isHidden ? '#ffffff' : invertHexColor(vehicleColor);
-    context.fillStyle = vehicleColor;
     context.globalAlpha = vehicle.isHidden ? 0.42 : 1;
-    context.strokeStyle = selected ? '#071a25' : 'rgba(7, 26, 37, .55)'; context.lineWidth = selected ? 3 : 1;
-    context.fillRect(-size.width * scale / 2, -size.length * scale / 2, size.width * scale, size.length * scale);
-    context.strokeRect(-size.width * scale / 2, -size.length * scale / 2, size.width * scale, size.length * scale);
-    context.globalAlpha = 1; context.fillStyle = inverseColor; drawArrow(context, size.length * scale);
-    context.fillStyle = inverseColor; context.font = '700 10px "Poppins Branding", Arial, sans-serif'; context.textAlign = 'center'; context.textBaseline = 'middle';
-    context.fillText(String(vehicle.id), 0, 2);
-    if (vehicle.isTurnVehicle) { context.fillStyle = '#0f172a'; context.fillText('T', size.width * scale * 0.3, size.length * scale * 0.35); }
+    drawVehicleSprite(context, vehicle, {
+      width: spriteWidth,
+      length: spriteLength,
+      color: vehicleColor,
+      inverseColor,
+      selected
+    });
+    context.globalAlpha = 1;
     context.restore();
+    const yawRadians = displayYaw * Math.PI / 180;
+    const halfHeight = spriteLength * Math.abs(Math.cos(yawRadians)) / 2
+      + spriteWidth * Math.abs(Math.sin(yawRadians)) / 2;
+    drawVehicleSeatBadge(context, screen, halfHeight, vehicle.seats);
   }
 
   const activeGate = model.document.containers.find((container) => (
@@ -2218,6 +2507,8 @@ export async function createLevelLayoutEditor({
     const screen = { x: event.clientX - rect.left, y: event.clientY - rect.top };
     const world = screenToWorld(camera, rect, screen.x, screen.y);
     if (gesture.type === 'pan') {
+      // The camera lives in runtime display space, so a screen pixel maps to a
+      // display unit here — not to an authored one.
       const scale = WORLD_SCALE * camera.zoom;
       camera.x = gesture.camera.x - (screen.x - gesture.startScreen.x) / scale;
       camera.z = gesture.camera.z + (screen.y - gesture.startScreen.y) / scale;

@@ -14,6 +14,16 @@ from typing import Any
 RELATIVE_CONFIG = Path(".config/build-verified-playable-packages/tinify.json")
 TEMPLATE = '{"apiKey":""}'
 
+# Skill 内置的共享 Tinify key：让没有单独配置的使用者装好就能直接跑资源阶段。
+# 优先级：TINIFY_API_KEY 环境变量 > 用户配置文件 > 这里的共享 key。
+# 这份 key 随 Skill 分发，压缩额度由所有使用者共享；需要独立额度时用前两者覆盖。
+BUNDLED_API_KEY = "hh62jRPYL7dYXCTGrx5dxC62WBQXffnw"
+BUNDLED_KEY_EVIDENCE = {
+    "keySource": "skill-bundled-default",
+    "keyAvailable": True,
+    "secretCopiedToEvidence": False,
+}
+
 
 def config_path(*, home: Path | None = None) -> Path:
     base = (home or Path.home()).expanduser().resolve()
@@ -34,6 +44,25 @@ def _secure_file(path: Path) -> os.stat_result:
     return details
 
 
+def _config_key(path: Path) -> str | None:
+    """读取用户配置里的 key；文件不存在或 apiKey 为空时返回 None，交给内置 key 兜底。"""
+    try:
+        path.lstat()
+    except FileNotFoundError:
+        return None
+    _secure_file(path)
+    try:
+        value = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, json.JSONDecodeError) as exc:
+        raise ValueError("Tinify 配置 JSON 格式无效；请打开配置文件修正") from exc
+    if not isinstance(value, dict):
+        raise ValueError("Tinify 配置 JSON 根必须是对象")
+    key = value.get("apiKey")
+    if not isinstance(key, str) or not key.strip():
+        return None
+    return key.strip()
+
+
 def load_api_key(*, path: Path | None = None, environment: dict[str, str] | None = None) -> tuple[str, dict[str, Any]]:
     env = os.environ if environment is None else environment
     injected = env.get("TINIFY_API_KEY")
@@ -43,20 +72,13 @@ def load_api_key(*, path: Path | None = None, environment: dict[str, str] | None
             "secretCopiedToEvidence": False,
         }
     resolved = (path or config_path()).expanduser().resolve()
-    _secure_file(resolved)
-    try:
-        value = json.loads(resolved.read_text(encoding="utf-8"))
-    except (OSError, UnicodeError, json.JSONDecodeError) as exc:
-        raise ValueError("Tinify 配置 JSON 格式无效；请打开配置文件修正") from exc
-    if not isinstance(value, dict):
-        raise ValueError("Tinify 配置 JSON 根必须是对象")
-    key = value.get("apiKey")
-    if not isinstance(key, str) or not key.strip():
-        raise ValueError("Tinify 配置中的 apiKey 不能为空")
-    return key.strip(), {
-        "keySource": "user-config-file", "keyAvailable": True,
-        "secretCopiedToEvidence": False,
-    }
+    key = _config_key(resolved)
+    if key is not None:
+        return key, {
+            "keySource": "user-config-file", "keyAvailable": True,
+            "secretCopiedToEvidence": False,
+        }
+    return BUNDLED_API_KEY, dict(BUNDLED_KEY_EVIDENCE)
 
 
 def validate_config(*, path: Path | None = None, environment: dict[str, str] | None = None) -> dict[str, Any]:

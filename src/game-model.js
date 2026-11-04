@@ -21,6 +21,15 @@ import {
   createVehicleCollisionContext,
   findCollisionContact
 } from './vehicle-collision.js';
+import {
+  firstOccupiedLayer,
+  gateQueuePath,
+  gateVehicleLength,
+  isElevatorType,
+  isGateQueueType,
+  layoutGateQueue,
+  sortGateQueueVehicles
+} from './mechanic-containers.js';
 
 const clamp01 = (value) => Math.max(0, Math.min(1, value));
 const wrap01 = (value) => ((value % 1) + 1) % 1;
@@ -237,6 +246,11 @@ export class BusLoopGame {
     this.speedMultiplier = 1;
     this.boardingEventId = 0;
     this.turnVehicleEventId = 0;
+    // A collision contact is a single moment, but the event stays as `lastEvent`
+    // for several frames because the bump animation keeps running. The audio
+    // layer needs a stable identity per contact or it replays the hit every
+    // frame the event is still current.
+    this.collisionContactEventId = 0;
     this.boardingEvents = [];
     // Sound-relevant events for the current frame. lastEvent keeps only the
     // final assignment, so a frame that both departs a vehicle and boards a
@@ -274,8 +288,37 @@ export class BusLoopGame {
     this.sourceQueues = authoredQueues.map((queue, index) => queue.slice(this.queueCapacities[index]));
     const garageContainers = (this.level.containers ?? []).filter((container) => isGarageType(container.type));
     const conveyorContainers = (this.level.containers ?? []).filter((container) => isConveyorType(container.type));
+    const gateContainers = (this.level.containers ?? []).filter((container) => isGateQueueType(container.type));
+    const elevatorContainers = (this.level.containers ?? []).filter((container) => isElevatorType(container.type));
     const garageContainersById = new Map(garageContainers.map((container) => [Number(container.id), container]));
     const conveyorContainersById = new Map(conveyorContainers.map((container) => [Number(container.id), container]));
+    const gateContainersById = new Map(gateContainers.map((container) => [Number(container.id), container]));
+    const elevatorContainersById = new Map(elevatorContainers.map((container) => [Number(container.id), container]));
+    // Gate queues own their lane order: the head sits on the container anchor
+    // and every other car queues behind it along the authored path.
+    const gateQueueIndices = new Map();
+    const gateQueuePaths = new Map();
+    for (const container of gateContainers) {
+      const members = this.level.vehicles.filter((vehicle) => (
+        isGateQueueType(vehicle.containerType) && Number(vehicle.containerId) === Number(container.id)
+      ));
+      const path = gateQueuePath(container, members);
+      gateQueuePaths.set(Number(container.id), path);
+      sortGateQueueVehicles(members, path).forEach((vehicle, index) => {
+        gateQueueIndices.set(vehicle.id, index);
+      });
+    }
+    // Elevators only expose one floor at a time: the lowest occupied floor is
+    // the visible one, and cars on the other floor wait inside.
+    const elevatorActiveLayers = new Map();
+    for (const container of elevatorContainers) {
+      const members = this.level.vehicles.filter((vehicle) => (
+        isElevatorType(vehicle.containerType) && Number(vehicle.containerId) === Number(container.id)
+      ));
+      elevatorActiveLayers.set(Number(container.id), firstOccupiedLayer(members) ?? 0);
+    }
+    this.gateQueuePaths = gateQueuePaths;
+    this.elevatorActiveLayers = elevatorActiveLayers;
     const conveyorIndices = new Map();
     for (const container of conveyorContainers) {
       const yaw = Number(container.yaw ?? container.yawDegrees ?? 0) * Math.PI / 180;
@@ -302,13 +345,44 @@ export class BusLoopGame {
       const conveyor = isConveyorType(vehicle.containerType)
         ? conveyorContainersById.get(Number(vehicle.containerId))
         : null;
+      const gate = isGateQueueType(vehicle.containerType)
+        ? gateContainersById.get(Number(vehicle.containerId))
+        : null;
+      const elevator = isElevatorType(vehicle.containerType)
+        ? elevatorContainersById.get(Number(vehicle.containerId))
+        : null;
       const conveyorConfig = conveyor ? getConveyorMechanicConfig(this.level, conveyor) : null;
+      // Only the head of a gate queue stands in the field; the cars behind it
+      // are still in the lane and must not collide with anything yet.
+      const gateIndex = gate ? (gateQueueIndices.get(vehicle.id) ?? 0) : null;
+      // A car on the upper floor of a lift is only in the field once that
+      // floor is the active one; the rest wait inside the shaft.
+      const elevatorLayer = Number.isFinite(Number(vehicle.elevatorLayer))
+        ? Number(vehicle.elevatorLayer)
+        : 0;
+      const elevatorActive = elevator
+        ? elevatorActiveLayers.get(Number(elevator.id)) === elevatorLayer
+        : true;
+      // Gate queue cars stay in the field: each one faces the car ahead, so
+      // the ordinary forward sweep already blocks everyone except the head.
+      // Only the lift's inactive floor is taken out of play.
+      const state = garage
+        ? 'in-garage'
+        : elevator && !elevatorActive
+          ? 'in-elevator'
+          : 'parked';
       return {
         ...vehicle,
         ...(garage ? { x: garage.x, z: garage.z, yaw: garage.yaw } : {}),
         ...(conveyor ? { x: conveyor.x, z: conveyor.z, yaw: conveyor.yaw } : {}),
-        state: garage ? 'in-garage' : 'parked',
+        state,
         garageId: garage?.id ?? null,
+        gateId: gate?.id ?? null,
+        gateIndex,
+        gatePath: gate ? (gateQueuePaths.get(Number(gate.id)) ?? null) : null,
+        elevatorId: elevator?.id ?? null,
+        elevatorLayer,
+        elevatorActive,
         conveyorId: conveyor?.id ?? null,
         conveyorIndex: conveyor ? (conveyorIndices.get(vehicle.id) ?? 0) : null,
         conveyorWidth: conveyorConfig?.vehicleWidth ?? null,
@@ -323,6 +397,10 @@ export class BusLoopGame {
         turnRotation: null,
         hiddenRevealed: !Boolean(vehicle.isHidden),
         hiddenReveal: null,
+        // Set when this car's colour has no passengers left to board. Such a
+        // car can never reach full load, so it is released once its exit is
+        // clear instead of deadlocking the level.
+        surplusReleased: false,
         ambulanceRemainingSteps: Number.isInteger(vehicle.ambulanceStepLimit)
           ? vehicle.ambulanceStepLimit
           : null,
@@ -330,20 +408,28 @@ export class BusLoopGame {
       };
     });
     this.mechanicState = {
-      garages: garageContainers.map((container) => ({
-        id: container.id,
-        position: { x: container.x, z: container.z },
-        yaw: container.yaw,
-        vehicleIds: this.level.vehicles
+      garages: garageContainers.map((container) => {
+        const vehicleIds = this.level.vehicles
           .filter((vehicle) => (
             isGarageType(vehicle.containerType)
             && Number(vehicle.containerId) === Number(container.id)
           ))
-          .map((vehicle) => vehicle.id),
-        exitingVehicleId: null,
-        lastOutVehicleId: null,
-        hidden: false
-      })),
+          .map((vehicle) => vehicle.id);
+        return {
+          id: container.id,
+          position: { x: container.x, z: container.z },
+          yaw: container.yaw,
+          vehicleIds,
+          // A garage placed without any authored vehicle is a prop, not a
+          // garage that already finished releasing them. Without this flag the
+          // first frame reads its empty queue as "cleared": it disappears and
+          // fires the clear sound before the player touches anything.
+          authoredEmpty: vehicleIds.length === 0,
+          exitingVehicleId: null,
+          lastOutVehicleId: null,
+          hidden: false
+        };
+      }),
       conveyors: conveyorContainers.map((container) => {
         const config = getConveyorMechanicConfig(this.level, container);
         const vehicleIds = this.level.vehicles
@@ -374,7 +460,35 @@ export class BusLoopGame {
           vehicleIds,
           hidden: vehicleIds.length === 0
         };
-      })
+      }),
+      gateQueues: gateContainers.map((container) => {
+        const path = gateQueuePaths.get(Number(container.id)) ?? [];
+        const vehicleIds = sortGateQueueVehicles(
+          this.level.vehicles.filter((vehicle) => (
+            isGateQueueType(vehicle.containerType) && Number(vehicle.containerId) === Number(container.id)
+          )),
+          path
+        ).map((vehicle) => vehicle.id);
+        return {
+          id: container.id,
+          position: { x: container.x, z: container.z },
+          yaw: container.yaw,
+          gap: Math.max(0, Number(container.gateQueueGap) || 0),
+          path: path.map((entry) => ({ ...entry })),
+          vehicleIds
+        };
+      }),
+      elevators: elevatorContainers.map((container) => ({
+        id: container.id,
+        position: { x: container.x, z: container.z },
+        yaw: container.yaw,
+        width: Math.max(0.1, Number(container.elevatorSize?.x) || 1),
+        length: Math.max(0.1, Number(container.elevatorSize?.y) || 2),
+        activeLayer: elevatorActiveLayers.get(Number(container.id)) ?? 0,
+        vehicleIds: this.level.vehicles
+          .filter((vehicle) => isElevatorType(vehicle.containerType) && Number(vehicle.containerId) === Number(container.id))
+          .map((vehicle) => vehicle.id)
+      }))
     };
     this.garageRefreshPending = this.mechanicState.garages.length > 0;
     const spotCount = resolveParkingSpots().count ?? this.level.spotCount;
@@ -391,9 +505,152 @@ export class BusLoopGame {
     }));
     // Match Unity's initial conveyor placement before the first animation tick.
     this.updateConveyors(0);
+    this.layoutGateQueues();
     this.collisionContext = createVehicleCollisionContext(this.level);
     this.lastEvent = { type: 'reset' };
     this.emit();
+  }
+
+  /**
+   * Place every gate queue along its authored lane, head first.
+   *
+   * Advancing one car shortens the line, so the remaining cars move up by the
+   * departed car's footprint plus the authored gap — the same rule the editor
+   * applies when a queue is refreshed.
+   */
+  layoutGateQueues() {
+    let changed = false;
+    for (const gate of this.mechanicState?.gateQueues ?? []) {
+      const ordered = gate.vehicleIds
+        .map((id) => this.getVehicle(id))
+        .filter((vehicle) => vehicle && vehicle.state !== 'done' && vehicle.state !== 'moving-to-spot')
+        .sort((first, second) => first.gateIndex - second.gateIndex);
+      const placements = layoutGateQueue(ordered, gate.path, gate.gap, gateVehicleLength);
+      for (const vehicle of ordered) {
+        const placement = placements.get(vehicle.id);
+        if (!placement) continue;
+        const moved = Math.abs(vehicle.x - placement.x) > 1e-6
+          || Math.abs(vehicle.z - placement.z) > 1e-6
+          || Math.abs(vehicle.yaw - placement.yaw) > 1e-6;
+        if (moved) changed = true;
+        vehicle.x = placement.x;
+        vehicle.z = placement.z;
+        vehicle.yaw = placement.yaw;
+      }
+    }
+    return changed;
+  }
+
+  /**
+   * Renumber a queue after its head left.
+   *
+   * Gate cars stay in the field so the ordinary forward sweep keeps blocking
+   * them; shrinking the lane moves the rest up by one footprint.
+   */
+  refreshGateQueues() {
+    let changed = false;
+    for (const gate of this.mechanicState?.gateQueues ?? []) {
+      const remaining = gate.vehicleIds.filter((id) => {
+        const vehicle = this.getVehicle(id);
+        return Boolean(vehicle && vehicle.state !== 'done');
+      });
+      gate.vehicleIds = remaining;
+      remaining.forEach((id, index) => {
+        const vehicle = this.getVehicle(id);
+        if (!vehicle || vehicle.gateIndex === index) return;
+        vehicle.gateIndex = index;
+        changed = true;
+      });
+    }
+    if (changed) this.layoutGateQueues();
+    return changed;
+  }
+
+  /**
+   * Expose the next floor of an elevator.
+   *
+   * Both floors share one footprint, so exactly one floor may stand in the
+   * collision field at a time. Once the active floor is empty the next one is
+   * promoted and its cars become clickable.
+   */
+  refreshElevators() {
+    let changed = false;
+    for (const elevator of this.mechanicState?.elevators ?? []) {
+      const remaining = elevator.vehicleIds
+        .map((id) => this.getVehicle(id))
+        .filter((vehicle) => vehicle && vehicle.state !== 'done');
+      elevator.vehicleIds = remaining.map((vehicle) => vehicle.id);
+      const activeCars = remaining.filter((vehicle) => vehicle.elevatorLayer === elevator.activeLayer);
+      if (activeCars.length > 0) continue;
+      const nextLayer = firstOccupiedLayer(remaining);
+      if (nextLayer == null || nextLayer === elevator.activeLayer) continue;
+      elevator.activeLayer = nextLayer;
+      this.elevatorActiveLayers.set(Number(elevator.id), nextLayer);
+      for (const vehicle of remaining) {
+        if (vehicle.elevatorLayer !== nextLayer) continue;
+        vehicle.elevatorActive = true;
+        vehicle.state = 'parked';
+        changed = true;
+      }
+    }
+    return changed;
+  }
+
+  /**
+   * How many passengers of a colour are still waiting anywhere.
+   *
+   * The shipped level pack contains colour groups with more seats than
+   * passengers, so a car of that colour can reach a spot and find that nobody
+   * is left to board it. Counting every waiting queue (including passengers
+   * still riding the belt) is what makes the surplus decision safe: a car only
+   * leaves early when its colour is genuinely exhausted.
+   */
+  countPendingPassengers(colorIndex) {
+    const target = Number(colorIndex);
+    let pending = 0;
+    for (const queue of this.queues) {
+      for (const item of queue) {
+        if (Number(item.colorIndex) === target) pending += 1;
+      }
+    }
+    for (const queue of this.sourceQueues) {
+      for (const value of queue) {
+        if (Number(value) === target) pending += 1;
+      }
+    }
+    for (const slot of this.slots) {
+      if (slot.colorIndex != null && Number(slot.colorIndex) === target) pending += 1;
+    }
+    return pending;
+  }
+
+  /**
+   * Colours whose authored cars outnumber their passengers.
+   *
+   * Only these colours can end up with a car that has nobody left to board.
+   * Balanced colours (seats === passengers) are never released early, so the
+   * normal levels keep their original "full load then depart" contract.
+   */
+  surplusColors() {
+    if (this.surplusColorCache) return this.surplusColorCache;
+    const seats = new Map();
+    for (const vehicle of this.level.vehicles ?? []) {
+      const key = Number(vehicle.colorIndex);
+      seats.set(key, (seats.get(key) ?? 0) + (Number(vehicle.seats) || 0));
+    }
+    const passengers = new Map();
+    for (const queue of this.level.passengerQueues ?? []) {
+      for (const colorIndex of queue) {
+        const key = Number(colorIndex);
+        passengers.set(key, (passengers.get(key) ?? 0) + 1);
+      }
+    }
+    const surplus = new Set();
+    for (const [colorIndex, seatCount] of seats) {
+      if (seatCount > (passengers.get(colorIndex) ?? 0)) surplus.add(colorIndex);
+    }
+    this.surplusColorCache = surplus;
+    return surplus;
   }
 
   initializeQueues(
@@ -531,6 +788,17 @@ export class BusLoopGame {
           ...conveyor,
           position: { ...conveyor.position },
           vehicleIds: [...conveyor.vehicleIds]
+        })),
+        gateQueues: (this.mechanicState.gateQueues ?? []).map((gate) => ({
+          ...gate,
+          position: { ...gate.position },
+          path: gate.path.map((entry) => ({ ...entry })),
+          vehicleIds: [...gate.vehicleIds]
+        })),
+        elevators: (this.mechanicState.elevators ?? []).map((elevator) => ({
+          ...elevator,
+          position: { ...elevator.position },
+          vehicleIds: [...elevator.vehicleIds]
         }))
       },
       spots: this.spots.map((spot) => ({ ...spot })),
@@ -587,6 +855,9 @@ export class BusLoopGame {
     const config = getGarageConfig(this.level);
     for (const garage of this.mechanicState.garages) {
       if (garage.hidden || garage.exitingVehicleId != null) continue;
+      // Never authored with vehicles: there is nothing to release and nothing
+      // was cleared, so leave it standing instead of hiding it on frame one.
+      if (garage.authoredEmpty) continue;
       if (garage.vehicleIds.length === 0) {
         garage.hidden = true;
         clearedGarageIds.push(garage.id);
@@ -718,7 +989,6 @@ export class BusLoopGame {
         : `container:${candidate.id}:${candidate.role}`
     ));
   }
-
   consumeAmbulanceStep(dispatchedVehicle) {
     if (dispatchedVehicle.ambulanceActive) dispatchedVehicle.ambulanceActive = false;
     const updates = [];
@@ -836,6 +1106,23 @@ export class BusLoopGame {
       vehicle.conveyorVisible = true;
       vehicle.conveyorExitVisible = false;
     }
+    // The head leaving opens the gate for the car behind it. Dropping it from
+    // the lane list is what lets the queue compact by one footprint.
+    if (vehicle.gateId != null) {
+      const gate = (this.mechanicState.gateQueues ?? [])
+        .find((item) => Number(item.id) === Number(vehicle.gateId));
+      if (gate) gate.vehicleIds = gate.vehicleIds.filter((vehicleId) => vehicleId !== vehicle.id);
+      vehicle.gateIndex = null;
+      vehicle.gatePath = null;
+    }
+    // A lift car leaving frees its floor; the next floor is promoted once the
+    // current one is empty.
+    if (vehicle.elevatorId != null) {
+      const elevator = (this.mechanicState.elevators ?? [])
+        .find((item) => Number(item.id) === Number(vehicle.elevatorId));
+      if (elevator) elevator.vehicleIds = elevator.vehicleIds.filter((vehicleId) => vehicleId !== vehicle.id);
+      vehicle.elevatorActive = false;
+    }
     const target = this.getSpotPosition(spot.index);
     const path = buildRoundedPath(buildToStationPoints(vehicle, target, SCENE_TUNING.vehiclePath), SCENE_TUNING.vehiclePath);
     const stationMotion = getStationMotion(path.length);
@@ -863,6 +1150,10 @@ export class BusLoopGame {
       };
     } else {
       const garageResult = this.refreshGarages();
+      // Dispatching the head of a gate advances the queue, and emptying a
+      // lift floor promotes the next one.
+      this.refreshGateQueues();
+      this.refreshElevators();
       this.lastEvent = this.attachGarageEvents({
         type: 'vehicle-dispatched',
         vehicleId: id,
@@ -899,6 +1190,9 @@ export class BusLoopGame {
       collectGarageEvents(this.refreshGarages());
     }
     changed = this.updateConveyors(delta) || changed;
+    changed = this.layoutGateQueues() || changed;
+    changed = this.refreshGateQueues() || changed;
+    changed = this.refreshElevators() || changed;
 
     for (const vehicle of this.vehicles) {
       if (vehicle.hit && this.time - vehicle.hit.startedAt >= UNITY_VEHICLE_MOTION.hitDuration) {
@@ -976,7 +1270,18 @@ export class BusLoopGame {
       } else if (vehicle.state === 'moving-to-spot') {
         vehicle.motion = clamp01(vehicle.motion + delta / vehicle.motionData.duration);
         if (vehicle.motion >= 1) {
-          Object.assign(vehicle, { state: 'at-spot', motion: 0, motionData: null });
+          // A car whose colour has more seats than passengers can reach a spot
+          // with nobody left to board. It cannot fill up, so it leaves through
+          // the ordinary departure path instead of blocking the spot forever.
+          const surplus = vehicle.boardedGroups < vehicle.seats
+            && this.surplusColors().has(Number(vehicle.colorIndex))
+            && this.countPendingPassengers(vehicle.colorIndex) === 0;
+          Object.assign(vehicle, {
+            state: surplus ? 'boarding-final' : 'at-spot',
+            motion: 0,
+            motionData: null,
+            ...(surplus ? { surplusReleased: true } : {})
+          });
           this.lastEvent = { type: 'vehicle-arrived', vehicleId: vehicle.id, spotIndex: vehicle.spotIndex };
           changed = true;
         }
@@ -1002,6 +1307,7 @@ export class BusLoopGame {
           if (target) target.hit = { startedAt: this.time, ...collision.hitDirection };
           this.recordEvent({
             type: 'vehicle-collision-contact',
+            collisionEventId: ++this.collisionContactEventId,
             vehicleId: vehicle.id,
             targetId: collision.targetId,
             targetContainerId: collision.targetContainerId,
@@ -1340,6 +1646,9 @@ export class BusLoopGame {
   }
 
   checkEndState() {
+    // Every car has to leave, including the ones still queued at a gate or
+    // waiting on the other floor of a lift: those are authored rides, not
+    // scenery, and a level is only cleared when they are gone too.
     if (this.vehicles.every((vehicle) => vehicle.state === 'done') && this.getRemainingGroups() === 0) {
       this.status = 'won';
       this.lastEvent = { type: 'win' };

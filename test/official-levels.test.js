@@ -1,9 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtemp, mkdir, readFile, writeFile } from 'node:fs/promises';
+import { mkdtemp, mkdir, readdir, readFile, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import {
+  OFFICIAL_LEVEL_FILE_PATTERN,
   OFFICIAL_LEVEL_ROOT,
   chapterCode,
   listOfficialChapters,
@@ -183,4 +184,59 @@ test('the editor exposes a dedicated in-game level button and picker', async () 
   assert.match(vite, /listOfficialChapters/);
   assert.match(vite, /readOfficialLevelAsset/);
   assert.match(vite, /\/__official-levels/);
+});
+
+test('gate queue and elevator assets expose their runtime fields', async () => {
+  // E-42 is the only shipped level with elevators; E-31 has gate queues. Both
+  // used to be rejected because their containers are types 4 and 5.
+  const gate = await readFile('official-levels/Level_Escape_E/level31.asset', 'utf8');
+  const gateLevel = parseUnityLevelSource(gate, {
+    fileName: 'level31.asset', key: 'level5031', displayName: 'E-31', baseLevel: {}, validate: false
+  });
+  const gates = gateLevel.containers.filter((container) => container.type === 4);
+  assert.equal(gates.length, 2);
+  for (const container of gates) {
+    assert.ok(container.gateQueuePathPoints.length >= 2, `gate ${container.id} lost its path`);
+    assert.ok(container.gateQueueGap > 0, `gate ${container.id} lost its gap`);
+  }
+
+  const lift = await readFile('official-levels/Level_Escape_E/level42.asset', 'utf8');
+  const liftLevel = parseUnityLevelSource(lift, {
+    fileName: 'level42.asset', key: 'level5042', displayName: 'E-42', baseLevel: {}, validate: false
+  });
+  const elevators = liftLevel.containers.filter((container) => container.type === 5);
+  assert.equal(elevators.length, 2);
+  for (const container of elevators) {
+    assert.ok(container.elevatorSize.x > 0 && container.elevatorSize.y > 0, `elevator ${container.id} lost its size`);
+  }
+  const lowerCars = liftLevel.vehicles.filter((vehicle) => vehicle.elevatorLayer === 1);
+  assert.ok(lowerCars.length > 0, 'the lower floor must survive parsing');
+  // Upper-floor cars carry no flag, so ordinary levels stay byte-identical.
+  assert.ok(liftLevel.vehicles.some((vehicle) => vehicle.elevatorLayer === undefined));
+});
+
+test('every shipped official level passes import validation', async () => {
+  // Guards the loosened rules: surplus seats and container types 4/5 must all
+  // be accepted, otherwise the picker shows "暂不支持" again.
+  const { validateUnityLevelSource } = await import('../scripts/unity-level-importer.mjs');
+  for (const [chapter, dir] of [['A', 'Level_Escape_A'], ['B', 'Level_Escape_B'], ['E', 'Level_Escape_E']]) {
+    const files = (await readdir(path.join('official-levels', dir)))
+      .filter((name) => OFFICIAL_LEVEL_FILE_PATTERN.test(name));
+    assert.ok(files.length > 0, `chapter ${chapter} has no assets`);
+    for (const fileName of files) {
+      const match = OFFICIAL_LEVEL_FILE_PATTERN.exec(fileName);
+      const guide = Boolean(match[1]);
+      const key = officialLevelKey(chapter, Number(match[2]), { guide });
+      const source = await readFile(path.join('official-levels', dir, fileName), 'utf8');
+      assert.doesNotThrow(
+        () => validateUnityLevelSource({
+          filename: fileName,
+          source,
+          targetKey: key,
+          displayName: officialLevelDisplayName(chapter, Number(match[2]), { guide })
+        }),
+        `${dir}/${fileName} must import`
+      );
+    }
+  }
 });

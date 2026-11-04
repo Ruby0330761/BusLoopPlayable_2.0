@@ -341,3 +341,27 @@ test('garage hides after its final vehicle finishes leaving', () => {
   assert.deepEqual(garage.vehicleIds, []);
   assert.deepEqual(game.lastEvent.garageClearedIds, [1]);
 });
+
+test('a garage authored with no vehicles stays visible and blocks nothing', () => {
+  const game = new BusLoopGame(createGarageLevel({
+    // One parked car sits right where the garage volume would be, so the case
+    // proves both halves: the prop garage must not hide itself on frame one and
+    // must not turn into a permanent blocker over the car field.
+    vehicles: [
+      { id: 3, seats: 4, colorIndex: 2, x: 0, z: 0.2, yaw: 90, containerType: 1, containerId: 0 }
+    ]
+  }));
+  const garage = game.mechanicState.garages[0];
+  assert.equal(garage.authoredEmpty, true);
+  assert.deepEqual(garage.vehicleIds, []);
+
+  game.update(0.1);
+  assert.equal(garage.hidden, false);
+  assert.equal(game.lastEvent?.garageClearedIds, undefined);
+  assert.equal(game.frameAudioEvents.some((event) => event.garageClearedIds?.length), false);
+  assert.equal(game.snapshot().mechanicState.garages[0].hidden, false);
+
+  for (let index = 0; index < 20; index += 1) game.update(0.1);
+  assert.equal(garage.hidden, false);
+  assert.equal(game.collisionContext.canVehicleDriveOut(game, 3), true);
+});

@@ -10,6 +10,8 @@
 // game.
 
 import { VEHICLE_COLOR_OPTIONS } from './level-editor-model.js';
+import { SCENE_TUNING } from './scene-tuning.js';
+import { displayVehicleSize, vehicleAreaTransformFor } from './vehicle-area-transform.js';
 
 // Seat count drives the footprint: a 10-seat bus is visibly longer than a
 // 4-seat car, and drawing them alike would misrepresent how tightly a field packs.
@@ -35,7 +37,18 @@ export function resolveVehicleSize(vehicle) {
   return SEAT_SIZES[vehicle?.seats] ?? FALLBACK_SIZE;
 }
 
+// What a thumbnail should draw: the playable's model footprint, not the
+// collision box. A card drawn from collision boxes leaves visible gaps between
+// cars that the game does not have.
+export function resolveDisplayVehicleSize(vehicle, area = SCENE_TUNING.vehicleArea) {
+  return displayVehicleSize(vehicle, area);
+}
+
 export function resolveVehicleColor(vehicle) {
+  // Authored recolours (the red/green rescue boards, for example) override the
+  // atlas colour; ignoring them painted a red-and-green board pink.
+  const override = vehicle?.colorOverrides?.body;
+  if (typeof override === 'string' && /^#[0-9a-f]{6}$/i.test(override)) return override;
   return COLOR_BY_ID.get(vehicle?.colorIndex) ?? UNKNOWN_VEHICLE_COLOR;
 }
 
@@ -43,15 +56,32 @@ function round(value) {
   return Math.round(value * 1000) / 1000;
 }
 
+function lightenHex(color, amount) {
+  const match = /^#([0-9a-f]{6})$/i.exec(String(color ?? ''));
+  if (!match) return color;
+  const value = Number.parseInt(match[1], 16);
+  const channels = [(value >> 16) & 255, (value >> 8) & 255, value & 255];
+  return `#${channels
+    .map((channel) => Math.round(channel + (255 - channel) * amount).toString(16).padStart(2, '0'))
+    .join('')}`;
+}
+
 // Bounds come from the vehicles only. A level's splinePoints sit far away in
 // world space (the conveyor runs at z≈15 while the parked field sits near z≈0),
 // so including them would stretch the frame by ~20 units and squash the cars
 // into an unreadable smudge. The belt is conveyed by a labelled strip instead.
-export function computeLayoutBounds(level) {
+export function computeLayoutBounds(level, transform = null) {
   const xs = [];
   const zs = [];
   for (const vehicle of level?.vehicles ?? []) {
-    if (Number.isFinite(vehicle?.x) && Number.isFinite(vehicle?.z)) {
+    if (!Number.isFinite(vehicle?.x) || !Number.isFinite(vehicle?.z)) continue;
+    if (transform) {
+      // Bounds must be taken after the same authored→runtime mapping the cars
+      // are drawn with, or the frame is computed for a field that is not there.
+      const point = transform.point(vehicle.x, vehicle.z);
+      xs.push(point.x);
+      zs.push(point.z);
+    } else {
       xs.push(vehicle.x);
       zs.push(vehicle.z);
     }
@@ -82,18 +112,33 @@ export function createProjection(bounds, width, height, pad = 10) {
     point(x, z) {
       return {
         x: offsetX + (x - bounds.minX) * scale,
-        // SVG grows downward, so z is flipped to keep +Z at the top.
-        y: offsetY + (bounds.maxZ - z) * scale
+        // The playable camera sits on the field's +Z side looking back, so on
+        // screen +Z runs DOWN — the same direction SVG grows. Flipping here
+        // (the old `maxZ - z`) mirrored every thumbnail vertically.
+        y: offsetY + (z - bounds.minZ) * scale
       };
     }
   };
 }
 
-export function vehiclePolygon(vehicle, project) {
-  const { width, length } = resolveVehicleSize(vehicle);
+// A thumbnail has to agree with the playable, so a raw authored (x, z, yaw)
+// goes through the same authored→runtime transform the scene uses before it is
+// projected. Callers that already hold runtime poses (or deliberately want
+// authoring space) can pass `identityTransform`.
+function poseOf(vehicle, transform) {
+  if (!transform) return { x: vehicle.x, z: vehicle.z, yaw: vehicle.yaw ?? 0 };
+  const point = transform.point(vehicle.x, vehicle.z);
+  return { x: point.x, z: point.z, yaw: transform.yaw(vehicle.yaw) };
+}
+
+export const IDENTITY_TRANSFORM = null;
+
+export function vehiclePolygon(vehicle, project, transform = null) {
+  const pose = poseOf(vehicle, transform);
+  const { width, length } = resolveDisplayVehicleSize(vehicle);
   const halfWidth = width / 2;
   const halfLength = length / 2;
-  const radians = (vehicle?.yaw ?? 0) * Math.PI / 180;
+  const radians = (pose.yaw ?? 0) * Math.PI / 180;
   const sin = Math.sin(radians);
   const cos = Math.cos(radians);
   // Forward (+Z at yaw 0) and rightward (+X at yaw 0) unit vectors.
@@ -108,8 +153,51 @@ export function vehiclePolygon(vehicle, project) {
     [-halfLength, halfWidth]
   ];
   return corners.map(([along, across]) => {
-    const worldX = vehicle.x + forwardX * along + rightX * across;
-    const worldZ = vehicle.z + forwardZ * along + rightZ * across;
+    const worldX = pose.x + forwardX * along + rightX * across;
+    const worldZ = pose.z + forwardZ * along + rightZ * across;
+    const projected = project.point(worldX, worldZ);
+    return `${round(projected.x)},${round(projected.y)}`;
+  }).join(' ');
+}
+
+// The overview cards use the same top-down car as the authoring canvas: a
+// cabin roof plus a nose arrow. A bare rectangle made the card unreadable at
+// 260px wide, where a car is only a few pixels across.
+export function vehicleCabinRect(vehicle, project, transform = null) {
+  const pose = poseOf(vehicle, transform);
+  const { width, length } = resolveDisplayVehicleSize(vehicle);
+  const seats = Number(vehicle?.seats);
+  const roofRatio = seats === 10 ? 0.78 : seats === 6 ? 0.72 : 0.6;
+  const frontRatio = seats === 10 ? 0.42 : seats === 6 ? 0.34 : 0.26;
+  const rearRatio = seats === 10 ? 0.42 : seats === 6 ? 0.36 : 0.3;
+  const halfWidth = (width * roofRatio) / 2;
+  const top = -length * frontRatio;
+  const bottom = length * rearRatio;
+  const radians = (pose.yaw ?? 0) * Math.PI / 180;
+  const sin = Math.sin(radians);
+  const cos = Math.cos(radians);
+  return [
+    [-halfWidth, top], [halfWidth, top], [halfWidth, bottom], [-halfWidth, bottom]
+  ].map(([across, along]) => {
+    const worldX = pose.x + sin * along + cos * across;
+    const worldZ = pose.z + cos * along - sin * across;
+    const projected = project.point(worldX, worldZ);
+    return `${round(projected.x)},${round(projected.y)}`;
+  }).join(' ');
+}
+
+export function vehicleArrowPoints(vehicle, project, transform = null) {
+  const pose = poseOf(vehicle, transform);
+  const { length } = resolveDisplayVehicleSize(vehicle);
+  const radians = (pose.yaw ?? 0) * Math.PI / 180;
+  const sin = Math.sin(radians);
+  const cos = Math.cos(radians);
+  const tip = -length * 0.44;
+  const base = -length * 0.2;
+  const half = length * 0.11;
+  return [[0, tip], [-half, base], [half, base]].map(([across, along]) => {
+    const worldX = pose.x + sin * along + cos * across;
+    const worldZ = pose.z + cos * along - sin * across;
     const projected = project.point(worldX, worldZ);
     return `${round(projected.x)},${round(projected.y)}`;
   }).join(' ');
@@ -171,9 +259,15 @@ export function renderLevelSvg(level, {
   height = 200,
   pad = 10,
   className = 'level-thumb',
-  ariaLabel = null
+  ariaLabel = null,
+  // Thumbnails default to the playable's own mapping so an overview card and
+  // the phone preview show the same board. Pass `null` for raw authoring space.
+  transform = undefined
 } = {}) {
-  const bounds = computeLayoutBounds(level);
+  const areaTransform = transform === undefined
+    ? vehicleAreaTransformFor(SCENE_TUNING.vehicleArea)
+    : transform;
+  const bounds = computeLayoutBounds(level, areaTransform);
   const project = createProjection(bounds, width, height, pad);
   const bays = parkingBayPolygons(level, project)
     .map((points) => `<polygon points="${points}" class="${className}__bay" />`)
@@ -182,7 +276,12 @@ export function renderLevelSvg(level, {
     const classes = [`${className}__car`];
     if (vehicle.isHidden) classes.push(`${className}__car--hidden`);
     if (vehicle.isTurnVehicle) classes.push(`${className}__car--turn`);
-    return `<polygon points="${vehiclePolygon(vehicle, project)}" fill="${resolveVehicleColor(vehicle)}" class="${classes.join(' ')}" />`;
+    const color = resolveVehicleColor(vehicle);
+    return `<g class="${classes.join(' ')}">`
+      + `<polygon points="${vehiclePolygon(vehicle, project, areaTransform)}" fill="${color}" />`
+      + `<polygon points="${vehicleCabinRect(vehicle, project, areaTransform)}" fill="${lightenHex(color, 0.22)}" />`
+      + `<polygon points="${vehicleArrowPoints(vehicle, project, areaTransform)}" fill="#ffffff" />`
+      + '</g>';
   }).join('');
   const label = ariaLabel ?? `${level?.displayName ?? level?.key ?? ''} 布局`;
   const emptyLabel = vehicles
@@ -220,8 +319,7 @@ export function levelSvgStyles(className = 'level-thumb', palette = {}) {
     + `.${className}__bay { fill: none; stroke: ${colors.bay}; stroke-width: 0.8; stroke-dasharray: 2 2; }`
     + `.${className}__car { stroke: rgba(0,0,0,0.45); stroke-width: 0.5; }`
     + `.${className}__car--hidden { stroke: ${colors.hidden}; stroke-width: 1.2; }`
-    + `.${className}__car--turn { stroke: ${colors.turn}; stroke-width: 1.2; }`
-    + `.${className}__empty { fill: ${colors.empty}; font-size: 11px; }`;
+    + `.${className}__car--turn { stroke: ${colors.turn}; stroke-width: 1.2; }`    + `.${className}__empty { fill: ${colors.empty}; font-size: 11px; }`;
 }
 
 export function escapeXml(value) {

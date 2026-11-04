@@ -19,6 +19,7 @@ function makeLevelSource({
   garageVehicleIds = [],
   conveyorVehicleIds = [],
   conveyorSection = '  conveyorBelts: []',
+  containerSection = '',
   passengerColors = [2, 2, 2, 2],
   mechanismSection = '  vehicleExt: []',
   ambulanceSection = '  vehicleAmbulances: []',
@@ -61,7 +62,7 @@ ${garageVehicleIds.length > 0 ? `  - id: 1
     position: {x: 0, y: 0, z: -1}
     rotation: {x: 0, y: 0, z: 0, w: 1}
 ${conveyorSection}
-` : ''}${mechanismSection}
+` : ''}${containerSection}${mechanismSection}
   vehicleLinkages: []
   vehicleWrenches: []
   vehicleCombinations: []
@@ -136,7 +137,7 @@ test('accepts arbitrary Unity asset filenames and rejects unsafe paths or extens
   assert.equal(customAssetName.sourceName, 'custom');
 });
 
-test('rejects duplicate vehicle ids and passenger-seat mismatches', () => {
+test('rejects duplicate vehicle ids and a real seat shortage', () => {
   assert.throws(
     () => validateUnityLevelSource({
       filename: 'level19.asset',
@@ -144,13 +145,52 @@ test('rejects duplicate vehicle ids and passenger-seat mismatches', () => {
     }),
     /Vehicle id 1 is duplicated/
   );
+  // Fewer seats than passengers can never be won: someone has nowhere to sit.
   assert.throws(
     () => validateUnityLevelSource({
       filename: 'level19.asset',
-      source: makeLevelSource({ passengerColors: [2, 2, 2] })
+      source: makeLevelSource({ vehicleIds: [1], passengerColors: Array(6).fill(2) })
     }),
-    /4 seats but 3 passengers/
+    /4 seats but 6 passengers/
   );
+});
+
+test('accepts surplus seats, which the shipped pack authors on purpose', () => {
+  // E-38 and A/B-165 carry more seats than passengers for some colours. The
+  // runtime releases those cars once their colour is exhausted, so the import
+  // must not reject the level.
+  const result = validateUnityLevelSource({
+    filename: 'level19.asset',
+    source: makeLevelSource({ passengerColors: [2, 2] })
+  });
+  assert.equal(result.vehicleCount, 1);
+  assert.equal(result.passengerCount, 2);
+});
+
+test('accepts gate queue and elevator containers', () => {
+  const gate = validateUnityLevelSource({
+    filename: 'level19.asset',
+    source: makeLevelSource({ containerSection: `  - id: 5
+    type: 4
+    position: {x: 1, y: 0, z: 0}
+    rotation: {x: 0, y: 0, z: 0, w: 1}
+    gateQueuePathShape: 0
+    gateQueueLocked: 1
+    gateQueueGap: 0.1
+    gateQueuePathPoints:
+    - {x: 1, y: 0, z: 0}
+    - {x: 0, y: 0, z: 0}` })
+  });
+  assert.equal(gate.containerCount, 2);
+  const elevator = validateUnityLevelSource({
+    filename: 'level19.asset',
+    source: makeLevelSource({ containerSection: `  - id: 5
+    type: 5
+    position: {x: 1, y: 0, z: 0}
+    rotation: {x: 0, y: 0, z: 0, w: 1}
+    elevatorSize: {x: 2, y: 1}` })
+  });
+  assert.equal(elevator.containerCount, 2);
 });
 
 test('rejects missing required top-level values', () => {

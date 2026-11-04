@@ -7,6 +7,23 @@ export function isPreRollAssetPath(value) {
   return typeof value === 'string' && PRE_ROLL_ASSET_PATTERN.test(value.trim());
 }
 
+// A session can opt out of the pre-roll (`preRollEnabled: false`), which the
+// runtime applies by zeroing `SCENE_TUNING.preRoll.enabled`. The packager and
+// the static checker have to resolve the same answer, otherwise they inline a
+// video the runtime never plays: a Q24-shaped session shipped 519 KB of MP4
+// that was dead weight, and only a size audit noticed.
+export function resolvePreRollEnabled(tuning = {}, activeSession = null) {
+  if (activeSession?.preRollEnabled === false) return false;
+  return Boolean(Number(tuning.enabled));
+}
+
+export function resolvePreRollAsset(tuning = {}, activeSession = null) {
+  if (!resolvePreRollEnabled(tuning, activeSession)) return null;
+  const asset = typeof tuning.asset === 'string' ? tuning.asset.trim() : '';
+  if (!isPreRollAssetPath(asset) && !EMBEDDED_VIDEO_PATTERN.test(asset)) return null;
+  return asset;
+}
+
 function clamp(value, min, max, fallback) {
   const number = Number(value);
   return Number.isFinite(number) ? Math.max(min, Math.min(max, number)) : fallback;

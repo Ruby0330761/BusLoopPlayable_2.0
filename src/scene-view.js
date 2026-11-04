@@ -1525,11 +1525,17 @@ export function shouldShowVehicleGuideHand({
 export function shouldBlockVehicleInput({
   firstClickGuideEnabled,
   firstClickGuideDuration,
+  firstClickGuideLockInput,
   time,
   entryBannerActive
 } = {}) {
   const duration = Math.max(0, Number(firstClickGuideDuration) || 0);
-  const firstClickGuideActive = Boolean(firstClickGuideEnabled) && duration > 0
+  // The spotlight does not have to lock the board. Centre-rescue levels put it
+  // on a car that is deliberately unreachable at the start, so locking input for
+  // its duration would freeze the game for those seconds with no car available
+  // to tap. Levels whose guide really is the opening move can still opt in.
+  const lockInput = Boolean(Number(firstClickGuideLockInput));
+  const firstClickGuideActive = Boolean(firstClickGuideEnabled) && duration > 0 && lockInput
     && (Number(time) || 0) <= duration;
   return firstClickGuideActive || Boolean(entryBannerActive);
 }
@@ -5174,10 +5180,15 @@ export class SceneView {
       const garageMotionVisible = vehicle.state !== 'leaving-garage'
         || (vehicle.motionData?.elapsed ?? 0) >= (vehicle.motionData?.delay ?? 0);
       const conveyorVisible = !isConveyorType(vehicle.containerType) || vehicle.conveyorVisible !== false;
+      // A lift stacks two floors in one footprint. Only the active floor stands
+      // in the field, so the other floor's cars must not be drawn at all —
+      // showing them would paint two cars on top of each other.
+      const elevatorVisible = vehicle.state !== 'in-elevator';
       view.visible = vehiclesVisible
         && !['done', 'in-garage'].includes(vehicle.state)
         && garageMotionVisible
-        && conveyorVisible;
+        && conveyorVisible
+        && elevatorVisible;
       const activeHit = Boolean(
         vehicle.hit
         && snapshot.time - vehicle.hit.startedAt < UNITY_VEHICLE_MOTION.hitDuration
@@ -5620,6 +5631,7 @@ export class SceneView {
     return shouldBlockVehicleInput({
       firstClickGuideEnabled: guide.enabled,
       firstClickGuideDuration: guide.durationSeconds,
+      firstClickGuideLockInput: guide.lockInput,
       time: snapshot?.time,
       entryBannerActive: this.entryBannerState
     });
@@ -6068,6 +6080,9 @@ export class SceneView {
     this.pointer.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
     this.raycaster.setFromCamera(this.pointer, this.camera);
     const pickMeshes = [...this.vehicleViews.values()]
+      // Raycaster ignores `visible`, so a car parked on the inactive elevator
+      // floor would still swallow taps meant for the floor that is drawn.
+      .filter((view) => view.visible)
       .flatMap((view) => view.userData.pickMeshes ?? view.userData.bodyMeshes ?? []);
     const hits = this.raycaster.intersectObjects(pickMeshes, true);
     let object = hits[0]?.object;

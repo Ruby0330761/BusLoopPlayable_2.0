@@ -518,6 +518,11 @@ export class VehicleCollisionContext {
 
     for (const garage of garages) {
       if (garage.hidden && garage.vehicleIds.length === 0 && garage.exitingVehicleId == null) continue;
+      // Placed with no vehicles inside: it is decorative while editing. Giving
+      // it a door and a solid body would let a prop parked over the car field
+      // permanently block those cars, so it stays out of the blocker graph
+      // until an operator puts vehicles in it.
+      if (garage.authoredEmpty) continue;
       const geometry = createGarageGeometry(this.level, garage, maximumVehicleSize);
       if (!geometry) continue;
       const nodes = {};

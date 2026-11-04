@@ -37,8 +37,12 @@ const PLATFORM_FORMATS = Object.freeze({
   tiktok: 'zip'
 });
 export const PLAYABLE_NAMING_PATTERN = 'requirement-material-iteration-N-language-format-designer-requester-channel-steps-stamina';
+// The Bus branding variant prints as the delivery requirement prefix (`BL`) in
+// every artifact name. It used to print as `bus`, so the download container and
+// the check reports disagreed with the packaged files they described.
+export const BUS_BRANDING_LABEL = 'BL';
 export const PLAYABLE_BRANDING_VARIANTS = Object.freeze([
-  // One Bus package serves both stores. The icon is not baked per variant any
+  // One BL package serves both stores. The icon is not baked per variant any
   // more: both art files ship inside the single build and the runtime picks one
   // from the device UA, exactly like it already picks the store link. Splitting
   // Android and iOS into separate downloads doubled the upload work for files
@@ -52,6 +56,9 @@ export const PLAYABLE_BRANDING_VARIANTS = Object.freeze([
       android: '/assets/icon-android.jpg',
       ios: '/assets/icon-ios.png'
     }),
+    // BL and BFT are different games: a BL package must never carry the BFT
+    // wordmark just because the editor preview was left on the other brand.
+    logoAsset: '/assets/main-loading-icon-small.png',
     // Both UAs must pass: the same file is uploaded to both stores.
     runtimeDevices: Object.freeze(['android', 'ios'])
   })
@@ -80,6 +87,14 @@ export const PLAYABLE_BRANDING_SETS = Object.freeze({
       id: 'crowd',
       suffix: '-Crowd',
       iconAsset: '/assets/icon-crowd.jpg',
+      // Both store slots point at the same art. This is not cosmetic: the base
+      // tuning carries Bus's per-device icons, and the workspace applies tuning by
+      // deep-merging, which cannot remove a key. Without an explicit override a
+      // Crowd build kept the Bus icon and the runtime picked it by user agent.
+      iconAssets: Object.freeze({
+        android: '/assets/icon-crowd.jpg',
+        ios: '/assets/icon-crowd.jpg'
+      }),
       logoAsset: '/assets/main-loading-icon-crowd.webp',
       storeLinks: CROWD_STORE_LINKS,
       runtimeDevices: Object.freeze(['android', 'ios']),
@@ -135,6 +150,31 @@ export function validateExportNamingPart(value, location = 'export naming field'
   return normalized;
 }
 
+// Delivery package / folder label: `<requirement>-<YYYYMMDD>-<designer>`, e.g.
+// `BL-2610296-20261102-WXJ`. This is the hand-over name an operator types into
+// the NAS folder; the files *inside* keep the 11-segment requirement-sheet name.
+export function buildDeliveryPackageLabel({
+  requirementCode,
+  designer,
+  deliveryDate = null,
+  now = new Date()
+} = {}) {
+  const requirement = String(requirementCode ?? '').trim();
+  const owner = String(designer ?? '').trim();
+  if (!requirement || !owner) return '';
+  const date = deliveryDate
+    ? String(deliveryDate).replaceAll('-', '')
+    : `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}`;
+  if (!/^\d{8}$/u.test(date)) {
+    throw new TypeError(`Delivery package date must be YYYYMMDD or YYYY-MM-DD; received ${deliveryDate}.`);
+  }
+  const label = `${requirement}-${date}-${owner}`;
+  if (!/^[A-Za-z0-9._-]+$/u.test(label)) {
+    throw new TypeError(`Delivery package label contains unsupported characters: ${label}`);
+  }
+  return label;
+}
+
 export function buildPlayableArtifactName(tuning, platform, suffix = '', { compactGoogleAds = false } = {}) {
   if (!SUPPORTED_PLATFORMS.includes(platform)) {
     throw new TypeError(`Unsupported playable platform: ${platform ?? '<missing>'}.`);
@@ -164,7 +204,11 @@ export function buildPlayableArtifactName(tuning, platform, suffix = '', { compa
     ['requester', safeNaming.requester],
     [`channels.${platform}`, channels[platform]],
     ['steps', safeNaming.steps || 'N'],
-    ['stamina', safeNaming.stamina || 'N']
+    // The last segment is the delivery version tag: N = plain, B = background
+    // music, T = pre-roll TP1326, BT = both. The requirement sheet's naming
+    // convention is "change the trailing -N", so one segment carries it rather
+    // than adding new fields to the middle of the name.
+    ['version', safeNaming.version || 'N']
   ].map(([key, value]) => [key, validateExportNamingPart(value, `tuning.exportNaming.${key}`)]);
   const channelKey = `channels.${platform}`;
   const buildBaseName = (selectedParts) => {
@@ -179,8 +223,8 @@ export function buildPlayableArtifactName(tuning, platform, suffix = '', { compa
   let finalBaseName = platform === 'mintegral'
     ? `${baseName}${suffix}`.replaceAll('-', '_')
     : `${baseName}${suffix}`;
-  if (platform === 'google-ads' && finalBaseName.length > 50) {
-    throw new TypeError(`Google Ads export name must not exceed 50 characters; received ${finalBaseName.length}.`);
+  if (platform === 'google-ads' && finalBaseName.length > 128) {
+    throw new TypeError(`Google Ads export name must not exceed 128 characters; received ${finalBaseName.length}.`);
   }
   if (finalBaseName.length > MAX_EXPORT_NAME_LENGTH) {
     throw new TypeError(`Playable export name must not exceed ${MAX_EXPORT_NAME_LENGTH} characters.`);
@@ -1049,7 +1093,7 @@ async function buildOne({
     platform,
     artifactPath,
     reportRoot: path.join(stageRoot, 'reports'),
-    reportLabel: brandingVariant ? `${platform}-${brandingVariant}` : platform,
+    reportLabel: brandingVariant ? `${platform}-${brandingVariant === 'bus' ? BUS_BRANDING_LABEL : brandingVariant}` : platform,
     signal,
     cachedRuntimeReport,
     skipRuntime,
@@ -1126,12 +1170,31 @@ async function listPlayableSessionLevelPaths(projectRoot) {
     .map((levelKey) => path.join(projectRoot, 'artifacts', 'web-levels', `${levelKey}.json`));
 }
 
-function applySessionExportNaming(tuning, sessionConfig) {
-  const naming = sessionConfig?.session?.exportNaming;
-  if (!naming || !isPlainObject(naming) || Object.keys(naming).length === 0) return tuning;
+// Naming fields a build request can override after any branding-set default.
+function applyNamingOverride(tuning, namingOverride) {
+  if (!namingOverride) return tuning;
+  const entries = Object.entries(namingOverride)
+    .filter(([, value]) => typeof value === 'string' && value.trim());
+  if (!entries.length) return tuning;
   return {
     ...tuning,
-    exportNaming: { ...(tuning?.exportNaming ?? {}), ...naming }
+    exportNaming: { ...(tuning?.exportNaming ?? {}), ...Object.fromEntries(entries) }
+  };
+}
+
+function applySessionExportNaming(tuning, sessionConfig, { keepMaterialCode = false } = {}) {
+  const naming = sessionConfig?.session?.exportNaming;
+  if (!naming || !isPlainObject(naming) || Object.keys(naming).length === 0) return tuning;
+  // The session pins the material code so an unsuffixed export still gets the
+  // right one. A CLI variant that names its own material code must win, or every
+  // variant of that session collapses onto the same number.
+  const merged = keepMaterialCode
+    ? Object.fromEntries(Object.entries(naming).filter(([key]) => key !== 'materialCode'))
+    : naming;
+  if (Object.keys(merged).length === 0) return tuning;
+  return {
+    ...tuning,
+    exportNaming: { ...(tuning?.exportNaming ?? {}), ...merged }
   };
 }
 
@@ -1258,7 +1321,7 @@ async function mapWithConcurrency(items, concurrency, operation) {
   return results;
 }
 
-async function exportPlatforms({ projectRoot, tuning, levelDocument = null, platforms, outputDir, signal, variants = null, skipRuntime = false, skipChecks = false }) {
+async function exportPlatforms({ projectRoot, tuning, levelDocument = null, platforms, outputDir, signal, variants = null, skipRuntime = false, skipChecks = false, keepMaterialCode = false, namingOverride = null }) {
   const resolvedRoot = path.resolve(projectRoot);
   const template = await loadTemplate(resolvedRoot);
   const sessionConfig = await readPlayableSessionConfig(resolvedRoot);
@@ -1266,7 +1329,10 @@ async function exportPlatforms({ projectRoot, tuning, levelDocument = null, plat
   let outputNames;
   try {
     safeTuning = validateTuning(
-      applySessionExportNaming(tuning ?? template, sessionConfig),
+      applyNamingOverride(
+        applySessionExportNaming(tuning ?? template, sessionConfig, { keepMaterialCode }),
+        namingOverride
+      ),
       template
     );
     outputNames = buildPlayableArtifactNames(safeTuning, platforms);
@@ -1304,9 +1370,10 @@ async function exportPlatforms({ projectRoot, tuning, levelDocument = null, plat
     let sourceVariantTuning = cachedSources?.sourceVariantTuning ?? null;
     for (let variantIndex = 0; variantIndex < buildVariants.length; variantIndex += 1) {
       const variant = buildVariants[variantIndex];
-      const variantTuning = variant.id
-        ? createBrandingVariantTuning(safeTuning, variant.id)
-        : safeTuning;
+      const variantTuning = applyNamingOverride(
+        variant.id ? createBrandingVariantTuning(safeTuning, variant.id) : safeTuning,
+        namingOverride
+      );
       const reusesBuiltSources = reusableSources && variantIndex > 0;
       if (!reusesBuiltSources && !cachedSources) {
         if (variant.id) await applyWorkspaceTuning(workspace.workRoot, variantTuning);
@@ -1378,11 +1445,13 @@ async function exportPlatforms({ projectRoot, tuning, levelDocument = null, plat
       workspace,
       stageRoot,
       skill,
-      // Report the tuning the artifacts were actually built from. A branding set
-      // that carries its own identity (Crowd uses requirement code BFT) has to
-      // show up in the manifest too, or the sheet and the file names disagree.
+      // Report the tuning the artifacts were actually built from, including any
+      // CLI naming override. A branding set that carries its own identity (Crowd
+      // uses requirement code BFT) still resolves first, then the build request
+      // wins -- that order is what made the manifest disagree with the file
+      // names and with the tuning baked into the packages.
       tuning: buildVariants.length === 1 && buildVariants[0].id
-        ? createBrandingVariantTuning(safeTuning, buildVariants[0].id)
+        ? applyNamingOverride(createBrandingVariantTuning(safeTuning, buildVariants[0].id), namingOverride)
         : safeTuning,
       zipTimestamp,
       sourceCacheHit: Boolean(cachedSources)
@@ -1406,6 +1475,9 @@ export async function exportPlayablePackage({
   outputDir,
   signal,
   skipChecks = false,
+  keepMaterialCode = false,
+  namingOverride = null,
+  noBrandingSuffix = false,
   brandingSet = DEFAULT_PLAYABLE_BRANDING_SET
 } = {}) {
   if (!SUPPORTED_PLATFORMS.includes(platform)) {
@@ -1423,21 +1495,30 @@ export async function exportPlayablePackage({
     outputDir: destinationRoot,
     signal,
     skipChecks,
-    // Bus Fever keeps the historical single build that follows the editor's
-    // Icon/Logo pickers. Crowd is one Android+iOS package, so it must always
-    // bake the Crowd art even when the editor preview shows the other brand.
-    variants: brandingSet === DEFAULT_PLAYABLE_BRANDING_SET
-      ? null
-      : variants.map(({ id, suffix }) => ({ id, suffix }))
+    keepMaterialCode,
+    namingOverride,
+    // Every set is built through its branding variant, BL included. BL is one
+    // Android+iOS package: the variant bakes both store icons into the same HTML
+    // and the runtime picks one from the device UA, so the editor's Icon 版本
+    // picker can never ship a package where Android players see the iOS badge.
+    // BFT likewise always bakes its own art even when the preview shows BL.
+    variants: variants.map(({ id, suffix, runtimeDevices }) => ({
+      id,
+      suffix: noBrandingSuffix ? '' : suffix,
+      runtimeDevices
+    }))
   });
   try {
     const [result] = built.results;
     const filePath = await publish(result.filePath, path.join(destinationRoot, result.fileName));
     const publishedIdentity = await verifyPublishedArtifact(filePath, result, `${platform} artifact`);
     // A Crowd run of the same platform must not overwrite the Bus check reports.
+    // The label follows the delivery requirement code when the build defines one,
+    // so `applovin-BFT-2610293-*` matches the artifact it describes.
+    const requirementPrefix = String(built.tuning?.exportNaming?.requirementCode ?? '').trim();
     const reportLabel = brandingSet === DEFAULT_PLAYABLE_BRANDING_SET
       ? platform
-      : `${platform}-${brandingSet}`;
+      : `${platform}-${requirementPrefix || brandingSet}`;
     const reportPaths = await publishCheckReports(result.checkSummary, destinationRoot, reportLabel);
     return {
       ...result,
@@ -1459,6 +1540,10 @@ export async function exportAllPlayablePackages({
   outputDir,
   signal,
   skipChecks = false,
+  keepMaterialCode = false,
+  namingOverride = null,
+  noBrandingSuffix = false,
+  deliveryDate = null,
   brandingSet = DEFAULT_PLAYABLE_BRANDING_SET
 } = {}) {
   const destinationRoot = path.resolve(outputDir ?? path.join(projectRoot, 'artifacts', 'playable-exports'));
@@ -1472,12 +1557,20 @@ export async function exportAllPlayablePackages({
     signal,
     // The device list travels with the variant: one Bus package is uploaded to
     // both stores, so both UAs must be smoked here too.
-    variants: brandingVariants.map(({ id, suffix, runtimeDevices }) => ({ id, suffix, runtimeDevices })),
+    // A product that carries its own identity in the file name (BFT) does not
+    // want the branding-set suffix appended as well.
+    variants: brandingVariants.map(({ id, suffix, runtimeDevices }) => ({
+      id,
+      suffix: noBrandingSuffix ? '' : suffix,
+      runtimeDevices
+    })),
     // Runtime smoke is part of the online editor's export contract. The remote
     // fast flag may reuse the Google Ads backup image, but must not publish an
     // artifact whose JavaScript path was never exercised.
     skipRuntime: process.env.PLAYABLE_EXPORT_SKIP_RUNTIME === '1',
-    skipChecks
+    skipChecks,
+    keepMaterialCode,
+    namingOverride
   });
   try {
     const checksSkipped = built.results.some(({ checkSummary }) => checkSummary.conclusion === 'SKIPPED_LOCAL_CHECKS');
@@ -1512,9 +1605,23 @@ export async function exportAllPlayablePackages({
       }))
     };
     await writeFile(path.join(built.stageRoot, 'manifest.json'), `${JSON.stringify(manifest, null, 2)}\n`, 'utf8');
-    const aggregateName = brandingSet === DEFAULT_PLAYABLE_BRANDING_SET
-      ? 'bus-loop-all-platforms.zip'
-      : `bus-loop-${brandingSet}-all-platforms.zip`;
+    // The delivery package (this container, and the folder it is handed over in)
+    // is named `requirement-date-designer`, e.g. BL-2610296-20261102-WXJ. The
+    // packaged files inside keep the 11-segment requirement-sheet naming. The
+    // container used to borrow the internal branding-set id, so a Crowd set
+    // shipped as `BL-crowd-all-platforms.zip` beside BFT-* files.
+    const requirementPrefix = String(built.tuning?.exportNaming?.requirementCode ?? '').trim();
+    const designer = String(built.tuning?.exportNaming?.designer ?? '').trim();
+    const packageLabel = buildDeliveryPackageLabel({
+      requirementCode: requirementPrefix,
+      designer,
+      deliveryDate
+    });
+    const aggregateName = packageLabel
+      ? `${packageLabel}.zip`
+      : (brandingSet === DEFAULT_PLAYABLE_BRANDING_SET
+        ? `${BUS_BRANDING_LABEL}-all-platforms.zip`
+        : `${BUS_BRANDING_LABEL}-${brandingSet}-all-platforms.zip`);
     const aggregateStage = path.join(built.workspace.tempRoot, aggregateName);
     await deterministicZip(
       built.skill.zip,
@@ -1527,14 +1634,19 @@ export async function exportAllPlayablePackages({
     const aggregateIdentity = await artifactIdentity(aggregateStage);
     const filePath = await publish(aggregateStage, path.join(destinationRoot, aggregateName));
     const publishedIdentity = await verifyPublishedArtifact(filePath, aggregateIdentity, 'All-platform artifact');
-    const reportPaths = Object.fromEntries(await Promise.all(built.results.map(async (item) => [
-      `${item.brandingVariant}-${item.platform}`,
-      await publishCheckReports(
-        item.checkSummary,
-        destinationRoot,
-        item.brandingVariant ? `${item.platform}-${item.brandingVariant}` : item.platform
-      )
-    ])));
+    const reportPaths = Object.fromEntries(await Promise.all(built.results.map(async (item) => {
+      // Report files follow the delivery package label, so a reviewer can match a
+      // report to the folder it belongs in without decoding the branding set.
+      const label = packageLabel || (item.brandingVariant === 'bus' ? BUS_BRANDING_LABEL : item.brandingVariant);
+      return [
+        `${item.brandingVariant}-${item.platform}`,
+        await publishCheckReports(
+          item.checkSummary,
+          destinationRoot,
+          item.brandingVariant ? `${item.platform}-${label}` : item.platform
+        )
+      ];
+    })));
     return {
       platform: 'all',
       resourceMode: EXPORT_RESOURCE_MODE,
@@ -1572,19 +1684,97 @@ function parseArgs(argv) {
     brandingSet: value('--branding-set'),
     tuningPath: value('--tuning-json'),
     outputDir: value('--output-dir'),
+    bgm: argv.includes('--bgm'),
+    noBgm: argv.includes('--no-bgm'),
+    preRoll: value('--preroll'),
+    materialCode: value('--material'),
+    requirementCode: value('--requirement'),
+    designer: value('--designer'),
+    requester: value('--requester'),
+    deliveryDate: value('--delivery-date'),
+    noBrandingSuffix: argv.includes('--no-branding-suffix'),
     skipChecks: argv.includes('--skip-checks')
   };
+}
+
+// Delivery variants differ only by the trailing version tag, so they can all be
+// produced from one base tuning document instead of hand-edited copies.
+//
+//   plain      audio.bgm off,   no pre-roll   -> ...-N
+//   --bgm      audio.bgm on,    no pre-roll   -> ...-B
+//   --preroll  audio.bgm off,   TP1326        -> ...-T
+//   both       audio.bgm on,    TP1326        -> ...-BT
+export function applyPlayableDeliveryVariant(tuning, {
+  bgm, preRollAsset, materialCode, requirementCode, designer, requester
+} = {}) {
+  const output = structuredClone(tuning ?? {});
+  output.exportNaming ??= {};
+  // A different product identity (BFT/Crowd vs BL/Bus) keeps its own requirement
+  // prefix, designer and requester, so these come from the build request rather
+  // than from a hard-coded branding-set default.
+  if (requirementCode) output.exportNaming.requirementCode = requirementCode;
+  if (designer) output.exportNaming.designer = designer;
+  if (requester) output.exportNaming.requester = requester;
+  // A delivery material code identifies the variant (Q158V1 plain, Q158V2 with
+  // background music). It has to be settable per build, otherwise every variant
+  // would share one material number and the sheet could not tell them apart.
+  if (materialCode) output.exportNaming.materialCode = materialCode;
+  const wantsBgm = Boolean(bgm);
+  const wantsPreRoll = Boolean(preRollAsset);
+  if (output.audio?.bgm) {
+    output.audio.bgm.enabled = wantsBgm ? 1 : 0;
+  }
+  if (wantsPreRoll) {
+    output.preRoll = {
+      ...(output.preRoll ?? {}),
+      enabled: 1,
+      asset: preRollAsset
+    };
+  } else if (output.preRoll) {
+    output.preRoll.enabled = 0;
+  }
+  // The trailing tag only distinguishes *delivery add-ons* (pre-roll). A version
+  // that differs by background music is identified by its material code
+  // (Q158V1 plain, Q158V2 with BGM) and keeps `N` here, per the requirement
+  // sheet: "只改素材编号，后缀还是 -N".
+  output.exportNaming.version = wantsPreRoll ? 'T' : 'N';
+  return output;
 }
 
 async function main() {
   const args = parseArgs(process.argv.slice(2));
   const projectRoot = process.cwd();
-  const tuning = args.tuningPath
+  const baseTuning = args.tuningPath
     ? JSON.parse(await readFile(path.resolve(args.tuningPath), 'utf8'))
     : undefined;
+  // A variant is only meaningful against a base document; without one the
+  // exporter falls back to the checked-in tuning, which already carries its own
+  // bgm/pre-roll settings.
+  const tuning = baseTuning && (args.bgm || args.noBgm || args.preRoll || args.materialCode
+    || args.requirementCode || args.designer || args.requester)
+    ? applyPlayableDeliveryVariant(baseTuning, {
+      materialCode: args.materialCode,
+      requirementCode: args.requirementCode,
+      designer: args.designer,
+      requester: args.requester,
+      bgm: args.bgm || (!args.noBgm && Boolean(baseTuning.audio?.bgm?.enabled)),
+      preRollAsset: args.preRoll
+        ? (args.preRoll.startsWith('/assets/') ? args.preRoll : `/assets/editor-prerolls/${args.preRoll}`)
+        : null
+    })
+    : baseTuning;
   const common = {
     projectRoot,
     tuning,
+    keepMaterialCode: Boolean(args.materialCode),
+    namingOverride: {
+      requirementCode: args.requirementCode,
+      materialCode: args.materialCode,
+      designer: args.designer,
+      requester: args.requester
+    },
+    noBrandingSuffix: args.noBrandingSuffix,
+    deliveryDate: args.deliveryDate,
     outputDir: args.outputDir,
     skipChecks: args.skipChecks,
     ...(args.brandingSet ? { brandingSet: args.brandingSet } : {})

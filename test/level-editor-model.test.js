@@ -519,10 +519,22 @@ test('rebuilds forward blockers and validates passenger-seat parity', () => {
   assert.deepEqual(model.document.vehicleDepthes['1'], [2]);
   assert.deepEqual(model.document.vehicleDepthes['2'], []);
   assert.equal(validateLevelDocument(model.document).valid, true);
-  model.setQueue(0, [2]);
+  // Fewer seats than passengers is unwinnable and stays an error.
+  model.setQueue(1, [3, 3, 3, 3, 3]);
   const validation = validateLevelDocument(model.document);
   assert.equal(validation.valid, false);
-  assert.match(validation.errors.join('\n'), /颜色 2/);
+  assert.match(validation.errors.join('\n'), /颜色 3/);
+});
+
+test('flags surplus seats as a warning instead of blocking the level', () => {
+  // The shipped pack authors colours with more seats than passengers; the
+  // runtime releases those cars once their colour is exhausted, so this must
+  // stay a warning rather than a save-blocking error.
+  const model = new LevelEditorModel(makeDocument());
+  model.setQueue(0, [2]);
+  const validation = validateLevelDocument(model.document);
+  assert.equal(validation.valid, true);
+  assert.match(validation.warnings.join('\n'), /颜色 2/);
 });
 
 test('sorts passenger blocks by vehicle depth in dual-queue playback order', () => {
@@ -786,4 +798,19 @@ test('deleting a container also clears the depth entries that pointed at it', ()
   model.removeSelected();
   assert.deepEqual(model.document.vehicles.map((vehicle) => vehicle.id), [1]);
   assert.deepEqual(model.document.vehicleDepthes, { 1: [] });
+});
+
+test('warns when a garage has no vehicles while staying valid', () => {
+  const document = createLevelDocument({
+    key: 'level38', unityId: 38,
+    containers: [
+      { id: 0, type: CONTAINER_TYPES.PARKING },
+      { id: 4, type: CONTAINER_TYPES.GARAGE, x: 2, z: 0, yaw: 0 }
+    ],
+    vehicles: [{ id: 1, seats: 4, colorIndex: 0, x: 0, z: 0, yaw: 0, containerType: 1, containerId: 0 }],
+    passengerQueues: [[0, 0, 0, 0], []]
+  });
+  const validation = validateLevelDocument(document);
+  assert.equal(validation.valid, true);
+  assert.match(validation.warnings.join('\n'), /车库 4 内没有车辆/);
 });

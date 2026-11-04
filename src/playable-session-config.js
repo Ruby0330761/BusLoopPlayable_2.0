@@ -15,6 +15,7 @@ const FIRST_CLICK_GUIDE_KEYS = new Set([
   'enabled',
   'vehicleId',
   'durationSeconds',
+  'lockInput',
   'maskEnabled',
   'maskOpacity',
   'holePadding',
@@ -92,6 +93,7 @@ export function normalizeStageOpening(opening = {}) {
     const next = {};
     if (guide.enabled !== undefined) next.enabled = toToggle(guide.enabled, 'stage.opening.firstClickGuide.enabled');
     if (guide.maskEnabled !== undefined) next.maskEnabled = toToggle(guide.maskEnabled, 'stage.opening.firstClickGuide.maskEnabled');
+    if (guide.lockInput !== undefined) next.lockInput = toToggle(guide.lockInput, 'stage.opening.firstClickGuide.lockInput');
     for (const key of [
       'vehicleId', 'durationSeconds', 'maskOpacity', 'holePadding', 'holeRadius',
       'holeOffsetX', 'holeOffsetY', 'holeScaleX', 'holeScaleY'
@@ -259,7 +261,7 @@ export function normalizeStageChoice(choice) {
 
 export function normalizeSessionExportNaming(naming) {  if (naming === undefined) return {};
   requireObject(naming, 'session.exportNaming');
-  normalizeKnownKeys(naming, new Set(['materialCode', 'requirementCode', 'iterationCode']), 'session.exportNaming');
+  normalizeKnownKeys(naming, new Set(['materialCode', 'requirementCode', 'iterationCode', 'version']), 'session.exportNaming');
   const normalized = {};
   for (const [key, value] of Object.entries(naming)) {
     const part = String(value ?? '').trim();

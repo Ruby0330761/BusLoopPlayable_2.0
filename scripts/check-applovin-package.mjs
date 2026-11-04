@@ -63,12 +63,12 @@ async function assetDataUri(asset) {
 }
 
 async function main() {
-  const [{ PLAYABLE_STAGE_CHOICES, PLAYABLE_ALL_LEVELS }, {
+  const [{ PLAYABLE_STAGE_CHOICES, PLAYABLE_ALL_LEVELS, ACTIVE_PLAYABLE_SESSION }, {
     MECHANISM_RESOURCE_MANIFEST,
     PRE_ROLL_ASSET_PATHS,
     getMechanismResourcePaths,
     getMechanismTypesForLevels
-  }, { isPreRollAssetPath }] = await Promise.all([
+  }, { isPreRollAssetPath, resolvePreRollAsset }] = await Promise.all([
     import('../src/generated-active-level.js'),
     import('../src/mechanism-resources.js'),
     import('../src/pre-roll.js')
@@ -112,7 +112,9 @@ async function main() {
   const selectedMechanismDataUris = await Promise.all(
     selectedMechanismUrls.map((asset) => assetDataUri(asset))
   );
-  const selectedPreRollAsset = SCENE_TUNING.preRoll?.enabled ? SCENE_TUNING.preRoll?.asset : null;
+  // Same resolution as the runtime and the packager: a session that opts out of
+  // the pre-roll must not be asked to carry the video.
+  const selectedPreRollAsset = resolvePreRollAsset(SCENE_TUNING.preRoll, ACTIVE_PLAYABLE_SESSION);
   if (selectedPreRollAsset && !(
     PRE_ROLL_ASSET_PATHS.includes(selectedPreRollAsset)
     || isPreRollAssetPath(selectedPreRollAsset)

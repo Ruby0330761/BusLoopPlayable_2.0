@@ -42,8 +42,9 @@
 
 ## 通用（所有平台）
 
+- **版本尾段**：交付名最后一段是版本标签——`N` 普通 / `B` 带 BGM / `T` 带 TP1326 前贴 / `BT` 两者都有。导出器用 `--bgm`、`--no-bgm`、`--preroll <文件>` 生成，四个变体共用一份调参。出包后要按字节核对（BGM 的 mp3、前贴的 mp4 是否真的内联），不要只看文件名。
 - **交付命名 11 段**：`需求-素材-前贴-N-语言-PL-设计师-需求人-渠道-步数-体力`。前贴段后固定一个 `N`，末尾步数/体力无值时写 `N`。Mintegral 只接受字母数字下划线，整名转下划线。
-- **Bus 只出一份包**（Android/iOS 共用）：`branding.icon.deviceAssets` 提供两端 icon，运行时按 UA 选 icon 与商店链接。同一文件必须双 UA 都过 runtime smoke；出包后抽查 Android 应为 JPG icon + Play 链接、iOS 应为 PNG icon + App Store 链接。
+- **BL 与 BFT 都只出一份包**（Android/iOS 合并）：`branding.icon.deviceAssets` 提供两端 icon，运行时按 UA 选 icon 与商店链接。编辑器「Icon 版本」里的 `BL 安卓` / `BL iOS` 只决定预览显示哪张图，导出时两个槽位都会写死，不跟随预览选择（否则选 iOS 预览出的 BL 包会让 Android 玩家看到 iOS 图标）。同一文件必须双 UA 都过 runtime smoke；出包后抽查 Android 应为 JPG icon + Play 链接、iOS 应为 PNG icon + App Store 链接。
 
 ## Mintegral
 

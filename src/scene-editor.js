@@ -42,20 +42,23 @@ const BACKGROUND_OPTIONS = [
   ['/assets/applovin/textures/BG01_split01_Grassland_q60.jpg', 'BG01 \u8349\u5730']
 ];
 
+// BL ships both store icons inside one package; the device UA picks one at
+// runtime. These options only choose which art the editor preview shows, so
+// "BL 安卓" and "BL iOS" are two previews of the same BL export.
 const BRANDING_ICON_OPTIONS = [
-  ['/assets/icon-android.jpg', 'Android'],
-  ['/assets/icon-ios.png', 'iOS'],
-  ['/assets/icon-crowd.jpg', 'Crowd']
+  ['/assets/icon-android.jpg', 'BL \u5b89\u5353'],
+  ['/assets/icon-ios.png', 'BL iOS'],
+  ['/assets/icon-crowd.jpg', 'BFT']
 ];
 
 const BRANDING_LOGO_OPTIONS = [
-  ['/assets/main-loading-icon-small.png', 'Bus Fever'],
-  ['/assets/main-loading-icon-crowd.webp', 'Crowd']
+  ['/assets/main-loading-icon-small.png', 'BL'],
+  ['/assets/main-loading-icon-crowd.webp', 'BFT']
 ];
 
 const PLAYABLE_EXPORT_BRANDING_SETS = [
-  ['bus', 'Bus Fever\uff1aAndroid / iOS \u5171\u7528\u4e00\u5957'],
-  ['crowd', 'Crowd\uff1aAndroid / iOS \u5171\u7528\u4e00\u5957']
+  ['bus', 'BL\uff1a\u5b89\u5353 / iOS \u5408\u5e76\u4e00\u5957'],
+  ['crowd', 'BFT\uff1a\u5b89\u5353 / iOS \u5408\u5e76\u4e00\u5957']
 ];
 
 const PRE_ROLL_OPTIONS = [
@@ -889,6 +892,7 @@ const FIELD_GROUPS = [
       ['\u52a8\u753b\u5f00\u542f', 'firstClickGuide.enabled', 0, 1, 1, null, 'toggle'],
       ['\u76ee\u6807\u8f66 ID', 'firstClickGuide.vehicleId', 1, 200, 1, null, 'vehicle-id-select'],
       ['\u6301\u7eed\u65f6\u95f4', 'firstClickGuide.durationSeconds', 0, 10, 0.1],
+      ['\u9501\u5b9a\u5176\u4ed6\u8f66\u8f86', 'firstClickGuide.lockInput', 0, 1, 1, null, 'toggle'],
       ['\u7f6e\u7070\u5176\u4ed6\u8f66\u8f86', 'firstClickGuide.maskEnabled', 0, 1, 1, null, 'toggle'],
       ['\u906e\u7f69\u900f\u660e\u5ea6', 'firstClickGuide.maskOpacity', 0, 1, 0.01],
       ['\u5149\u6548\u8fb9\u8ddd', 'firstClickGuide.holePadding', 0, 120, 1],
@@ -1060,7 +1064,7 @@ export function createSceneEditor(root, {
             )).join('')}
           </select>
         </label>
-        <p class="editor-export-set-note" role="note">Bus Fever \u53ea\u51fa\u4e00\u5957\u5305\uff08Android/iOS \u5171\u7528\uff09\uff1a\u540c\u4e00\u4efd HTML \u6309\u673a\u578b\u5207 Icon \u4e0e\u5546\u5e97\u94fe\u63a5\uff0cLogo \u8ddf\u968f Logo \u7248\u672c\u3002</p>
+        <p class="editor-export-set-note" role="note">BL \u53ea\u51fa\u4e00\u5957\u5305\uff08\u5b89\u5353/iOS \u5408\u5e76\uff09\uff1a\u540c\u4e00\u4efd HTML \u6309\u673a\u578b\u81ea\u52a8\u5207\u5bf9\u5e94 Icon \u4e0e\u5546\u5e97\u94fe\u63a5\uff0cLogo \u8ddf\u968f Logo \u7248\u672c\u3002</p>
         <label class="editor-export-platform">
           <span>\u6295\u653e\u5e73\u53f0</span>
           <select class="editor-export-select">
@@ -1182,8 +1186,8 @@ export function createSceneEditor(root, {
     const crowd = exportSetSelect.value === 'crowd';
     if (exportSetNote) {
       exportSetNote.textContent = crowd
-        ? 'Crowd \u53ea\u51fa\u4e00\u5957\u5305\uff08Android/iOS \u5171\u7528\uff09\uff1a\u5bfc\u51fa\u65f6\u81ea\u52a8\u6362 Crowd Icon\u3001Logo\u3001Crowd \u5546\u5e97\u94fe\u63a5\uff0c\u5e95\u90e8\u6587\u6848\u82e5\u4ecd\u4e3a\u9ed8\u8ba4\u5219\u6539\u4e3a Bus Crowd\u3002'
-        : 'Bus Fever \u53ea\u51fa\u4e00\u5957\u5305\uff08Android/iOS \u5171\u7528\uff09\uff1a\u540c\u4e00\u4efd HTML \u6309\u673a\u578b\u5207 Icon \u4e0e\u5546\u5e97\u94fe\u63a5\uff0cLogo \u8ddf\u968f Logo \u7248\u672c\u3002';
+        ? 'BFT \u53ea\u51fa\u4e00\u5957\u5305\uff08\u5b89\u5353/iOS \u5408\u5e76\uff09\uff1a\u5bfc\u51fa\u65f6\u81ea\u52a8\u6362 BFT Icon\u3001Logo\u3001BFT \u5546\u5e97\u94fe\u63a5\uff0c\u5e95\u90e8\u6587\u6848\u82e5\u4ecd\u4e3a\u9ed8\u8ba4\u5219\u6539\u4e3a Bus Crowd\u3002'
+        : 'BL \u53ea\u51fa\u4e00\u5957\u5305\uff08\u5b89\u5353/iOS \u5408\u5e76\uff09\uff1a\u540c\u4e00\u4efd HTML \u6309\u673a\u578b\u81ea\u52a8\u5207\u5bf9\u5e94 Icon \u4e0e\u5546\u5e97\u94fe\u63a5\uff0cLogo \u8ddf\u968f Logo \u7248\u672c\u3002';
     }
   });
 
@@ -1199,8 +1203,8 @@ export function createSceneEditor(root, {
     const platform = all ? null : exportSelect.value;
     const brandingSet = exportSetSelect.value === 'crowd' ? 'crowd' : 'bus';
     const brandingSetLabel = brandingSet === 'crowd'
-      ? 'Crowd \u5171\u7528\u4e00\u5957'
-      : 'Android/iOS \u5171\u7528\u4e00\u5957';
+      ? 'BFT \u5408\u5e76\u4e00\u5957'
+      : 'BL \u5b89\u5353/iOS \u5408\u5e76\u4e00\u5957';
     const platformLabel = all
       ? `\u5168\u90e8 7 \u4e2a\u5e73\u53f0 \u00d7 ${brandingSetLabel}`
       : `${PLAYABLE_EXPORT_PLATFORMS.find(([id]) => id === platform)?.[1] ?? platform}\uff08${brandingSetLabel}\uff09`;

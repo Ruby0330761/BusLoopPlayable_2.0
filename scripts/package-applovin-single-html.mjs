@@ -234,12 +234,12 @@ function stripEditorMount(html) {
 }
 
 async function main() {
-  const [{ PLAYABLE_STAGES, PLAYABLE_STAGE_CHOICES, PLAYABLE_ALL_LEVELS }, { SCENE_TUNING }, {
+  const [{ PLAYABLE_STAGES, PLAYABLE_STAGE_CHOICES, PLAYABLE_ALL_LEVELS, ACTIVE_PLAYABLE_SESSION }, { SCENE_TUNING }, {
     BASE_RUNTIME_ASSET_PATHS,
     PRE_ROLL_ASSET_PATHS,
     getMechanismResourcePaths,
     getMechanismTypesForLevels
-  }, { isPreRollAssetPath }, { LEVEL_AUDIO_CONFIG }] = await Promise.all([
+  }, { isPreRollAssetPath, resolvePreRollAsset }, { LEVEL_AUDIO_CONFIG }] = await Promise.all([
     import('../src/generated-active-level.js'),
     import('../src/scene-tuning.js'),
     import('../src/mechanism-resources.js'),
@@ -280,11 +280,16 @@ async function main() {
     )
   });
   const realAssetUrls = new Set(BASE_RUNTIME_ASSET_PATHS);
-  if (SCENE_TUNING.preRoll?.enabled && (
-    PRE_ROLL_ASSET_PATHS.includes(SCENE_TUNING.preRoll?.asset)
-    || isPreRollAssetPath(SCENE_TUNING.preRoll?.asset)
+  // A session can disable the pre-roll, and the runtime applies that by zeroing
+  // the tuning flag. Reading the raw `SCENE_TUNING.preRoll.enabled` here inlined
+  // a 519 KB MP4 the runtime never played, so the session has to be consulted
+  // in the same place the runtime consults it.
+  const selectedPreRollAsset = resolvePreRollAsset(SCENE_TUNING.preRoll, ACTIVE_PLAYABLE_SESSION);
+  if (selectedPreRollAsset && (
+    PRE_ROLL_ASSET_PATHS.includes(selectedPreRollAsset)
+    || isPreRollAssetPath(selectedPreRollAsset)
   )) {
-    realAssetUrls.add(SCENE_TUNING.preRoll.asset);
+    realAssetUrls.add(selectedPreRollAsset);
   }
   for (const level of PLAYABLE_ALL_LEVELS) collectAssetUrls(level, realAssetUrls);
   // The BGM is addressed from tuning, not from a level document, so the plain

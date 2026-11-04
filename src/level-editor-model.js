@@ -133,13 +133,16 @@ function normalizeVehicle(vehicle, fallbackId) {
       distance: Math.max(0.15, finite(vehicle?.mechanism?.distance, 0.25)),
       wrenchColor: Math.max(0, Math.round(finite(vehicle?.mechanism?.wrenchColor))),
       secondColorIndex: Math.max(0, Math.round(finite(vehicle?.mechanism?.secondColorIndex))),
-      // The ambulance is step-limited by definition. Any other family (the
-      // Christmas sled) opts in: its authored texture is not the ambulance, but
-      // the centre-rescue heart board and the countdown still apply. Omitted
-      // when false so ordinary cars keep their existing document shape.
+      // The ambulance is step-limited by definition. A Christmas sled that opts
+      // in keeps the heart countdown without borrowing the ambulance model.
+      // A sled carrying an explicit stepLimit is treated as opted in: the
+      // authoring round-trip must not silently drop the mechanic, which is what
+      // happened when a restored board lost `stepLimited` and shipped with a
+      // heart that never counted down.
       ...(mechanismType === 'ambulance'
         || vehicle?.mechanism?.stepLimited
         || Number.isInteger(vehicle?.ambulanceStepLimit)
+        || (mechanismType === 'christmas' && vehicle?.mechanism?.stepLimit != null)
         ? { stepLimited: true }
         : {}),
       stepLimit: positiveInt(vehicle?.mechanism?.stepLimit ?? vehicle?.ambulanceStepLimit, 35),
@@ -927,7 +930,11 @@ export function validateLevelDocument(document) {
   for (const color of new Set([...seatCounts.keys(), ...passengerCounts.keys()])) {
     const seats = seatCounts.get(color) ?? 0;
     const passengers = passengerCounts.get(color) ?? 0;
-    if (seats !== passengers) errors.push(`颜色 ${color}：${seats} 个座位，${passengers} 名乘客`);
+    // Fewer seats than passengers can never be won; surplus seats are common
+    // in the shipped level pack and the runtime releases those cars once the
+    // colour is exhausted, so they are only worth flagging.
+    if (seats < passengers) errors.push(`颜色 ${color}：${seats} 个座位，${passengers} 名乘客`);
+    else if (seats > passengers) warnings.push(`颜色 ${color}：${seats} 个座位，${passengers} 名乘客，多出的车会在该色乘客上完后自动离场`);
   }
   if (!document.vehicles.length) warnings.push('关卡中没有车辆');
   if (document.containers.filter((item) => item.type === CONTAINER_TYPES.PARKING).length !== 1) {
@@ -937,6 +944,14 @@ export function validateLevelDocument(document) {
     const stats = getElevatorStats(document, elevator);
     if (stats.upperCount === 0 || stats.lowerCount === 0) warnings.push(`升降舱 ${elevator.id} 的上层或下层没有车辆`);
     if (stats.outsideCount > 0) warnings.push(`升降舱 ${elevator.id} 当前层有 ${stats.outsideCount} 辆车位于舱外`);
+  }
+  for (const garage of document.containers.filter((container) => container.type === CONTAINER_TYPES.GARAGE)) {
+    const count = document.vehicles.filter((vehicle) => (
+      vehicle.containerType === CONTAINER_TYPES.GARAGE && vehicle.containerId === garage.id
+    )).length;
+    // An empty garage still shows in the preview, but it releases nothing and
+    // blocks nothing, so it is almost always an authoring slip.
+    if (count === 0) warnings.push(`车库 ${garage.id} 内没有车辆，试玩时它只作为布景显示`);
   }
   return { valid: errors.length === 0, errors, warnings };
 }

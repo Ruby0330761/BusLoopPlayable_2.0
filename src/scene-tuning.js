@@ -39,7 +39,7 @@ export const SCENE_TUNING = {
       "unityads": "UN"
     },
     "steps": "N",
-    "stamina": "N"
+    "version": "N"
   },
   "branding": {
     "icon": {
@@ -651,6 +651,7 @@ export const SCENE_TUNING = {
     "enabled": 0,
     "vehicleId": 1,
     "durationSeconds": 3,
+    "lockInput": 0,
     "maskEnabled": 1,
     "maskOpacity": 0.68,
     "holePadding": 30,

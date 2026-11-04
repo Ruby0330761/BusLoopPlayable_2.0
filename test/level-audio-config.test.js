@@ -195,3 +195,20 @@ test('background music starts on the first successful tap and never on load', ()
   assert.match(packager, /SCENE_TUNING\.audio\?\.bgm\?\.enabled/);
   assert.match(packager, /realAssetUrls\.add\(SCENE_TUNING\.audio\.bgm\.asset\)/);
 });
+
+test('one collision plays the hit sound exactly once', () => {
+  // The contact event stays as `lastEvent` while the bump animates and the level
+  // clock keeps advancing, so a time-based de-dupe key replayed the hit on every
+  // frame the event was still current (measured: two plays 10 ms apart).
+  const model = readFileSync('src/game-model.js', 'utf8');
+  const controller = readFileSync('src/audio-controller.js', 'utf8');
+  assert.match(model, /this\.collisionContactEventId = 0/);
+  assert.match(model, /collisionEventId: \+\+this\.collisionContactEventId/);
+  assert.match(controller, /const identity = event\.collisionEventId \?\?/);
+  assert.match(controller, /key: `\$\{event\.type\}:\$\{identity\}`/);
+  // The frame-time suffix must be gone from the collision key.
+  assert.doesNotMatch(
+    controller,
+    /vehicle-collision-contact[\s\S]{0,160}\$\{timeKey\}/
+  );
+});

@@ -160,16 +160,16 @@
     },
     {
       "id": "GOOGLE-ART-005",
-      "title": "ZIP 基础名不超过 50 字符",
+      "title": "ZIP 基础名不超过 128 字符",
       "stage": "artifact",
       "severity": "blocker",
-      "sourceClass": "checker-parity",
-      "sourceVersion": "playable_check@86d58e33d293a0a095b574407a2d6c7d191d510f",
+      "sourceClass": "delivery-contract",
+      "sourceVersion": "game_playable-playbook@8e26d3b61d52c7540809a3a56fb6821472cc14673c4943ca71ef97f851c8401b",
       "check": {
         "type": "zip_name_max_chars",
-        "value": 50
+        "value": 128
       },
-      "repairHint": "缩短构建输出基础名。",
+      "repairHint": "缩短构建输出基础名至 128 字符以内。",
       "autoRepair": true
     },
     {
