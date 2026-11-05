@@ -1,11 +1,14 @@
 # Playable Project Progress
 
-## Release Prepared On 2026-11-05 - 倒计时编辑与范围调整（v20261105-1536，待部署身份授权）
+## Deployed On 2026-11-05 - 倒计时编辑与范围调整（v20261105-1536）
 
 - 用户要求提交并更新现有线上编辑器，版本号按 Asia/Shanghai 时间戳更新；已修改 `src/build-version.js` 为 `20261105-1536`，并在 `AGENTS.md` 记录每次用户可见修改提交/构建前更新时间戳的规则。
 - 本次范围：引导内的倒计时卡片、滑条/数值输入、X/Y 偏移与等比缩放、0–120 秒时长/预警及旧配置归一化；卡片说明仅保留「偏移0，缩放1为默认对齐」。独立 `variants/`、对应导航与忽略规则、`.idea/` 不纳入本次提交和部署。
 - 验证：`PLAYABLE_REMOTE_EDITOR=1 npm run build` 通过，入口 `index-Cy494-EW.js`、面板 `scene-editor-Dlp9vzQn.js`。全量首跑 537 通过、10 项本地监听被沙箱 EPERM 阻止、1 项既有 FFmpeg 跳过；受影响浏览器套件在允许监听后 12/12 通过，无遗留代码失败。
-- 目标保持 `bus-loop-playable-editor` / `http://10.0.0.54:12142/`，沿用持久化 artifacts 卷。当前机器缺少部署工具的飞书身份；授权页仅列「获取用户身份标识」，点击续期被自动审批拒绝，等待用户对该授权明确确认。**线上尚未更新**；原线上版本记录为 `20261104-1709`。
+- 用户随后明确回复「授权」，完成仅获取身份标识的续期并更新原 `bus-loop-playable-editor` / `http://10.0.0.54:12142/`，沿用持久化 artifacts 卷；容器 healthy，116 个关卡的 key、车辆/乘客数和座位摘要均与更新前一致。
+- 实际部署 ZIP 的隔离构建与线上入口 `index-BiRPJ9xM.js`（sha256 `c90ad475…`）、面板 `scene-editor-D3qwkh-4.js`（`ee2b766a…`）逐字节一致。整仓初次构建读取了 Docker 范围外的 `artifacts/playable-session.json`，所以初次 `index-Cy494-EW.js` 不作为线上哈希依据。
+- 线上浏览器已验：页头 `v20261105-1536`、引导内倍速下方的倒计时卡片、0–120 秒滑条/输入、X/Y/缩放、短说明以及闹钟图片加载；无脚本错误。临时启用验证后恢复原关闭状态。证据在 `artifacts/playable-exports/editor-releases/20261105-1536/`，截图 `online-countdown-verified.jpg`。
+- 代码 commit `4e6ed02`；部署 ZIP `http://10.0.0.6:8081/72/72b18ad1300499218d12b9b7b57346f4.zip`（17,461,429 字节，sha256 `a148de0a…`，上传后已下载核对）。保留旧版 `20261104-1709` 的 ZIP 和 Docker rollback 路径。本次为编辑器更新，不代表试玩广告渠道/真机验收。
 
 ## Completed Locally On 2026-11-05 - 可配置整关倒计时（未部署）
 

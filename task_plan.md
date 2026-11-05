@@ -41,7 +41,7 @@
 
 ## Current Goal
 
-Complete the confirmed BL countdown changes, commit them and update the existing online editor at 10.0.0.54:12142 as explicitly requested on 2026-11-05. Release version 20261105-1536 uses the Asia/Shanghai timestamp. Keep unrelated variants work separate. Deployment is prepared locally and awaits explicit Feishu-Skill identity authorization after automatic approval rejected the renewal click.
+Complete the confirmed BL countdown changes, commit them and update the existing online editor at 10.0.0.54:12142 as explicitly requested on 2026-11-05. Completed: code commit 4e6ed02, Asia/Shanghai version 20261105-1536, deployment healthy and verified against an isolated build of the exact ZIP. User authorized Feishu-Skill identity renewal; 116 existing levels were preserved. Unrelated variants work remains separate.
 
 ## Current Countdown Challenge Phases (2026-11-05)
 
@@ -52,7 +52,7 @@ Complete the confirmed BL countdown changes, commit them and update the existing
 5. **HUD alignment complete locally:** Aligned the visible blue frame edges of the countdown and speed button; 3/3 view tests and desktop/portrait/landscape browser checks passed. No full rebuild or platform re-export after this adjustment; evidence is linked from the project progress entry.
 6. **Guide controls/display tuning complete locally:** Per the user's next request, moved the card below the speed toggle in Guide, paired time sliders with number inputs, and added X/Y offsets plus proportional scale. Full build, 67 targeted tests, real slider/input/disabled-state interactions, persistence and portrait/landscape checks passed. PRD AC15–AC16 and implementation evidence updated; defaults keep the prior alignment. No deployment or updated platform packages.
 7. **Time range adjustment complete locally:** Both duration and warning accept 0–120 seconds, with warning capped at duration. Zero duration expires once after the first dispatch; zero warning stays silent. Legacy bounds normalize consistently for UI/export. 17 focused tests, syntax and browser boundary checks passed; reused the prior build and restored the user's 1/1-second preview settings.
-8. **Release prepared, deployment pending identity:** Updated version 20261105-1536, recorded the timestamp rule in AGENTS, and built the remote editor. Initial full regression passed 537, skipped 1 existing FFmpeg case, and hit 10 sandbox listen failures; the affected browser suite then passed 12/12 outside the sandbox. The existing service/port/data volume will be reused. Automatic approval rejected Feishu-Skill renewal; the page shows only identity-identifier permission. Await user authorization before the remote update.
+8. **Release deployed and verified:** Version 20261105-1536 and code commit 4e6ed02 are live at 10.0.0.54:12142. User explicitly authorized identity renewal. The existing container/port/data volume were reused, health and all 116 level metadata entries were preserved. Remote assets match the exact ZIP's isolated build; browser verified the new card, controls, helper text and timer image. Build-input difference is recorded in findings.md. Evidence: artifacts/playable-exports/editor-releases/20261105-1536/.
 
 ## Current Level40 Test Package Phases
 
@@ -112,7 +112,7 @@ Complete: the authoring workflow saves revisioned `bus-loop-web-level-v1` docume
 
 ## Current Phase
 
-Countdown implementation and local validation are complete. The user has now requested a commit and online update; version 20261105-1536 is built. The remote update awaits Feishu-Skill identity authorization; the online service is unchanged. Official playable-platform/device acceptance remains separate.
+Countdown implementation, commit, online editor update and deployment verification are complete. Online version is 20261105-1536; the existing 116 levels are preserved. No further action is needed for this editor release. Official playable-platform/device acceptance remains separate.
 
 ## Current Google Packaging Phases
 

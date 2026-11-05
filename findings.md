@@ -1,5 +1,10 @@
 # Findings
 
+## 2026-11-05 部署验证必须使用相同的构建输入
+
+- 本轮整仓本地构建读取 `artifacts/playable-session.json` 的 `q159-christmas` 会话；既有 Docker 白名单不包含该文件，部署快照按 `artifacts/selected-level.txt` 生成 `level34`。即使运行时代码和锁定依赖完全相同，生成关卡和依赖 chunk 哈希也会不同。
+- 核对方法：从实际提交的部署 ZIP 解压到临时目录，按 Docker 步骤复制 level catalog，复用已锁定的本机依赖运行 remote-editor 构建，再与线上资产逐字节比较。版本 `20261105-1536` 的入口/面板均已匹配；不要把当前工作目录的构建哈希直接当作任意部署快照的依据。证据见 `artifacts/playable-exports/editor-releases/20261105-1536/online-http-verification.json`。
+
 ## 2026-11-03 关卡级 `bgMaterial` / `transformConfig` 之前被导入链路丢掉了
 
 - **两个字段都是每关都有的真实数据**，不是可选项：`bgMaterial` 是 Unity 背景材质引用 `{fileID: 2100000, guid: <32 hex>, type: 2}`，447 个正式关卡里出现 5 个不同 GUID（`adc0b94e…` 112 关、`5885a6ca…` 123 关、`385d5ef1…` 106 关、`710019de…` 55 关、`ab050289…` 51 关）。`transformConfig` 是场景变换块（`isCustom` / `transformType` / `rotationAngle`），四种组合：`0/0/0` 225 关、`1/5/180` 7 关、`1/3/0` 15 关、`1/1/0` 6 关，另有 194 关完全没有这个块。
