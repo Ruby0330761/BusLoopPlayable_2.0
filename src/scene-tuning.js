@@ -1,4 +1,10 @@
 export const SCENE_TUNING = {
+  "countdown": {
+    "enabled": 0,
+    "durationSeconds": 30,
+    "warningEnabled": 1,
+    "warningSeconds": 10
+  },
   "level": {
     "selected": "level33"
   },

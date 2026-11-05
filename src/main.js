@@ -11,6 +11,8 @@ import { SCENE_TUNING } from './scene-tuning.js';
 import { pruneUnknownTuning } from './tuning-migrations.js';
 import { isValidStoreLink, resolveStoreLink } from './store-links.js';
 import { formatSpeedLabel, normalizeSpeedMultiplier, resolveTimeScale } from './speed-toggle.js';
+import { createCountdown, normalizeCountdownConfig, validateCountdownConfig } from './countdown.js';
+import { createCountdownView } from './countdown-view.js';
 import { createGameAudioController } from './audio-controller.js';
 import { resolveLevelAudioConfig } from './level-audio-config.js';
 import { createPreRollController } from './pre-roll.js';
@@ -60,6 +62,8 @@ const STORE_OPEN_COOLDOWN_MS = 800;
 // Time given to the final departure animation of a stage before the level swap.
 const STAGE_ADVANCE_DELAY_MS = 900;
 let platformVisible = true;
+let refreshCountdownVisibility = () => {};
+let finishCountdownForStore = () => {};
 // Module scoped because applyCtaTuning (which hides the store button) runs from
 // resize handlers outside startRuntime's closure.
 let stageChoiceActive = false;
@@ -1529,6 +1533,7 @@ function openStore() {
 function InstallFullGame() {
   audio?.unlock();
   platformBridge?.end();
+  finishCountdownForStore();
   openStore();
 }
 
@@ -1919,6 +1924,42 @@ async function startRuntime() {
   };
 
   let view;
+  let countdownReady = false;
+  let countdownPagePresent = true;
+  const countdown = createCountdown(SCENE_TUNING.countdown, {
+    onTimeout: () => game.failCountdown()
+  });
+  const countdownView = createCountdownView({
+    root: $('#countdown'), image: $('#countdown-image'), value: $('#countdown-value'),
+    warning: $('#countdown-warning'), stage, speedButton: speedToggleButton
+  });
+  function isCountdownPaused() {
+    return !countdownReady || !platformVisible || document.hidden || !countdownPagePresent
+      || spatialEditorActive || Boolean(levelLayoutEditor)
+      || sceneEditorRoot?.classList.contains('is-level-layout-editing')
+      || Boolean(preRollController?.isActive()) || Boolean(view?.isVehicleInputLocked?.())
+      || stageAdvancePending || stageChoiceVisible;
+  }
+  function paintCountdown() {
+    countdownView.render(countdown.snapshot(), {
+      visible: countdownReady && !preRollController?.isActive() && !stageChoiceVisible
+    });
+  }
+  refreshCountdownVisibility = () => {
+    countdown.setPaused(isCountdownPaused());
+    paintCountdown();
+  };
+  finishCountdownForStore = () => { countdown.finish('finished'); paintCountdown(); };
+  document.addEventListener('visibilitychange', refreshCountdownVisibility);
+  window.addEventListener('pagehide', () => {
+    countdownPagePresent = false;
+    refreshCountdownVisibility();
+  });
+  window.addEventListener('pageshow', () => {
+    countdownPagePresent = true;
+    refreshCountdownVisibility();
+  });
+  paintCountdown();
   // Background music starts on the first successful vehicle tap, not on load:
   // autoplay before a gesture is blocked by every ad platform's browser, and a
   // silent ad is safer than a rejected one. Once started it keeps looping across
@@ -1948,6 +1989,12 @@ async function startRuntime() {
     if (result?.ok) {
       startBackgroundMusic();
       if (markInstallVehicle(vehicleId)) InstallFullGame();
+      // A hidden reveal also returns ok, but has not dispatched a vehicle.
+      if (result.spotIndex != null && game.status === 'playing'
+        && !levelSession.shouldOpenStore() && !gameOverActive) {
+        countdown.start({ paused: isCountdownPaused() });
+        paintCountdown();
+      }
     }
     return result;
   };
@@ -1981,6 +2028,7 @@ async function startRuntime() {
     applyCtaTuning();
     applySpeedToggleTuning();
     applyBrandingTuning(view.getBackgroundCanvasBounds());
+    countdownView.resize(view.getBackgroundCanvasBounds());
     if (stageChoiceVisible) positionStageChoiceHand();
   };
   const getCameraPreset = (action) => {
@@ -2004,6 +2052,7 @@ async function startRuntime() {
     window.addEventListener('resize', updateCtaPosition);
   }
   view.ready?.finally(() => {
+    countdownReady = true;
     updateLoadingProgress(1);
     loadingScreen?.classList.add('is-hidden');
     window.setTimeout(() => loadingScreen?.remove(), 360);
@@ -2011,6 +2060,7 @@ async function startRuntime() {
     if (preRollController) preRollController.setGameReady();
     else revealPlayable();
     platformBridge?.ready();
+    refreshCountdownVisibility();
   });
   function initializeGameQueues({ resetSlots = false } = {}) {
     game.initializeQueues(
@@ -2119,6 +2169,7 @@ async function startRuntime() {
     registerSpatialConveyorPackage(payload.packageData);
     view.refreshSpatialConveyorDraft();
     spatialEditorActive = true;
+    refreshCountdownVisibility();
     pressed = false;
     clearTimeout(pressTimer);
     sceneEditorRoot?.classList.add('is-spatial-point-editing');
@@ -2147,6 +2198,7 @@ async function startRuntime() {
           initializeGameQueues({ resetSlots: true });
           applyIdleSpeedMultiplier();
           view.setInputEnabled(true);
+          refreshCountdownVisibility();
         }
       });
     } catch (error) {
@@ -2154,6 +2206,7 @@ async function startRuntime() {
       sceneEditorRoot?.classList.remove('is-spatial-point-editing');
       view.resize();
       view.setInputEnabled(true);
+      refreshCountdownVisibility();
       throw error;
     }
   }
@@ -2164,6 +2217,7 @@ async function startRuntime() {
     clearTimeout(pressTimer);
     view.setInputEnabled(false);
     sceneEditorRoot?.classList.add('is-level-layout-editing');
+    refreshCountdownVisibility();
     try {
       const [{ createLevelLayoutEditor }, { getLevelDefinition }] = await Promise.all([
         import('./level-layout-editor.js'),
@@ -2210,16 +2264,30 @@ async function startRuntime() {
           sceneEditorRoot?.classList.remove('is-level-layout-editing');
           view.setInputEnabled(true);
           view.resize();
+          refreshCountdownVisibility();
         }
       });
     } catch (error) {
       sceneEditorRoot?.classList.remove('is-level-layout-editing');
       view.setInputEnabled(true);
+      refreshCountdownVisibility();
       throw error;
     }
   }
 
   function applyTuningPatch(next, { path, syncEditor = false } = {}) {
+    if (path?.startsWith('countdown.')) {
+      const previous = normalizeCountdownConfig(SCENE_TUNING.countdown);
+      const settings = validateCountdownConfig(next.countdown);
+      deepMerge(SCENE_TUNING, { ...next, countdown: settings });
+      countdown.configure(settings);
+      saveTuning(SCENE_TUNING, { immediate: true });
+      if (settings.enabled !== previous.enabled || settings.durationSeconds !== previous.durationSeconds) reset();
+      paintCountdown();
+      countdownView.resize(view.getBackgroundCanvasBounds());
+      if (syncEditor) editor.sync();
+      return SCENE_TUNING;
+    }
     if (path === 'level.selected') {
       void (async () => {
         try {
@@ -2276,6 +2344,7 @@ async function startRuntime() {
       if (syncEditor) editor.sync();
       return SCENE_TUNING;
     }
+    const previousCountdown = normalizeCountdownConfig(SCENE_TUNING.countdown);
     const materialOnly = isPassengerMaterialTuningPath(path);
     const restartOpeningGuide = path?.startsWith('firstClickGuide.')
       && Boolean(Number(next.firstClickGuide?.enabled));
@@ -2301,6 +2370,11 @@ async function startRuntime() {
       updateCtaPosition();
     }
     saveTuning(tuning, { immediate: conveyorStructureChanged });
+    const nextCountdown = normalizeCountdownConfig(tuning.countdown);
+    countdown.configure(nextCountdown);
+    if (nextCountdown.enabled !== previousCountdown.enabled
+      || nextCountdown.durationSeconds !== previousCountdown.durationSeconds) reset();
+    paintCountdown();
     // Selecting artwork that has never been measured leaves the plane where the
     // tuning puts it, which is what made a new background look misplaced. Measure
     // it now; the layout is re-applied as soon as the result lands.
@@ -2495,6 +2569,10 @@ async function startRuntime() {
   }
 
   function syncHud(state) {
+    if (state.status !== 'playing') {
+      countdown.finish(state.status);
+      paintCountdown();
+    }
     // Play every sound-relevant event of the frame, not just the last one: a
     // frame can both depart a vehicle and board a group, and lastEvent would
     // have dropped the earlier sound. The final lastEvent is played as well so
@@ -2546,6 +2624,8 @@ async function startRuntime() {
     unsubscribeGame();
     setActiveLevel(nextLevel);
     game = new BusLoopGame(nextLevel);
+    countdown.reset();
+    paintCountdown();
     audio.resetEventHistory();
     view.replaceActiveLevel({ animate: true });
     initializeGameQueues({ resetSlots: true });
@@ -2651,6 +2731,8 @@ async function startRuntime() {
     view.setStageOpening?.(currentStage()?.opening ?? null, currentStage()?.labels ?? []);
     setActiveLevel(initialLevel);
     game = new BusLoopGame(initialLevel);
+    countdown.reset();
+    paintCountdown();
     audio.resetEventHistory();
     view.replaceActiveLevel();
     initializeGameQueues({ resetSlots: true });
@@ -2733,6 +2815,9 @@ async function startRuntime() {
         remaining -= step;
       }
     }
+    countdown.tick({ paused: isCountdownPaused(), status: game.status,
+      ended: gameOverActive || levelSession.shouldOpenStore(), time: now });
+    paintCountdown();
     const renderState = isSpatialOptimizationEnabled('liveRenderState')
       ? game.renderState()
       : game.snapshot();
@@ -2746,6 +2831,7 @@ async function startRuntime() {
     get game() { return game; },
     get view() { return view; },
     snapshot: () => game.snapshot(),
+    countdown: () => countdown.snapshot(),
     clickVehicle: (id) => handleVehicleClick(Number(id)),
     InstallFullGame,
     openStore,
@@ -2825,6 +2911,7 @@ platformBridge = createPlatformBridge({
   onStart: startRuntime,
   onVisibilityChange: (visible) => {
     platformVisible = visible;
+    refreshCountdownVisibility();
     audio?.setVisible(visible);
     preRollController?.setVisible(visible);
   },

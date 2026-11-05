@@ -11,6 +11,7 @@ import {
   checkPlayableRuntimeArtifact
 } from './check-playable-runtime.mjs';
 import { validateStoreLink } from '../src/store-links.js';
+import { validateCountdownConfig } from '../src/countdown.js';
 import {
   PRE_ROLL_COMPRESSION_VERSION,
   compressPreRollFile
@@ -423,7 +424,7 @@ export function validateTuning(tuning, template, location = 'tuning') {
       }
       output[key] = validateTuning(value, template[key], `${location}.${key}`);
     }
-    return output;
+    return location === 'tuning.countdown' ? validateCountdownConfig(output) : output;
   }
   if (typeof template === 'number') {
     if (typeof tuning !== 'number' || !Number.isFinite(tuning)) throw new TypeError(`${location} must be finite.`);

@@ -1166,6 +1166,14 @@ export class BusLoopGame {
     return { ok: true, spotIndex: spot.index };
   }
 
+  failCountdown() {
+    if (this.status !== 'playing') return false;
+    this.status = 'lost';
+    this.recordEvent({ type: 'lose', reason: 'challenge-timeout' });
+    this.emit();
+    return true;
+  }
+
   update(deltaSeconds) {
     if (this.status !== 'playing') return;
     const delta = Math.max(0, Math.min(deltaSeconds, 0.1));

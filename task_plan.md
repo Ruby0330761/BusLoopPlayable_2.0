@@ -41,7 +41,15 @@
 
 ## Current Goal
 
-The Level 36 layout and non-blocking opening/idle hand guidance are complete; packaging remains out of scope until requested.
+Implement the confirmed whole-level countdown challenge in the BL editor, using the supplied BL-2610284 V2 playable as reference. User confirmed the revised PRD and authorized development on 2026-11-05; local implementation and validation are in scope, remote deployment is not.
+
+## Current Countdown Challenge Phases (2026-11-05)
+
+1. **Complete:** Read the reference V2 countdown/store-return sources, inspect the local playable, and rerun its existing 27 tests (27/27 pass).
+2. **Confirmed:** User approved `docs/prd/bl/2026-11-05-countdown-challenge-prd.md` with 「按推荐方案确认，开始开发」. Timeout reuses the existing Game Over flow and `gameOver.retryEnabled`; no separate timeout-action selector or Game Over display switch is added.
+3. **Complete locally:** Implemented per `docs/development-docs/bl/2026-11-05-countdown-challenge-plan.md`; reviewed and mapped AC01–AC14 evidence there. Build passed; full regression had 513 pass/0 fail/1 existing FFmpeg skip; countdown focus 14/14 pass; seven platform artifacts from the main-feature/phone-border-fix stage passed 102/102 local runtime checks. These artifacts predate the subsequent visible-blue-frame alignment adjustment. No remote deployment or real-platform/device acceptance was performed.
+4. **Local retest complete:** User requested another local test. Fresh 14/14 tests and browser flows passed, including x2 real-time measurement, 78-second editing pause, timeout and both Retry settings. Preview service is running at `http://127.0.0.1:5177/`; details are appended to the same implementation record.
+5. **HUD alignment complete locally:** Aligned the visible blue frame edges of the countdown and speed button; 3/3 view tests and desktop/portrait/landscape browser checks passed. No full rebuild or platform re-export after this adjustment; evidence is linked from the project progress entry.
 
 ## Current Level40 Test Package Phases
 
@@ -101,7 +109,7 @@ Complete: the authoring workflow saves revisioned `bus-loop-web-level-v1` docume
 
 ## Current Phase
 
-Complete: the strict three-file Google wrapper, portrait/320x480 metadata, MRAID-independent Exit API bridge, tests, 16-package overwrite, and independent ZIP verification are complete.
+Local countdown implementation, review and acceptance-coverage check are complete. Evidence is in the implementation record and `artifacts/playable-exports/countdown-qa/qa-summary.json`. Remote deployment and official platform/device acceptance remain unperformed and outside this local-development delivery.
 
 ## Current Google Packaging Phases
 

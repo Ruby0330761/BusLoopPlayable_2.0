@@ -1,6 +1,7 @@
 import { mkdir, readFile, readdir, stat, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { transformWithEsbuild } from 'vite';
+import { COUNTDOWN_TIMER_ASSET } from '../src/countdown.js';
 
 const ROOT = process.cwd();
 const DIST_DIR = path.resolve(process.env.PLAYABLE_DIST_DIR || path.join(ROOT, 'dist'));
@@ -280,6 +281,7 @@ async function main() {
     )
   });
   const realAssetUrls = new Set(BASE_RUNTIME_ASSET_PATHS);
+  if (Number(SCENE_TUNING.countdown?.enabled) === 1) realAssetUrls.add(COUNTDOWN_TIMER_ASSET);
   // A session can disable the pre-roll, and the runtime applies that by zeroing
   // the tuning flag. Reading the raw `SCENE_TUNING.preRoll.enabled` here inlined
   // a 519 KB MP4 the runtime never played, so the session has to be consulted

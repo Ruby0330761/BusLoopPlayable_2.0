@@ -1,5 +1,13 @@
 # Playable Project Progress
 
+## Completed Locally On 2026-11-05 - 可配置整关倒计时（未部署）
+
+- 按已确认 PRD 增加「关卡 → 倒计时挑战」：默认关闭、1–5999 秒（默认 30）、红光开关与预警秒数（默认 10）。首次实际发车启动独立真实时钟，后台/引导锁/编辑/过场暂停，Retry 和换关复位；超时复用原 Game Over 与 `gameOver.retryEnabled`。
+- 主要改动：`src/countdown.js` / `countdown-view.js`、入口与模型失败方法、场景面板/默认配置、HUD/CSS、条件打包闹钟资源和导出校验；没有新增依赖或超时商城跳转。
+- 同日 HUD 细调：按素材实际可见蓝色边框计算缩放，让闹钟面板上下沿与倍速按钮对齐、钟体自然突出。3 项视图测试通过；本地桌面及 390×844 / 844×390 视口实测上下沿误差均小于 0.01 CSS px，截图 `artifacts/playable-exports/countdown-qa/countdown-aligned-borders.jpg`。此细调仅完成本地验证，既有七平台导出包为调整前版本。
+- 主功能阶段验证：完整构建通过；全量 513 通过、0 失败、1 个既有 FFmpeg 用例跳过；横屏手机框边界问题修复后 14 项倒计时定向测试全过。该阶段源码导出的七平台产物通过 102/102 运行时检查，图片完整内嵌；最大单 HTML 4,404,069 字节。此产物不含后续蓝色边框对齐细调。
+- 需求与证据：`docs/prd/bl/2026-11-05-countdown-challenge-prd.md`、`docs/development-docs/bl/2026-11-05-countdown-challenge-plan.md`；成品/报告在 `artifacts/playable-exports/countdown-qa/`。本地实现、审查与覆盖核对完成；**未部署**，正式平台/真机未验收。
+
 ## Completed On 2026-11-04 - 补齐关卡级 bgMaterial / transformConfig 导入导出
 
 - 补的缺口：官方关卡每关都带的 `bgMaterial`（Unity 背景材质引用）和 `transformConfig`（场景变换块），此前导入时被丢弃，导出时也写不回去。

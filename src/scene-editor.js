@@ -11,6 +11,7 @@ import { LEVEL_1 } from './level-data.js';
 import { isValidStoreLink } from './store-links.js';
 import { detectPlayfieldHorizon, resolveBackgroundHorizon } from './background-alignment.js';
 import { BUILD_VERSION } from './build-version.js';
+import { normalizeCountdownConfig } from './countdown.js';
 import {
   isForeignLevelOwner,
   levelOwnerHeaders,
@@ -105,7 +106,7 @@ const EDITOR_CATEGORIES = [
 function editorCategoryForGroup(group) {
   const path = group.fields?.[0]?.[1] ?? '';
   if (path.startsWith('exportNaming.')) return 'export';
-  if (path.startsWith('level.')) return 'level';
+  if (path.startsWith('level.') || path.startsWith('countdown.')) return 'level';
   if (/^(?:conveyorLayout|conveyorLayouts|spatialConveyor|queueCurves|passengerShadows)\./.test(path)) {
     return 'conveyor';
   }
@@ -448,6 +449,17 @@ const FIELD_GROUPS = [
     defaultOpen: true,
     fields: [
       ['\u5f53\u524d\u5173\u5361', 'level.selected', 0, 0, 1, LEVEL_OPTIONS]
+    ]
+  },
+  {
+    title: '倒计时挑战',
+    defaultOpen: true,
+    countdown: true,
+    fields: [
+      ['启用倒计时', 'countdown.enabled', 0, 1, 1, null, 'toggle'],
+      ['倒计时时长（秒）', 'countdown.durationSeconds', 1, 5999, 1, null, 'countdown-number'],
+      ['临近结束红光', 'countdown.warningEnabled', 0, 1, 1, null, 'toggle'],
+      ['红光提前时间（秒）', 'countdown.warningSeconds', 1, 5999, 1, null, 'countdown-number']
     ]
   },
   {
@@ -1126,6 +1138,32 @@ export function createSceneEditor(root, {
   const tuningRedoStack = [];
   const MAX_TUNING_HISTORY = 50;
   let restoringHistory = false;
+  let playableExportBusy = false;
+
+  function updateCountdownControls() {
+    const countdown = normalizeCountdownConfig(getTuning().countdown);
+    let invalid = false;
+    for (const key of ['durationSeconds', 'warningEnabled', 'warningSeconds']) {
+      const controls = inputs.get(`countdown.${key}`);
+      if (!controls) continue;
+      const disabled = !countdown.enabled || (key === 'warningSeconds' && !countdown.warningEnabled);
+      controls.row.classList.toggle('is-readonly', disabled);
+      (controls.number ?? controls.checkbox).disabled = disabled;
+      if (key === 'warningSeconds') controls.number.max = String(countdown.durationSeconds);
+      if (controls.updateValidity && !controls.updateValidity()) invalid = true;
+    }
+    exportButton.disabled = playableExportBusy || invalid;
+    exportAllButton.disabled = playableExportBusy || invalid;
+    const countdownErrorMessage = '请先修正「关卡 → 倒计时挑战」中的时间配置';
+    if (invalid && !playableExportBusy) {
+      exportStatus.dataset.state = 'error';
+      exportStatus.textContent = countdownErrorMessage;
+    } else if (!playableExportBusy && exportStatus.textContent === countdownErrorMessage) {
+      exportStatus.dataset.state = '';
+      exportStatus.textContent = '就绪';
+    }
+    return !invalid;
+  }
 
   const sameTuning = (left, right) => JSON.stringify(left) === JSON.stringify(right);
   function updateHistoryButtons() {
@@ -1162,7 +1200,7 @@ export function createSceneEditor(root, {
       } else {
         tuningUndoStack.push({ before: current, after: target, path: entry.path });
       }
-      sync();
+      sync({ resetCountdownDrafts: true });
     } finally {
       restoringHistory = false;
       updateHistoryButtons();
@@ -1210,6 +1248,14 @@ export function createSceneEditor(root, {
   });
 
   async function exportPlayable({ all = false } = {}) {
+    if (!updateCountdownControls()) {
+      const invalidCountdownControl = [...inputs.values()]
+        .find((controls) => controls.isCountdownNumber && !controls.number.disabled && !controls.updateValidity());
+      invalidCountdownControl?.number.reportValidity();
+      exportStatus.dataset.state = 'error';
+      exportStatus.textContent = '导出失败：请先修正倒计时配置';
+      return;
+    }
     const invalidNamingControl = [...inputs.values()]
       .find((controls) => controls.isFilename && !controls.updateValidity());
     if (invalidNamingControl) {
@@ -1226,6 +1272,7 @@ export function createSceneEditor(root, {
     const platformLabel = all
       ? `\u5168\u90e8 7 \u4e2a\u5e73\u53f0 \u00d7 ${brandingSetLabel}`
       : `${PLAYABLE_EXPORT_PLATFORMS.find(([id]) => id === platform)?.[1] ?? platform}\uff08${brandingSetLabel}\uff09`;
+    playableExportBusy = true;
     exportSetSelect.disabled = true;
     exportSelect.disabled = true;
     exportButton.disabled = true;
@@ -1301,8 +1348,8 @@ export function createSceneEditor(root, {
       clearInterval(exportElapsedTimer);
       exportSetSelect.disabled = false;
       exportSelect.disabled = false;
-      exportButton.disabled = false;
-      exportAllButton.disabled = false;
+      playableExportBusy = false;
+      updateCountdownControls();
       exportButton.removeAttribute('aria-busy');
       exportAllButton.removeAttribute('aria-busy');
     }
@@ -1349,6 +1396,7 @@ export function createSceneEditor(root, {
         : configuredOptions;
       const isColor = /color$/i.test(path) || /^passengerMaterial\.solidColors\.\d+$/.test(path);
       const isToggle = control === 'toggle';
+      const isCountdownNumber = control === 'countdown-number';
       const isFilename = control === 'filename';
       const isText = control === 'text' || isFilename;
       const isUrl = control === 'url';
@@ -1357,13 +1405,13 @@ export function createSceneEditor(root, {
       row.dataset.path = path;
       if (isColor) row.classList.add('editor-field-color');
       if (options) row.classList.add('editor-field-select');
-      if (isToggle) row.classList.add('editor-field-toggle');
+      if (isToggle || isCountdownNumber) row.classList.add('editor-field-toggle');
       if (isText) row.classList.add('editor-field-text');
       if (isUrl) row.classList.add('editor-field-url');
       const optionsMarkup = options
         ? `<select class="editor-select">${options.map(([value, text]) => `<option value="${value}">${text}</option>`).join('')}</select>`
         : '';
-      const rangeMarkup = isColor || isToggle || isText || isUrl
+      const rangeMarkup = isColor || isToggle || isText || isUrl || isCountdownNumber
         ? ''
         : `<input class="editor-range" type="range" min="${min}" max="${max}" step="${step}">`;
       row.innerHTML = `
@@ -1424,7 +1472,7 @@ export function createSceneEditor(root, {
             setAtPath(next, 'vehicleGuideHand.levelKey', getAtPath(next, 'level.selected'));
           }
           commitTuning(next, { path });
-          if (path === 'firstClickGuide.enabled') sync();
+          if (path === 'firstClickGuide.enabled' || path.startsWith('countdown.')) sync();
         });
         inputs.set(path, { row, checkbox, step });
         section.append(row);
@@ -1447,6 +1495,58 @@ export function createSceneEditor(root, {
         textInput.addEventListener('blur', updateValidity);
         inputs.set(path, { row, textInput, isFilename, updateValidity });
         section.append(row);
+        continue;
+      }
+      if (isCountdownNumber) {
+        const key = path.slice('countdown.'.length);
+        const error = document.createElement('p');
+        error.className = 'editor-camera-status';
+        error.dataset.state = 'error';
+        error.id = `countdown-${key}-error`;
+        error.hidden = true;
+        error.setAttribute('role', 'status');
+        number.setAttribute('aria-describedby', error.id);
+        const controls = { row, number, step, isCountdownNumber: true, dirty: false, lastValue: undefined };
+        const updateValidity = () => {
+          const value = Number(number.value);
+          const limit = key === 'warningSeconds'
+            ? normalizeCountdownConfig(getTuning().countdown).durationSeconds
+            : 5999;
+          const valid = number.disabled || (number.value.trim() !== '' && !number.validity.badInput
+            && Number.isInteger(value) && value >= 1 && value <= limit);
+          const message = valid ? '' : `请输入 1–${limit} 的整数秒数`;
+          number.setAttribute('aria-invalid', String(!valid));
+          number.setCustomValidity(message);
+          error.textContent = message;
+          error.hidden = valid;
+          return valid;
+        };
+        const commitCountdownNumber = () => {
+          if (number.disabled || !updateValidity()) { updateCountdownControls(); return; }
+          const value = Number(number.value);
+          const current = normalizeCountdownConfig(getTuning().countdown);
+          controls.dirty = false;
+          if (current[key] !== value) {
+            const next = structuredClone(getTuning());
+            next.countdown = { ...current, [key]: value };
+            if (key === 'durationSeconds') next.countdown.warningSeconds = Math.min(current.warningSeconds, value);
+            commitTuning(next, { path });
+          }
+          sync();
+        };
+        controls.updateValidity = updateValidity;
+        number.addEventListener('input', () => {
+          controls.dirty = true;
+          updateCountdownControls();
+        });
+        number.addEventListener('blur', commitCountdownNumber);
+        number.addEventListener('keydown', (event) => {
+          if (event.key !== 'Enter') return;
+          event.preventDefault();
+          commitCountdownNumber();
+        });
+        inputs.set(path, controls);
+        section.append(row, error);
         continue;
       }
       if (isUrl) {
@@ -1484,6 +1584,12 @@ export function createSceneEditor(root, {
       color?.addEventListener('change', () => commit(parseInt(color.value.slice(1), 16)));
       inputs.set(path, { row, range, number, color, step });
       section.append(row);
+    }
+    if (group.countdown) {
+      const help = document.createElement('p');
+      help.className = 'editor-camera-status';
+      help.textContent = '首次成功发车开始计时；倍速不影响；后台暂停；重试重新计时。修改总开关或时长会重开当前试玩；红光设置即时生效。';
+      section.append(help);
     }
     fieldsRoot.append(section);
   }
@@ -2372,6 +2478,10 @@ export function createSceneEditor(root, {
   });
 
   levelExportButton.addEventListener('click', async () => {
+    if (!updateCountdownControls()) {
+      levelStatus.textContent = '导出失败：请先修正倒计时配置';
+      return;
+    }
     const key = String(getTuning().level?.selected ?? '');
     if (!/^level[1-9]\d*$/.test(key)) return;
     setLevelBusy(true);
@@ -2596,10 +2706,20 @@ export function createSceneEditor(root, {
     spatialEditPointsButton.disabled = !isSpatialConveyorSelection(selected);
   }
 
-  function sync() {
+  function sync({ resetCountdownDrafts = false } = {}) {
     const tuning = getTuning();
     for (const [path, controls] of inputs) {
-      const value = getAtPath(tuning, path);
+      const value = path.startsWith('countdown.')
+        ? normalizeCountdownConfig(tuning.countdown)[path.slice('countdown.'.length)]
+        : getAtPath(tuning, path);
+      if (controls.isCountdownNumber) {
+        if (resetCountdownDrafts || !controls.dirty || controls.lastValue !== value) {
+          controls.number.value = String(value);
+          controls.dirty = false;
+        }
+        controls.lastValue = value;
+        continue;
+      }
       if (controls.select) {
         if (path === 'background.asset') ensureBackgroundSelectValue(controls.select, value);
         if (path.endsWith('.vehicleId')) ensureVehicleSelectValue(controls.select, value);
@@ -2626,6 +2746,7 @@ export function createSceneEditor(root, {
     }
     updatePassengerMaterialVisibility(tuning);
     updateConveyorLayoutVisibility(tuning);
+    updateCountdownControls();
     // 起点 X is computed while auto-centring is on, so leave the row in place but
     // mark it read-only -- dragging a slider that cannot win the argument reads
     // as a broken control.
@@ -2655,7 +2776,7 @@ export function createSceneEditor(root, {
     resetTuning.level ??= {};
     resetTuning.level.selected = selectedLevel;
     commitTuning(resetTuning);
-    sync();
+    sync({ resetCountdownDrafts: true });
   });
 
   if (matchMedia('(max-width: 760px)').matches) setCollapsed(true);

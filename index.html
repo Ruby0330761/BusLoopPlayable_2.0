@@ -10,6 +10,11 @@
     <div id="app">
       <main id="stage" class="stage">
         <canvas id="game-canvas" aria-label="Bus Fever Party!"></canvas>
+        <div id="countdown" class="countdown" role="timer" aria-live="off" hidden>
+          <img id="countdown-image" alt="" aria-hidden="true" draggable="false" />
+          <span id="countdown-value" class="countdown-value">00:30</span>
+        </div>
+        <div id="countdown-warning" class="countdown-warning" aria-hidden="true" hidden></div>
         <div id="pre-roll-overlay" class="pre-roll-overlay" aria-hidden="false">
           <video id="pre-roll-video" class="pre-roll-video" preload="auto" autoplay muted playsinline webkit-playsinline></video>
         </div>
