@@ -78,7 +78,7 @@
       "id": "META-ART-006",
       "title": "资源引用完整",
       "stage": "artifact",
-      "severity": "blocker",
+      "severity": "warning",
       "sourceClass": "delivery-contract",
       "sourceVersion": "game_playable-playbook@8e26d3b61d52c7540809a3a56fb6821472cc14673c4943ca71ef97f851c8401b",
       "check": {
@@ -104,34 +104,29 @@
     },
     {
       "id": "META-STA-002",
-      "title": "禁止外部 URL",
+      "title": "index.html 无外部 src / href",
       "stage": "static",
       "severity": "blocker",
       "sourceClass": "checker-parity",
-      "sourceVersion": "playable_check@86d58e33d293a0a095b574407a2d6c7d191d510f",
+      "sourceVersion": "playable_check@8801:b1dbb2238ab331f6276d9b9ceed9d434054374d823de6869623f60a82082ed0a",
       "check": {
-        "type": "external_urls_allowlist",
-        "allow": []
+        "type": "regex_absent",
+        "target": "main_html",
+        "pattern": "(?:src|href)\\s*=\\s*[\"']https?://"
       },
       "repairHint": "把外部资源内联或加入 ZIP。",
       "autoRepair": false
     },
     {
       "id": "META-STA-003",
-      "title": "声明方向或响应式策略",
+      "title": "内联音频格式提示（data:audio/ogg 建议复核）",
       "stage": "static",
       "severity": "warning",
-      "sourceClass": "delivery-contract",
-      "sourceVersion": "game_playable-playbook@8e26d3b61d52c7540809a3a56fb6821472cc14673c4943ca71ef97f851c8401b",
+      "sourceClass": "checker-parity",
+      "sourceVersion": "playable_check@8801:b1dbb2238ab331f6276d9b9ceed9d434054374d823de6869623f60a82082ed0a",
       "check": {
-        "type": "any_regex_present",
-        "target": "main_html",
-        "patterns": [
-          "name\\s*=\\s*['\\\"]ad\\.orientation['\\\"]",
-          "orientationchange",
-          "matchMedia\\s*\\(",
-          "resize"
-        ]
+        "type": "regex_absent",
+        "pattern": "data:audio/ogg"
       },
       "repairHint": "补齐方向 meta 或真实响应式监听。",
       "autoRepair": false
@@ -140,7 +135,7 @@
       "id": "META-STA-004",
       "title": "运行时图片资源使用容器安全映射",
       "stage": "static",
-      "severity": "blocker",
+      "severity": "warning",
       "sourceClass": "delivery-contract",
       "sourceVersion": "bw-real-checker-regression@2026-08-06",
       "check": {

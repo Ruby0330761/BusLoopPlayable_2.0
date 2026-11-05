@@ -1,35 +1,33 @@
 {
   "schemaVersion": "playable-ruleset-manifest-v1",
-  "rulesetVersion": "1.5.0",
+  "rulesetVersion": "1.6.0",
   "createdAt": "2026-08-11T12:00:00+08:00",
   "checkerParityMatrix": "checker-parity-matrix.json",
   "sourceProvenance": [
     {
       "sourceClass": "checker-parity",
-      "name": "playable_check",
-      "commit": "86d58e33d293a0a095b574407a2d6c7d191d510f",
+      "name": "playable_check@8801",
+      "endpoint": "http://10.0.1.167:8801/",
+      "capturedAt": "2026-11-04",
       "files": [
         {
           "name": "checker_rules.js",
-          "sha256": "b2a93e76ca0825a945e8fdd48f8e7cc2d0f7fb2e304960f3cfbf91ffbd465bdd"
+          "sha256": "b1dbb2238ab331f6276d9b9ceed9d434054374d823de6869623f60a82082ed0a"
         },
         {
           "name": "checker_static_validators.js",
-          "sha256": "231376e53ca66063ce3b4f72cade2d0d10aee7b1310df55d9f5618577d2dc266"
+          "sha256": "5967c07ca5638fd087fd7fbf2fb8b2ed0df6f9dac354c506d0d0ccbd668c324b"
         },
         {
           "name": "checker_artifact.js",
           "sha256": "48e4e0710758d31dcecc0a7535f89e72deb0d1cc33ad91cfddd97ce0a369f7c3"
         },
         {
-          "name": "hook_normal.js",
-          "sha256": "b7e2f947d6c24dd4f8b755e5761a2d062f2a7586f89618ff4b72d35ff8135e45"
-        },
-        {
-          "name": "hook_nowebgl.js",
-          "sha256": "8742abbfabf8eaab957818d654b5b28b56b161aa11a9688011880a1682c4f771"
+          "name": "checker_logic.js",
+          "sha256": "7c7085c6d52d66d5bb0f294591c034997906589e7685a66f83e82a87bb88506f"
         }
-      ]
+      ],
+      "alignmentNote": "本地规则按此版本校准：真实判 warn 的降为 warning，真实没有的规则删除。MINTEGRAL-STA-002 刻意严于 S10。"
     },
     {
       "sourceClass": "delivery-contract",

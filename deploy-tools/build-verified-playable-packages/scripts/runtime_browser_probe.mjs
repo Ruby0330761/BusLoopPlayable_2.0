@@ -145,14 +145,31 @@ function targetExpression(explicitSelector) {
       preferred.forEach((selector) => {
         try { candidates.push(...document.querySelectorAll(selector)); } catch (_) {}
       });
-      const textPattern = /install|download|get|play now|shop now|learn more|continue|安装|下载|立即|试玩|继续/i;
-      document.querySelectorAll("button,a,[role='button']").forEach((node) => {
-        if (textPattern.test(String(node.innerText || node.textContent || node.getAttribute("aria-label") || ""))) {
-          candidates.push(node);
-        }
+      const textPattern = /install|download|play now|play game|start game|shop now|learn more|continue|安装|下载|立即|试玩|开始|继续/i;
+      // React/Vue 等框架常把 CTA 渲染成无 id/class 的 div，靠内联样式或指针光标表达可点击性。
+      const clickable = (node) => {
+        if (node.hasAttribute("onclick") || node.getAttribute("role") === "button") return true;
+        const style = getComputedStyle(node);
+        return style.cursor === "pointer";
+      };
+      document.querySelectorAll("button,a,[role='button'],[onclick],div,span").forEach((node) => {
+        const text = String(node.innerText || node.textContent || node.getAttribute("aria-label") || "").trim();
+        if (!text || text.length > 120) return;
+        if (textPattern.test(text) && clickable(node)) candidates.push(node);
+      });
+      // 文本命中但光标未声明时，仍接受叶子节点里最内层的那一个，避免漏掉纯样式实现的按钮。
+      document.querySelectorAll("div,span").forEach((node) => {
+        if (node.children.length) return;
+        const text = String(node.innerText || node.textContent || "").trim();
+        if (text && text.length <= 40 && textPattern.test(text) && visible(node)) candidates.push(node);
       });
     }
-    const node = candidates.find(visible) || null;
+    // 优先取面积最大的可见候选项：真正的 CTA 通常比提示文字更大更靠前。
+    const area = (node) => {
+      const rect = node.getBoundingClientRect();
+      return rect.width * rect.height;
+    };
+    const node = candidates.filter(visible).sort((left, right) => area(right) - area(left))[0] || null;
     if (!node) {
       if (probe) probe.ctaTarget = { found: false, selector: explicit, selectorSource: explicit ? "explicit" : "auto", selectorError };
       return { found: false, selector: explicit, selectorSource: explicit ? "explicit" : "auto", selectorError };

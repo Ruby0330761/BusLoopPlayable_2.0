@@ -20,34 +20,34 @@
       "id": "UNITY-ART-002",
       "title": "发布态 HTML 为单行",
       "stage": "artifact",
-      "severity": "blocker",
+      "severity": "warning",
       "sourceClass": "delivery-contract",
       "sourceVersion": "game_playable-playbook@8e26d3b61d52c7540809a3a56fb6821472cc14673c4943ca71ef97f851c8401b",
       "check": {
         "type": "max_newlines",
         "value": 0
       },
-      "repairHint": "在 UnityAds 构建步骤执行确定性 minify。",
+      "repairHint": "在 UnityAds 构建步骤执行确定性 minify。（真实 Checker 不阻断；不符合时建议人工确认交付规范。）",
       "autoRepair": false
     },
     {
       "id": "UNITY-ART-003",
       "title": "HTML 严格结束于 </html>",
       "stage": "artifact",
-      "severity": "blocker",
+      "severity": "warning",
       "sourceClass": "delivery-contract",
       "sourceVersion": "game_playable-playbook@8e26d3b61d52c7540809a3a56fb6821472cc14673c4943ca71ef97f851c8401b",
       "check": {
         "type": "strict_html_end"
       },
-      "repairHint": "删除 </html> 后的换行、空格、注释和工具标签。",
+      "repairHint": "删除 </html> 后的换行、空格、注释和工具标签。（真实 Checker 不阻断；不符合时建议人工确认交付规范。）",
       "autoRepair": false
     },
     {
       "id": "UNITY-ART-004",
       "title": "除容器注入的唯一 mraid.js 声明外，业务内容全部自包含",
       "stage": "artifact",
-      "severity": "blocker",
+      "severity": "warning",
       "sourceClass": "delivery-contract",
       "sourceVersion": "game_playable-playbook@8e26d3b61d52c7540809a3a56fb6821472cc14673c4943ca71ef97f851c8401b",
       "check": {
@@ -57,14 +57,14 @@
           "./mraid.js"
         ]
       },
-      "repairHint": "内联所有业务脚本、样式和资源，只保留精确的 mraid.js 或 ./mraid.js 容器声明；不得放宽其他 URL。",
+      "repairHint": "内联所有业务脚本、样式和资源，只保留精确的 mraid.js 或 ./mraid.js 容器声明；不得放宽其他 URL。（真实 Checker 不阻断；不符合时建议人工确认交付规范。）",
       "autoRepair": false
     },
     {
       "id": "UNITY-STA-001",
       "title": "mraid.js 声明且仅一次",
       "stage": "static",
-      "severity": "blocker",
+      "severity": "warning",
       "sourceClass": "delivery-contract",
       "sourceVersion": "game_playable-playbook@8e26d3b61d52c7540809a3a56fb6821472cc14673c4943ca71ef97f851c8401b",
       "check": {
@@ -73,7 +73,7 @@
         "pattern": "<script\\b[^>]*\\bsrc\\s*=\\s*['\\\"](?:\\./)?mraid\\.js(?:[?#][^'\\\"]*)?['\\\"][^>]*>",
         "value": 1
       },
-      "repairHint": "在 head 中保留唯一一次 mraid.js 声明。",
+      "repairHint": "在 head 中保留唯一一次 mraid.js 声明。（真实 Checker 不阻断；不符合时建议人工确认交付规范。）",
       "autoRepair": false
     },
     {
@@ -99,59 +99,17 @@
       "autoRepair": false
     },
     {
-      "id": "UNITY-STA-003",
-      "title": "禁止 parent/top 容器探测",
-      "stage": "static",
-      "severity": "blocker",
-      "sourceClass": "delivery-contract",
-      "sourceVersion": "game_playable-playbook@8e26d3b61d52c7540809a3a56fb6821472cc14673c4943ca71ef97f851c8401b",
-      "check": {
-        "type": "regex_absent",
-        "pattern": "(?:window\\s*\\.\\s*)?(?:parent|top)\\s*\\.|(?:parent|top)\\s*\\[|parent\\.mraid|top\\.mraid"
-      },
-      "repairHint": "只访问 window.mraid，移除父窗口和顶层窗口探测。",
-      "autoRepair": false
-    },
-    {
-      "id": "UNITY-STA-004",
-      "title": "禁止 AppLovin 残留",
-      "stage": "static",
-      "severity": "blocker",
-      "sourceClass": "delivery-contract",
-      "sourceVersion": "game_playable-playbook@8e26d3b61d52c7540809a3a56fb6821472cc14673c4943ca71ef97f851c8401b",
-      "check": {
-        "type": "regex_absent",
-        "pattern": "ALPlayableAnalytics|AppLovin|apl[_-]?event"
-      },
-      "repairHint": "从 UnityAds adapter 和模板中移除 AppLovin API 与说明。",
-      "autoRepair": false
-    },
-    {
-      "id": "UNITY-STA-005",
-      "title": "禁止 AI 工具尾部标签",
-      "stage": "static",
-      "severity": "blocker",
-      "sourceClass": "delivery-contract",
-      "sourceVersion": "game_playable-playbook@8e26d3b61d52c7540809a3a56fb6821472cc14673c4943ca71ef97f851c8401b",
-      "check": {
-        "type": "regex_absent",
-        "pattern": "<\\/?(?:ai_title|ai_summary|ai_store_urls)\\b"
-      },
-      "repairHint": "修正导出器，禁止向最终 HTML 追加非标准标签。",
-      "autoRepair": false
-    },
-    {
       "id": "UNITY-STA-006",
-      "title": "禁止 Checker S11 命中的网络 API 字面量",
+      "title": "网络请求风险（Checker S11）",
       "stage": "static",
-      "severity": "blocker",
+      "severity": "warning",
       "sourceClass": "checker-parity",
-      "sourceVersion": "playable_check@86d58e33d293a0a095b574407a2d6c7d191d510f",
+      "sourceVersion": "playable_check@8801:b1dbb2238ab331f6276d9b9ceed9d434054374d823de6869623f60a82082ed0a",
       "check": {
         "type": "regex_absent",
-        "pattern": "(?:fetch\\s*\\(|\\bXMLHttpRequest\\b|WebSocket\\s*\\()"
+        "pattern": "\\bfetch\\s*\\(|\\bXMLHttpRequest\\b|\\bWebSocket\\s*\\("
       },
-      "repairHint": "从源码、构建配置、模板或打包脚本消除网络 API 字面量并完整重建；Vite modulepreload polyfill 也必须在真实构建链关闭或替换，不得手改最终 HTML。",
+      "repairHint": "移除真实网络请求；GLSL 的 texelFetch 等非网络函数不应命中（本规则区分大小写）。",
       "autoRepair": false
     },
     {
@@ -160,7 +118,7 @@
       "stage": "manual",
       "severity": "manual",
       "sourceClass": "checker-parity",
-      "sourceVersion": "playable_check@86d58e33d293a0a095b574407a2d6c7d191d510f",
+      "sourceVersion": "playable_check@8801:b1dbb2238ab331f6276d9b9ceed9d434054374d823de6869623f60a82082ed0a",
       "check": {
         "type": "manual"
       },

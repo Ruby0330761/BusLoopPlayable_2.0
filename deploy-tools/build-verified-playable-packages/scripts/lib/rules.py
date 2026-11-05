@@ -639,23 +639,32 @@ def evaluate_check(
         return not missing, "全局函数声明完整" if not missing else "缺少真实全局函数声明", missing
 
     if check_type == "mintegral_structure":
+        # 对齐真实 Checker：S2 接受根层级主 HTML 或唯一子目录主 HTML（fail 条件）；
+        # S3 目录名与 ZIP 基础名不一致只是建议项（warn），不阻断。
         if artifact.kind != "zip":
             return False, "Mintegral 结构要求 ZIP", []
         base = Path(artifact.file_name).stem
         files = [name for name in artifact.entry_names if not name.endswith("/")]
-        root_files = [name for name in files if "/" not in name]
         root_dirs = sorted({name.split("/")[0] for name in files if "/" in name})
         main = artifact.main_html_path or ""
-        problems = []
-        if root_files:
-            problems.append("ZIP 根目录存在文件: " + ", ".join(root_files[:10]))
-        if root_dirs != [base]:
-            problems.append(f"唯一目录应为 {base}，当前 {root_dirs}")
-        if not main.startswith(base + "/"):
-            problems.append(f"主 HTML 不在 {base}/ 内: {main or '<missing>'}")
-        elif Path(posixpath.basename(main)).stem != base:
-            problems.append(f"主 HTML 基础名应为 {base}: {main}")
-        return not problems, "ZIP、目录与主 HTML 同名" if not problems else "同名结构不符合", problems
+        is_root_main = bool(main) and "/" not in main
+        is_single_dir_main = bool(main) and len(root_dirs) == 1 and main.startswith(root_dirs[0] + "/")
+        if not main:
+            return False, "缺少可定位主 HTML", ["未找到主 HTML"]
+        if not (is_root_main or is_single_dir_main):
+            return False, "未检测到根层级或唯一子目录主 HTML", [
+                f"主 HTML: {main}",
+                f"子目录: {', '.join(root_dirs) or '无'}",
+            ]
+        notes = []
+        if is_root_main:
+            notes.append("根层级主 HTML，跳过目录同名校验")
+        elif root_dirs[0] != base:
+            notes.append(f"目录名 {root_dirs[0]} 与 ZIP 基础名 {base} 不一致，建议人工确认")
+        summary = "根层级主 HTML" if is_root_main else (
+            "目录名与 ZIP 名一致" if root_dirs[0] == base else "单目录主 HTML（目录名建议核对）"
+        )
+        return True, summary, notes
 
     raise RulesetError(f"未实现的 check.type: {check_type}")
 

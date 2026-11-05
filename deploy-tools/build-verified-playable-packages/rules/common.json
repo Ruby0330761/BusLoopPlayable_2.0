@@ -133,7 +133,7 @@
     },
     {
       "id": "COMMON-STA-006",
-      "title": "checker 可见 URL 不产生网络请求警告",
+      "title": "checker 可见 URL 仅限商店地址或当前平台官方 SDK",
       "stage": "static",
       "severity": "blocker",
       "sourceClass": "user-confirmed",
@@ -141,8 +141,10 @@
       "check": {
         "type": "checker_visible_http_urls_allowlist",
         "allow": [
-          "^https://(?:apps|itunes)\\.apple\\.com/[^\\s'\"<>`\\\\]+$",
-          "^https://play\\.google\\.com/[^\\s'\"<>`\\\\]+$"
+          "^https://(?:apps|itunes)\\.apple\\.com/?$",
+          "^https://play\\.google\\.com/?$",
+          "^https://(?:apps|itunes)\\.apple\\.com/[^\\s'\\\"<>`\\\\]+$",
+          "^https://play\\.google\\.com/[^\\s'\\\"<>`\\\\]+$"
         ],
         "allowByPlatform": {
           "google-ads": [
@@ -153,7 +155,7 @@
           ]
         }
       },
-      "repairHint": "真实外链必须内联或移除；React 错误文档和 W3C 命名空间等非网络常量应在真实构建链中做保持运行时值不变的 checker 兼容编码，并重新执行运行时检查。",
+      "repairHint": "真实外链必须内联或移除；商店地址允许裸域名（构建期由字符串拼接完成）；React 错误文档和 W3C 命名空间等非网络常量应在真实构建链中做保持运行时值不变的 checker 兼容编码。",
       "autoRepair": false
     },
     {

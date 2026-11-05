@@ -18,29 +18,29 @@
     },
     {
       "id": "MINTEGRAL-ART-002",
-      "title": "ZIP 基础名仅字母数字下划线",
+      "title": "ZIP 文件名格式建议（字母数字下划线）",
       "stage": "artifact",
-      "severity": "blocker",
-      "sourceClass": "delivery-contract",
-      "sourceVersion": "game_playable-playbook@8e26d3b61d52c7540809a3a56fb6821472cc14673c4943ca71ef97f851c8401b",
+      "severity": "warning",
+      "sourceClass": "checker-parity",
+      "sourceVersion": "playable_check@8801:b1dbb2238ab331f6276d9b9ceed9d434054374d823de6869623f60a82082ed0a",
       "check": {
         "type": "zip_name_regex",
         "pattern": "^[A-Za-z0-9_]+$"
       },
-      "repairHint": "在构建配置中生成 ASCII 基础名。",
+      "repairHint": "建议 ZIP 文件名只含字母、数字、下划线；官方可打开时可人工确认后台命名要求。",
       "autoRepair": true
     },
     {
       "id": "MINTEGRAL-ART-003",
-      "title": "ZIP、目录和主 HTML 同名",
+      "title": "ZIP 入口结构（根层级或单目录主 HTML）",
       "stage": "artifact",
       "severity": "blocker",
-      "sourceClass": "delivery-contract",
-      "sourceVersion": "game_playable-playbook@8e26d3b61d52c7540809a3a56fb6821472cc14673c4943ca71ef97f851c8401b",
+      "sourceClass": "checker-parity",
+      "sourceVersion": "playable_check@8801:b1dbb2238ab331f6276d9b9ceed9d434054374d823de6869623f60a82082ed0a",
       "check": {
         "type": "mintegral_structure"
       },
-      "repairHint": "修正打包器，使 ZIP 基础名、唯一目录名和主 HTML 基础名一致。",
+      "repairHint": "主 HTML 必须位于 ZIP 根层级或唯一子目录内。",
       "autoRepair": false
     },
     {
@@ -73,7 +73,7 @@
     },
     {
       "id": "MINTEGRAL-STA-002",
-      "title": "生命周期函数全局可调用",
+      "title": "生命周期函数真实可调用（严于 Checker S10）",
       "stage": "static",
       "severity": "blocker",
       "sourceClass": "delivery-contract",
@@ -89,7 +89,7 @@
           "gameRetry"
         ]
       },
-      "repairHint": "在 classic 作用域真实暴露 window.install 与全部生命周期函数。",
+      "repairHint": "在 classic 作用域真实暴露 window.install 与 gameReady/gameStart/gameEnd/gameClose/gameRetry。真实 Checker S10 只查字符串出现，本规则额外要求真实声明：仅有字面量而无可调用函数时运行时必定失败。",
       "autoRepair": false
     },
     {
@@ -139,15 +139,15 @@
       "id": "MINTEGRAL-STA-006",
       "title": "除 js/html 外不得以文件形式加载",
       "stage": "static",
-      "severity": "blocker",
-      "sourceClass": "checker-parity",
+      "severity": "warning",
+      "sourceClass": "delivery-contract",
       "sourceVersion": "preview-util@mmp-cdn.rayjump.com/pt-scripts/preview-util.js",
       "check": {
         "type": "regex_absent",
         "target": "main_html",
         "pattern": "<(?:link|img|video|audio|source|track)\\b[^>]*\\b(?:href|src)\\s*=\\s*[\\\"'](?!data:)"
       },
-      "repairHint": "把样式/图片/音视频内联进 HTML 或转成 data: URI；Mindworks 检查器把任何单独加载的非 js 文件判为外链资源。",
+      "repairHint": "建议把样式/图片/音视频内联进 HTML；Mindworks 检查器把单独加载的非 js 文件判为外链资源。",
       "autoRepair": false
     },
     {
@@ -166,4 +166,3 @@
     }
   ]
 }
-

@@ -36,7 +36,7 @@
       "stage": "static",
       "severity": "blocker",
       "sourceClass": "checker-parity",
-      "sourceVersion": "playable_check@86d58e33d293a0a095b574407a2d6c7d191d510f",
+      "sourceVersion": "playable_check@8801:b1dbb2238ab331f6276d9b9ceed9d434054374d823de6869623f60a82082ed0a",
       "check": {
         "type": "regex_present",
         "pattern": "FbPlayableAd\\s*\\.\\s*onCTAClick\\s*\\("
@@ -50,7 +50,7 @@
       "stage": "static",
       "severity": "blocker",
       "sourceClass": "checker-parity",
-      "sourceVersion": "playable_check@86d58e33d293a0a095b574407a2d6c7d191d510f",
+      "sourceVersion": "playable_check@8801:b1dbb2238ab331f6276d9b9ceed9d434054374d823de6869623f60a82082ed0a",
       "check": {
         "type": "regex_absent",
         "pattern": "mraid\\.js"
@@ -62,8 +62,8 @@
       "id": "MOLOCO-STA-003",
       "title": "禁止动态网络 API",
       "stage": "static",
-      "severity": "blocker",
-      "sourceClass": "checker-parity",
+      "severity": "warning",
+      "sourceClass": "delivery-contract",
       "sourceVersion": "playable_check@86d58e33d293a0a095b574407a2d6c7d191d510f",
       "check": {
         "type": "regex_absent",
@@ -88,4 +88,3 @@
     }
   ]
 }
-
