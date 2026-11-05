@@ -1,0 +1,250 @@
+{
+  "format": "bus-loop-progress-ui-v1",
+  "source": "requester reference image 1774x887",
+  "designSpace": {
+    "width": 1774,
+    "height": 887
+  },
+  "barGeometry": {
+    "outer": {
+      "w": 1590,
+      "h": 148,
+      "radius": 74
+    },
+    "inner": {
+      "w": 1531,
+      "h": 94,
+      "radius": 47,
+      "insetX": 27,
+      "insetY": 27
+    }
+  },
+  "anchors": {
+    "passed": 0.41,
+    "node": 0.5
+  },
+  "assets": {
+    "bar-track": {
+      "file": "bar-track.png",
+      "webp": "bar-track_q88.webp",
+      "size": [
+        1650,
+        225
+      ],
+      "contentBox": [
+        30,
+        47,
+        1620,
+        195
+      ],
+      "webpBytes": 13656
+    },
+    "bar-gradient": {
+      "file": "bar-gradient.png",
+      "webp": "bar-gradient_q88.webp",
+      "size": [
+        1547,
+        110
+      ],
+      "contentBox": [
+        7,
+        7,
+        1540,
+        103
+      ],
+      "webpBytes": 6220
+    },
+    "bar-rail": {
+      "file": "bar-rail.png",
+      "webp": "bar-rail_q88.webp",
+      "size": [
+        1547,
+        110
+      ],
+      "contentBox": [
+        7,
+        7,
+        1540,
+        103
+      ],
+      "webpBytes": 3542
+    },
+    "node-stem": {
+      "file": "node-stem.png",
+      "webp": "node-stem_q88.webp",
+      "size": [
+        46,
+        136
+      ],
+      "contentBox": [
+        8,
+        8,
+        38,
+        128
+      ],
+      "webpBytes": 230
+    },
+    "bus": {
+      "file": "bus.png",
+      "webp": "bus_q88.webp",
+      "size": [
+        318,
+        151
+      ],
+      "contentBox": [
+        18,
+        19,
+        300,
+        133
+      ],
+      "webpBytes": 13032
+    },
+    "bus-pointer": {
+      "file": "bus-pointer.png",
+      "webp": "bus-pointer_q88.webp",
+      "size": [
+        128,
+        80
+      ],
+      "contentBox": [
+        11,
+        11,
+        117,
+        69
+      ],
+      "webpBytes": 3880
+    },
+    "node-skull": {
+      "file": "node-skull.png",
+      "webp": "node-skull_q88.webp",
+      "size": [
+        231,
+        210
+      ],
+      "contentBox": [
+        25,
+        25,
+        206,
+        185
+      ],
+      "webpBytes": 7852
+    },
+    "bubble-fail": {
+      "file": "bubble-fail.png",
+      "webp": "bubble-fail_q88.webp",
+      "size": [
+        820,
+        215
+      ],
+      "contentBox": [
+        15,
+        0,
+        807,
+        195
+      ],
+      "webpBytes": 29116
+    },
+    "pill-dark": {
+      "file": "pill-dark.png",
+      "webp": "pill-dark_q88.webp",
+      "size": [
+        196,
+        117
+      ],
+      "contentBox": [
+        13,
+        13,
+        183,
+        104
+      ],
+      "webpBytes": 2500
+    },
+    "pill-green": {
+      "file": "pill-green.png",
+      "webp": "pill-green_q88.webp",
+      "size": [
+        213,
+        117
+      ],
+      "contentBox": [
+        13,
+        13,
+        200,
+        104
+      ],
+      "webpBytes": 3392
+    },
+    "pill-red": {
+      "file": "pill-red.png",
+      "webp": "pill-red_q88.webp",
+      "size": [
+        218,
+        120
+      ],
+      "contentBox": [
+        13,
+        13,
+        205,
+        107
+      ],
+      "webpBytes": 2734
+    },
+    "peg-dark": {
+      "file": "peg-dark.png",
+      "webp": "peg-dark_q88.webp",
+      "size": [
+        33,
+        62
+      ],
+      "contentBox": [
+        8,
+        8,
+        25,
+        54
+      ],
+      "webpBytes": 234
+    },
+    "peg-green": {
+      "file": "peg-green.png",
+      "webp": "peg-green_q88.webp",
+      "size": [
+        33,
+        62
+      ],
+      "contentBox": [
+        8,
+        8,
+        25,
+        54
+      ],
+      "webpBytes": 290
+    },
+    "peg-red": {
+      "file": "peg-red.png",
+      "webp": "peg-red_q88.webp",
+      "size": [
+        33,
+        62
+      ],
+      "contentBox": [
+        8,
+        8,
+        25,
+        54
+      ],
+      "webpBytes": 256
+    }
+  },
+  "totalWebpBytes": 86934,
+  "notes": [
+    "TRACK IS A STATIC RAINBOW: sampling the reference every 10% shows one continuous gradient green->yellow->red->purple with no hard fill boundary; the bus position is what communicates progress. Do NOT clip a separate fill layer unless a fill look is explicitly requested.",
+    "bar-gradient = the full-spectrum track interior (1531x94, r47). Draw it inside the bar, then bar-track (white shell, interior transparent) above it.",
+    "bar-rail is an optional pale-purple tile: use it only if a filled/unfilled variant is wanted (draw bar-rail first, then clip bar-gradient to the progress width).",
+    "node-skull sits on the bar's top rim; node-stem fills the gap from the ring down to the 50% pill.",
+    "bubble-fail is text-free: the runtime writes 'NN% OF PLAYERS FAIL HERE' over it.",
+    "pills are text-free; pegs are the small nubs that connect each pill to the bar.",
+    "bus is cut at the bar's top rim (its white outline is the same colour as the rim, so it cannot be separated); rest it on the bar.",
+    "Every PNG carries a transparent margin; use contentBox for exact placement."
+  ],
+  "trackStyle": "static-spectrum"
+}

@@ -1,0 +1,44 @@
+{
+  "reference": {
+    "size": [
+      1774,
+      887
+    ]
+  },
+  "track": {
+    "box": [
+      95,
+      405,
+      1685,
+      570
+    ],
+    "outerRadius": 73
+  },
+  "inner": {
+    "box": [
+      122,
+      449,
+      1652,
+      542
+    ],
+    "radius": 47
+  },
+  "anchors": {
+    "passed": 0.41,
+    "node": 0.5
+  },
+  "pngs": {},
+  "files": {
+    "bar-track": "bar-track.png",
+    "bar-gradient": "bar-gradient.png",
+    "bar-rail": "bar-rail.png",
+    "bus": "bus.png",
+    "busPointer": "bus-pointer.png",
+    "nodeSkull": "node-skull.png",
+    "bubbleFail": "bubble-fail.png",
+    "pillDark": "pill-dark.png",
+    "pillGreen": "pill-green.png",
+    "pillRed": "pill-red.png"
+  },
+  "notes": "bar-track keeps the white shell only; its interior is transparent. bar-gradient/bar-rail fill the inner pill (radius 47) exactly. node-skull is the ring+skull above the bar's top rim, so place its bottom edge on the rim and let the red stem tile cover the gap."
+}

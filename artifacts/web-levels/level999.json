@@ -212,6 +212,7 @@
         "distance": 0.25,
         "wrenchColor": 0,
         "secondColorIndex": 0,
+        "stepLimited": true,
         "stepLimit": 35,
         "timeLimit": 30
       }
@@ -238,6 +239,190 @@
         "stepLimit": 35,
         "timeLimit": 30
       }
+    },
+    {
+      "id": 15,
+      "seats": 4,
+      "colorIndex": 0,
+      "colorOverrides": {},
+      "x": 1.62,
+      "z": -2.16,
+      "yaw": 90,
+      "isHidden": false,
+      "isTurnVehicle": false,
+      "containerType": 4,
+      "containerId": 1,
+      "elevatorLayer": 0,
+      "mechanism": {
+        "type": "normal",
+        "pairVehicleId": null,
+        "distance": 0.25,
+        "wrenchColor": 0,
+        "secondColorIndex": 0,
+        "stepLimit": 35,
+        "timeLimit": 30
+      }
+    },
+    {
+      "id": 16,
+      "seats": 4,
+      "colorIndex": 0,
+      "colorOverrides": {},
+      "x": 1.04842098,
+      "z": -2.16,
+      "yaw": 90,
+      "isHidden": false,
+      "isTurnVehicle": false,
+      "containerType": 4,
+      "containerId": 1,
+      "elevatorLayer": 0,
+      "mechanism": {
+        "type": "normal",
+        "pairVehicleId": null,
+        "distance": 0.25,
+        "wrenchColor": 0,
+        "secondColorIndex": 0,
+        "stepLimit": 35,
+        "timeLimit": 30
+      }
+    },
+    {
+      "id": 17,
+      "seats": 4,
+      "colorIndex": 0,
+      "colorOverrides": {},
+      "x": 0.47684196,
+      "z": -2.16,
+      "yaw": 90,
+      "isHidden": false,
+      "isTurnVehicle": false,
+      "containerType": 4,
+      "containerId": 1,
+      "elevatorLayer": 0,
+      "mechanism": {
+        "type": "normal",
+        "pairVehicleId": null,
+        "distance": 0.25,
+        "wrenchColor": 0,
+        "secondColorIndex": 0,
+        "stepLimit": 35,
+        "timeLimit": 30
+      }
+    },
+    {
+      "id": 18,
+      "seats": 4,
+      "colorIndex": 0,
+      "colorOverrides": {},
+      "x": -0.09473705999999993,
+      "z": -2.16,
+      "yaw": 90,
+      "isHidden": false,
+      "isTurnVehicle": false,
+      "containerType": 4,
+      "containerId": 1,
+      "elevatorLayer": 0,
+      "mechanism": {
+        "type": "normal",
+        "pairVehicleId": null,
+        "distance": 0.25,
+        "wrenchColor": 0,
+        "secondColorIndex": 0,
+        "stepLimit": 35,
+        "timeLimit": 30
+      }
+    },
+    {
+      "id": 19,
+      "seats": 4,
+      "colorIndex": 0,
+      "colorOverrides": {},
+      "x": 0.6031580400000001,
+      "z": 0.81,
+      "yaw": 0,
+      "isHidden": false,
+      "isTurnVehicle": false,
+      "containerType": 5,
+      "containerId": 2,
+      "elevatorLayer": 0,
+      "mechanism": {
+        "type": "normal",
+        "pairVehicleId": null,
+        "distance": 0.25,
+        "wrenchColor": 0,
+        "secondColorIndex": 0,
+        "stepLimit": 35,
+        "timeLimit": 30
+      }
+    },
+    {
+      "id": 20,
+      "seats": 4,
+      "colorIndex": 0,
+      "colorOverrides": {},
+      "x": 0.6031580400000001,
+      "z": 0.81,
+      "yaw": 0,
+      "isHidden": false,
+      "isTurnVehicle": false,
+      "containerType": 5,
+      "containerId": 2,
+      "elevatorLayer": 1,
+      "mechanism": {
+        "type": "normal",
+        "pairVehicleId": null,
+        "distance": 0.25,
+        "wrenchColor": 0,
+        "secondColorIndex": 0,
+        "stepLimit": 35,
+        "timeLimit": 30
+      }
+    },
+    {
+      "id": 21,
+      "seats": 4,
+      "colorIndex": 0,
+      "colorOverrides": {},
+      "x": 0.6031580400000001,
+      "z": 0.81,
+      "yaw": 0,
+      "isHidden": false,
+      "isTurnVehicle": false,
+      "containerType": 5,
+      "containerId": 2,
+      "elevatorLayer": 0,
+      "mechanism": {
+        "type": "normal",
+        "pairVehicleId": null,
+        "distance": 0.25,
+        "wrenchColor": 0,
+        "secondColorIndex": 0,
+        "stepLimit": 35,
+        "timeLimit": 30
+      }
+    },
+    {
+      "id": 22,
+      "seats": 4,
+      "colorIndex": 0,
+      "colorOverrides": {},
+      "x": 0.6031580400000001,
+      "z": 0.81,
+      "yaw": 0,
+      "isHidden": false,
+      "isTurnVehicle": false,
+      "containerType": 5,
+      "containerId": 2,
+      "elevatorLayer": 0,
+      "mechanism": {
+        "type": "normal",
+        "pairVehicleId": null,
+        "distance": 0.25,
+        "wrenchColor": 0,
+        "secondColorIndex": 0,
+        "stepLimit": 35,
+        "timeLimit": 30
+      }
     }
   ],
   "containers": [
@@ -249,6 +434,59 @@
       "yaw": 0,
       "width": 1.1,
       "length": 0.8,
+      "conveyorWidth": 3.8,
+      "gateQueuePathShape": 0,
+      "gateQueueLocked": true,
+      "gateQueueGap": 0.1,
+      "gateQueueShowCurveHandles": false,
+      "gateQueueTangents": [],
+      "gateQueueTangentOverrides": [],
+      "gateQueuePathPoints": [],
+      "elevatorEditingLayer": 0
+    },
+    {
+      "id": 1,
+      "type": 4,
+      "x": 1.62,
+      "z": -2.16,
+      "yaw": 0,
+      "width": 0.405,
+      "length": 0.70736853,
+      "conveyorWidth": 3.8,
+      "gateQueuePathShape": 0,
+      "gateQueueLocked": true,
+      "gateQueueGap": 0.1,
+      "gateQueueShowCurveHandles": false,
+      "gateQueueTangents": [],
+      "gateQueueTangentOverrides": [],
+      "gateQueuePathPoints": [
+        {
+          "x": 1.62,
+          "z": -2.16
+        },
+        {
+          "x": 1.04842098,
+          "z": -2.16
+        },
+        {
+          "x": 0.47684196,
+          "z": -2.16
+        },
+        {
+          "x": -0.09473705999999993,
+          "z": -2.16
+        }
+      ],
+      "elevatorEditingLayer": 0
+    },
+    {
+      "id": 2,
+      "type": 5,
+      "x": 0.47684196,
+      "z": 0.81,
+      "yaw": 0,
+      "width": 1,
+      "length": 2,
       "conveyorWidth": 3.8,
       "gateQueuePathShape": 0,
       "gateQueueLocked": true,
@@ -285,7 +523,23 @@
       13,
       13,
       12,
-      12
+      12,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0
     ],
     [
       0,
@@ -311,7 +565,23 @@
       13,
       13,
       12,
-      12
+      12,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0
     ]
   ],
   "passengerColorOverrides": {},
@@ -321,6 +591,7 @@
     "gridRotation": 0,
     "gridSnap": true,
     "vehicleSnap": true,
-    "alignmentGuides": true
+    "alignmentGuides": true,
+    "autoRenumberVehicles": true
   }
 }

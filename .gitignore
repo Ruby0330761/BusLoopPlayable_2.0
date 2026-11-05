@@ -24,3 +24,6 @@ artifacts/q24-belt-compare.png
 artifacts/busloop-level-editor-*.zip
 artifacts/applovin/*.html
 !artifacts/applovin/index.html
+
+# Progress-bar art extraction scratch (raw crops, mattes, per-asset checks)
+artifacts/progress-ui-extract/
