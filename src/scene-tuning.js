@@ -3,7 +3,10 @@ export const SCENE_TUNING = {
     "enabled": 0,
     "durationSeconds": 30,
     "warningEnabled": 1,
-    "warningSeconds": 10
+    "warningSeconds": 10,
+    "offsetX": 0,
+    "offsetY": 0,
+    "scale": 1
   },
   "level": {
     "selected": "level33"

@@ -106,12 +106,12 @@ const EDITOR_CATEGORIES = [
 function editorCategoryForGroup(group) {
   const path = group.fields?.[0]?.[1] ?? '';
   if (path.startsWith('exportNaming.')) return 'export';
-  if (path.startsWith('level.') || path.startsWith('countdown.')) return 'level';
+  if (path.startsWith('level.')) return 'level';
   if (/^(?:conveyorLayout|conveyorLayouts|spatialConveyor|queueCurves|passengerShadows)\./.test(path)) {
     return 'conveyor';
   }
   if (/^(?:parkingSpots|vehiclePath|vehicleDeparturePath|vehicleArea)\./.test(path)) return 'vehicle';
-  if (/^(?:cta|speedToggle|installGate|gameOver|vehicleGuideHand|firstClickGuide|entryBanner)\./.test(path)) return 'guide';
+  if (/^(?:cta|speedToggle|countdown|installGate|gameOver|vehicleGuideHand|firstClickGuide|entryBanner)\./.test(path)) return 'guide';
   if (path.startsWith('preRoll.')) return 'guide';
   return 'visual';
 }
@@ -452,17 +452,6 @@ const FIELD_GROUPS = [
     ]
   },
   {
-    title: '倒计时挑战',
-    defaultOpen: true,
-    countdown: true,
-    fields: [
-      ['启用倒计时', 'countdown.enabled', 0, 1, 1, null, 'toggle'],
-      ['倒计时时长（秒）', 'countdown.durationSeconds', 1, 5999, 1, null, 'countdown-number'],
-      ['临近结束红光', 'countdown.warningEnabled', 0, 1, 1, null, 'toggle'],
-      ['红光提前时间（秒）', 'countdown.warningSeconds', 1, 5999, 1, null, 'countdown-number']
-    ]
-  },
-  {
     title: 'Icon/Logo\u8c03\u6574',
     fields: [
       ['\u9884\u89c8\u542f\u7528', 'preview.enabled', 0, 1, 1, null, 'toggle'],
@@ -592,6 +581,20 @@ const FIELD_GROUPS = [
       ['\u5bbd\u5ea6', 'speedToggle.width', 40, 640, 1],
       ['\u9ad8\u5ea6', 'speedToggle.height', 24, 400, 1],
       ['\u500d\u7387', 'speedToggle.multiplier', 1, 6, 0.1]
+    ]
+  },
+  {
+    title: '倒计时挑战',
+    defaultOpen: true,
+    countdown: true,
+    fields: [
+      ['启用倒计时', 'countdown.enabled', 0, 1, 1, null, 'toggle'],
+      ['倒计时时长（秒）', 'countdown.durationSeconds', 0, 120, 1, null, 'countdown-number'],
+      ['临近结束红光', 'countdown.warningEnabled', 0, 1, 1, null, 'toggle'],
+      ['红光提前时间（秒）', 'countdown.warningSeconds', 0, 120, 1, null, 'countdown-number'],
+      ['水平偏移 X', 'countdown.offsetX', -1080, 1080, 1],
+      ['垂直偏移 Y', 'countdown.offsetY', -2160, 2160, 1],
+      ['整体缩放', 'countdown.scale', 0.25, 3, 0.01]
     ]
   },
   {
@@ -1143,18 +1146,22 @@ export function createSceneEditor(root, {
   function updateCountdownControls() {
     const countdown = normalizeCountdownConfig(getTuning().countdown);
     let invalid = false;
-    for (const key of ['durationSeconds', 'warningEnabled', 'warningSeconds']) {
+    for (const key of ['durationSeconds', 'warningEnabled', 'warningSeconds', 'offsetX', 'offsetY', 'scale']) {
       const controls = inputs.get(`countdown.${key}`);
       if (!controls) continue;
       const disabled = !countdown.enabled || (key === 'warningSeconds' && !countdown.warningEnabled);
       controls.row.classList.toggle('is-readonly', disabled);
       (controls.number ?? controls.checkbox).disabled = disabled;
-      if (key === 'warningSeconds') controls.number.max = String(countdown.durationSeconds);
+      if (controls.range) controls.range.disabled = disabled;
+      if (key === 'warningSeconds') {
+        controls.number.max = String(countdown.durationSeconds);
+        controls.range.max = String(countdown.durationSeconds);
+      }
       if (controls.updateValidity && !controls.updateValidity()) invalid = true;
     }
     exportButton.disabled = playableExportBusy || invalid;
     exportAllButton.disabled = playableExportBusy || invalid;
-    const countdownErrorMessage = '请先修正「关卡 → 倒计时挑战」中的时间配置';
+    const countdownErrorMessage = '请先修正「引导 → 倒计时挑战」中的时间配置';
     if (invalid && !playableExportBusy) {
       exportStatus.dataset.state = 'error';
       exportStatus.textContent = countdownErrorMessage;
@@ -1405,13 +1412,13 @@ export function createSceneEditor(root, {
       row.dataset.path = path;
       if (isColor) row.classList.add('editor-field-color');
       if (options) row.classList.add('editor-field-select');
-      if (isToggle || isCountdownNumber) row.classList.add('editor-field-toggle');
+      if (isToggle) row.classList.add('editor-field-toggle');
       if (isText) row.classList.add('editor-field-text');
       if (isUrl) row.classList.add('editor-field-url');
       const optionsMarkup = options
         ? `<select class="editor-select">${options.map(([value, text]) => `<option value="${value}">${text}</option>`).join('')}</select>`
         : '';
-      const rangeMarkup = isColor || isToggle || isText || isUrl || isCountdownNumber
+      const rangeMarkup = isColor || isToggle || isText || isUrl
         ? ''
         : `<input class="editor-range" type="range" min="${min}" max="${max}" step="${step}">`;
       row.innerHTML = `
@@ -1499,6 +1506,7 @@ export function createSceneEditor(root, {
       }
       if (isCountdownNumber) {
         const key = path.slice('countdown.'.length);
+        range.setAttribute('aria-label', `${group.title} ${label}滑条`);
         const error = document.createElement('p');
         error.className = 'editor-camera-status';
         error.dataset.state = 'error';
@@ -1506,19 +1514,20 @@ export function createSceneEditor(root, {
         error.hidden = true;
         error.setAttribute('role', 'status');
         number.setAttribute('aria-describedby', error.id);
-        const controls = { row, number, step, isCountdownNumber: true, dirty: false, lastValue: undefined };
+        const controls = { row, range, number, step, isCountdownNumber: true, dirty: false, lastValue: undefined };
         const updateValidity = () => {
           const value = Number(number.value);
           const limit = key === 'warningSeconds'
             ? normalizeCountdownConfig(getTuning().countdown).durationSeconds
-            : 5999;
+            : 120;
           const valid = number.disabled || (number.value.trim() !== '' && !number.validity.badInput
-            && Number.isInteger(value) && value >= 1 && value <= limit);
-          const message = valid ? '' : `请输入 1–${limit} 的整数秒数`;
+            && Number.isInteger(value) && value >= 0 && value <= limit);
+          const message = valid ? '' : `请输入 0–${limit} 的整数秒数`;
           number.setAttribute('aria-invalid', String(!valid));
           number.setCustomValidity(message);
           error.textContent = message;
           error.hidden = valid;
+          if (valid && number.value.trim() !== '') range.value = number.value;
           return valid;
         };
         const commitCountdownNumber = () => {
@@ -1539,6 +1548,12 @@ export function createSceneEditor(root, {
           controls.dirty = true;
           updateCountdownControls();
         });
+        range.addEventListener('input', () => {
+          number.value = range.value;
+          controls.dirty = true;
+          updateCountdownControls();
+        });
+        range.addEventListener('change', commitCountdownNumber);
         number.addEventListener('blur', commitCountdownNumber);
         number.addEventListener('keydown', (event) => {
           if (event.key !== 'Enter') return;
@@ -1588,7 +1603,7 @@ export function createSceneEditor(root, {
     if (group.countdown) {
       const help = document.createElement('p');
       help.className = 'editor-camera-status';
-      help.textContent = '首次成功发车开始计时；倍速不影响；后台暂停；重试重新计时。修改总开关或时长会重开当前试玩；红光设置即时生效。';
+      help.textContent = '偏移0，缩放1为默认对齐';
       section.append(help);
     }
     fieldsRoot.append(section);
@@ -2715,6 +2730,7 @@ export function createSceneEditor(root, {
       if (controls.isCountdownNumber) {
         if (resetCountdownDrafts || !controls.dirty || controls.lastValue !== value) {
           controls.number.value = String(value);
+          controls.range.value = String(value);
           controls.dirty = false;
         }
         controls.lastValue = value;

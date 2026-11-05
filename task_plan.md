@@ -41,7 +41,7 @@
 
 ## Current Goal
 
-Implement the confirmed whole-level countdown challenge in the BL editor, using the supplied BL-2610284 V2 playable as reference. User confirmed the revised PRD and authorized development on 2026-11-05; local implementation and validation are in scope, remote deployment is not.
+Complete the confirmed BL countdown changes, commit them and update the existing online editor at 10.0.0.54:12142 as explicitly requested on 2026-11-05. Release version 20261105-1536 uses the Asia/Shanghai timestamp. Keep unrelated variants work separate. Deployment is prepared locally and awaits explicit Feishu-Skill identity authorization after automatic approval rejected the renewal click.
 
 ## Current Countdown Challenge Phases (2026-11-05)
 
@@ -50,6 +50,9 @@ Implement the confirmed whole-level countdown challenge in the BL editor, using 
 3. **Complete locally:** Implemented per `docs/development-docs/bl/2026-11-05-countdown-challenge-plan.md`; reviewed and mapped AC01–AC14 evidence there. Build passed; full regression had 513 pass/0 fail/1 existing FFmpeg skip; countdown focus 14/14 pass; seven platform artifacts from the main-feature/phone-border-fix stage passed 102/102 local runtime checks. These artifacts predate the subsequent visible-blue-frame alignment adjustment. No remote deployment or real-platform/device acceptance was performed.
 4. **Local retest complete:** User requested another local test. Fresh 14/14 tests and browser flows passed, including x2 real-time measurement, 78-second editing pause, timeout and both Retry settings. Preview service is running at `http://127.0.0.1:5177/`; details are appended to the same implementation record.
 5. **HUD alignment complete locally:** Aligned the visible blue frame edges of the countdown and speed button; 3/3 view tests and desktop/portrait/landscape browser checks passed. No full rebuild or platform re-export after this adjustment; evidence is linked from the project progress entry.
+6. **Guide controls/display tuning complete locally:** Per the user's next request, moved the card below the speed toggle in Guide, paired time sliders with number inputs, and added X/Y offsets plus proportional scale. Full build, 67 targeted tests, real slider/input/disabled-state interactions, persistence and portrait/landscape checks passed. PRD AC15–AC16 and implementation evidence updated; defaults keep the prior alignment. No deployment or updated platform packages.
+7. **Time range adjustment complete locally:** Both duration and warning accept 0–120 seconds, with warning capped at duration. Zero duration expires once after the first dispatch; zero warning stays silent. Legacy bounds normalize consistently for UI/export. 17 focused tests, syntax and browser boundary checks passed; reused the prior build and restored the user's 1/1-second preview settings.
+8. **Release prepared, deployment pending identity:** Updated version 20261105-1536, recorded the timestamp rule in AGENTS, and built the remote editor. Initial full regression passed 537, skipped 1 existing FFmpeg case, and hit 10 sandbox listen failures; the affected browser suite then passed 12/12 outside the sandbox. The existing service/port/data volume will be reused. Automatic approval rejected Feishu-Skill renewal; the page shows only identity-identifier permission. Await user authorization before the remote update.
 
 ## Current Level40 Test Package Phases
 
@@ -109,7 +112,7 @@ Complete: the authoring workflow saves revisioned `bus-loop-web-level-v1` docume
 
 ## Current Phase
 
-Local countdown implementation, review and acceptance-coverage check are complete. Evidence is in the implementation record and `artifacts/playable-exports/countdown-qa/qa-summary.json`. Remote deployment and official platform/device acceptance remain unperformed and outside this local-development delivery.
+Countdown implementation and local validation are complete. The user has now requested a commit and online update; version 20261105-1536 is built. The remote update awaits Feishu-Skill identity authorization; the online service is unchanged. Official playable-platform/device acceptance remains separate.
 
 ## Current Google Packaging Phases
 
@@ -484,3 +487,11 @@ Local countdown implementation, review and acceptance-coverage check are complet
 - Code map: `docs/project/code-navigation.md`
 - Durable findings: `findings.md`
 - Resource status: `docs/project/playable-resource-status.md`
+
+
+## YXH BL-2610284 HTML Material Baseline (2026-11-05)
+
+1. **Complete:** Imported the supplied material into isolated `variants/BL-2610284`, preserving editor work.
+2. **Complete:** Built the AppLovin baseline under the user's explicit original-resource exception; froze exact bytes and passed static, payload, Android/iOS trusted-input runtime, and four-viewport layout checks.
+3. **Pending external acceptance:** Checker, official Preview, representative ad hosts/devices. User requested AppLovin first; UN/MO are deferred.
+4. Evidence: `playable-runs/20261105-bl-q201v2-applovin-v1.0.1-repo/applovin-baseline.json` and `delivery-summary.md`. No Git commit/push or deployment.

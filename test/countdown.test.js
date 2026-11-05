@@ -109,12 +109,53 @@ test('warning edits apply live; duration or enabled edits reset the round clock'
 test('configuration validates active ranges and normalizes inactive or old profiles', () => {
   assert.equal(normalizeCountdownConfig().enabled, 0);
   assert.equal(normalizeCountdownConfig({ durationSeconds: 5 }).warningSeconds, 5);
-  for (const durationSeconds of [0, 6000, 2.5, NaN, '30']) {
+  for (const durationSeconds of [-1, 121, 2.5, NaN, '30']) {
     assert.throws(() => validateCountdownConfig({ enabled: 1, durationSeconds }));
   }
   assert.throws(() => validateCountdownConfig({ enabled: 1, durationSeconds: 5, warningSeconds: 10 }));
   assert.doesNotThrow(() => validateCountdownConfig({ enabled: 0, durationSeconds: 0 }));
   assert.doesNotThrow(() => validateCountdownConfig({ enabled: 1, warningEnabled: 0, warningSeconds: 0 }));
+  assert.doesNotThrow(() => validateCountdownConfig({ enabled: 1, durationSeconds: 120, warningSeconds: 120 }));
+  assert.doesNotThrow(() => validateCountdownConfig({ enabled: 1, warningSeconds: 0 }));
+  assert.equal(normalizeCountdownConfig({ durationSeconds: 5999 }).durationSeconds, 120);
+  assert.equal(normalizeCountdownConfig({ durationSeconds: 5999, warningSeconds: 5999 }).warningSeconds, 120);
+  assert.throws(() => validateCountdownConfig({ enabled: 1, durationSeconds: 120, warningSeconds: 121 }));
+});
+
+test('zero duration waits for the first dispatch and times out once; zero warning stays silent', () => {
+  const settings = validateCountdownConfig({ enabled: 1, durationSeconds: 0 });
+  assert.equal(settings.durationSeconds, 0);
+  assert.equal(settings.warningSeconds, 0);
+  const zero = fixture(settings);
+  assert.equal(zero.advance(1000).state, 'idle');
+  assert.equal(zero.timeouts(), 0);
+  zero.countdown.start();
+  assert.equal(zero.advance(0).state, 'timeout');
+  zero.advance(1000);
+  assert.equal(zero.timeouts(), 1);
+  const quiet = fixture({ durationSeconds: 120, warningSeconds: 0 });
+  quiet.countdown.start();
+  assert.equal(quiet.advance(119000).urgent, false);
+  assert.equal(quiet.advance(1000).urgent, false);
+  assert.equal(quiet.timeouts(), 1);
+  assert.equal(validateTuning({ countdown: settings }, SCENE_TUNING).countdown.durationSeconds, 0);
+});
+
+test('display tuning defaults preserve old layouts, survive export and do not restart a running clock', () => {
+  const legacy = normalizeCountdownConfig({ enabled: 1, durationSeconds: 30 });
+  assert.equal(legacy.offsetX, 0);
+  assert.equal(legacy.offsetY, 0);
+  assert.equal(legacy.scale, 1);
+  const f = fixture();
+  f.countdown.start();
+  f.advance(5000);
+  const display = { ...legacy, offsetX: -100, offsetY: 200, scale: 1.4 };
+  const exported = validateTuning({ countdown: display }, SCENE_TUNING).countdown;
+  assert.deepEqual(exported, display);
+  const state = f.countdown.configure(exported);
+  assert.equal(state.remaining, 25);
+  assert.equal(state.started, true);
+  assert.equal(f.advance(1000).remaining, 24);
 });
 
 test('timeout uses a single model loss event, freezes input and resets with the game', () => {
@@ -144,7 +185,7 @@ test('timeout cannot overwrite an existing game result and export rejects invali
   assert.equal(game.failCountdown(), false);
   assert.equal(game.status, 'won');
   assert.throws(() => validateTuning({ countdown: {
-    enabled: 1, durationSeconds: 0, warningEnabled: 1, warningSeconds: 1
+    enabled: 1, durationSeconds: 121, warningEnabled: 1, warningSeconds: 1
   } }, SCENE_TUNING), /倒计时时长/);
   const output = validateTuning({ countdown: {
     enabled: 1, durationSeconds: 90, warningEnabled: 1, warningSeconds: 10

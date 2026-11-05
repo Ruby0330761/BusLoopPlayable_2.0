@@ -51,6 +51,30 @@ test('a phone preview border is excluded when clearing the speed button', () => 
   assert.ok(actualRight <= button.left - 3, `timer right ${actualRight}, button left ${button.left}`);
 });
 
+test('display adjustments move and scale the whole HUD, keep its aspect ratio and stay inside content', () => {
+  const bounds = { left: 0, top: 0, right: 390, bottom: 844 };
+  const button = { left: 315, right: 380, top: 18, height: 44, width: 65 };
+  const f = fixture(390, 844, bounds, button);
+  const read = () => {
+    const width = parseFloat(f.root.style.width);
+    const height = width * 392 / 1001;
+    return { width, height, x: parseFloat(f.root.style.left), y: parseFloat(f.root.style.top) + height / 2 };
+  };
+  const initial = read();
+  f.view.resize(bounds, { offsetX: -100, offsetY: 200, scale: 1.4 }, 0.36);
+  const adjusted = read();
+  assert.ok(Math.abs(adjusted.width - initial.width * 1.4) < 0.001);
+  assert.ok(Math.abs(adjusted.x - initial.x + 36) < 0.001);
+  assert.ok(Math.abs(adjusted.y - initial.y - 72) < 0.001);
+  assert.ok(Math.abs(parseFloat(f.root.style.fontSize) / adjusted.width - 0.171) < 0.001);
+  for (const direction of [-1, 1]) {
+    f.view.resize(bounds, { offsetX: direction * 1080, offsetY: direction * 2160, scale: 3 }, 0.36);
+    const edge = read();
+    assert.ok(edge.x - edge.width / 2 >= bounds.left && edge.x + edge.width / 2 <= bounds.right);
+    assert.ok(edge.y - edge.height / 2 >= bounds.top && edge.y + edge.height / 2 <= bounds.bottom);
+  }
+});
+
 test('disabled HUD never loads an image; enabled display formats time and pauses the warning', () => {
   const f = fixture(390, 844);
   f.view.render({ enabled: 0, remaining: 30, state: 'disabled', urgent: false });

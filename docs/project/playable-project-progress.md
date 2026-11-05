@@ -1,10 +1,19 @@
 # Playable Project Progress
 
+## Release Prepared On 2026-11-05 - 倒计时编辑与范围调整（v20261105-1536，待部署身份授权）
+
+- 用户要求提交并更新现有线上编辑器，版本号按 Asia/Shanghai 时间戳更新；已修改 `src/build-version.js` 为 `20261105-1536`，并在 `AGENTS.md` 记录每次用户可见修改提交/构建前更新时间戳的规则。
+- 本次范围：引导内的倒计时卡片、滑条/数值输入、X/Y 偏移与等比缩放、0–120 秒时长/预警及旧配置归一化；卡片说明仅保留「偏移0，缩放1为默认对齐」。独立 `variants/`、对应导航与忽略规则、`.idea/` 不纳入本次提交和部署。
+- 验证：`PLAYABLE_REMOTE_EDITOR=1 npm run build` 通过，入口 `index-Cy494-EW.js`、面板 `scene-editor-Dlp9vzQn.js`。全量首跑 537 通过、10 项本地监听被沙箱 EPERM 阻止、1 项既有 FFmpeg 跳过；受影响浏览器套件在允许监听后 12/12 通过，无遗留代码失败。
+- 目标保持 `bus-loop-playable-editor` / `http://10.0.0.54:12142/`，沿用持久化 artifacts 卷。当前机器缺少部署工具的飞书身份；授权页仅列「获取用户身份标识」，点击续期被自动审批拒绝，等待用户对该授权明确确认。**线上尚未更新**；原线上版本记录为 `20261104-1709`。
+
 ## Completed Locally On 2026-11-05 - 可配置整关倒计时（未部署）
 
-- 按已确认 PRD 增加「关卡 → 倒计时挑战」：默认关闭、1–5999 秒（默认 30）、红光开关与预警秒数（默认 10）。首次实际发车启动独立真实时钟，后台/引导锁/编辑/过场暂停，Retry 和换关复位；超时复用原 Game Over 与 `gameOver.retryEnabled`。
+- 按已确认 PRD 增加「引导 → 倒计时挑战」：默认关闭、0–120 秒（默认 30）、红光开关与预警秒数（0–120 且不超过总时长，默认 10）。首次实际发车启动独立真实时钟，后台/引导锁/编辑/过场暂停，Retry 和换关复位；超时复用原 Game Over 与 `gameOver.retryEnabled`。
 - 主要改动：`src/countdown.js` / `countdown-view.js`、入口与模型失败方法、场景面板/默认配置、HUD/CSS、条件打包闹钟资源和导出校验；没有新增依赖或超时商城跳转。
 - 同日 HUD 细调：按素材实际可见蓝色边框计算缩放，让闹钟面板上下沿与倍速按钮对齐、钟体自然突出。3 项视图测试通过；本地桌面及 390×844 / 844×390 视口实测上下沿误差均小于 0.01 CSS px，截图 `artifacts/playable-exports/countdown-qa/countdown-aligned-borders.jpg`。此细调仅完成本地验证，既有七平台导出包为调整前版本。
+- 同日交互增量：卡片移到引导内倍速按钮下，秒数改为滑条 + 输入；增加 X/Y 偏移和等比缩放，默认 `0/0/1` 保留蓝框对齐，显示调整不重开计时。构建通过；67 项定向回归、实际拖动/输入/禁用/刷新保存及横竖屏检查通过。截图 `artifacts/playable-exports/countdown-qa/countdown-guide-controls.jpg`；既有七平台包不含本次增量。
+- 同日范围调整：按用户要求，时长与预警均支持 0–120 秒，预警仍不超过总时长；时长 0 等待首次发车后失败，预警 0 不提前闪烁。旧档案超限值载入时收敛，界面/导出一致；17 项定向测试及浏览器 0/120/121 边界检查通过，未重跑完整构建。验证截图 `artifacts/playable-exports/countdown-qa/countdown-range-0-120.jpg`。
 - 主功能阶段验证：完整构建通过；全量 513 通过、0 失败、1 个既有 FFmpeg 用例跳过；横屏手机框边界问题修复后 14 项倒计时定向测试全过。该阶段源码导出的七平台产物通过 102/102 运行时检查，图片完整内嵌；最大单 HTML 4,404,069 字节。此产物不含后续蓝色边框对齐细调。
 - 需求与证据：`docs/prd/bl/2026-11-05-countdown-challenge-prd.md`、`docs/development-docs/bl/2026-11-05-countdown-challenge-plan.md`；成品/报告在 `artifacts/playable-exports/countdown-qa/`。本地实现、审查与覆盖核对完成；**未部署**，正式平台/真机未验收。
 
@@ -3054,3 +3063,12 @@ Full 2026-07-07 progress log was archived to:
 - **Android/iOS 合并为一个产物**：Bus 套系由 `-Android` / `-iOS` 两份变成一份，`branding.icon.deviceAssets` 携带两端 icon，运行时按 UA 选 icon，商店链接沿用已有的 UA 选择。打包器把两张 icon 都内联；runtime smoke 对同一文件跑 Android 与 iOS 两份报告（7 平台共 14 份，全部 PASS）。编辑器「导出套系」文案同步改成「共用一套」。
 - 验证：`node --test` 428/428。全平台 7 个包，文件名与需求给的 7 条逐字一致（Mintegral 按平台规则用下划线）：`BL-2610295-Q158V1-N-N-EN-PL-WXJ-TJW-{FB,GG,AL,UN,MO,MT,TT}-N-N`。本地规则 235/249 PASS，14 份运行时报告全 PASS；成品包实测 Android 出 JPG icon + Play 链接、iOS 出 PNG icon + App Store 链接；Moloco/UnityAds 单 HTML 也逐个复验。
 - 交付配置：`artifacts/q24-christmas-tuning.json`（完整快照）；会话 `q24-christmas` 的 `exportNaming.materialCode` 设为 `Q158V1`（会话值会覆盖调参，别再只改调参）。远端编辑器 `level21` 已更新为对角渐变版。
+
+
+## 2026-11-05 — YXH BL-2610284 Q201V2 AppLovin 独立 HTML 基线
+
+- 在 `variants/BL-2610284` 完成用户提供 HTML 的渠道基线；只修改私有变体构建链，不消费或改写当前编辑器源码。用户确认本轮保持全部素材原字节，省略资源优化及两轮确认。
+- 生成 `BL-2610284-Q201V2-applovin.html`，4,241,301 bytes；修复首次真实交互启音，移除浏览器URL导航兜底，保持30秒原生商城与返回失败/Retry流程。
+- v1.0.1：静态17 pass/0 warning/0 fail，Android/iOS运行时各9 pass/0 warning/0 fail；payload无阻塞，4种视口布局通过，素材86份独立载荷哈希集合未变。
+- 基线与报告：`playable-runs/20261105-bl-q201v2-applovin-v1.0.1-repo/applovin-baseline.json`、`delivery-summary.md`。资源流程为本轮用户明确例外，未构造标准RESOURCE_READY。
+- 用户最新要求先完成AL，UN/MO暂缓；Checker/官方Preview/真实容器设备待验。无commit/push或部署。

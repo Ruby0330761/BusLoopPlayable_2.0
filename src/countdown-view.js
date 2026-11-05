@@ -1,4 +1,4 @@
-import { COUNTDOWN_TIMER_ASSET, formatCountdownTime } from './countdown.js';
+import { COUNTDOWN_TIMER_ASSET, formatCountdownTime, normalizeCountdownConfig } from './countdown.js';
 
 // Visible blue-frame bounds in the supplied artwork (bottom is exclusive).
 // The clock extends beyond its panel; the speed art has transparent margins.
@@ -24,7 +24,7 @@ export function createCountdownView({ root, image, value, warning, stage, speedB
     }
   }
 
-  function resize(bounds = null) {
+  function resize(bounds = null, config = {}, uiScale = null) {
     if (!root || !stage) return;
     const rect = stage.getBoundingClientRect();
     // Absolute children and the renderer use the inside of the phone frame;
@@ -61,16 +61,25 @@ export function createCountdownView({ root, image, value, warning, stage, speedB
     const desiredWidth = headerButton
       ? speedFrameHeight * TIMER_ART.width / timerFrameHeight
       : Math.min(310, contentWidth * 0.55);
-    const width = Math.max(1, Math.min(desiredWidth, availableRight - availableLeft));
-    const scale = width / TIMER_ART.width;
-    const height = scale * TIMER_ART.height;
-    const center = Math.max(availableLeft + width / 2,
-      Math.min((left + right) / 2, availableRight - width / 2));
+    const baseWidth = Math.max(1, Math.min(desiredWidth, availableRight - availableLeft));
+    const baseScale = baseWidth / TIMER_ART.width;
+    const baseHeight = baseScale * TIMER_ART.height;
+    const baseCenter = Math.max(availableLeft + baseWidth / 2,
+      Math.min((left + right) / 2, availableRight - baseWidth / 2));
     const alignedTop = headerButton
-      ? speedFrameTop + (speedFrameHeight - scale * timerFrameHeight) / 2 - scale * TIMER_ART.frameTop
+      ? speedFrameTop + (speedFrameHeight - baseScale * timerFrameHeight) / 2 - baseScale * TIMER_ART.frameTop
       : top + inset;
+    const baseTop = Math.max(top + inset, Math.min(alignedTop, bottom - baseHeight - inset));
+    const settings = normalizeCountdownConfig(config);
+    const offsetScale = uiScale ?? Math.min(1, stageWidth / 1080, stageHeight / 2160);
+    const width = Math.max(1, Math.min(baseWidth * settings.scale,
+      contentWidth - inset * 2, (contentHeight - inset * 2) * TIMER_ART.width / TIMER_ART.height));
+    const height = width * TIMER_ART.height / TIMER_ART.width;
+    const center = Math.max(left + inset + width / 2,
+      Math.min(baseCenter + settings.offsetX * offsetScale, right - inset - width / 2));
+    const centerY = baseTop + baseHeight / 2 + settings.offsetY * offsetScale;
     root.style.left = `${center}px`;
-    root.style.top = `${Math.max(top + inset, Math.min(alignedTop, bottom - height - inset))}px`;
+    root.style.top = `${Math.max(top + inset, Math.min(centerY - height / 2, bottom - height - inset))}px`;
     root.style.width = `${width}px`;
     root.style.fontSize = `${width * 0.171}px`;
     if (warning) Object.assign(warning.style, {

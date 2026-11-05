@@ -1926,6 +1926,8 @@ async function startRuntime() {
   let view;
   let countdownReady = false;
   let countdownPagePresent = true;
+  // Keep legacy profiles within the current bounds for both UI and export.
+  SCENE_TUNING.countdown = normalizeCountdownConfig(SCENE_TUNING.countdown);
   const countdown = createCountdown(SCENE_TUNING.countdown, {
     onTimeout: () => game.failCountdown()
   });
@@ -2028,7 +2030,7 @@ async function startRuntime() {
     applyCtaTuning();
     applySpeedToggleTuning();
     applyBrandingTuning(view.getBackgroundCanvasBounds());
-    countdownView.resize(view.getBackgroundCanvasBounds());
+    countdownView.resize(view.getBackgroundCanvasBounds(), SCENE_TUNING.countdown, getBrandingStageMetrics().uiScale);
     if (stageChoiceVisible) positionStageChoiceHand();
   };
   const getCameraPreset = (action) => {
@@ -2284,7 +2286,7 @@ async function startRuntime() {
       saveTuning(SCENE_TUNING, { immediate: true });
       if (settings.enabled !== previous.enabled || settings.durationSeconds !== previous.durationSeconds) reset();
       paintCountdown();
-      countdownView.resize(view.getBackgroundCanvasBounds());
+      countdownView.resize(view.getBackgroundCanvasBounds(), settings, getBrandingStageMetrics().uiScale);
       if (syncEditor) editor.sync();
       return SCENE_TUNING;
     }
@@ -2337,6 +2339,7 @@ async function startRuntime() {
     if (path?.startsWith('speedToggle.')) {
       deepMerge(SCENE_TUNING, next);
       applySpeedToggleTuning();
+      countdownView.resize(view.getBackgroundCanvasBounds(), SCENE_TUNING.countdown, getBrandingStageMetrics().uiScale);
       // A multiplier change has to reach the running game even while the button
       // is off, because the next toggle-on has to use the new value.
       applyIdleSpeedMultiplier();

@@ -1,4 +1,3 @@
-// Stamped at deploy time by the server-deploy packaging step. The value is the
-// deployment timestamp (YYYYMMDD-HHMM) so a running editor shows exactly which
-// build it is serving.
-export const BUILD_VERSION = '20261104-1709';
+// Update for each user-visible change before commit/build. Use the current
+// Asia/Shanghai timestamp (YYYYMMDD-HHMM), shared by local and deployed editors.
+export const BUILD_VERSION = '20261105-1536';

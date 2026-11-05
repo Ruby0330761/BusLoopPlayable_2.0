@@ -139,6 +139,8 @@ When writing docs, keep entries short: outcome, changed files or area, verificat
 - Keep `task_plan.md`, `findings.md`, and `progress.md` short; move old detail to `docs/project/archive/`.
 ## Verification Discipline
 
+- For each user-visible change, update `src/build-version.js` before committing or building. Use the current Asia/Shanghai timestamp in `YYYYMMDD-HHMM` format, and verify that the deployed editor displays the same version.
+
 - Do not run a full build after every edit unless the user asks for it.
 - For small, low-risk changes, prefer the narrowest relevant check, such as targeted tests, syntax checks, or reading the affected code path.
 - Run full build verification when packaging, platform delivery, dependency/config changes, rendering pipeline changes, or broad runtime behavior changes are involved.

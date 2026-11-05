@@ -3,23 +3,31 @@ export const DEFAULT_COUNTDOWN_CONFIG = Object.freeze({
   enabled: 0,
   durationSeconds: 30,
   warningEnabled: 1,
-  warningSeconds: 10
+  warningSeconds: 10,
+  offsetX: 0,
+  offsetY: 0,
+  scale: 1
 });
 
 const integerInRange = (value, min, max) => Number.isInteger(value) && value >= min && value <= max;
+const displayNumber = (value, min, max, fallback) => Number.isFinite(Number(value))
+  ? Math.min(max, Math.max(min, Number(value))) : fallback;
 
 export function normalizeCountdownConfig(value = {}) {
   const source = value && typeof value === 'object' ? value : {};
   const duration = Number(source.durationSeconds);
-  const durationSeconds = integerInRange(duration, 1, 5999) ? duration : 30;
+  const durationSeconds = Number.isInteger(duration) && duration >= 0 ? Math.min(duration, 120) : 30;
   const warning = Number(source.warningSeconds);
   return {
     enabled: Number(source.enabled) === 1 ? 1 : 0,
     durationSeconds,
     warningEnabled: Number(source.warningEnabled ?? 1) === 1 ? 1 : 0,
-    warningSeconds: integerInRange(warning, 1, 5999)
+    warningSeconds: Number.isInteger(warning) && warning >= 0
       ? Math.min(warning, durationSeconds)
-      : Math.min(10, durationSeconds)
+      : Math.min(10, durationSeconds),
+    offsetX: displayNumber(source.offsetX ?? 0, -1080, 1080, 0),
+    offsetY: displayNumber(source.offsetY ?? 0, -2160, 2160, 0),
+    scale: displayNumber(source.scale ?? 1, 0.25, 3, 1)
   };
 }
 
@@ -31,12 +39,13 @@ export function validateCountdownConfig(value = {}) {
   if (![0, 1].includes(source.enabled)) throw new TypeError('启用倒计时必须为 0 或 1');
   // Disabled settings must not prevent an old or inactive profile from exporting.
   if (!source.enabled) return normalizeCountdownConfig(source);
-  if (!integerInRange(source.durationSeconds, 1, 5999)) {
-    throw new TypeError('倒计时时长须为 1–5999 的整数');
+  if (!integerInRange(source.durationSeconds, 0, 120)) {
+    throw new TypeError('倒计时时长须为 0–120 的整数');
   }
   if (![0, 1].includes(source.warningEnabled)) throw new TypeError('临近结束红光必须为 0 或 1');
-  if (source.warningEnabled && !integerInRange(source.warningSeconds, 1, source.durationSeconds)) {
-    throw new TypeError('红光提前时间须为 1 到倒计时时长之间的整数');
+  if (source.warningEnabled && source.durationSeconds > 0
+    && !integerInRange(source.warningSeconds, 0, source.durationSeconds)) {
+    throw new TypeError('红光提前时间须为 0 到倒计时时长之间的整数');
   }
   return normalizeCountdownConfig(source);
 }
