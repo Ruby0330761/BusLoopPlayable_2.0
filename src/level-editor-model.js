@@ -1,3 +1,5 @@
+import { renderedVehicleColor } from './vehicle-display-colors.js';
+
 const VEHICLE_SIZES = Object.freeze({
   4: { width: 0.27, length: 0.47157902 },
   6: { width: 0.27, length: 0.486 },
@@ -63,6 +65,14 @@ export const VEHICLE_PAINT_COLOR_OPTIONS = Object.freeze(
 );
 
 export const VEHICLE_COLORS = Object.freeze(VEHICLE_COLOR_OPTIONS.map((color) => color.css));
+
+// What the authoring views should paint. `css` above is the atlas's raw body
+// paint; the playable renders that atlas through scene lighting, which reads
+// much brighter (teal #014853 shows as #23EEFF). Everything the editor displays
+// goes through this so an editor board and the playable board agree.
+export function getVehicleDisplayColor(colorIndex) {
+  return renderedVehicleColor(Number(colorIndex));
+}
 
 const VEHICLE_COLOR_BY_ID = new Map(VEHICLE_COLOR_OPTIONS.map((color) => [color.id, color]));
 
@@ -199,6 +209,30 @@ function normalizeContainer(container, fallbackId) {
   };
 }
 
+// Unity material reference. Only `guid` is meaningful outside Unity, but the
+// fileID/type are what make a round-tripped asset byte-comparable, so all three
+// travel together.
+function normalizeBgMaterial(value) {
+  if (!value || typeof value !== 'object') return null;
+  const guid = String(value.guid ?? '').trim().toLowerCase();
+  if (!/^[0-9a-f]{32}$/.test(guid)) return null;
+  return {
+    fileID: Math.round(finite(value.fileID, 2100000)),
+    guid,
+    type: Math.max(0, Math.round(finite(value.type, 2)))
+  };
+}
+
+// Scene transform block authored beside `passengerMethod`.
+function normalizeTransformConfig(value) {
+  if (!value || typeof value !== 'object') return null;
+  return {
+    isCustom: Math.max(0, Math.min(1, Math.round(finite(value.isCustom)))),
+    transformType: Math.max(0, Math.round(finite(value.transformType))),
+    rotationAngle: finite(value.rotationAngle)
+  };
+}
+
 export function createLevelDocument(level = {}) {
   const vehicles = (level.vehicles ?? []).map((vehicle, index) => normalizeVehicle(vehicle, index + 1));
   const conveyorWidths = new Map((level.conveyorBelts ?? []).map((belt) => [Number(belt.vcId), belt.width]));
@@ -230,6 +264,14 @@ export function createLevelDocument(level = {}) {
     conveyorBeltName: level.conveyorBeltName ?? level.sceneName ?? 'GameSceneDualQueue2',
     background: level.background ?? null,
     passengerMethod: level.passengerMethod ?? 'FixedSequence',
+    // Unity's background material reference plus the scene transform block.
+    // Both are authored on the level asset and must survive a save, otherwise
+    // exporting the level cannot reproduce the original file. Omitted when the
+    // source asset had neither, so older documents keep their exact shape.
+    ...(normalizeBgMaterial(level.bgMaterial) ? { bgMaterial: normalizeBgMaterial(level.bgMaterial) } : {}),
+    ...(normalizeTransformConfig(level.transformConfig)
+      ? { transformConfig: normalizeTransformConfig(level.transformConfig) }
+      : {}),
     vehicles,
     containers,
     passengerQueues,
@@ -1637,7 +1679,11 @@ export function levelDocumentToRuntime(document, baseLevel = {}) {
     vehicleDepthes: clone(doc.vehicleDepthes),
     passengerQueues: clone(doc.passengerQueues),
     passengerSequence: doc.passengerQueues.flat(),
-    queueCount: doc.passengerQueues.length
+    queueCount: doc.passengerQueues.length,
+    // Carried opaquely: the runtime does not read them, but an exported level
+    // must still be able to write the original Unity values back.
+    ...(doc.bgMaterial ? { bgMaterial: clone(doc.bgMaterial) } : {}),
+    ...(doc.transformConfig ? { transformConfig: clone(doc.transformConfig) } : {})
   };
 }
 
@@ -1698,5 +1744,13 @@ export function exportUnityLevelAsset(document) {
   const difficultyMap = { Normal: 0, Hard: 1, SupperHard: 2 };
   const difficulty = difficultyMap[doc.difficulty] ?? (Number.isFinite(Number(doc.difficulty)) ? Number(doc.difficulty) : 0);
   const passengerMethod = doc.passengerMethod === 'FixedSequence' ? 0 : Number(doc.passengerMethod) || 0;
-  return `%YAML 1.1\n%TAG !u! tag:unity3d.com,2011:\n--- !u!114 &11400000\nMonoBehaviour:\n  m_ObjectHideFlags: 0\n  m_Name: ${doc.key}\n  id: ${doc.unityId}\n  mapScale: ${doc.mapScale}\n  difficulty: ${difficulty}\n  conveyorBeltName: ${doc.conveyorBeltName}\n  passengerMethod: ${passengerMethod}\n  vehicles:\n${vehicles}\n  containers:\n${containers}\n  vehicleLinkages:\n${linkages}\n  vehicleWrenches:\n${wrenches}\n  vehicleCombinations:\n${combinations}\n  vehicleAmbulances:\n${ambulances}\n  vehicleFiretrucks:\n${firetrucks}\n  conveyorBelts:\n${conveyorBelts}\n  vehicleDepthes:\n${depths}\n  fixedPassengerSequence:\n${passengers}\n`;
+  // Unity writes these two between `passengerMethod` and `vehicles`; keeping
+  // that order means an imported level exports back in the shape it came in.
+  const bgMaterialLine = doc.bgMaterial
+    ? `  bgMaterial: {fileID: ${doc.bgMaterial.fileID}, guid: ${doc.bgMaterial.guid}, type: ${doc.bgMaterial.type}}\n`
+    : '';
+  const transformConfigBlock = doc.transformConfig
+    ? `  transformConfig:\n    isCustom: ${doc.transformConfig.isCustom}\n    transformType: ${doc.transformConfig.transformType}\n    rotationAngle: ${doc.transformConfig.rotationAngle}\n`
+    : '';
+  return `%YAML 1.1\n%TAG !u! tag:unity3d.com,2011:\n--- !u!114 &11400000\nMonoBehaviour:\n  m_ObjectHideFlags: 0\n  m_Name: ${doc.key}\n  id: ${doc.unityId}\n  mapScale: ${doc.mapScale}\n  difficulty: ${difficulty}\n  conveyorBeltName: ${doc.conveyorBeltName}\n  passengerMethod: ${passengerMethod}\n${bgMaterialLine}${transformConfigBlock}  vehicles:\n${vehicles}\n  containers:\n${containers}\n  vehicleLinkages:\n${linkages}\n  vehicleWrenches:\n${wrenches}\n  vehicleCombinations:\n${combinations}\n  vehicleAmbulances:\n${ambulances}\n  vehicleFiretrucks:\n${firetrucks}\n  conveyorBelts:\n${conveyorBelts}\n  vehicleDepthes:\n${depths}\n  fixedPassengerSequence:\n${passengers}\n`;
 }

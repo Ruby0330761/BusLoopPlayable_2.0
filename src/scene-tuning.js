@@ -152,6 +152,7 @@ export const SCENE_TUNING = {
     "retryX": 540,
     "retryY": 1360,
     "retryWidth": 420,
+    "retryFontSize": 53,
     "retryAppearSpeed": 1.45
   },
   "facing": {
@@ -391,6 +392,36 @@ export const SCENE_TUNING = {
       ]
     },
     "catLoop": {
+      "art": {
+        "x": 0,
+        "y": -0.045,
+        "z": -5.3394,
+        "width": 16.685,
+        "depth": 10.3288,
+        "opacity": 1
+      },
+      "curve": {
+        "offsetX": 0,
+        "offsetZ": 0,
+        "scaleX": 1,
+        "scaleZ": 1
+      },
+      "queueCurves": [
+        {
+          "offsetX": 0,
+          "offsetZ": 0,
+          "scaleX": 1,
+          "scaleZ": 1
+        },
+        {
+          "offsetX": 0,
+          "offsetZ": 0,
+          "scaleX": 1,
+          "scaleZ": 1
+        }
+      ]
+    },
+    "moonLoop": {
       "art": {
         "x": 0,
         "y": -0.045,

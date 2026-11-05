@@ -489,18 +489,50 @@ function migrateCtaScreenPositionTuning(source) {
   return changed;
 }
 
-// The first Retry build parked the pill at y=1790, which sits on the CTA strip.
-// A saved profile would keep that value forever, so the one shipped default is
-// rewritten to the new under-the-logo position. A value an operator chose is
-// left alone: only that exact legacy default is migrated.
+// The first Retry build parked the pill at y=1790 (on the CTA strip) and baked
+// the label at font 88. Saved tuning snapshots the whole object, so those exact
+// shipped values stick forever unless they are migrated. Only the precise
+// legacy numbers are rewritten; anything an operator chose is left alone.
+//
+// The pill geometry stays at 420: only the label was meant to shrink. An
+// intermediate build briefly shipped width 252, so that value is restored too.
 const LEGACY_RETRY_Y = 1790;
 const MIGRATED_RETRY_Y = 1360;
+const RETRY_WIDTH = 420;
+const MISTAKEN_RETRY_WIDTH = 252;
+const LEGACY_RETRY_FONT_SIZE = 88;
+const RETRY_FONT_SIZE = 53;
 function migrateGameOverRetryPositionTuning(source) {
   const gameOver = source?.gameOver;
   if (!gameOver) return false;
-  if (Number(gameOver.retryY) !== LEGACY_RETRY_Y) return false;
-  gameOver.retryY = MIGRATED_RETRY_Y;
-  return true;
+  let changed = false;
+  if (Number(gameOver.retryY) === LEGACY_RETRY_Y) {
+    gameOver.retryY = MIGRATED_RETRY_Y;
+    changed = true;
+  }
+  if (Number(gameOver.retryWidth) === MISTAKEN_RETRY_WIDTH) {
+    gameOver.retryWidth = RETRY_WIDTH;
+    changed = true;
+  }
+  if (Number(gameOver.retryFontSize) === LEGACY_RETRY_FONT_SIZE) {
+    gameOver.retryFontSize = RETRY_FONT_SIZE;
+    changed = true;
+  }
+  return changed;
+}
+
+// Per-level profiles are merged back over SCENE_TUNING at startup, so the global
+// pass above would be silently undone by the saved snapshot. This is the pass
+// that actually reaches a level the operator has already opened.
+function migrateGameOverRetryPositionProfiles() {
+  const profiles = readLevelTuningProfiles();
+  let changed = false;
+  for (const profile of Object.values(profiles)) {
+    if (!isLevelTuningProfile(profile)) continue;
+    if (migrateGameOverRetryPositionTuning(profile.tuning)) changed = true;
+  }
+  if (changed) writeLevelTuningProfiles(profiles);
+  return changed;
 }
 
 function migrateCustomBackgroundSourceSize(source) {
@@ -863,6 +895,7 @@ function restoreSelectedLevelTuning() {
   migrateDepartureRouteHeightProfiles();
   migrateSeatCountBoardTextScaleProfiles();
   migrateFootageConveyorArtProfiles();
+  migrateGameOverRetryPositionProfiles();
   // Run the profile pass before the marker is written: both paths above skip
   // everything once the marker exists, so the marker has to be the last step.
   migrateSpeedToggleHiddenProfiles();
@@ -1425,7 +1458,7 @@ function applyGameOverTuning() {
   // The Retry pill is authored at 1400x383, so its height follows the tuned
   // width instead of being an independent number that could distort the art.
   if (gameOverRetryButton) {
-    const retryWidth = Math.max(40, Number(gameOver.retryWidth) || 420);
+    const retryWidth = Math.max(40, Number(gameOver.retryWidth) || RETRY_WIDTH);
     const retryHeight = retryWidth * (383 / 1400);
     const retryX = Number.isFinite(Number(gameOver.retryX)) ? Number(gameOver.retryX) : designWidth / 2;
     // Default sits just under the logo: the logo is centred at gameOver.logoY
@@ -1454,6 +1487,14 @@ function applyGameOverTuning() {
     gameOverRetryButton.style.setProperty('--game-over-retry-width', `${renderedWidth}px`);
     gameOverRetryButton.style.setProperty('--game-over-retry-height', `${renderedHeight}px`);
     gameOverRetryButton.style.setProperty('--game-over-retry-appear-duration', durationCss(gameOver.retryAppearSpeed, 1.45));
+    // The label is a text layer, so its size is independent of the pill art. The
+    // ceiling keeps the glyph block (cap height plus descender, ~0.8em) inside
+    // the pill: a value past that would let the "y" tail clip the bottom curve.
+    const retryFontSize = Number.isFinite(Number(gameOver.retryFontSize)) ? Number(gameOver.retryFontSize) : RETRY_FONT_SIZE;
+    gameOverRetryButton.style.setProperty(
+      '--game-over-retry-font-size',
+      scaledPx(clampConfigNumber(retryFontSize, 8, retryHeight * 0.8, RETRY_FONT_SIZE), uiScale)
+    );
   }
 }
 

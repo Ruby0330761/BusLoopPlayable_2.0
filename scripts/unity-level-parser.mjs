@@ -251,6 +251,36 @@ function parseAmbulances(source) {
   }));
 }
 
+// Unity's material reference: `{fileID: 2100000, guid: <32 hex>, type: 2}`.
+// Keeping all three parts is what lets an edited level be written back without
+// silently repointing the background to another material.
+function parseBgMaterial(source) {
+  const match = source.match(/^  bgMaterial:\s*\{fileID:\s*(-?\d+),\s*guid:\s*([0-9a-f]+),\s*type:\s*(\d+)\}\s*$/im);
+  if (!match) return null;
+  return { fileID: Number(match[1]), guid: match[2], type: Number(match[3]) };
+}
+
+// Scene-level transform block. Unity authors it on every level, but only some
+// levels mark it custom; the editor previously dropped it, so exporting a level
+// could not reproduce the original file.
+function parseTransformConfig(source) {
+  const block = sectionBlock(source, 'transformConfig');
+  if (!block) return null;
+  const read = (name) => {
+    const match = block.match(new RegExp(`^    ${name}:\\s*(-?[\\d.]+)\\s*$`, 'm'));
+    return match ? Number(match[1]) : null;
+  };
+  const isCustom = read('isCustom');
+  const transformType = read('transformType');
+  const rotationAngle = read('rotationAngle');
+  if (isCustom == null && transformType == null && rotationAngle == null) return null;
+  return {
+    isCustom: isCustom ?? 0,
+    transformType: transformType ?? 0,
+    rotationAngle: rotationAngle ?? 0
+  };
+}
+
 function parseConveyorBelts(source) {
   const block = section(source, 'conveyorBelts');
   if (!block || block.trim().endsWith('[]')) return [];
@@ -403,6 +433,8 @@ export function parseUnityLevelSource(source, {
     passengerQueueOverrides[resolvedKey] ?? parsePassengerQueues(source)
   );
   const mapScale = Number(scalar(source, 'mapScale', 1));
+  const bgMaterial = parseBgMaterial(source);
+  const transformConfig = parseTransformConfig(source);
   const level = structuredClone(baseLevel);
   Object.assign(level, {
     key: resolvedKey,
@@ -413,6 +445,13 @@ export function parseUnityLevelSource(source, {
     mapScale,
     sceneName: String(scalar(source, 'sceneName', baseLevel.sceneName)),
     conveyorBeltName: String(scalar(source, 'conveyorBeltName', baseLevel.conveyorBeltName ?? '')),
+    // Background material reference and the scene transform are carried through
+    // verbatim so an imported level can be exported back to Unity without
+    // inventing values. They do not move the authored vehicle coordinates:
+    // levels built on the same conveyor belt have both custom and default
+    // transforms while their car fields stay independent boards.
+    ...(bgMaterial ? { bgMaterial } : {}),
+    ...(transformConfig ? { transformConfig } : {}),
     vehicles,
     turnVehicleCount: vehicles.filter((vehicle) => vehicle.isTurnVehicle).length,
     luxuryCount: vehicles.filter((vehicle) => vehicle.isLuxury).length,

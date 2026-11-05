@@ -1,5 +1,68 @@
 # Playable Project Progress
 
+## Completed On 2026-11-04 - 补齐关卡级 bgMaterial / transformConfig 导入导出
+
+- 补的缺口：官方关卡每关都带的 `bgMaterial`（Unity 背景材质引用）和 `transformConfig`（场景变换块），此前导入时被丢弃，导出时也写不回去。
+- 解析：`scripts/unity-level-parser.mjs` 新增 `parseBgMaterial` / `parseTransformConfig`，按 Unity 原格式读取 `{fileID, guid, type}` 与 `{isCustom, transformType, rotationAngle}`；源资产没有时返回 `undefined`，不造默认值。
+- 编辑器：`createLevelDocument` 做归一化（GUID 转小写并校验 32 位 hex，非法直接丢弃）；`levelDocumentToRuntime` 原样透传；`exportUnityLevelAsset` 按 Unity 字段顺序写回（`passengerMethod` 之后、`vehicles` 之前）。`retargetLevelDocument` 走同一归一化，所以重命名/另存不会丢。
+- 判定依据：`transformConfig` **不影响车辆坐标**——同一传送带下并存 `transformType 3` 与默认值关卡，且把 `rotationAngle` 180→0 重解析后所有车辆 x/z/yaw 完全一致，所以只透传、不参与布局。`priority` 在 447 个正式关卡里出现 0 次，故意没有补。
+- 验证：`npm test` 501/501（新增 5 条：编辑器保存/导出往返、缺失时不写默认值、非法 GUID 拒绝、解析保真、447 关 bgMaterial 全量扫描）；`npm run build` 通过；真实导入 `level101` 落盘核对 `bgMaterial`/`transformConfig` 均在。
+
+## Completed On 2026-11-04 - BL-42 卡关人数进度条 UI 素材扣图（未接入运行时）
+
+- 需求：在 BL-42（爱心布局 `level15`，81 车 / 510 座 / 彩虹色 / dualQueue3）顶部加一条通关进度条，50% 处放高失败率节点，气泡文案「29% OF PLAYERS FAIL HERE」。
+- 本轮只做**美术扣图**，不改运行时。参考图 1774×887，用「多项式背景拟合 + 去预乘 alpha」抠出素材，文字用逐行插值抹除，输出带透明边距的 PNG 与 `_q88.webp`。
+- 产物目录 `public/assets/applovin/progress/`（14 件，webp 合计 84 KB）：`bar-track`（白色外框，内腔镂空）、`bar-gradient`（绿→黄→红填充）、`bar-rail`（紫色空槽）、`node-skull`（50% 骷髅节点）、`node-stem`（节点到胶囊的红色竖条）、`bubble-fail`（无字气泡）、`pill-dark`/`pill-green`/`pill-red`（无字胶囊）、`peg-dark`/`peg-green`/`peg-red`（胶囊挂柱）、`bus` + `bus-pointer`（当前进度巴士与三角指针）。
+- 几何口径：轨道外框 1590×148 r74，内腔 1531×94 r47（内缩 27px），节点锚点 0.50、41% 锚点 0.41；都写在 `manifest.json` 的 `contentBox` / `barGeometry` / `anchors` 里，运行时按 `contentBox` 定位可避免透明边距错位。
+- 两个必须知道的抠图限制：① **巴士的白色描边和轨道白边是同一条线**，颜色无法分离，所以巴士按轨道上沿切断，运行时贴在条子上而不是悬浮；② 气泡与骷髅节点的连接处共用一圈红色弧线，气泡裁到骷髅圆环上沿，圆环由 `node-skull` 自己负责。
+- 预览与对照：`artifacts/progress-ui/progress-ui-preview.jpg`、`progress-ui-compare.jpg`（上参考图、下素材重组），`artifacts/progress-ui-extract/` 保留中间产物与 `geometry.json`。
+- **未接入** `index.html` / `main.js` / `styles.css`，也**未部署**。
+- 待确认（影响实现）：进度口径（整关 510 人 vs CTA 阈值 10 车，后者玩家只能走到约 12%，50% 节点永远到不了）、跨节点文案、新需求编号与素材编号（母素材 BL-42 无 Q 编号）。
+- **后续（同日）**：需求方决定正式素材交设计同学重绘，交接文档见 `docs/project/progress-bar-asset-brief.md`（1080 设计空间尺寸换算、9-slice 与文字安全区要求、文字一律由程序绘制、两处不可分离像素的规避）。本轮抠图素材降级为位置/比例参照，不再作为正式资产。
+
+## Completed On 2026-11-04 - 编辑器小车/小人配色统一到试玩实际渲染色（未部署）
+
+- 反馈：编辑器布局里的小车颜色和试玩里的小车颜色对不上，要求小车、小人、试玩三者同一颜色。
+- 根因：编辑器画的是**色卡贴图的原始底漆值**（`VEHICLE_COLOR_OPTIONS.css`），试玩把同一张贴图交给 `MeshStandardMaterial` + 半球光/平行光渲染，输出亮得多。典型差：青色 `#014853` → `#23EEFF`、靛蓝 `#15209E` → `#343AFF`、蓝 `#0061E8` → `#4EA4FF`。所以不是某一关配错色，而是编辑器整体用了未打光的色号。
+- 实测方法：在真实浏览器（headless Chrome + CDP，WebGL 可用）里用**试玩自己的** `vehicleMaterials[i]`、场景灯光和相机，逐色位渲染后反读屏幕像素。同一色位在车阵上下左右五个位置测得完全一致（`#4ea4ff` / `#33f145` / `#ff3b3c` …），所以一张固定表就够。
+- 新增 `src/vehicle-display-colors.js`：26 槽 `VEHICLE_RENDERED_COLOR_CSS` 实测表 + `renderedVehicleColor`/`renderedVehicleColorCss`。`COLORS`、`COLOR_ATLAS_PATHS` 与任何重新着色的数学**保持原值不动**，只有展示层读这张表。
+- 接入点：`level-editor-model.js` 新增 `getVehicleDisplayColor`；编辑器画布（`vehicleDisplayColor`、识别预览、批量/单车上色默认值、色板 swatch）、`level-layout-thumbnail.js` 的 `resolveVehicleColor`、编辑器的 `PASSENGER_QUEUE_COLORS` 小人色点全部改走这张表。
+- 画布精灵渐变同时修掉：原来 `+34% → +8% → −30%` 的单边提亮把结果又推亮一档，现在以实测色为中心（`+4% → −4% → −28%`），编辑器中位色 `#4CA1FA` 对试玩 `#4EA4FF`，色相 211° 完全一致。
+- 小人：实测确认**试玩里小车和小人本来就同色**（用户截图量得蓝车 `#68a4f8`、蓝小人 `#65a2f8`，绿/黄/橙几乎完全相同），所以没有改运行时的小人材质，避免破坏 Unity 对齐。
+- `colorOverrides.body` 仍按用户输入值原样绘制——那是操作员自己填的漆色，不是色卡槽位。
+- 验证：`node --test` 496 项 495 通过（唯一失败是并行跑 Chrome 的调试端口超时，单独跑 `playable-runtime-smoke` 12/12 全过）；新增 `test/vehicle-display-colors.test.js` 6 条（实测值锁定、槽位覆盖完整、未知回落、三方共用同一表）；浏览器实拍编辑器蓝车 `#4CA1FA`、粉车 `#FA58C5`（试玩目标 `#FF5AC9`）。
+- **本轮未部署**。
+
+## Completed On 2026-11-04 - 新增月亮跑道 MoonLoop（未部署）
+
+- 素材：`月亮跑道.unitypackage`，内含 `ConveyorBelt_Footage4.prefab` + `Loop_footage4.png`（2100×1300），与星形/爱心/猫咪同属 Footage 家族。
+- 提取：从 prefab 实例覆盖中按 `points.Array.size` 截断读取三条 spline（传送带 27 点、两条队列各 15 点），用现有 Footage 映射 `(0.826305x − 0.004829, 0.826305z + 14.2367365)` 投到场景空间；传送带容量 60、出口 0.668–0.768、两条队列各 60，均取自 prefab 组件。
+- 接入五处（与既有跑道一致）：`conveyor-layouts.js` catalog 条目、`scene-tuning.js` 的 `conveyorLayouts.moonLoop` 默认位移、`scene-editor.js` 下拉选项「月亮跑道 MoonLoop」、`mechanism-resources.js` 导出白名单、`playable-session-config.js` 的 `CONVEYOR_LAYOUT_IDS`。
+- 贴图：`Loop_footage4_q80.webp`（2100×1300，22.3 KB）。
+- 验证：`node --test --test-concurrency=1` 490/490；本地把 `conveyorLayout.selected` 切到 `moonLoop` 后实测 `activeConveyorLayout.id = moonLoop`、capacity 60、队列 [60,60]、贴图路径正确、无运行时异常；截图确认月牙轨道与两条队列正常渲染。
+- **本轮未部署**，线上仍是 `v20261104-1451`。
+
+## Completed On 2026-11-04 - Retry 文字改为可调文字层并放大（未部署）
+
+- 反馈：Retry 的字太小不够醒目。
+- 根因：字样是烤进红色药丸底图的，放大整张图会连药丸一起变大。原图文字只占药丸高度 29%。
+- 改法：把底图上的字抹掉（按左右边缘颜色插值 + 羽化，接缝不可见），另存 `Main_Prop_RedBtn_blank_q90.webp`，按钮改成 `display: grid` 居中一个真正的文字节点，字号由 `gameOver.retryFontSize` 控制。默认 88，实测文字占药丸高度约 57%，比原来翻倍。
+- 上限：字号被 clamp 到 `retryHeight * 0.8`，因为字形块（cap height + 降部）约 0.8em，超过会让 "y" 的尾巴切到底部弧线。
+- 编辑器：Retry 曾挂在「Game Over」折叠分组最底部，开关要点两层才能看到。现在独立成「失败重试」分组并默认展开（引导标签下），含启用开关 / X / Y / 宽度 / 字号 / 出现速度六项。实测关掉时按钮 0×0 不可见，打开时 152×41 正常显示。
+- 尺寸回调（同日后续）：用户要求「只缩小字体，按钮大小不要动」。`retryFontSize` 88 → 53，`retryWidth` 保持 420 不变。实测按钮 152×41 不变，文字高度 44 → 27 CSS px。
+- **这一轮踩到的坑**：第一次误把 `retryWidth` 也一起缩到 252，而 `gameOver.retryWidth` 从未进入迁移，所以已保存的**每关卡档案**（整份 tuning 快照，启动时覆盖全局调参）仍持有 420，页面看起来完全没变。教训：改任何调参默认值，必须同时写 profile 层的迁移函数并在 `restoreSelectedLevelTuning()` 里调用——只改 `SCENE_TUNING` 或只迁移全局缓存都到不了用户正在编辑的关卡。现在 `migrateGameOverRetryPositionProfiles()` 会遍历所有档案修正旧的 `retryY:1790` / `retryFontSize:88`，并把上一版误写的 `retryWidth:252` 还原成 420。
+- 验证：`node --test --test-concurrency=1` 490/490；AppLovin 本地导出确认底图已内联为 data URI、按钮内文字节点为单词 Retry、无旧资源残留；本地实拍确认文字光学居中（cap 中心与药丸中心差 0.5px）。
+- **按用户要求本轮不部署**；线上仍是 `v20261104-1451`。
+
+## Deployed On 2026-11-04 - 官方关卡全解锁 + 关卡级 Unity 元数据（v20261104-1709）
+
+- 本次部署把工作区里多个会话的改动一起上线：官方关卡 type 4/5 与富余座位的运行时、闸门/升降舱机制、`bgMaterial`/`transformConfig` 导入导出，以及 Retry 按钮、进度条素材等编辑器侧改动。
+- 官方关卡：`/__official-levels` 三章 A 203 / B 203 / E 50 全部 `status: ready`，`unsupported` 为 0（此前 E 章 9 关、A/B 各 9 关被挡）。
+- 新增机制：闸门队列按 `gateQueuePathPoints` 首尾排布、车头离场后整队前移；升降舱两层只让活动层进入碰撞场，清空后自动提升下一层；座位富余的颜色在乘客清零后允许未满载车离站。
+- 新增字段：`bgMaterial`（Unity 材质引用）、`transformConfig`（场景变换块）解析后原样透传并在 Unity 导出时按原字段顺序写回；`priority` 在 447 个正式关卡里出现 0 次，故意未补。
+- 验证：`npm test` 501/501；`PLAYABLE_REMOTE_EDITOR=1 npm run build` 通过；线上 `index-C8sOcKd5.js` 与本地 sha256 完全一致（`fc5b34bd…`）；线上编辑器版本显示 `v20261104-1709`；线上真实导入 E-42（升降舱关）返回 201 后已清理，关卡数回到 116。
+- 部署：版本 `20261104-1709`，zip `http://10.0.0.6:8081/58/5880cad19c3598a0f2e8ac2593dba825.zip`，复用 12142。
+
 ## Deployed On 2026-11-04 - Retry 位置改到 Logo 下方 + 修复 hover 变白（v20261104-1451）
 
 - 反馈两处：Retry 位置偏低（压在车阵上部、靠近 CTA 条），且鼠标悬停时按钮整块变白。

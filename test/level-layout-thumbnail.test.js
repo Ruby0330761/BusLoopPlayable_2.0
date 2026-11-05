@@ -36,9 +36,12 @@ test('unknown seat counts fall back instead of producing NaN geometry', () => {
   assert.ok(Number.isFinite(size.length) && size.length > 0);
 });
 
-test('colours resolve from the shared atlas table', () => {
-  assert.equal(resolveVehicleColor({ colorIndex: 0 }), '#0061E8');
-  assert.equal(resolveVehicleColor({ colorIndex: 17 }), '#2D2D30');
+test('colours resolve to what the playable renders, not the atlas base paint', () => {
+  // Atlas slot 0's raw paint is #0061E8, but the scene lights it to #4EA4FF.
+  // Authoring views must agree with the playable or the same car reads as two
+  // different colours.
+  assert.equal(resolveVehicleColor({ colorIndex: 0 }), '#4ea4ff');
+  assert.equal(resolveVehicleColor({ colorIndex: 17 }), '#333333');
   // An unknown index must stay visible rather than rendering as transparent.
   assert.match(resolveVehicleColor({ colorIndex: 99 }), /^#[0-9a-f]{6}$/i);
 });
@@ -47,7 +50,7 @@ test('an authored colour override wins over the atlas index', () => {
   // The red/green rescue boards recolour atlas slots per vehicle; reading only
   // colorIndex painted those boards in the atlas pink and blue.
   assert.equal(resolveVehicleColor({ colorIndex: 2, colorOverrides: { body: '#c9363e' } }), '#c9363e');
-  assert.equal(resolveVehicleColor({ colorIndex: 2, colorOverrides: { body: 'not-a-colour' } }), '#F338AF');
+  assert.equal(resolveVehicleColor({ colorIndex: 2, colorOverrides: { body: 'not-a-colour' } }), '#ff5ac9');
 });
 
 test('each car draws a cabin roof and a heading arrow inside its footprint', () => {

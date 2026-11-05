@@ -39,7 +39,8 @@ export const MECHANISM_RESOURCE_MANIFEST = Object.freeze({
     '/assets/unity/conveyors/Loop_06_q80.webp',
     '/assets/unity/conveyors/Loop_07_q80.webp',
     '/assets/unity/conveyors/Loop_footage2_q80.webp',
-    '/assets/unity/conveyors/Loop_footage3_q80.webp'
+    '/assets/unity/conveyors/Loop_footage3_q80.webp',
+    '/assets/unity/conveyors/Loop_footage4_q80.webp'
   ]),
   [MECHANISM_TYPES.spatialConveyor]: Object.freeze([]),
   [MECHANISM_TYPES.entryBanner]: Object.freeze([
@@ -308,10 +309,11 @@ export const BASE_RUNTIME_ASSET_PATHS = Object.freeze([
   '/assets/applovin/speed-toggle-icon-normal.png',
   '/assets/applovin/speed-toggle-icon-boost.png',
   '/assets/unity/ui/Main_Prop_GreenBtn.png',
-  // The failure card's Retry pill. It is referenced only from styles.css, so
-  // leaving it out of this list would ship a packaged ad whose Retry button is
-  // a blank transparent hit area.
-  '/assets/unity/ui/Main_Prop_RedBtn_q90.webp'
+  // The failure card's Retry pill (art only — the word is a text layer so its
+  // size stays tunable). It is referenced only from styles.css, so leaving it
+  // out of this list would ship a packaged ad whose Retry button is a blank
+  // transparent hit area.
+  '/assets/unity/ui/Main_Prop_RedBtn_blank_q90.webp'
 ]);
 
 export const PRE_ROLL_ASSET_PATHS = Object.freeze([

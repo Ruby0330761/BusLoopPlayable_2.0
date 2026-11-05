@@ -534,7 +534,7 @@ test('level12 initializes Unity-authored layout and counts', () => {
 test('Unity conveyor layout catalog includes all requested prefab shapes and assets', () => {
   assert.deepEqual(
     CONVEYOR_LAYOUT_IDS,
-    ['dualQueue2', 'dualQueue3', 'dualQueue5', 'dualQueue10', 'starLoop', 'heartLoop', 'catLoop']
+    ['dualQueue2', 'dualQueue3', 'dualQueue5', 'dualQueue10', 'starLoop', 'heartLoop', 'catLoop', 'moonLoop']
   );
   assert.equal(MAX_CONVEYOR_CAPACITY, 60);
   assert.equal(MAX_QUEUE_CAPACITY, 60);
@@ -550,10 +550,11 @@ test('Unity conveyor layout catalog includes all requested prefab shapes and ass
       dualQueue10: { conveyor: 38, queues: [26, 26] },
       starLoop: { conveyor: 52, queues: [52, 52] },
       heartLoop: { conveyor: 45, queues: [45, 45] },
-      catLoop: { conveyor: 60, queues: [60, 60] }
+      catLoop: { conveyor: 60, queues: [60, 60] },
+      moonLoop: { conveyor: 60, queues: [60, 60] }
     }
   );
-  // StarLoop and the Footage2/Footage3 heart/cat belts come from other Unity
+  // StarLoop and the Footage2/3/4 heart/cat/moon belts come from other Unity
   // prefab variants, so their array sizes differ from the DualQueue family:
   // only the engine minimums are asserted for them.
   for (const [id, layout] of Object.entries(CONVEYOR_LAYOUTS)) {
@@ -564,7 +565,7 @@ test('Unity conveyor layout catalog includes all requested prefab shapes and ass
     } else if (id === 'heartLoop') {
       assert.equal(layout.splinePoints.length, 20);
       assert.deepEqual(layout.queuePaths.map((path) => path.length), [15, 15]);
-    } else if (id === 'catLoop') {
+    } else if (id === 'catLoop' || id === 'moonLoop') {
       assert.equal(layout.splinePoints.length, 27);
       assert.deepEqual(layout.queuePaths.map((path) => path.length), [15, 15]);
     } else {
@@ -1442,6 +1443,7 @@ test('editor sizing, source background ratio, and passenger shadow anchor stay w
     retryX: 540,
     retryY: 1360,
     retryWidth: 420,
+    retryFontSize: 53,
     retryAppearSpeed: 1.45
   });
   assert.deepEqual(LEVEL_1.passengerQueue, { spacing: 0.4, screenEdgeOffsetSpacing: 4 });
@@ -1463,7 +1465,7 @@ test('editor sizing, source background ratio, and passenger shadow anchor stay w
   assert.ok(publicAssetExists('/assets/main-loading-icon-crowd.webp'));
   assert.ok(publicAssetExists('/assets/main-guide-hand.png'));
   assert.ok(publicAssetExists('/assets/unity/ui/Main_Prop_GreenBtn.png'));
-  assert.ok(publicAssetExists('/assets/unity/ui/Main_Prop_RedBtn_q90.webp'));
+  assert.ok(publicAssetExists('/assets/unity/ui/Main_Prop_RedBtn_blank_q90.webp'));
   assert.match(indexSource, /id="loading-screen"/);
   assert.match(indexSource, /id="game-over-overlay"/);
   assert.match(indexSource, /Game Over/);
@@ -1518,6 +1520,9 @@ test('editor sizing, source background ratio, and passenger shadow anchor stay w
   assert.match(editorSource, /gameOver\.titleFontSize/);
   assert.match(editorSource, /gameOver\.logoX/);
   assert.match(editorSource, /gameOver\.logoAppearSpeed/);
+  // Retry owns a dedicated, open-by-default section so the on/off switch is not
+  // buried at the bottom of the collapsed Game Over group.
+  assert.match(editorSource, /title: '\\u5931\\u8d25\\u91cd\\u8bd5',\s*\n\s*defaultOpen: true/);
   assert.match(editorSource, /gameOver\.retryEnabled/);
   assert.match(editorSource, /gameOver\.retryX/);
   assert.match(editorSource, /gameOver\.retryWidth/);
@@ -2974,17 +2979,18 @@ test('the failure card offers a Retry that restarts the run, and a win never sho
   // buttons, so the session, install gate and speed state are all rebuilt.
   assert.match(mainSource, /gameOverRetryButton\?\.addEventListener\('click',[\s\S]{0,200}reset\(\);/);
 
-  // The pill art carries its own "Retry" lettering, so the button must not also
-  // render a text label or the word would appear twice.
-  assert.match(indexSource, /id="game-over-retry"[^>]*>\s*<\/button>/);
-  assert.match(stylesSource, /Main_Prop_RedBtn_q90\.webp/);
+  // The pill art ships blank and the word is a text layer, so the operator can
+  // size the label independently of the button. It must render exactly once.
+  assert.match(indexSource, /id="game-over-retry"[^>]*>Retry<\/button>/);
+  assert.equal(indexSource.split('>Retry</button>').length - 1, 1);
+  assert.match(stylesSource, /Main_Prop_RedBtn_blank_q90\.webp/);
 
   // The shared `button:hover` rule paints `background: #fff`, which turned this
   // button into a blank white pill. The art and the centering transform both
   // have to be restated in the hover rule.
   assert.match(
     stylesSource,
-    /\.game-over-retry:hover,\s*\n\.game-over-retry:focus-visible \{\s*\n\s*background: transparent url\('\/assets\/unity\/ui\/Main_Prop_RedBtn_q90\.webp'\) center \/ 100% 100% no-repeat;/
+    /\.game-over-retry:hover,\s*\n\.game-over-retry:focus-visible \{\s*\n\s*background: transparent url\('\/assets\/unity\/ui\/Main_Prop_RedBtn_blank_q90\.webp'\) center \/ 100% 100% no-repeat;/
   );
 
   // Default placement is under the logo, not on the CTA strip: the button's
@@ -2997,4 +3003,17 @@ test('the failure card offers a Retry that restarts the run, and a win never sho
   const retryTop = tuning.gameOver.retryY - retryHeight / 2;
   assert.ok(retryTop > logoBottom, `Retry (${retryTop}) must start below the logo bottom (${logoBottom})`);
   assert.ok(tuning.gameOver.retryY < tuning.cta.y, 'Retry must sit above the CTA row');
+
+  // Saved profiles snapshot the whole tuning object, so a changed shipped
+  // default only reaches existing levels through this migration. It must cover
+  // size as well as position, and only rewrite the exact legacy values.
+  // Only the label shrinks; the pill keeps its shipped width.
+  assert.match(mainSource, /const RETRY_WIDTH = 420;/);
+  assert.match(mainSource, /const LEGACY_RETRY_FONT_SIZE = 88;/);
+  assert.match(mainSource, /const RETRY_FONT_SIZE = 53;/);
+  assert.match(mainSource, /Number\(gameOver\.retryFontSize\) === LEGACY_RETRY_FONT_SIZE/);
+  // A saved per-level profile is merged back over SCENE_TUNING, so the global
+  // migration alone never reaches a level the operator already opened.
+  assert.match(mainSource, /function migrateGameOverRetryPositionProfiles\(\)/);
+  assert.match(mainSource, /migrateGameOverRetryPositionProfiles\(\);/);
 });

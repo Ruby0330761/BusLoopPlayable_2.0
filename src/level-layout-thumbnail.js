@@ -9,7 +9,7 @@
 // the top so the conveyor strip appears above the parked rows, as it does in
 // game.
 
-import { VEHICLE_COLOR_OPTIONS } from './level-editor-model.js';
+import { VEHICLE_COLOR_OPTIONS, getVehicleDisplayColor } from './level-editor-model.js';
 import { SCENE_TUNING } from './scene-tuning.js';
 import { displayVehicleSize, vehicleAreaTransformFor } from './vehicle-area-transform.js';
 
@@ -49,7 +49,12 @@ export function resolveVehicleColor(vehicle) {
   // atlas colour; ignoring them painted a red-and-green board pink.
   const override = vehicle?.colorOverrides?.body;
   if (typeof override === 'string' && /^#[0-9a-f]{6}$/i.test(override)) return override;
-  return COLOR_BY_ID.get(vehicle?.colorIndex) ?? UNKNOWN_VEHICLE_COLOR;
+  // Thumbnails sit next to the playable in reviews, so they show the rendered
+  // colour rather than the atlas's raw paint value.
+  const known = COLOR_BY_ID.has(vehicle?.colorIndex);
+  return known
+    ? getVehicleDisplayColor(vehicle.colorIndex)
+    : (COLOR_BY_ID.get(vehicle?.colorIndex) ?? UNKNOWN_VEHICLE_COLOR);
 }
 
 function round(value) {

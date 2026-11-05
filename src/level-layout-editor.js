@@ -7,6 +7,7 @@ import {
   VEHICLE_PAINT_COLOR_OPTIONS,
   VEHICLE_COLORS,
   getVehicleColorOption,
+  getVehicleDisplayColor,
   isSpecialVehicle,
   createLevelDocument,
   exportLevelCsv,
@@ -50,14 +51,14 @@ const WORLD_SCALE = 78;
 const GARAGE_TEXTURE_URL = '/assets/unity/mechanisms/garage/textures/garage-2d.png';
 const CONVEYOR_TEXTURE_URL = '/assets/unity/level-editor/conveyor-belt-2d.png';
 const PASSENGER_QUEUE_COLORS = Object.freeze([
-  '#0061E8', '#118024', '#F338AF', '#9725CD', '#B10F11', '#C68000',
-  '#C24300', '#014853', '#542C16', '#206D53', '#15209E', '#26262E',
+  '#4EA4FF', '#33F145', '#FF5AC9', '#B53DFF', '#FF3B3C', '#FFD31C',
+  '#FF7B1C', '#23EEFF', '#9C4D3B', '#34B194', '#343AFF', '#26262E',
   '#F22E14', '#F2F2F2', '#FADB2E', '#D1A861',
   // Index 16 is the Christmas sled: its authored texture replaces the paint
   // atlas, so this swatch is only the authoring preview colour.
   '#C62828',
-  '#2D2D30', '#EBEBE8', '#8C1010', '#C89808', '#EEDEBE', '#69C8AA',
-  '#96C882', '#F698C4', '#96989B'
+  '#333333', '#F5F5F4', '#DE3A3B', '#FFDA24', '#FFFFE3', '#8AFFF1',
+  '#D6FFBD', '#FFBEEA', '#C6C9CD'
 ]);
 const DEFAULT_INITIAL_PASSENGER_COUNT = 8;
 const LEVEL_EDITOR_PREVIEW_STORAGE_KEY = 'bus-loop-level-editor-preview-v3';
@@ -247,7 +248,9 @@ function selectField(label, path, value, options) {
 
 function vehicleColorField(label, path, value, options = VEHICLE_PAINT_COLOR_OPTIONS) {
   const current = options.find((color) => color.id === Number(value)) ?? options[0];
-  return `<label class="level-layout-field"><span>${label}</span><span class="level-layout-color-select"><span class="level-layout-color-swatch" style="--swatch-color:${current.css}" aria-hidden="true"></span><select data-field="${path}">${options.map((color) => `<option value="${color.id}" ${color.id === Number(value) ? 'selected' : ''}>${color.id}: ${color.name} / ${color.label}</option>`).join('')}</select></span></label>`;
+  // The swatch shows the playable's rendered colour, not the atlas's raw paint
+  // value, so picking a colour here matches what the car looks like in game.
+  return `<label class="level-layout-field"><span>${label}</span><span class="level-layout-color-select"><span class="level-layout-color-swatch" style="--swatch-color:${getVehicleDisplayColor(current.id)}" aria-hidden="true"></span><select data-field="${path}">${options.map((color) => `<option value="${color.id}" ${color.id === Number(value) ? 'selected' : ''}>${color.id}: ${color.name} / ${color.label}</option>`).join('')}</select></span></label>`;
 }
 
 function vehicleOverrideField(label, path, value) {
@@ -264,7 +267,7 @@ function vehicleBatchOverrideField(label, path, value, mixed = false) {
 
 function passengerColorOverridesMarkup(document, colorIndex) {
   const overrides = document.passengerColorOverrides?.[String(colorIndex)] ?? {};
-  const base = overrides.body ?? getVehicleColorOption(colorIndex).css.toLowerCase();
+  const base = overrides.body ?? getVehicleDisplayColor(colorIndex);
   return `<details class="level-layout-color-details"><summary>小人颜色微调</summary>
     ${passengerOverrideField('小人身体', 'body', colorIndex, base)}
     ${passengerOverrideField('小人高光', 'highlight', colorIndex, overrides.highlight ?? base)}
@@ -281,7 +284,11 @@ function invertHexColor(color) {
 }
 
 function vehicleDisplayColor(vehicle) {
-  return vehicle?.colorOverrides?.body ?? getVehicleColorOption(vehicle?.colorIndex).css;
+  // `colorOverrides.body` is a *paint* value authored against the atlas, so it
+  // is drawn as entered. Without an override the car shows the colour the
+  // playable's lighting actually produces, which is what makes the editor board
+  // and the game board read as the same palette.
+  return vehicle?.colorOverrides?.body ?? getVehicleDisplayColor(vehicle?.colorIndex);
 }
 
 function passengerColor(colorIndex, document = null) {
@@ -599,10 +606,15 @@ function drawVehicleSprite(context, vehicle, { width, length, color, inverseColo
   }
 
   // Body paint: a light-to-dark sweep across the width reads as a curved panel.
+  // The sweep is centred on the paint value rather than biased lighter: the
+  // colour handed in is already the playable's rendered body colour, so adding
+  // a one-sided lift on top of it made every editor car look washed out next to
+  // the same car in game. The mid stop sits slightly below the target because
+  // canvas compositing over the light grid reads about one step brighter.
   const paint = context.createLinearGradient(-w / 2, 0, w / 2, 0);
-  paint.addColorStop(0, shadeHexColor(color, 0.34));
-  paint.addColorStop(0.38, shadeHexColor(color, 0.08));
-  paint.addColorStop(1, shadeHexColor(color, -0.3));
+  paint.addColorStop(0, shadeHexColor(color, 0.04));
+  paint.addColorStop(0.5, shadeHexColor(color, -0.04));
+  paint.addColorStop(1, shadeHexColor(color, -0.28));
   roundedRectPath(context, -w / 2, -l / 2, w, l, bodyRadius);
   context.fillStyle = paint;
   context.fill();
@@ -610,9 +622,11 @@ function drawVehicleSprite(context, vehicle, { width, length, color, inverseColo
   context.lineWidth = selected ? Math.max(2.4, w * 0.11) : Math.max(0.8, w * 0.04);
   context.stroke();
 
-  // Roof: a lighter inset panel. Its length relative to the body is the shape
-  // cue for the seat count, since the real footprints are only 3% apart.
-  context.fillStyle = shadeHexColor(color, 0.3);
+  // Roof: a slightly lighter inset panel. Its length relative to the body is
+  // the shape cue for the seat count, since the real footprints are only 3%
+  // apart. The lift is small on purpose — a bright roof panel made the car read
+  // lighter than its own paint.
+  context.fillStyle = shadeHexColor(color, -0.02);
   roundedRectPath(context, -roofHalfWidth, roofTop, roofHalfWidth * 2, roofLength, w * 0.12);
   context.fill();
   context.strokeStyle = 'rgba(7, 26, 37, .28)';
@@ -1198,7 +1212,7 @@ function drawCanvas(canvas, model, camera, gesture, garageTexture, conveyorTextu
       context.save();
       context.translate(screen.x, screen.y);
       context.rotate((vehicle.yaw ?? 0) * Math.PI / 180);
-      context.fillStyle = getVehicleColorOption(vehicle.colorIndex).css;
+      context.fillStyle = getVehicleDisplayColor(vehicle.colorIndex);
       context.globalAlpha = 0.28;
       context.fillRect(-previewSize.width * scale / 2, -previewSize.length * scale / 2, previewSize.width * scale, previewSize.length * scale);
       context.globalAlpha = 1;
@@ -1236,9 +1250,10 @@ function renderInspector(root, model) {
     const hasSpecialVehicle = selectedVehicles.some(isSpecialVehicle);
     const colorValue = (vehicle, key) => {
       const overrides = vehicle.colorOverrides ?? {};
-      if (key === 'body') return overrides.body ?? getVehicleColorOption(vehicle.colorIndex).css.toLowerCase();
+      const displayColor = getVehicleDisplayColor(vehicle.colorIndex);
+      if (key === 'body') return overrides.body ?? displayColor;
       if (key === 'window') return overrides.window ?? '#263238';
-      return overrides[key] ?? (key === 'detail' ? (overrides.body ?? getVehicleColorOption(vehicle.colorIndex).css.toLowerCase()) : (overrides.body ?? getVehicleColorOption(vehicle.colorIndex).css.toLowerCase()));
+      return overrides[key] ?? (overrides.body ?? displayColor);
     };
     const batchValue = (key) => {
       const values = selectedVehicles.map((vehicle) => colorValue(vehicle, key));
@@ -1291,7 +1306,7 @@ function renderInspector(root, model) {
   const item = selected[0];
   if (item.seats) {
     const specialVehicle = isSpecialVehicle(item);
-    const baseColor = getVehicleColorOption(item.colorIndex).css.toLowerCase();
+    const baseColor = getVehicleDisplayColor(item.colorIndex);
     const overrides = item.colorOverrides ?? {};
     const bodyColor = overrides.body ?? baseColor;
     root.innerHTML = `<h3>车辆 #${item.id}</h3>

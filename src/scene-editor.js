@@ -32,6 +32,7 @@ const CONVEYOR_LAYOUT_OPTIONS = [
   ['starLoop', '星形跑道 StarLoop'],
   ['heartLoop', '爱心跑道 HeartLoop'],
   ['catLoop', '猫咪跑道 CatLoop'],
+  ['moonLoop', '月亮跑道 MoonLoop'],
 ];
 
 const BACKGROUND_OPTIONS = [
@@ -630,13 +631,23 @@ const FIELD_GROUPS = [
       ['Logo Width', 'gameOver.logoWidth', 40, 720, 1],
       ['Logo Height', 'gameOver.logoHeight', 40, 720, 1],
       ['Logo Radius', 'gameOver.logoRadius', 0, 120, 1],
-      ['Logo Speed', 'gameOver.logoAppearSpeed', 0.1, 5, 0.01],
-      // Retry restarts a failed run. It only appears on the failure card, never
-      // on a win, so the store button keeps owning the successful ending.
-      ['\u91cd\u8bd5\u6309\u94ae\u663e\u793a', 'gameOver.retryEnabled', 0, 1, 1, null, 'toggle'],
+      ['Logo Speed', 'gameOver.logoAppearSpeed', 0.1, 5, 0.01]
+    ]
+  },
+  {
+    // Retry gets its own open section. It used to sit at the bottom of the
+    // collapsed Game Over group, so the switch that turns the feature on or off
+    // was two clicks deep and easy to miss entirely.
+    title: '\u5931\u8d25\u91cd\u8bd5',
+    defaultOpen: true,
+    fields: [
+      // A failed run offers a second attempt. It never appears on a win, so the
+      // store button keeps owning the successful ending.
+      ['\u542f\u7528\u91cd\u8bd5\u6309\u94ae', 'gameOver.retryEnabled', 0, 1, 1, null, 'toggle'],
       ['\u91cd\u8bd5 X', 'gameOver.retryX', 0, 1080, 1],
       ['\u91cd\u8bd5 Y', 'gameOver.retryY', 0, 2160, 1],
       ['\u91cd\u8bd5\u5bbd\u5ea6', 'gameOver.retryWidth', 120, 900, 1],
+      ['\u91cd\u8bd5\u5b57\u53f7', 'gameOver.retryFontSize', 20, 200, 1],
       ['\u91cd\u8bd5\u51fa\u73b0\u901f\u5ea6', 'gameOver.retryAppearSpeed', 0.1, 5, 0.01]
     ]
   },

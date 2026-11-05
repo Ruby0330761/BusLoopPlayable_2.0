@@ -240,3 +240,53 @@ test('every shipped official level passes import validation', async () => {
     }
   }
 });
+
+test('parses the background material and scene transform without touching vehicle coordinates', async () => {
+  // Unity authors both blocks on every level; the editor used to drop them.
+  const custom = await readFile('official-levels/Level_Escape_A/level101.asset', 'utf8');
+  const customLevel = parseUnityLevelSource(custom, {
+    fileName: 'level101.asset', key: 'level1101', displayName: 'A-101', baseLevel: {}, validate: false
+  });
+  assert.deepEqual(customLevel.bgMaterial, {
+    fileID: 2100000, guid: 'adc0b94e7d110574a9eaf0c51faf8b30', type: 2
+  });
+  assert.deepEqual(customLevel.transformConfig, { isCustom: 1, transformType: 5, rotationAngle: 180 });
+
+  // A level that predates the field keeps it absent rather than inventing
+  // defaults, so exporting it cannot add data the source never had.
+  const plain = await readFile('official-levels/Level_Escape_A/level22.asset', 'utf8');
+  const plainLevel = parseUnityLevelSource(plain, {
+    fileName: 'level22.asset', key: 'level1022', displayName: 'A-22', baseLevel: {}, validate: false
+  });
+  assert.equal(plainLevel.transformConfig, undefined);
+
+  // Same vehicles, same coordinates: the transform block is scene metadata,
+  // not an instruction to rotate the authored car field.
+  const vehiclesBefore = customLevel.vehicles.map((vehicle) => [vehicle.id, vehicle.x, vehicle.z, vehicle.yaw]);
+  const reparsed = parseUnityLevelSource(custom.replace(/    rotationAngle: 180/, '    rotationAngle: 0'), {
+    fileName: 'level101.asset', key: 'level1101', displayName: 'A-101', baseLevel: {}, validate: false
+  });
+  assert.deepEqual(
+    reparsed.vehicles.map((vehicle) => [vehicle.id, vehicle.x, vehicle.z, vehicle.yaw]),
+    vehiclesBefore
+  );
+});
+
+test('every shipped level keeps its background material through a parse', async () => {
+  for (const dir of ['Level_Escape_A', 'Level_Escape_B', 'Level_Escape_E']) {
+    const files = (await readdir(path.join('official-levels', dir)))
+      .filter((name) => /^level\d+\.asset$/.test(name))
+      .sort();
+    for (const fileName of files) {
+      const source = await readFile(path.join('official-levels', dir, fileName), 'utf8');
+      const level = parseUnityLevelSource(source, {
+        fileName, key: 'probe', displayName: 'probe', baseLevel: {}, validate: false
+      });
+      assert.match(
+        level.bgMaterial?.guid ?? '',
+        /^[0-9a-f]{32}$/,
+        `${dir}/${fileName} must expose its background material guid`
+      );
+    }
+  }
+});

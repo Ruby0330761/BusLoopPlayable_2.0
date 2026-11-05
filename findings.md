@@ -1,5 +1,18 @@
 # Findings
 
+## 2026-11-03 关卡级 `bgMaterial` / `transformConfig` 之前被导入链路丢掉了
+
+- **两个字段都是每关都有的真实数据**，不是可选项：`bgMaterial` 是 Unity 背景材质引用 `{fileID: 2100000, guid: <32 hex>, type: 2}`，447 个正式关卡里出现 5 个不同 GUID（`adc0b94e…` 112 关、`5885a6ca…` 123 关、`385d5ef1…` 106 关、`710019de…` 55 关、`ab050289…` 51 关）。`transformConfig` 是场景变换块（`isCustom` / `transformType` / `rotationAngle`），四种组合：`0/0/0` 225 关、`1/5/180` 7 关、`1/3/0` 15 关、`1/1/0` 6 关，另有 194 关完全没有这个块。
+- **`transformConfig` 不改变车辆坐标**，这点必须验证过才能断言：同一传送带下同时存在 `transformType 3` 与默认值的关卡（如 ConveyorBelt9 的 level106 与 level187），但两者是 53 车 / 35 车、座位与配色都不同的独立盘面；把 `rotationAngle` 从 180 改成 0 重新解析，所有车辆的 x/z/yaw 完全相同。所以它是**场景/相机级元数据**，导入时不能拿它去旋转车阵。
+- **`priority` 不存在于任何真实关卡**（447 关扫描结果为 0 次），只出现在测试模板 `makeLevelSource` 里。不要为它加字段。
+- **修复范围**：解析器 `parseBgMaterial`/`parseTransformConfig` → `createLevelDocument` 归一化（GUID 小写并校验 32 位 hex，非法值直接丢弃而不是写回坏数据）→ `levelDocumentToRuntime` 原样透传 → `exportUnityLevelAsset` 按 Unity 原字段顺序写回（`passengerMethod` 之后、`vehicles` 之前）。
+- **缺失时不能造默认值**：源资产没有 `transformConfig` 的 194 关，导出时也必须不写这个块，否则「导入再导出」会凭空多出数据。
+- **导入落盘不经这些函数**：`importUnityLevelAsset` 写的是原始文件字节，所以 `bgMaterial`/`transformConfig` 天然保留；只有「编辑器保存 → 再导出」这条路才需要上面整条链路。
+
+**Why:** 编辑器能编辑的字段如果是导入时丢、导出时又不写，那这个编辑器对官方关卡就只是「能看不能还原」，逐字段对齐 Unity 永远是空话。
+
+**How to apply:** 判断一个 Unity 字段能不能丢，先统计它在 447 个真实关卡里的出现率和取值分布，再验证它与坐标/玩法是否有因果关系（这里是改字段后重解析比对车辆坐标）。出现率 0 的字段（如 `priority`）不要补；出现率高但语义是场景级的字段要原样透传、不参与布局计算；源数据没有时不要写默认值。
+
 ## 2026-11-03 闸机队列(type 4)、双层升降舱(type 5) 与「座位多于乘客」关卡的运行时语义
 
 - **背景**：官方关卡库 A/B/E 三章共 456 个 `.asset`，其中 27 个（A/B 各 9、E 9）一直显示「暂不支持」。原因只有两类：容器类型 4/5，或某色座位数与乘客数不相等。放开导入前必须先有运行时可执行语义，否则只是把不可玩的关卡放进编辑器。

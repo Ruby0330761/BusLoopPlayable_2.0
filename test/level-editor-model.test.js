@@ -594,6 +594,50 @@ test('converts an authored document back to the playable runtime shape', () => {
   assert.match(exportLevelExcelXml(document), /Excel\.Sheet/);
 });
 
+test('keeps the Unity background material and scene transform through a save and export', () => {
+  // Both fields sit beside `passengerMethod` on every shipped level asset. The
+  // editor used to drop them, so an imported level could not be exported back
+  // in the shape it arrived in.
+  const document = createLevelDocument({
+    ...makeDocument(),
+    bgMaterial: { fileID: 2100000, guid: 'ADC0B94E7D110574A9EAF0C51FAF8B30', type: 2 },
+    transformConfig: { isCustom: 1, transformType: 5, rotationAngle: 180 }
+  });
+  assert.deepEqual(document.bgMaterial, {
+    fileID: 2100000,
+    guid: 'adc0b94e7d110574a9eaf0c51faf8b30',
+    type: 2
+  });
+  assert.deepEqual(document.transformConfig, { isCustom: 1, transformType: 5, rotationAngle: 180 });
+
+  const unity = exportUnityLevelAsset(document);
+  assert.match(unity, /bgMaterial: \{fileID: 2100000, guid: adc0b94e7d110574a9eaf0c51faf8b30, type: 2\}/);
+  assert.match(unity, /transformConfig:\n {4}isCustom: 1\n {4}transformType: 5\n {4}rotationAngle: 180/);
+  // Unity's field order: after passengerMethod, before vehicles.
+  assert.ok(
+    unity.indexOf('passengerMethod:') < unity.indexOf('bgMaterial:')
+    && unity.indexOf('transformConfig:') < unity.indexOf('  vehicles:'),
+    'the two blocks keep Unity field order'
+  );
+});
+
+test('omits the background material and transform when the source asset had none', () => {
+  const document = createLevelDocument(makeDocument());
+  assert.equal(document.bgMaterial, undefined);
+  assert.equal(document.transformConfig, undefined);
+  const unity = exportUnityLevelAsset(document);
+  assert.doesNotMatch(unity, /bgMaterial:/);
+  assert.doesNotMatch(unity, /transformConfig:/);
+});
+
+test('rejects a malformed background material guid instead of writing it back', () => {
+  const document = createLevelDocument({
+    ...makeDocument(),
+    bgMaterial: { fileID: 2100000, guid: 'not-a-guid', type: 2 }
+  });
+  assert.equal(document.bgMaterial, undefined);
+});
+
 test('exports Unity vehicle depth to CSV and Excel', () => {
   const document = makeDocument();
   document.vehicles.push({
