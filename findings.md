@@ -1405,3 +1405,13 @@ Full detailed 2026-07-07 findings were archived to:
 - 选择器里每个关卡都显示归属（`名称 · WXJ`），删除前会提示「该关卡属于 X」，这样「为什么我存不了」在尝试之前就能看到。
 - 边界：这是护栏不是鉴权。任何客户端都能伪造 `X-Level-Owner`；它让「我不是故意改这个关卡」变成不可能，让「我要接手」变成显式动作。真正的多租户隔离需要登录体系。
 - 验证：`node --test` 393/393（新增 `test/level-ownership.test.js` 13 条）；对本机 dev server 跑了 13 项 HTTP 端到端：匿名写 403、首写认领 201、列表带 owner、他人 PUT/DELETE 403 且文件未变、本人可写、`wxJ` 视为同一人、删除后释放可被他人认领。
+
+## 2026-11-06 `background.horizon` 必须进默认调参，否则换过背景就导出不了
+
+- 现象：编辑器导出报 `tuning.background.horizon is not supported.`，服务端耗时 0 秒。0 秒是关键信号——请求在打包前的 `validateTuning` 就被拒了，根本没进构建。
+- 根因：导出器不维护独立 schema，直接把 `src/scene-tuning.js` 的 `SCENE_TUNING` 当校验模板，模板里没有的键一律抛错。但 `background.horizon` 是**编辑器运行时才写入**的字段，三处写点全都跟背景图有关：背景下拉切图（`scene-editor.js` `applySelectedBackgroundDimensions`）、上传自定义背景、启动时 `ensureBackgroundHorizon` 就地测量。而 `SCENE_TUNING.background` 从背景对齐功能上线起就没有这个键。
+- 触发条件比“上传自定义背景”宽：切内置背景也会中招。5 张内置图在下拉选项上都带 `data-horizon`，从 BG01 冬季切到 BG01 樱花同样会写入该键。
+- **刷新页面能绕过，但不是万能**：`loadSavedTuning` 的 `pruneUnknownTuning` 会删掉这个未知键，随后 `ensureBackgroundHorizon` 若能按文件名或内容哈希在内置表命中就直接返回、不再写回，导出恢复正常。但表里没有的新图（新上传的自定义背景）刷新后会被重新测量并再次写回，导出持续阻塞。所以对“用了新自定义背景”的需求是必现失败，不是偶发。
+- 修复：默认调参加 `"horizon": 0` 作哨兵值。`resolveBackgroundHorizon` 只接受 `0 < h < 1`，0 会被当作“未测量”并回落到内置表，因此现有背景的渲染结果完全不变；实测值（0.5165 / 0.5744 等）现在能通过校验并被烘焙进导出包。
+- 不要走“放宽 `validateTuning` 白名单”这条路。这个项目里未知键报错是有意的护栏（见上面 `stamina`、`starLoop`、`hideOutlineWhenOccupied` 几次同类事故），正确做法始终是让默认调参跟模板同步。
+- 回归：`test/tuning-migrations.test.js` 新增“实测 horizon 能过 prune 和导出校验”＋“0 哨兵合法”两条；`test/background-alignment.test.js` 钉住 0 哨兵不改变渲染偏移。改动后 `node --test` 521/521、`npm run build` 通过。
