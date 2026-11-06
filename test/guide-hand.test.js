@@ -211,7 +211,7 @@ test('opening guide animation has an editor toggle that restarts its preview', a
   assert.match(mainSource, /path\?\.startsWith\('entryBanner\.'\)/);
   assert.match(mainSource, /if \(restartEntryBanner\) view\.showEntryBanner\?\.\(\)/);
   assert.match(viewSource, /if \(!this\.getEntryBannerTuning\(\)\?\.enabled\)/);
-  assert.match(viewSource, /this\.updateEntryBannerTuning\(\);\n    const banner = this\.entryBanner/);
+  assert.match(viewSource, /this\.updateEntryBannerTuning\(\);\r?\n    const banner = this\.entryBanner/);
   assert.match(editorSource, /document\.createElement\('details'\)/);
   assert.match(editorSource, /editor-section-summary/);
   assert.match(editorSource, /section\.open = Boolean\(group\.defaultOpen\)/);

@@ -534,7 +534,7 @@ test('level12 initializes Unity-authored layout and counts', () => {
 test('Unity conveyor layout catalog includes all requested prefab shapes and assets', () => {
   assert.deepEqual(
     CONVEYOR_LAYOUT_IDS,
-    ['dualQueue2', 'dualQueue3', 'dualQueue5', 'dualQueue10', 'starLoop', 'heartLoop', 'catLoop']
+    ['dualQueue2', 'dualQueue3', 'dualQueue5', 'dualQueue10', 'starLoop', 'heartLoop', 'catLoop', 'footage8', 'footage9', 'footage10']
   );
   assert.equal(MAX_CONVEYOR_CAPACITY, 60);
   assert.equal(MAX_QUEUE_CAPACITY, 60);
@@ -550,7 +550,10 @@ test('Unity conveyor layout catalog includes all requested prefab shapes and ass
       dualQueue10: { conveyor: 38, queues: [26, 26] },
       starLoop: { conveyor: 52, queues: [52, 52] },
       heartLoop: { conveyor: 45, queues: [45, 45] },
-      catLoop: { conveyor: 60, queues: [60, 60] }
+      catLoop: { conveyor: 60, queues: [60, 60] },
+      footage8: { conveyor: 32, queues: [18, 18] },
+      footage9: { conveyor: 32, queues: [18, 18] },
+      footage10: { conveyor: 32, queues: [18, 18] }
     }
   );
   // StarLoop and the Footage2/Footage3 heart/cat belts come from other Unity
@@ -567,6 +570,12 @@ test('Unity conveyor layout catalog includes all requested prefab shapes and ass
     } else if (id === 'catLoop') {
       assert.equal(layout.splinePoints.length, 27);
       assert.deepEqual(layout.queuePaths.map((path) => path.length), [15, 15]);
+    } else if (id === 'footage9') {
+      assert.equal(layout.splinePoints.length, 13);
+      assert.deepEqual(layout.queuePaths.map((path) => path.length), [2, 2]);
+    } else if (id === 'footage10') {
+      assert.equal(layout.splinePoints.length, 19);
+      assert.deepEqual(layout.queuePaths.map((path) => path.length), [20, 2]);
     } else {
       assert.equal(layout.splinePoints.length, 19);
       assert.deepEqual(layout.queuePaths.map((path) => path.length), [20, 20]);
@@ -1353,7 +1362,7 @@ test('vehicle area rotation uses the transformed vehicle-region center', () => {
   assert.ok(Math.abs(pivot.z - (bounds.minZ + bounds.maxZ) / 2) < 1e-9);
   assert.match(sceneViewSource, /getVehicleAreaPivot\(area\)/);
   assert.match(gameModelSource, /getVehicleAreaPivot\(area\)/);
-  assert.match(sceneViewSource, /function mapVehicleAreaYaw\(yawDegrees\) \{[\s\S]*?return mirroredYaw - deg\(SCENE_TUNING\.vehicleArea\.rotationDegrees\);\n\}/);
+  assert.match(sceneViewSource, /function mapVehicleAreaYaw\(yawDegrees\) \{[\s\S]*?return mirroredYaw - deg\(SCENE_TUNING\.vehicleArea\.rotationDegrees\);\r?\n\}/);
   assert.match(gameModelSource, /function visualYawToVehicleAreaYaw\(yawDegrees\) \{[\s\S]*?return area\.mirrorZ \? 180 - yawDegrees : yawDegrees;/);
 });
 
@@ -2528,7 +2537,7 @@ test('main thread saves and restores scene tuning from localStorage', () => {
   assert.match(mainSource, /levelSession\.recordSuccessfulVehicle\(vehicleId, threshold\)/);
   assert.match(mainSource, /const handleVehicleClick = \(vehicleId\) => \{/);
   assert.match(mainSource, /const result = game\.clickVehicle\(vehicleId\)/);
-  assert.match(mainSource, /^\s*if \(result\?\.ok\) \{\n\s*startBackgroundMusic\(\);\n\s*if \(markInstallVehicle\(vehicleId\)\) InstallFullGame\(\);/m);
+  assert.match(mainSource, /^\s*if \(result\?\.ok\) \{\r?\n\s*startBackgroundMusic\(\);\r?\n\s*if \(markInstallVehicle\(vehicleId\)\) InstallFullGame\(\);/m);
   assert.match(mainSource, /function updateInstallGate\(state\)/);
   assert.match(mainSource, /for \(const vehicle of state\.vehicles \?\? \[\]\)/);
   assert.match(mainSource, /levelSession\.hasCountedVehicle\(vehicle\.id\)/);
@@ -2690,7 +2699,7 @@ test('successful operation store redirect uses the baked threshold and remains e
   assert.equal(SCENE_TUNING.installGate.successfulOperationThreshold, 64);
   assert.match(editorSource, /installGate\.successfulOperationThreshold/);
   assert.match(mainSource, /SCENE_TUNING\.installGate\?\.successfulOperationThreshold/);
-  assert.match(mainSource, /^\s*if \(result\?\.ok\) \{\n\s*startBackgroundMusic\(\);\n\s*if \(markInstallVehicle\(vehicleId\)\) InstallFullGame\(\);/m);
+  assert.match(mainSource, /^\s*if \(result\?\.ok\) \{\r?\n\s*startBackgroundMusic\(\);\r?\n\s*if \(markInstallVehicle\(vehicleId\)\) InstallFullGame\(\);/m);
   assert.match(mainSource, /levelSession\.recordSuccessfulVehicle\(vehicleId, threshold\)/);
   assert.doesNotMatch(mainSource, /INSTALL_GATE_AFTER_SUCCESSFUL_OPERATIONS_ENABLED/);
 });

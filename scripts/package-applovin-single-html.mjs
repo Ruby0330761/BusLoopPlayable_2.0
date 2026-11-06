@@ -188,6 +188,21 @@ function dedupeEmbeddedAssetLiterals(source, assetMap) {
   return `${declarations.join('')}\n${next}`;
 }
 
+function dedupeEmbeddedCssAssets(source, assetMap) {
+  let next = source;
+  const declarations = [];
+  for (const dataUri of new Set(assetMap.values())) {
+    if (dataUri.length < 4096) continue;
+    const urls = [`url("${dataUri}")`, `url('${dataUri}')`, `url(${dataUri})`];
+    const occurrences = urls.reduce((count, url) => count + next.split(url).length - 1, 0);
+    if (occurrences < 2) continue;
+    const name = `--playable-embedded-image-${declarations.length}`;
+    for (const url of urls) next = next.split(url).join(`var(${name})`);
+    declarations.push(`${name}:url("${dataUri}");`);
+  }
+  return declarations.length ? `:root{${declarations.join('')}}${next}` : next;
+}
+
 function stripEditorCss(css) {
   const start = css.indexOf('.scene-editor{');
   const end = start >= 0 ? css.indexOf('#app.is-phone-preview', start) : -1;
@@ -239,12 +254,15 @@ async function main() {
     PRE_ROLL_ASSET_PATHS,
     getMechanismResourcePaths,
     getMechanismTypesForLevels
-  }, { isPreRollAssetPath, resolvePreRollAsset }, { LEVEL_AUDIO_CONFIG }] = await Promise.all([
+  }, { isPreRollAssetPath, resolvePreRollAsset }, { LEVEL_AUDIO_CONFIG }, { FOOTAGE8_LAYOUT }, { FOOTAGE9_LAYOUT }, { FOOTAGE10_LAYOUT }] = await Promise.all([
     import('../src/generated-active-level.js'),
     import('../src/scene-tuning.js'),
     import('../src/mechanism-resources.js'),
     import('../src/pre-roll.js'),
-    import('../src/level-audio-config.js')
+    import('../src/level-audio-config.js'),
+    import('../src/generated-footage8-layout.js'),
+    import('../src/generated-footage9-layout.js'),
+    import('../src/generated-footage10-layout.js')
   ]);
   const htmlPath = path.join(DIST_DIR, 'index.html');
   const html = stripEditorMount(await readFile(htmlPath, 'utf8'));
@@ -280,6 +298,13 @@ async function main() {
     )
   });
   const realAssetUrls = new Set(BASE_RUNTIME_ASSET_PATHS);
+  const reachableConveyors = [spatialSelection, ...PLAYABLE_STAGES.map((stage) => stage?.scene?.conveyorLayout),
+    ...choiceOptions.map((option) => option?.scene?.conveyorLayout)];
+  for (const layout of [FOOTAGE8_LAYOUT, FOOTAGE9_LAYOUT, FOOTAGE10_LAYOUT]) {
+    if (reachableConveyors.includes(layout.id)) {
+      for (const url of Object.values(layout.assets)) realAssetUrls.add(url);
+    }
+  }
   // A session can disable the pre-roll, and the runtime applies that by zeroing
   // the tuning flag. Reading the raw `SCENE_TUNING.preRoll.enabled` here inlined
   // a 519 KB MP4 the runtime never played, so the session has to be consulted
@@ -339,7 +364,7 @@ async function main() {
   // runtime constant) and the payload scan rejects the package.
   const js = ['branding-icon', 'branding-logo', 'loading-icon', 'stage-choice-hand']
     .reduce((source, elementId) => reuseDocumentImageAsset(html, source, assetMap, elementId), jsWithAssets);
-  const css = stripEditorCss(replaceAssetUrls(packagedCssSource, assetMap));
+  const css = dedupeEmbeddedCssAssets(stripEditorCss(replaceAssetUrls(packagedCssSource, assetMap)), assetMap);
 
   let output = inlineCss(html, css, cssPath);
   output = await inlineModule(output, js, jsPath, assetMap);

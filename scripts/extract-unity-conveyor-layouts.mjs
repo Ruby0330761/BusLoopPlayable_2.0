@@ -276,13 +276,16 @@ if (moduleOutputPath) {
     }
   }]));
   const moduleSource = `// Generated from Unity prefab overrides by scripts/extract-unity-conveyor-layouts.mjs.\n`
+    + `import { FOOTAGE8_LAYOUT } from './generated-footage8-layout.js';\n`
+    + `import { FOOTAGE9_LAYOUT } from './generated-footage9-layout.js';\n`
+    + `import { FOOTAGE10_LAYOUT } from './generated-footage10-layout.js';\n`
     + `const deepFreeze = (value) => {\n`
     + `  if (!value || typeof value !== 'object' || Object.isFrozen(value)) return value;\n`
     + `  Object.freeze(value);\n`
     + `  Object.values(value).forEach(deepFreeze);\n`
     + `  return value;\n`
     + `};\n\n`
-    + `export const CONVEYOR_LAYOUTS = deepFreeze(${JSON.stringify(layoutMap, null, 2)});\n\n`
+    + `export const CONVEYOR_LAYOUTS = deepFreeze({ ...${JSON.stringify(layoutMap, null, 2)}, footage8: FOOTAGE8_LAYOUT, footage9: FOOTAGE9_LAYOUT, footage10: FOOTAGE10_LAYOUT });\n\n`
     + `export const CONVEYOR_LAYOUT_IDS = Object.freeze(Object.keys(CONVEYOR_LAYOUTS));\n`
     + `export const MAX_CONVEYOR_CAPACITY = Math.max(...Object.values(CONVEYOR_LAYOUTS).map((layout) => layout.conveyorCapacity));\n`
     + `export const MAX_QUEUE_CAPACITY = Math.max(...Object.values(CONVEYOR_LAYOUTS).flatMap((layout) => layout.queueCapacities));\n\n`

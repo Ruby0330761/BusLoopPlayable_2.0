@@ -32,6 +32,9 @@ const CONVEYOR_LAYOUT_OPTIONS = [
   ['starLoop', '星形跑道 StarLoop'],
   ['heartLoop', '爱心跑道 HeartLoop'],
   ['catLoop', '猫咪跑道 CatLoop'],
+  ['footage8', 'Footage8（立体双入口）'],
+  ['footage9', 'Footage9（立体双入口）'],
+  ['footage10', 'Footage10（立体双入口）'],
 ];
 
 const BACKGROUND_OPTIONS = [
@@ -105,7 +108,7 @@ function editorCategoryForGroup(group) {
   const path = group.fields?.[0]?.[1] ?? '';
   if (path.startsWith('exportNaming.')) return 'export';
   if (path.startsWith('level.')) return 'level';
-  if (/^(?:conveyorLayout|conveyorLayouts|spatialConveyor|queueCurves|passengerShadows)\./.test(path)) {
+  if (/^(?:conveyorLayout|conveyorLayouts|spatialConveyor|footage(?:8|9|10)Conveyor|queueCurves|passengerShadows)\./.test(path)) {
     return 'conveyor';
   }
   if (/^(?:parkingSpots|vehiclePath|vehicleDeparturePath|vehicleArea)\./.test(path)) return 'vehicle';
@@ -398,8 +401,43 @@ function makeConveyorLayoutGroups(layoutId, label) {
 }
 
 const CONVEYOR_LAYOUT_FIELD_GROUPS = CONVEYOR_LAYOUT_OPTIONS.flatMap(([layoutId, label]) => (
-  makeConveyorLayoutGroups(layoutId, label)
+  ['footage8', 'footage9', 'footage10'].includes(layoutId) ? [] : makeConveyorLayoutGroups(layoutId, label)
 ));
+
+const MODEL_CONVEYOR_FIELD_GROUPS = ['footage9', 'footage10'].flatMap((layoutId) => {
+  const root = `${layoutId}Conveyor`;
+  const label = layoutId === 'footage9' ? 'Footage9' : 'Footage10';
+  return [
+    {
+      title: `${label} - 乘客间距与速度`, conveyorLayout: layoutId,
+      fields: [
+        ['乘客排距', `${root}.rowSpacing`, 0.2, 0.8, 0.01],
+        ['移动速度', `${root}.speed`, 0.1, 3, 0.05],
+        ['开场进场倍速', `${root}.initialFillSpeedMultiplier`, 1, 8, 0.5],
+        ['脚底离地', `${root}.footClearance`, 0, 0.08, 0.002]
+      ]
+    },
+    {
+      title: `${label} - 上车区可视化`, conveyorLayout: layoutId, defaultOpen: true,
+      description: '上车区仅在编辑器显示，截图和导出时隐藏。',
+      fields: [
+        ['显示上车区', `${root}.showBoardingZone`, 0, 1, 1, null, 'toggle'],
+        ['上车位置（%）', `${root}.boardingPositionPercent`, 0, 100, 0.1],
+        ['上车范围（%）', `${root}.boardingWidthPercent`, 1, 40, 0.1]
+      ]
+    },
+    {
+      title: `${label} - 轨道与乘客位置`, conveyorLayout: layoutId,
+      fields: [
+        ['X 位置', `${root}.positionX`, -10, 10, 0.05],
+        ['高度', `${root}.positionY`, -3, 4, 0.05],
+        ['Z 位置', `${root}.positionZ`, -10, 4, 0.05],
+        ['整体缩放', `${root}.scale`, 0.5, 3, 0.05],
+        ['朝向', `${root}.rotationYDegrees`, 0, 360, 5]
+      ]
+    }
+  ];
+});
 
 function makeEntryBannerComponentFields(label, component) {
   const root = `entryBanner.components.${component}`;
@@ -745,6 +783,61 @@ const FIELD_GROUPS = [
     ]
   },
   ...CONVEYOR_LAYOUT_FIELD_GROUPS,
+  ...MODEL_CONVEYOR_FIELD_GROUPS,
+  {
+    title: 'Footage10 - 入场队列',
+    conveyorLayout: 'footage10',
+    defaultOpen: true,
+    description: '控制左侧等待队列及其入场过渡的显隐，默认关闭。',
+    fields: [
+      ['显示左侧队列', 'footage10Conveyor.showLeftQueue', 0, 1, 1, null, 'toggle']
+    ]
+  },
+  {
+    title: 'Footage8 - 乘客间距与速度',
+    conveyorLayout: 'footage8',
+    description: '小人大小仅影响 Footage8，1 为原始大小；不改变其他轨道。排距越小越密，调整排距会重新开始。开场倍速仅影响铺满前，保存和导出会保留。',
+    fields: [
+      ['乘客排距', 'footage8Conveyor.rowSpacing', 0.2, 0.8, 0.01],
+      ['本轨道小人大小', 'footage8Conveyor.passengerSizeMultiplier', 0.75, 1.6, 0.05],
+      ['移动速度', 'footage8Conveyor.speed', 0.1, 3, 0.05],
+      ['开场进场倍速', 'footage8Conveyor.initialFillSpeedMultiplier', 1, 8, 0.5]
+    ]
+  },
+  {
+    title: 'Footage8 - 上车区可视化',
+    conveyorLayout: 'footage8',
+    defaultOpen: true,
+    description: '黄色轨段是实际上车区，绿色为起点、橙色为终点。拖动“上车位置”沿轨道移动，再调“上车范围”。标记仅在编辑器显示，成品和导出截图不显示。',
+    fields: [
+      ['显示上车区', 'footage8Conveyor.showBoardingZone', 0, 1, 1, null, 'toggle'],
+      ['上车位置（%）', 'footage8Conveyor.boardingPositionPercent', 0, 100, 0.1],
+      ['上车范围（%）', 'footage8Conveyor.boardingWidthPercent', 1, 40, 0.1]
+    ]
+  },
+  {
+    title: 'Footage8 - 脚下贴合与接驳路面',
+    conveyorLayout: 'footage8',
+    description: '出口先延伸出同高度平台，再接到停车路面。台阶级数为 0 时使用平滑坡道；停车位线会自动避让。',
+    fields: [
+      ['脚底离地', 'footage8Conveyor.footClearance', 0, 0.08, 0.002],
+      ['连接停车路面', 'footage8Conveyor.roadJoinEnabled', 0, 1, 1, null, 'toggle'],
+      ['出口平台延长', 'footage8Conveyor.roadJoinLanding', 0, 0.6, 0.02],
+      ['台阶级数（0=坡道）', 'footage8Conveyor.roadJoinSteps', 0, 5, 1],
+      ['路面延伸', 'footage8Conveyor.roadJoinExtension', -0.5, 2, 0.02]
+    ]
+  },
+  {
+    title: 'Footage8 - 轨道与乘客位置',
+    conveyorLayout: 'footage8',
+    fields: [
+      ['X 位置', 'footage8Conveyor.positionX', -10, 10, 0.05],
+      ['高度', 'footage8Conveyor.positionY', -3, 4, 0.05],
+      ['Z 位置', 'footage8Conveyor.positionZ', -10, 4, 0.05],
+      ['整体缩放', 'footage8Conveyor.scale', 0.5, 3, 0.05],
+      ['朝向', 'footage8Conveyor.rotationYDegrees', 0, 360, 5]
+    ]
+  },
   {
     title: '\u4e2d\u95f4\u5c0f\u4eba\u5f71\u5b50',
     fields: [
@@ -1332,6 +1425,12 @@ export function createSceneEditor(root, {
     if (group.spatialOnly) section.dataset.spatialOnly = 'true';
     if (group.spatialImportAnchor) section.dataset.spatialImportAnchor = 'true';
     section.innerHTML = `<summary class="editor-section-summary"><h3>${group.title}</h3></summary>`;
+    if (group.description) {
+      const hint = document.createElement('p');
+      hint.textContent = group.description;
+      hint.style.cssText = 'font-size:12px;line-height:1.6;opacity:.8;margin:8px 0';
+      section.appendChild(hint);
+    }
     for (const [label, path, min, max, step, configuredOptions, control] of group.fields) {
       const options = control === 'vehicle-id-select'
         ? getVehicleIdOptions(LEVEL_1.vehicles)

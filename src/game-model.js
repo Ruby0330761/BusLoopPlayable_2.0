@@ -687,8 +687,7 @@ export class BusLoopGame {
     this.queueLaneCount = laneCount;
     this.conveyorCapacity = nextConveyorCapacity;
     this.entryPercents = [...(conveyorConfig.entryPercents ?? this.entryPercents)];
-    this.exitStart = conveyorConfig.exitStart ?? this.exitStart;
-    this.exitEnd = conveyorConfig.exitEnd ?? this.exitEnd;
+    this.configureConveyorRuntime(conveyorConfig);
     this.queueSpacing = Math.max(0.01, queueSpacing ?? this.level.passengerQueue?.spacing ?? 0.4);
     this.conveyorPathLength = Math.max(0.0001, conveyorPathLength ?? this.conveyorPathLength ?? 1);
     this.queueAvailableLengths = authoredQueues.map((_, index) => Math.max(
@@ -745,6 +744,78 @@ export class BusLoopGame {
     this.listeners.add(listener);
     listener(this.snapshot());
     return () => this.listeners.delete(listener);
+  }
+
+  configureConveyorRuntime(config = {}) {
+    this.exitStart = config.exitStart ?? this.exitStart;
+    this.exitEnd = config.exitEnd ?? this.exitEnd;
+    this.continuousConveyorSpeed = Number.isFinite(config.continuousSpeed)
+      ? Math.max(0.01, config.continuousSpeed) : null;
+    this.initialFillSpeedMultiplier = Number.isFinite(config.initialFillSpeedMultiplier)
+      ? Math.max(1, config.initialFillSpeedMultiplier) : 1;
+    this.entryLeadDistances = this.continuousConveyorSpeed == null
+      ? [] : [...(config.entryLeadDistances ?? this.entryLeadDistances ?? [])];
+  }
+
+  getContinuousConveyorSpeed() {
+    // Startup is local to passenger motion; the game clock, saved cruising
+    // speed and later replenishment keep their existing rates.
+    return this.continuousConveyorSpeed * (this.initialFillActive ? this.initialFillSpeedMultiplier : 1);
+  }
+
+  updateContinuousConveyor(delta) {
+    this.continuousBoardingStarts = new Map();
+    const progressDelta = delta * this.getContinuousConveyorSpeed() / this.conveyorPathLength * this.speedMultiplier;
+    const crossings = [];
+    for (const slot of this.slots) {
+      slot.previousProgress = slot.progress;
+      slot.progress = wrap01(slot.progress + progressDelta);
+      if (slot.entryMotion?.remainingDistance > 0) {
+        slot.entryMotion.remainingDistance = Math.max(0, slot.entryMotion.remainingDistance - progressDelta * this.conveyorPathLength);
+        if (slot.entryMotion.remainingDistance === 0) {
+          this.continuousBoardingStarts.set(slot.index, this.entryPercents[slot.entryIndex]);
+          slot.entryMotion = null;
+        }
+      }
+      if (slot.colorIndex !== null) continue;
+      this.entryPercents.forEach((percent, entryIndex) => {
+        const release = wrap01(percent - (this.entryLeadDistances[entryIndex] ?? 0) / this.conveyorPathLength);
+        if (this.crossedPoint(slot.previousProgress, slot.progress, release)) {
+          crossings.push({ slot, entryIndex, at: wrap01(release - slot.previousProgress) / progressDelta * delta });
+        }
+      });
+    }
+    // Advance queues to each exact handoff time. Advancing a whole frame before
+    // dequeueing makes the next head late by one frame on every replenishment.
+    crossings.sort((a, b) => a.at - b.at);
+    let elapsed = 0;
+    let changed = false;
+    for (const { slot, entryIndex, at } of crossings) {
+      this.updateQueues(Math.max(0, at - elapsed));
+      elapsed = at;
+      if (slot.colorIndex !== null || (this.queues[entryIndex]?.[0]?.distanceFromHead ?? Infinity) > 1e-7) continue;
+      const passenger = this.dequeuePassenger(entryIndex, true);
+      if (!passenger) continue;
+      slot.colorIndex = passenger.colorIndex;
+      slot.entryIndex = entryIndex;
+      const mergeDistance = this.entryLeadDistances[entryIndex] ?? 0;
+      const remainingDistance = Math.max(0, mergeDistance - progressDelta * this.conveyorPathLength * (1 - at / delta));
+      slot.entryMotion = remainingDistance > 0 ? {
+        entryIndex, passengerId: passenger.id, mergeDistance, remainingDistance,
+        startedAt: this.time - delta + at
+      } : null;
+      this.continuousBoardingStarts.set(slot.index, this.entryPercents[entryIndex]);
+      if (this.initialFillActive) this.initialFilledSlotIndices.add(slot.index);
+      this.lastEvent = { type: 'group-entered-belt', colorIndex: passenger.colorIndex, entryIndex };
+      changed = true;
+    }
+    this.updateQueues(Math.max(0, delta - elapsed));
+    const fillFinished = this.initialFilledSlotIndices.size >= this.conveyorCapacity
+      || (!this.queues.some((q) => q.length) && !this.sourceQueues.some((q) => q.length));
+    if (fillFinished && !this.slots.some((s) => s.entryMotion?.remainingDistance > 0)) {
+      this.initialFillActive = false;
+    }
+    return changed;
   }
 
   emit() {
@@ -1361,62 +1432,75 @@ export class BusLoopGame {
 
     if (garageVehicleCompleted) collectGarageEvents(this.refreshGarages());
 
-    this.updateQueues(delta);
+    if (this.continuousConveyorSpeed != null) {
+      changed = this.updateContinuousConveyor(delta) || changed;
+    } else {
+      this.updateQueues(delta);
 
-    const entryMotion = this.level.passengerEntryMotion ?? {};
-    const activeConveyorSpeed = this.initialFillActive
-      ? (entryMotion.passengerSpeed ?? this.level.conveyorSpeed)
-      : this.level.conveyorSpeed;
-    const progressDelta = delta * activeConveyorSpeed / this.conveyorPathLength * this.speedMultiplier;
-    let initialFillClamp = 0;
-    let initialFillHoldSlot = null;
-    let initialFillHoldProgress = 0;
-    for (const slot of this.slots) {
-      slot.previousProgress = slot.progress;
-      slot.progress = wrap01(slot.progress + progressDelta);
-      if (slot.colorIndex === null) {
-        const entry = this.getFirstPassedEntry(slot.previousProgress, slot.progress);
-        if (!entry) continue;
-        const passenger = this.dequeuePassenger(entry.index, true);
-        if (passenger === null) {
-          if (this.initialFillActive) {
-            const holdProgress = wrap01(entry.percent - INITIAL_ENTRY_OFFSET_PERCENT);
-            const clamp = wrap01(slot.progress - holdProgress);
-            if (clamp > initialFillClamp) {
-              initialFillClamp = clamp;
-              initialFillHoldSlot = slot;
-              initialFillHoldProgress = holdProgress;
-            }
-          }
-          continue;
-        }
-        slot.colorIndex = passenger.colorIndex;
-        slot.entryIndex = entry.index;
-        slot.entryMotion = this.createEntryMotion(entry.index, passenger);
-        if (this.initialFillActive) this.initialFilledSlotIndices.add(slot.index);
-        this.lastEvent = { type: 'group-entered-belt', colorIndex: passenger.colorIndex, entryIndex: entry.index };
-        changed = true;
-      }
-    }
-
-    if (this.initialFillActive && initialFillClamp > 0) {
+      const entryMotion = this.level.passengerEntryMotion ?? {};
+      const activeConveyorSpeed = this.initialFillActive
+        ? (entryMotion.passengerSpeed ?? this.level.conveyorSpeed)
+        : this.level.conveyorSpeed;
+      const progressDelta = delta * activeConveyorSpeed / this.conveyorPathLength * this.speedMultiplier;
+      let initialFillClamp = 0;
+      let initialFillHoldSlot = null;
+      let initialFillHoldProgress = 0;
       for (const slot of this.slots) {
-        slot.progress = wrap01(slot.progress - initialFillClamp);
-        slot.previousProgress = wrap01(slot.previousProgress - initialFillClamp);
+        slot.previousProgress = slot.progress;
+        slot.progress = wrap01(slot.progress + progressDelta);
+        if (slot.colorIndex === null) {
+          const entry = this.getFirstPassedEntry(slot.previousProgress, slot.progress);
+          if (!entry) continue;
+          const passenger = this.dequeuePassenger(entry.index, true);
+          if (passenger === null) {
+            if (this.initialFillActive) {
+              const holdProgress = wrap01(entry.percent - INITIAL_ENTRY_OFFSET_PERCENT);
+              const clamp = wrap01(slot.progress - holdProgress);
+              if (clamp > initialFillClamp) {
+                initialFillClamp = clamp;
+                initialFillHoldSlot = slot;
+                initialFillHoldProgress = holdProgress;
+              }
+            }
+            continue;
+          }
+          slot.colorIndex = passenger.colorIndex;
+          slot.entryIndex = entry.index;
+          slot.entryMotion = this.createEntryMotion(entry.index, passenger);
+          if (this.initialFillActive) this.initialFilledSlotIndices.add(slot.index);
+          this.lastEvent = { type: 'group-entered-belt', colorIndex: passenger.colorIndex, entryIndex: entry.index };
+          changed = true;
+        }
       }
-      if (initialFillHoldSlot) initialFillHoldSlot.progress = initialFillHoldProgress;
-    }
 
-    if (
-      this.initialFillActive
-      && this.initialFilledSlotIndices.size >= this.conveyorCapacity
-      && !this.hasEnteringSlots()
-    ) {
-      this.initialFillActive = false;
+      if (this.initialFillActive && initialFillClamp > 0) {
+        for (const slot of this.slots) {
+          slot.progress = wrap01(slot.progress - initialFillClamp);
+          slot.previousProgress = wrap01(slot.previousProgress - initialFillClamp);
+        }
+        if (initialFillHoldSlot) initialFillHoldSlot.progress = initialFillHoldProgress;
+      }
+
+      if (
+        this.initialFillActive
+        && this.initialFilledSlotIndices.size >= this.conveyorCapacity
+        && !this.hasEnteringSlots()
+      ) {
+        this.initialFillActive = false;
+      }
     }
 
     for (const slot of this.slots) {
-      if (slot.colorIndex === null || !this.inExitRange(slot.progress)) continue;
+      if (slot.colorIndex === null) continue;
+      if (slot.entryMotion?.remainingDistance > 0) continue;
+      let boardingProgress = slot.progress;
+      if (!this.inExitRange(boardingProgress)) {
+        const from = this.continuousBoardingStarts?.get(slot.index) ?? slot.previousProgress;
+        if (this.continuousConveyorSpeed == null || !this.crossedPoint(from, slot.progress, this.exitStart)) continue;
+        // A narrow authoring zone can be crossed between two rendered frames.
+        // Start the boarding visual at the actual boundary, on the same 3D path.
+        boardingProgress = this.exitStart;
+      }
       const vehicle = this.findBoardableVehicle(slot.colorIndex);
       if (!vehicle) continue;
       const colorIndex = slot.colorIndex;
@@ -1426,7 +1510,7 @@ export class BusLoopGame {
         spotIndex: vehicle.spotIndex,
         colorIndex,
         slotIndex: slot.index,
-        progress: slot.progress,
+        progress: boardingProgress,
         startedAt: this.time
       });
       if (this.boardingEvents.length > 24) this.boardingEvents.shift();
@@ -1577,7 +1661,14 @@ export class BusLoopGame {
   }
 
   updateQueues(delta) {
-    const speed = Math.max(0.01, this.level.passengerEntryMotion?.passengerSpeed ?? this.level.conveyorSpeed);
+    // One queue pitch must advance in one belt-slot interval. Using the belt's
+    // world speed for a wider waiting queue skips slots and lets the opposite
+    // entrance weave its colours into those artificial gaps on the next pass.
+    const queueCadenceRatio = this.continuousConveyorSpeed != null
+      ? this.queueSpacing / (this.conveyorPathLength / this.conveyorCapacity) : 1;
+    const speed = this.continuousConveyorSpeed != null
+      ? this.getContinuousConveyorSpeed() * queueCadenceRatio
+      : Math.max(0.01, this.level.passengerEntryMotion?.passengerSpeed ?? this.level.conveyorSpeed);
     const step = speed * Math.max(0, delta) * this.speedMultiplier;
     for (let queueIndex = 0; queueIndex < this.queues.length; queueIndex += 1) {
       const queue = this.queues[queueIndex];

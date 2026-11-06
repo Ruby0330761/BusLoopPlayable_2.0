@@ -8,7 +8,7 @@ import { SceneView } from './scene-view.js';
 import { setActiveStageScene } from './stage-scene.js';
 import { calculateAutoCameraFit, clampCenteredRectX } from './scene-layout.js';
 import { SCENE_TUNING } from './scene-tuning.js';
-import { pruneUnknownTuning } from './tuning-migrations.js';
+import { pruneUnknownTuning, migrateFootage8PresentationTuning } from './tuning-migrations.js';
 import { isValidStoreLink, resolveStoreLink } from './store-links.js';
 import { formatSpeedLabel, normalizeSpeedMultiplier, resolveTimeScale } from './speed-toggle.js';
 import { createGameAudioController } from './audio-controller.js';
@@ -619,9 +619,9 @@ function migrateSeatCountBoardTextScaleProfiles() {
 }
 
 function migrateFootageConveyorArtTuning(source) {
+  let changed = migrateFootage8PresentationTuning(source);
   const layouts = source?.conveyorLayouts;
-  if (!layouts || typeof layouts !== 'object') return false;
-  let changed = false;
+  if (!layouts || typeof layouts !== 'object') return changed;
   for (const layoutId of ['heartLoop', 'catLoop']) {
     const art = layouts[layoutId]?.art;
     if (!art || typeof art !== 'object') continue;
@@ -770,6 +770,7 @@ function loadSavedTuning() {
     migrateDepartureRouteHeightTuning(legacy);
     migrateSeatCountBoardTextScaleTuning(legacy);
     migrateLegacyPackageTuning(legacy);
+    migrateFootage8PresentationTuning(legacy);
     delete legacy.luxuryMaterialDebug;
     delete legacy.luxuryMaterial;
     delete legacy.conveyorVisual;
@@ -1916,6 +1917,7 @@ async function startRuntime() {
       canvas,
       handleVehicleClick,
       {
+        editorEnabled: EDITOR_ENABLED,
         onPassengerAboard: () => audio.playPassengerUp(),
         onLoadingProgress: updateLoadingProgress
       }
@@ -2242,16 +2244,26 @@ async function startRuntime() {
       && Boolean(Number(next.entryBanner?.enabled));
     const restartPreRoll = path?.startsWith('preRoll.');
     const restartVehicleGuide = path?.startsWith('vehicleGuideHand.');
-    const conveyorStructureChanged = !materialOnly && (
+    let conveyorStructureChanged = !materialOnly && (
       path === 'conveyorLayout.selected'
       || path === 'spatialConveyor.capacity'
       || path === 'spatialConveyor.startFilled'
+      || path === 'footage8Conveyor.rowSpacing'
+      || path === 'footage9Conveyor.rowSpacing'
+      || path === 'footage10Conveyor.rowSpacing'
     );
     const colorIndex = getPassengerMaterialColorIndex(path);
     const tuning = view.setTuning(next, { mode: materialOnly ? 'passengerMaterial' : 'full', colorIndex });
+    const footage8Config = view.getConveyorConfig();
+    const footage8LiveChange = ['footage8', 'footage9', 'footage10'].includes(footage8Config.layoutId)
+      && new RegExp(`^${footage8Config.layoutId}Conveyor\\.(?:speed|initialFillSpeedMultiplier|boardingPositionPercent|boardingWidthPercent|showBoardingZone|showLeftQueue|footClearance|roadJoinEnabled|roadJoinExtension|roadJoinLanding|roadJoinSteps|passengerSizeMultiplier)$`).test(path ?? '');
+    if (['footage8', 'footage9', 'footage10'].includes(footage8Config.layoutId) && footage8Config.capacity !== game.conveyorCapacity) {
+      conveyorStructureChanged = true;
+    }
     if (!materialOnly) {
       if (conveyorStructureChanged) game.reset();
-      initializeGameQueues({ resetSlots: conveyorStructureChanged });
+      if (footage8LiveChange && !conveyorStructureChanged) game.configureConveyorRuntime(footage8Config);
+      else initializeGameQueues({ resetSlots: conveyorStructureChanged });
       if (!pressed && (
         conveyorStructureChanged
         || path === 'spatialConveyor.normalSpeedMultiplier'

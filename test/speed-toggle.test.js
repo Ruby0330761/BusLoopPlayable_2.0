@@ -99,7 +99,7 @@ test('the playable renders the speed button and wires it to the simulation clock
   assert.match(mainSource, /speedToggle\?\.enabled/u);
   // The stickiest regression here is the button being treated as a gameplay
   // tap, which would start the AppLovin challenge funnel on an x1/x2 flip.
-  assert.match(mainSource, /event\.stopPropagation\(\);\n\s+audio\.unlock\(\);\n\s+setSpeedToggleBoosted/u);
+  assert.match(mainSource, /event\.stopPropagation\(\);\r?\n\s+audio\.unlock\(\);\r?\n\s+setSpeedToggleBoosted/u);
   assert.match(editorSource, /speedToggle\.enabled/u);
   assert.match(editorSource, /speedToggle\.multiplier/u);
   assert.match(stylesSource, /\.speed-toggle \{/u);

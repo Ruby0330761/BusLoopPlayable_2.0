@@ -1,0 +1,55 @@
+{
+  "archive": "footage10.unitypackage",
+  "archiveSha256": "c7d5c05d0d2a8b1e95ad7a027dd4505c67abdec63383b7f10ade5f73482cc2e4",
+  "assets": [
+    {
+      "guid": "0bbbebd97adb5a248964cc9beb5a7744",
+      "unityPath": "Assets/BusJam/Game/Footage/Materials/Loop_footage.mat",
+      "file": "Loop_footage.mat",
+      "bytes": 3750,
+      "sha256": "fe505e28110037eb9bacdbe569ca6a54aff03c54043772d8e98cd513facdbd24"
+    },
+    {
+      "guid": "26543c363d73d8248836f36aa8c7737c",
+      "unityPath": "Assets/BusJam/Game/Bundleables/Prefabs/ConveyorBelts/ConveyorBelt_Footage10.prefab",
+      "file": "ConveyorBelt_Footage10.prefab",
+      "bytes": 1021868,
+      "sha256": "28c83e09604840c15c7d3e022e58cf455a02113b56fdf6216c904800585b9c77"
+    },
+    {
+      "guid": "81cc47cdbeef3f340aba964b932297aa",
+      "unityPath": "Assets/BusJam/Game/Footage/Models/Loop_footage10.FBX",
+      "file": "Loop_footage10.FBX",
+      "bytes": 535568,
+      "sha256": "0fc9a4197f9c52c113354196edf082be1ef4017077a5a02f5ab4f5da1c3b96d4"
+    },
+    {
+      "guid": "aa77b2de5e537b94298a7f935c7455f3",
+      "unityPath": "Assets/BusJam/Game/Footage/Models/Loop_footage_shadow.FBX",
+      "file": "Loop_footage_shadow.FBX",
+      "bytes": 13610,
+      "sha256": "ec0c80500f0365b3677407070a3f68840554b56c0e4a2b76a72fb5785a558668"
+    },
+    {
+      "guid": "d20c178a82dc989459a0beb021814356",
+      "unityPath": "Assets/BusJam/Game/Footage/Textures/Loop_footage.png",
+      "file": "Loop_footage.png",
+      "bytes": 15145,
+      "sha256": "1214840ea78121056c10b4e34cac017e1821c074c34f06360a3406dd503f8249"
+    },
+    {
+      "guid": "da3e7770317207946836492d4021637d",
+      "unityPath": "Assets/BusJam/Game/Footage/Materials/Loop_footage10_shadow.mat",
+      "file": "Loop_footage10_shadow.mat",
+      "bytes": 3787,
+      "sha256": "0e97bc78b1addef0fbeae5854818127658024150a1b85c450677ebc9626d5a2e"
+    },
+    {
+      "guid": "ebb2e884834af2d498e7508ddfdd0620",
+      "unityPath": "Assets/BusJam/Game/Footage/Textures/Loop_footage10_shadow.png",
+      "file": "Loop_footage10_shadow.png",
+      "bytes": 53891,
+      "sha256": "27c51e7b741483b4ffbc7f1702fd221a2c74243a5d0c3f0e5a1ea331feb8f728"
+    }
+  ]
+}

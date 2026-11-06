@@ -41,6 +41,16 @@ The eight passenger PNGs are the same 512x512 atlas layout as the shipped `color
 
 ## Conveyor layouts
 
+### Supplied Footage8/9/10 model conveyors (2026-11-06)
+
+- Imported the colleague's original Unity prefab/FBX/material/texture sources into `artifacts/footage8-source/` and `artifacts/footage9-source/`, including the inherited `Paths.prefab` dependency.
+- Runtime meshes/textures live under `public/assets/unity/conveyors/footage8/` and `footage9/`; generated layouts preserve authored 3D spline heights. The packager embeds their assets when selected by tuning or a reachable session stage.
+- `artifacts/level7-footage8-tuning.json` is the supplied tuning snapshot; the current level/session and default `dualQueue3` selection were retained.
+- Footage9/10 were imported from the user's supplied `footage9.unitypackage` / `footage10.unitypackage`; exact source asset hashes and Unity paths are recorded in each `artifacts/footage<N>-source/source-manifest.json`. Footage9's prior source differences were only CRLF/LF line endings. Footage10 runtime assets are under `public/assets/unity/conveyors/footage10/`.
+- All three are now editor options; Footage9/10 have independent tuning and use their prefab exit ranges for the default boarding zone. Both packages reference the same verified inherited `Paths.prefab` dependency as Footage8.
+- `.gitattributes` disables newline conversion for `artifacts/footage8-source/`, `footage9-source/`, and `footage10-source/`; preserve these exact source bytes so manifest and generated-layout provenance hashes remain valid after checkout on Windows.
+- Footage8's generated prefab provenance hash now matches the supplied CRLF source bytes; its geometry/path data is unchanged.
+
 | Resource | Status | Notes |
 | --- | --- | --- |
 | `public/assets/unity/conveyors/Loop_02_q80.webp` | wired | `GameSceneDualQueue2.prefab`; default editor/runtime layout. |

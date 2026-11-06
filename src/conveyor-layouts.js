@@ -1,4 +1,7 @@
 // Generated from Unity prefab overrides by scripts/extract-unity-conveyor-layouts.mjs.
+import { FOOTAGE8_LAYOUT } from './generated-footage8-layout.js';
+import { FOOTAGE9_LAYOUT } from './generated-footage9-layout.js';
+import { FOOTAGE10_LAYOUT } from './generated-footage10-layout.js';
 const deepFreeze = (value) => {
   if (!value || typeof value !== 'object' || Object.isFrozen(value)) return value;
   Object.freeze(value);
@@ -1816,8 +1819,10 @@ export const CONVEYOR_LAYOUTS = deepFreeze({
         "imageHeight": 1300
       }
     }
-  }
-
+  },
+  footage8: FOOTAGE8_LAYOUT,
+  footage9: FOOTAGE9_LAYOUT,
+  footage10: FOOTAGE10_LAYOUT
 });
 
 export const CONVEYOR_LAYOUT_IDS = Object.freeze(Object.keys(CONVEYOR_LAYOUTS));

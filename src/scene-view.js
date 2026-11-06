@@ -9,6 +9,12 @@ import {
   getConveyorLayout
 } from './conveyor-layouts.js';
 import { SCENE_TUNING } from './scene-tuning.js';
+import { Footage8ConveyorView, Footage8BoardingPreview, getFootage8Paths, getFootage8RuntimeConfig, getFootage8QueueSpacing, connectFootage8Queues, getFootage8MergePose, getFootage8PassengerSizeMultiplier } from './footage8-conveyor.js';
+import { FOOTAGE9_LAYOUT } from './generated-footage9-layout.js';
+import { FOOTAGE9_DEFAULT_TUNING } from './footage9-conveyor.js';
+import { FOOTAGE10_LAYOUT } from './generated-footage10-layout.js';
+import { FOOTAGE10_DEFAULT_TUNING } from './footage10-conveyor.js';
+import { Footage8RoadJoin } from './footage8-surface.js';
 import { resolveBackgroundOffsetY } from './background-alignment.js';
 import { mergeStageTuning } from './playable-session-config.js';
 import {
@@ -2280,6 +2286,16 @@ export class SceneView {
     );
     this.spatialConveyorRoot = new THREE.Group();
     this.spatialConveyorRoot.name = 'Spatial Conveyor Root';
+    this.footage8Conveyor = new Footage8ConveyorView(this.loadingManager);
+    this.layoutRoot.add(this.footage8Conveyor.root);
+    this.footage8RoadJoin = new Footage8RoadJoin();
+    this.layoutRoot.add(this.footage8RoadJoin.root);
+    this.footage9Conveyor = new Footage8ConveyorView(this.loadingManager, FOOTAGE9_LAYOUT, FOOTAGE9_DEFAULT_TUNING);
+    this.layoutRoot.add(this.footage9Conveyor.root);
+    this.footage10Conveyor = new Footage8ConveyorView(this.loadingManager, FOOTAGE10_LAYOUT, FOOTAGE10_DEFAULT_TUNING);
+    this.layoutRoot.add(this.footage10Conveyor.root);
+    this.footage8BoardingPreview = new Footage8BoardingPreview();
+    this.layoutRoot.add(this.footage8BoardingPreview.root);
     this.camera.add(this.backgroundPlane);
     this.scene.add(this.camera);
     this.layoutRoot.add(this.loopPlane, this.spatialConveyorRoot);
@@ -2421,6 +2437,21 @@ export class SceneView {
     this.activeSpatialConveyor = null;
     this.spatialCurveLookup = null;
     this.activeConveyorLayout = layout;
+    if (this.isFootageConveyor(layout)) {
+      const tuning = SCENE_TUNING[`${layout.id}Conveyor`];
+      const defaults = this[`${layout.id}Conveyor`].defaults;
+      const paths = getFootage8Paths(tuning, layout, defaults);
+      this.curve = makeClosedConveyorCurve(paths.belt, layout.splineType);
+      const runtime = getFootage8RuntimeConfig(this.curve, tuning, defaults);
+      this.activeConveyorLayout = { ...layout, ...runtime, conveyorCapacity: runtime.capacity };
+      const entrances = connectFootage8Queues(this.curve, paths.queues);
+      this.activeConveyorLayout.entryLeadDistances = entrances.map((e) => e.mergeDistance);
+      this.fullQueueCurves = entrances.map((e) => e.curve);
+      this.entryPercents = entrances.map((e) => e.entryPercent);
+      this.updateQueueCurvesForCamera();
+      this.ensureQueuePassengerViewCapacity(LEVEL_1.queueCount, MAX_QUEUE_CAPACITY);
+      return;
+    }
     this.curve = makeClosedConveyorCurve(
       makeTunedCurvePoints(layout.splinePoints, curveTuning, 'center'),
       layout.splineType
@@ -2909,7 +2940,9 @@ export class SceneView {
 
   updateQueueCurvesForCamera() {
     const previous = this.queueCurves;
-    this.queueCurves = this.fullQueueCurves.map((curve) => this.makeVisibleQueueCurve(curve));
+    this.queueCurves = this.isFootageConveyor()
+      ? [...this.fullQueueCurves]
+      : this.fullQueueCurves.map((curve) => this.makeVisibleQueueCurve(curve));
     if (previous && this.lastSnapshot?.time === 0) this.initialEntryPathStates.clear();
   }
 
@@ -3959,8 +3992,17 @@ export class SceneView {
     }
   }
 
+  setPassengerFacing(view, direction, yawOffset = 0) {
+    const offset = direction ? Math.atan2(direction.x, direction.z) + yawOffset - view.rotation.y : 0;
+    for (const slot of view.userData.personSlots ?? []) {
+      const body = slot.userData.visualRoot ?? slot.userData.fallback;
+      if (body) body.rotation.y = offset;
+    }
+  }
+
   createPassengerVisual(colorIndex = 0, shadowKind = 'conveyor') {
     const root = new THREE.Group();
+    root.scale.setScalar(this.getPassengerSizeMultiplier());
     const shadow = this.makeShadow(
       SCENE_TUNING.passengers.shadowScale,
       SCENE_TUNING.passengers.shadowScale * 1.2,
@@ -4100,17 +4142,23 @@ export class SceneView {
     shadow.position.set(tuning.offsetX, SCENE_TUNING.shadows.y, tuning.offsetZ);
   }
 
+  getPassengerSizeMultiplier() {
+    return getFootage8PassengerSizeMultiplier(this.activeConveyorLayout?.id, SCENE_TUNING.footage8Conveyor);
+  }
+
   updatePassengerVisualTuning() {
     const scale = SCENE_TUNING.passengers.modelScale;
     const spacing = SCENE_TUNING.passengers.groupSpacing;
+    const bodyScale = this.getPassengerSizeMultiplier();
     for (const root of [...this.passengerViews, ...this.queuePassengerViews.flat()]) {
       root.scale.setScalar(scale);
       root.userData.personSlots?.forEach((slot, index) => {
         slot.position.x = (index - 1.5) * spacing;
+        (slot.userData.visualRoot ?? slot.userData.fallback)?.scale.setScalar(bodyScale);
       });
     }
     for (const entry of this.boardingViews) {
-      entry.root.scale.setScalar(scale);
+      entry.root.scale.setScalar(scale * bodyScale);
     }
     const luxuryRoots = [
       ...this.passengerViews,
@@ -4849,7 +4897,6 @@ export class SceneView {
         material.opacity = seats === '10' ? 0.8 : SCENE_TUNING.vehicleShadows.opacity;
       });
     }
-    this.updatePassengerVisualTuning();
     this.updatePassengerMaterialTuning();
     this.updateLuxuryMaterialTuning();
     this.updateVehicleArrowTuning();
@@ -4858,6 +4905,7 @@ export class SceneView {
     this.applyConveyorVisualTuning();
 
     this.buildPathCurves();
+    this.updatePassengerVisualTuning();
     if (this.personTemplate) {
       if (this.shouldUseSpatialPassengerInstancing()) {
         this.releasePassengerViewsForInstancing();
@@ -4871,7 +4919,17 @@ export class SceneView {
         }
       }
     }
-    if (this.activeSpatialConveyor) {
+    this.footage8Conveyor.update(SCENE_TUNING.footage8Conveyor, this.activeConveyorLayout?.id === 'footage8');
+    this.footage9Conveyor.update(SCENE_TUNING.footage9Conveyor, this.activeConveyorLayout?.id === 'footage9');
+    this.footage10Conveyor.update(SCENE_TUNING.footage10Conveyor, this.activeConveyorLayout?.id === 'footage10');
+    this.footage8BoardingPreview.update(this.curve, SCENE_TUNING[`${this.activeConveyorLayout?.id}Conveyor`],
+      this.hooks.editorEnabled && this.isFootageConveyor(),
+      this[`${this.activeConveyorLayout?.id}Conveyor`]?.defaults);
+    if (this.isFootageConveyor()) {
+      this.loopPlane.visible = false;
+      this.clearSpatialConveyorVisual();
+      this.spatialConveyorRoot.visible = false;
+    } else if (this.activeSpatialConveyor) {
       this.loopPlane.visible = false;
       this.spatialConveyorRoot.visible = true;
       this.updateSpatialConveyorVisual(this.activeSpatialConveyor);
@@ -5058,6 +5116,16 @@ export class SceneView {
     }
 
     if (includeConveyor) {
+      if (this.isFootageConveyor()) {
+        const conveyor = this[`${this.activeConveyorLayout.id}Conveyor`];
+        conveyor.root.updateWorldMatrix(true, true);
+        const modelBounds = new THREE.Box3().setFromObject(conveyor.root);
+        if (!modelBounds.isEmpty()) {
+          addPoint({ x: modelBounds.min.x, z: modelBounds.min.z });
+          addPoint({ x: modelBounds.max.x, z: modelBounds.max.z });
+          return bounds;
+        }
+      }
       if (this.activeSpatialConveyor && this.spatialConveyorRoot) {
         this.spatialConveyorRoot.updateWorldMatrix(true, true);
         const spatialBounds = new THREE.Box3().setFromObject(this.spatialConveyorRoot);
@@ -5314,6 +5382,9 @@ export class SceneView {
     const passengerYaw = deg(SCENE_TUNING.facing.passengerYawDegrees);
     const passengerHeight = SCENE_TUNING.passengers.heightAbovePath;
     const usingSpatialPassengerBatches = this.updateSpatialPassengerBatches(snapshot);
+    if (this.activeConveyorLayout?.id === 'footage8' && !this.footage8RoadJoin.root.material.map) {
+      this.updateFootage8RoadJoin();
+    }
     const awaitingSpatialPassengerAssets = this.shouldUseSpatialPassengerInstancing()
       && !this.personTemplate
       && !this.unityAssetsFailed;
@@ -5325,12 +5396,15 @@ export class SceneView {
       const activeInitialEntryKeys = new Set();
       for (const slot of snapshot.slots) {
         const view = this.passengerViews[slot.index];
-        view.visible = passengersVisible && slot.colorIndex !== null;
+        view.visible = passengersVisible && slot.colorIndex !== null
+          && (!slot.entryMotion || this.isQueueLaneVisible(slot.entryMotion.entryIndex));
         if (!view.visible) continue;
         const point = new THREE.Vector3();
         const tangent = new THREE.Vector3();
         this.sampleActiveCurve(slot.progress, point, tangent);
         point.y += passengerHeight;
+        let rowWidthScale = 1;
+        let rowFacing = null;
         if (slot.entryMotion) {
           const entryKey = this.getInitialEntryPathKey(slot);
           activeInitialEntryKeys.add(entryKey);
@@ -5345,12 +5419,20 @@ export class SceneView {
             passengerHeight
           );
           view.position.copy(entryVisual.position);
+          rowWidthScale = entryVisual.widthScale ?? 1;
+          rowFacing = entryVisual.facingTangent;
           view.rotation.y = Math.atan2(entryVisual.tangent.x, entryVisual.tangent.z) + passengerYaw;
         } else {
           view.position.copy(point);
           view.rotation.y = Math.atan2(tangent.x, tangent.z) + passengerYaw;
         }
+        view.userData.personSlots?.forEach((person, index) => {
+          person.position.x = (index - 1.5) * SCENE_TUNING.passengers.groupSpacing * rowWidthScale;
+        });
+        view.userData.footage8WidthScale = rowWidthScale;
         this.setPassengerColor(view, slot.colorIndex);
+        this.setPassengerFacing(view, rowFacing, passengerYaw);
+        this.fitFootage8PassengerFeet(view, passengerHeight, Boolean(slot.entryMotion));
         this.setPassengerAnimation(view, 'move', slot.index > 0 && slot.index % 2 === 0 ? 0.3 : 0);
       }
       for (let index = snapshot.slots.length; index < this.passengerViews.length; index += 1) {
@@ -5372,7 +5454,7 @@ export class SceneView {
         const view = views[i];
         const item = queue[i];
         const colorIndex = item?.colorIndex;
-        view.visible = passengersVisible && colorIndex !== undefined;
+        view.visible = passengersVisible && colorIndex !== undefined && this.isQueueLaneVisible(queueIndex);
         if (!view.visible) continue;
         const t = this.getQueueProgressAtDistance(curve, item.distanceFromHead);
         const point = curve.getPointAt(t);
@@ -5389,7 +5471,13 @@ export class SceneView {
         );
         view.position.copy(queueVisual.position);
         view.rotation.y = Math.atan2(-queueVisual.tangent.x, -queueVisual.tangent.z) + passengerYaw;
+        view.userData.personSlots?.forEach((person, index) => {
+          person.position.x = (index - 1.5) * SCENE_TUNING.passengers.groupSpacing * (queueVisual.widthScale ?? 1);
+        });
+        view.userData.footage8WidthScale = queueVisual.widthScale ?? 1;
         this.setPassengerColor(view, colorIndex);
+        this.setPassengerFacing(view, queueVisual.facingTangent, passengerYaw);
+        this.fitFootage8PassengerFeet(view, passengerHeight);
         this.setPassengerAnimation(view, 'idle', (i % 4) * 0.17);
       }
     });
@@ -5670,6 +5758,9 @@ export class SceneView {
   }
 
   getQueueSpacing() {
+    if (this.isFootageConveyor()) {
+      return getFootage8QueueSpacing(this.getConveyorSlotSpacing(), SCENE_TUNING.passengers.modelScale);
+    }
     return this.getConveyorSlotSpacing();
   }
 
@@ -5696,6 +5787,15 @@ export class SceneView {
     ));
   }
 
+  isFootageConveyor(layout = this.activeConveyorLayout) {
+    return ['footage8', 'footage9', 'footage10'].includes(layout?.id);
+  }
+
+  isQueueLaneVisible(queueIndex) {
+    return this.activeConveyorLayout?.id !== 'footage10' || queueIndex !== 0
+      || Boolean(Number(SCENE_TUNING.footage10Conveyor?.showLeftQueue ?? FOOTAGE10_DEFAULT_TUNING.showLeftQueue));
+  }
+
   getConveyorConfig() {
     const layout = this.activeConveyorLayout ?? getSelectedConveyorLayout();
     return {
@@ -5705,6 +5805,9 @@ export class SceneView {
       entryPercents: [...(this.entryPercents ?? [])],
       exitStart: layout.exitStart,
       exitEnd: layout.exitEnd,
+      continuousSpeed: this.isFootageConveyor(layout) ? layout.continuousSpeed : null,
+      initialFillSpeedMultiplier: this.isFootageConveyor(layout) ? layout.initialFillSpeedMultiplier : 1,
+      entryLeadDistances: [...(layout.entryLeadDistances ?? [])],
       directEntrance: Boolean(layout.directEntrance),
       initiallyFull: layout.kind === 'spatial' && Boolean(SCENE_TUNING.spatialConveyor?.startFilled)
     };
@@ -5719,6 +5822,14 @@ export class SceneView {
   }
 
   getInitialEntryPathVisual(key, slot, target, targetTangent, time, delta, speedMultiplier, passengerHeight) {
+    if (this.isFootageConveyor()) {
+      const motion = slot.entryMotion;
+      if (!(motion?.remainingDistance > 0)) return { position: target, tangent: targetTangent, snapped: true };
+      const pose = getFootage8MergePose(this.curve, this.queueCurves[motion.entryIndex],
+        this.entryPercents[motion.entryIndex], motion.mergeDistance, motion.remainingDistance);
+      pose.position.y += passengerHeight;
+      return { ...pose, snapped: false };
+    }
     if (this.activeConveyorLayout?.directEntrance || !this.queueCurves?.length) {
       return { position: target, tangent: targetTangent, snapped: true };
     }
@@ -5802,7 +5913,34 @@ export class SceneView {
     return `${queueIndex}:${item.id ?? `${item.createdAt ?? 0}:${fallbackIndex}:${item.colorIndex}`}`;
   }
 
+  fitFootage8PassengerFeet(row, passengerHeight, entering = false) {
+    const layoutId = this.activeConveyorLayout?.id;
+    const track = this.isFootageConveyor() ? this[`${layoutId}Conveyor`] : null;
+    const surface = track?.surface;
+    const inverse = track?.surfaceInverse;
+    const clearance = SCENE_TUNING[`${layoutId}Conveyor`]?.footClearance ?? 0.008;
+    const sin = Math.sin(row.rotation.y), cos = Math.cos(row.rotation.y);
+    for (const person of row.userData.personSlots ?? []) {
+      person.position.y = 0;
+      if (!surface) continue;
+      const point = new THREE.Vector3(row.position.x + person.position.x * row.scale.x * cos,
+        row.position.y - passengerHeight, row.position.z - person.position.x * row.scale.x * sin);
+      const local = point.clone().applyMatrix4(inverse);
+      // Both entrance throats lie on the uppermost walkable deck there. The
+      // authored interpolation can run between the two bridge heights; nearest
+      // height would switch layers halfway through the incoming turn.
+      const height = surface.heightAt(local, { highest: entering && layoutId === 'footage8' });
+      if (height == null) continue;
+      local.y = height;
+      const world = local.applyMatrix4(track.root.matrix);
+      person.position.y = (world.y + clearance - row.position.y) / row.scale.y;
+    }
+  }
+
   getQueueEntryVisual(queueIndex, item, target, targetTangent, delta, speedMultiplier, passengerHeight) {
+    if (this.isFootageConveyor()) {
+      return { position: target, tangent: targetTangent };
+    }
     const curve = this.queueCurves[queueIndex] ?? this.queueCurves[0];
     const motion = LEVEL_1.passengerEntryMotion;
     if (!curve || !motion) return { position: target, tangent: targetTangent };
@@ -5990,13 +6128,22 @@ export class SceneView {
 
     for (let index = 0; index < LEVEL_1.groupSize; index += 1) {
       const visual = this.acquireBoardingVisual(event.colorIndex);
-      visual.scale.setScalar(SCENE_TUNING.passengers.modelScale);
+      visual.scale.setScalar(SCENE_TUNING.passengers.modelScale * this.getPassengerSizeMultiplier());
       const rowOffset = new THREE.Vector3(
         (index - 1.5) * SCENE_TUNING.passengers.groupSpacing * SCENE_TUNING.passengers.modelScale,
         0,
         0
       ).applyAxisAngle(new THREE.Vector3(0, 1, 0), pathYaw);
       const start = startCenter.clone().add(rowOffset);
+      const track = this.isFootageConveyor() ? this[`${this.activeConveyorLayout.id}Conveyor`] : null;
+      if (track?.surface) {
+        const local = start.clone().setY(start.y - SCENE_TUNING.passengers.heightAbovePath).applyMatrix4(track.surfaceInverse);
+        const height = track.surface.heightAt(local);
+        if (height != null) {
+          local.y = height;
+          start.y = local.applyMatrix4(track.root.matrix).y + (SCENE_TUNING[`${this.activeConveyorLayout.id}Conveyor`]?.footClearance ?? 0.008);
+        }
+      }
       const direction = target.clone().sub(start);
       visual.position.copy(start);
       visual.rotation.y = Math.atan2(direction.x, direction.z)
@@ -6052,6 +6199,20 @@ export class SceneView {
       if (elapsed < 0) continue;
       const progress = THREE.MathUtils.clamp(elapsed / entry.duration, 0, 1);
       entry.root.position.lerpVectors(entry.start, entry.target, ease(progress));
+      const track = this.isFootageConveyor() ? this[`${this.activeConveyorLayout.id}Conveyor`] : null;
+      if (track?.surface) {
+        const clearance = SCENE_TUNING[`${this.activeConveyorLayout.id}Conveyor`]?.footClearance ?? 0.008;
+        const local = entry.root.position.clone().applyMatrix4(track.surfaceInverse);
+        const height = track.surface.heightAt(local);
+        const joinHeight = this.footage8RoadJoin.root.visible ? this.footage8RoadJoin.surface?.heightAt(entry.root.position) : null;
+        if (joinHeight != null) {
+          entry.root.position.y = joinHeight + clearance;
+        } else if (height != null) {
+          local.y = height;
+          const roadY = local.applyMatrix4(track.root.matrix).y;
+          if (Math.abs(roadY - entry.root.position.y) < 0.4) entry.root.position.y = roadY + clearance;
+        }
+      }
       // The aboard sound is triggered on its own timeline so the offset can
       // advance (negative) or delay (positive) it against the arrival frame.
       const soundAt = entry.startedAt + entry.delay + entry.duration + soundOffset;
@@ -6234,6 +6395,24 @@ export class SceneView {
       this.updateStageLabelLayout();
     }
     if (this.fullQueueCurves) this.updateQueueCurvesForCamera();
+    this.updateFootage8RoadJoin();
+  }
+
+  updateFootage8RoadJoin() {
+    if (!this.footage8RoadJoin) return;
+    this.layoutRoot.updateWorldMatrix(true, true);
+    let minimumY = -Infinity;
+    for (const outline of this.spotOutlines ?? []) {
+      if (!outline.parent?.visible) continue;
+      const bounds = new THREE.Box3().setFromObject(outline);
+      for (const x of [bounds.min.x, bounds.max.x]) for (const y of [bounds.min.y, bounds.max.y]) for (const z of [bounds.min.z, bounds.max.z]) {
+        minimumY = Math.max(minimumY, new THREE.Vector3(x, y, z).project(this.camera).y);
+      }
+    }
+    minimumY += 6 / Math.max(1, SCENE_TUNING.preview?.height ?? 2160);
+    this.footage8RoadJoin.update(this.footage8Conveyor.root.matrix, resolveParkingSpots(), SCENE_TUNING.footage8Conveyor,
+      this.activeConveyorLayout?.id === 'footage8', this.footage8Conveyor.root.children.find((mesh) => !mesh.material.transparent)?.material,
+      { project: (p) => p.clone().applyMatrix4(this.layoutRoot.matrixWorld).project(this.camera), minimumY });
   }
 
   resize() {
@@ -6254,6 +6433,7 @@ export class SceneView {
     if (this.renderer.capabilities.isWebGL2) renderTarget.samples = 4;
 
     const previousTarget = this.renderer.getRenderTarget();
+    const boardingPreviewVisible = this.footage8BoardingPreview.root.visible;
     const pixels = new Uint8ClampedArray(captureWidth * captureHeight * 4);
     const flipped = new Uint8ClampedArray(pixels.length);
     try {
@@ -6262,10 +6442,12 @@ export class SceneView {
         updateDom: false
       });
       this.renderer.setRenderTarget(renderTarget);
+      this.footage8BoardingPreview.root.visible = false;
       this.render();
       this.renderer.readRenderTargetPixels(renderTarget, 0, 0, captureWidth, captureHeight, pixels);
     } finally {
       this.renderer.setRenderTarget(previousTarget);
+      this.footage8BoardingPreview.root.visible = boardingPreviewVisible;
       renderTarget.dispose();
       this.resize();
       this.render();

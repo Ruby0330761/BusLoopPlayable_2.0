@@ -1,0 +1,55 @@
+{
+  "archive": "footage9.unitypackage",
+  "archiveSha256": "90adc3670390b4a90e93a3e192a7b98f49647e3bebf1b87f916e71f8bc0d0096",
+  "assets": [
+    {
+      "guid": "0bbbebd97adb5a248964cc9beb5a7744",
+      "unityPath": "Assets/BusJam/Game/Footage/Materials/Loop_footage.mat",
+      "file": "Loop_footage.mat",
+      "bytes": 3750,
+      "sha256": "fe505e28110037eb9bacdbe569ca6a54aff03c54043772d8e98cd513facdbd24"
+    },
+    {
+      "guid": "1ad46215f6f98294fb3836fcadf4f694",
+      "unityPath": "Assets/BusJam/Game/Footage/Materials/Loop_footage9_shadow.mat",
+      "file": "Loop_footage9_shadow.mat",
+      "bytes": 3788,
+      "sha256": "c64af80891a1c1019a10a95393470b8054e3b1977b8982bbe2112a8425fd80fb"
+    },
+    {
+      "guid": "526cafc8d4999bc43b66d92e0febf061",
+      "unityPath": "Assets/BusJam/Game/Footage/Textures/Loop_footage9_shadow.png",
+      "file": "Loop_footage9_shadow.png",
+      "bytes": 46537,
+      "sha256": "f0e47be21e50d41c8928d036eda1aca9685b2c337b77e1a677c3127dd101cd30"
+    },
+    {
+      "guid": "57108f01e57e842439152d8a1b930cd2",
+      "unityPath": "Assets/BusJam/Game/Bundleables/Prefabs/ConveyorBelts/ConveyorBelt_Footage9.prefab",
+      "file": "ConveyorBelt_Footage9.prefab",
+      "bytes": 1328756,
+      "sha256": "030e5a9c8b90b7eed607f277ddc3eaf44989836e44cd102e2cd0d5ef6fc1defa"
+    },
+    {
+      "guid": "aa77b2de5e537b94298a7f935c7455f3",
+      "unityPath": "Assets/BusJam/Game/Footage/Models/Loop_footage_shadow.FBX",
+      "file": "Loop_footage_shadow.FBX",
+      "bytes": 13610,
+      "sha256": "ec0c80500f0365b3677407070a3f68840554b56c0e4a2b76a72fb5785a558668"
+    },
+    {
+      "guid": "c8b6afa9b5bdd0d489aa6b44909d2b1a",
+      "unityPath": "Assets/BusJam/Game/Footage/Models/Loop_footage9.FBX",
+      "file": "Loop_footage9.FBX",
+      "bytes": 310517,
+      "sha256": "ef359cac393f40cd7b307e318411f090815ffdec2206f9319f25958b3757c166"
+    },
+    {
+      "guid": "d20c178a82dc989459a0beb021814356",
+      "unityPath": "Assets/BusJam/Game/Footage/Textures/Loop_footage.png",
+      "file": "Loop_footage.png",
+      "bytes": 15145,
+      "sha256": "1214840ea78121056c10b4e34cac017e1821c074c34f06360a3406dd503f8249"
+    }
+  ]
+}

@@ -1,2 +1,7 @@
 # Auto detect text files and perform LF normalization
 * text=auto
+
+# Keep imported Unity source bytes identical to their provenance hashes.
+artifacts/footage8-source/** -text -whitespace
+artifacts/footage9-source/** -text -whitespace
+artifacts/footage10-source/** -text -whitespace
