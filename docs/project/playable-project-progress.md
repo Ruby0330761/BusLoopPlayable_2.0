@@ -25,6 +25,16 @@
 - 5 MB 门禁验证：满配包 5,195,496 B 仍**小于** 5 MiB（5,242,880），放行正确；本地用同一份导出脚本对 6 MB 合成件确认抛 `PLAYABLE_ARTIFACT_TOO_LARGE` / HTTP 413 并列出最大素材。部署包内 `scripts/export-playable-package.mjs` 含门禁代码。
 - 提交：78 文件、+20,222/−2,270。因 `main.js` 已 import 进度条/倒计时/自由图层等模块，同批带上这些既有工作线，拆开会让仓库不可构建（已用 `git checkout-index` 导出暂存树跑 `node --test` 验证 599/599）。
 
+## Completed On 2026-11-10 - CTA 不再跟随语言，仅标题本地化（12151，v20261110-1806）
+
+- 反馈（带编辑器截图）：预览里按钮显示「立即游玩」，要求 **Play Now 不动**，要变的只有底部标题。
+- 前两次都没做到位：第一次给 7 个新市场补了 CTA 译名（俄语 `Играть`）；第二次保留 8 种签过语言的 CTA 表。用户两次都指的是同一个问题 —— 按钮根本不该有语言表。
+- 修复：删除 `BRANDING_LOCALIZATION` 整张表，`resolveLocalizedBranding()` 直接返回 `DEFAULT_CTA_LABEL`。构建产物里 `立即游玩`/`今すぐプレイ`/`지금 플레이`/`Jugar ahora`/`Jetzt spielen`/`Jouer` 全部计数为 0，只剩 1 处 `Play Now`。
+- 保留：底部标题与加载页标题仍按系统语言 + 双端 storefront 切换（`STORE_TITLE_TABLES` 不动）。
+- 验证：导出包在 5 种语言下实测，CTA 恒为 `Play Now`，标题分别为 `Bus Fever Party!` / `Bus Fever Party! バスゲーム` / `Bus Fever Party—Bus Stau Spiel` / `Bus Fever Party! Автобус игра`。截图确认日语界面 `Play Now` + `バスゲーム`。
+- 测试：`test/branding-localization.test.js` 10/10，其中「the CTA never localizes」断言 11 个语言下 CTA 恒为 `Play Now`，防止 CTA 表回来。全量 599/599。
+- 部署：zip `http://10.0.0.6:8081/d0/d0a25fd76e85ce062784171b43317597.zip`，`index-D9S0iziB.js` sha256 本地=线上。commit `d97c722`。
+
 ## Completed On 2026-11-10 - 导出加 5 MB 硬限制 + 上传素材自动压缩（v20261110-1642）
 
 - 反馈：BL-26110619-Q189V1 的 AL/MO/UN 单 HTML 都是 **5.8 MB**，已超平台上限；要求编辑器加限制，超过 5 MB 不能导出，且上传素材先压缩。
