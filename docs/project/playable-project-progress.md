@@ -1,5 +1,14 @@
 # Playable Project Progress
 
+## Completed On 2026-11-10 - 多语言严格跟随用户手机语言（12151，v20261110-1826）
+
+- 要求：「这个多语言适配要确保和用户手机一致」。
+- **加固 1 — 语言探测兜底**：`readBrowserLanguages()` 原来只读 `navigator.languages` + `navigator.language`。老 Android WebView 的 `languages` 可能是空数组，部分容器只暴露 `navigator.userLanguage`，这两种情况会静默回退英文（手机明明是日语）。现改为三个信号全读并去重，保持优先级顺序。
+- **加固 2 — 导出剥离预览设置**：`apply-scene-tuning.mjs --strip-export-metadata` 现在把 `branding.localization.previewLocale` 重置为 `'auto'`。运行时本来只用 `EDITOR_ENABLED` 分支读它，导出包里是死配置；但成品带着「锁死日语」的 tuning 会让交付审查误判，且这道防线一旦回归就变成真锁。
+- 验证（线上包端到端）：导出请求里**故意**把 `previewLocale` 设成 `ja`，线上成品包里读出 `localization:{enabled:1,previewLocale:"auto"}` —— 剥离生效。同一份包在四种 WebView 场景下实测：正常 `ja`/`ko`、`languages` 为空但 `language` 有值、只有 `userLanguage`（`de-DE`），全部按手机语言渲染出正确的 CTA + 标题。
+- 测试：`test/branding-localization.test.js` 13/13，新增两条 —— 三个语言信号必须都被读取并去重；导出侧必须把 `previewLocale` 重置为 `auto`（同时钉住运行时 `EDITOR_ENABLED` 守卫）。全量 602/602。
+- 部署：zip `http://10.0.0.6:8081/40/40120128b44fb17af7dd8a2d5fb07cc6.zip`，`index-B8RevAuJ.js` sha256 本地=线上。commit `0a9feb2`。
+
 ## Completed On 2026-11-10 - CTA 与标题都跟随语言 + 编辑器语言切换（12151，v20261110-1815）
 
 - 反馈：「失误了，这两个都要变」，并要求在编辑器里加语言选择方便观看。上一版（v20261110-1806）我把 CTA 从语言表里移除了，理解反了 —— 用户要的是**两处都本地化**。
