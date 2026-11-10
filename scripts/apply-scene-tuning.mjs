@@ -73,7 +73,16 @@ async function main() {
   delete patch.conveyorVisual;
   const next = deepMerge(current, patch);
   delete next.conveyorVisual;
-  if (stripExportMetadata) delete next.exportNaming;
+  if (stripExportMetadata) {
+    delete next.exportNaming;
+    // `branding.localization.previewLocale` is an editor-only preview switch.
+    // The runtime already ignores it outside the editor, but shipping it in a
+    // delivery package makes a reviewer believe the ad is pinned to one language
+    // — and if that guard ever regressed, the pin would silently become real.
+    // Reset it to 'auto' so the delivered tuning states what actually happens:
+    // the player's device language decides.
+    if (next.branding?.localization) next.branding.localization.previewLocale = 'auto';
+  }
   migrateLegacyConveyorTuning(next, patch);
   await writeFile(TUNING_FILE, toModuleSource(next), 'utf8');
   if (typeof next.level?.selected === 'string') {

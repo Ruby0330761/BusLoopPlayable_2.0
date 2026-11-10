@@ -1063,13 +1063,25 @@ function fitBrandingText(element, boxHeight) {
   }
 }
 
-// The ad is viewed inside a WebView, so the device language is taken from the
+// The ad is viewed inside a WebView, so the device language comes from the
 // browser preference list. The editor can force a locale for preview only; an
 // exported package always follows the player's device.
+//
+// `navigator.languages` is the primary signal but not a reliable one on its own:
+// some Android WebViews report an empty array, and some ad-network containers
+// expose only `navigator.language`. Reading all three (list, `language`,
+// `userLanguage`) and de-duplicating is what makes the result match the phone's
+// actual locale instead of silently falling back to English.
 function readBrowserLanguages() {
-  const tags = Array.isArray(navigator.languages) ? [...navigator.languages] : [];
-  if (navigator.language) tags.push(navigator.language);
-  return tags;
+  const tags = [];
+  const push = (value) => {
+    if (typeof value === 'string' && value.trim()) tags.push(value.trim());
+  };
+  if (Array.isArray(navigator.languages)) navigator.languages.forEach(push);
+  push(navigator.language);
+  // IE/older Android WebViews only expose `userLanguage`.
+  push(navigator.userLanguage);
+  return [...new Set(tags)];
 }
 
 // One package serves both stores, so the caption has to read the same storefront

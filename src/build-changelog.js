@@ -11,6 +11,16 @@
 
 export const BUILD_CHANGELOG = Object.freeze([
   {
+    version: '20261110-1826',
+    date: '2026-11-10',
+    title: '多语言严格跟随用户手机语言',
+    changes: [
+      '语言探测补上 navigator.language / userLanguage 兜底，老 WebView 不再回退英文',
+      '交付包里的预览语言固定为「跟随设备」，编辑器预览设置不会带进成品',
+      '实测四种 WebView 场景：正常、语言列表为空、只报 userLanguage，均按手机语言渲染'
+    ]
+  },
+  {
     version: '20261110-1815',
     date: '2026-11-10',
     title: '按钮与标题都跟随语言，编辑器加语言切换',

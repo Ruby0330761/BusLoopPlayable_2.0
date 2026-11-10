@@ -190,6 +190,29 @@ test('tuning exposes a localization switch and an editor preview locale', () => 
   assert.match(editorSource, /branding\.localization\.previewLocale', 0, 0, 1, BRANDING_LOCALE_OPTIONS\]/);
 });
 
+test('the device language is read from every WebView signal, not just one', () => {
+  // Some Android WebViews report an empty `navigator.languages`, and older ones
+  // only expose `userLanguage`. Reading one field makes those devices fall back
+  // to English even though the phone is, say, Japanese.
+  assert.match(mainSource, /if \(Array\.isArray\(navigator\.languages\)\) navigator\.languages\.forEach\(push\);/);
+  assert.match(mainSource, /push\(navigator\.language\);/);
+  assert.match(mainSource, /push\(navigator\.userLanguage\);/);
+  // Duplicates are harmless but the list is walked in order, so keep it clean.
+  assert.match(mainSource, /return \[\.\.\.new Set\(tags\)\];/);
+});
+
+test('an exported package can never be pinned to the editor preview locale', () => {
+  // The runtime guard: `previewLocale` is only read inside the editor.
+  assert.match(
+    mainSource,
+    /const previewLocale = EDITOR_ENABLED \? String\(localization\.previewLocale \?\? 'auto'\) : 'auto';/
+  );
+  // The export guard: the packager resets it to 'auto' in the delivered tuning,
+  // so the shipped file states the truth even if the runtime guard regressed.
+  const applySource = readFileSync(join(ROOT, 'scripts', 'apply-scene-tuning.mjs'), 'utf8');
+  assert.match(applySource, /next\.branding\.localization\.previewLocale = 'auto';/);
+});
+
 test('runtime resolves the copy before measuring the fixed-size boxes', () => {
   // The bottom caption is swapped before fitBrandingText measures it.
   assert.match(mainSource, /const copy = resolveBrandingCopy\(\);/);
