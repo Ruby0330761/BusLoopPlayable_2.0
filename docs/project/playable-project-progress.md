@@ -13,7 +13,17 @@
 - 验证：导出包（3.42 MB，门禁 PASS）内注入语言/UA shim 后 headless 实测 —— `en` → `Play Now` / `Bus Fever Party!`；`ja` → `今すぐプレイ` / `バスゲーム`；`de` → `Jetzt spielen` / `Bus Stau Spiel`；`ko` → `지금 플레이` / `버스게임`；`ru` → **`Play Now`** / `Автобус игра`；`zh-CN` → `立即游玩` / Google 表回退英文。截图确认俄语界面按钮为 `Play Now`。
 - **调参快照坑**：`artifacts/bl42-progress-tuning.json` 与 `q165-timed-tuning.json` 里 `branding.localization.enabled` 都是 `0`（上一轮「品牌本地化按要求排除」时留下的），导出时功能被关闭。代码在包里但不生效，验证时必须先置 1。属历史快照状态，不是代码缺陷。
 - 测试：`test/branding-localization.test.js` 10/10 全绿 —— 这是这条工作线自引入以来第一次全过（此前恒有 4 条失败）。
-- 版本 `20261110-1712`，`BUILD_CHANGELOG` 已同步。**尚未重新部署远端编辑器。**
+- 版本 `20261110-1712`，`BUILD_CHANGELOG` 已同步。
+
+## Completed On 2026-11-10 - 素材压缩 + 标题本地化已上线（12151，v20261110-1712）
+
+- 部署：zip `http://10.0.0.6:8081/46/46e732c6f76804f72c443161e31c659e.zip`（33 MB），`bus-loop-playable-editor-wxj` 复用 **12151**，commit `4486ca2`。
+- **端口仍要显式传 12151**：12142 至今被同事的 `arrow-cube-material-insights`（Arrow素材表现分析）占着，按看板默认端口部署会打到别人服务上。
+- 字节级验证：`index-CLN5i2Cf.js` 与 `scene-editor-BNxsfqGN.js` 的 sha256 与本地 `server-dist` 逐字节一致；三个 `_q88.webp` md5 与仓库一致；新 `firetruck_1.mp3` 返回 `audio/mpeg` 28,256 B，旧 `.wav` 已被移除（返回 SPA 的 `text/html` fallback）。
+- 线上导出实测（`POST /__playable-export`，HUD 开启）：3.83 MB、HTTP 200、耗时 15.9 s。包内确认双端标题表齐全、`Играть` 为 0（CTA 撤回生效）、无任何 `.wav` 引用。
+- 线上包浏览器实测：`en` → `Play Now` / `Bus Fever Party!`；`ru` → **`Play Now`** / `Автобус игра`；`ja` → `今すぐプレイ` / `バスゲーム`。
+- 5 MB 门禁验证：满配包 5,195,496 B 仍**小于** 5 MiB（5,242,880），放行正确；本地用同一份导出脚本对 6 MB 合成件确认抛 `PLAYABLE_ARTIFACT_TOO_LARGE` / HTTP 413 并列出最大素材。部署包内 `scripts/export-playable-package.mjs` 含门禁代码。
+- 提交：78 文件、+20,222/−2,270。因 `main.js` 已 import 进度条/倒计时/自由图层等模块，同批带上这些既有工作线，拆开会让仓库不可构建（已用 `git checkout-index` 导出暂存树跑 `node --test` 验证 599/599）。
 
 ## Completed On 2026-11-10 - 导出加 5 MB 硬限制 + 上传素材自动压缩（v20261110-1642）
 
