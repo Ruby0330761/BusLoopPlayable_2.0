@@ -61,6 +61,38 @@ body { user-select: none; overscroll-behavior: none; }
 @media (prefers-reduced-motion: reduce) {
   .countdown-warning { animation: none; opacity: 0.35; }
 }
+.stamina {
+  position: absolute; z-index: 6; width: 55%; aspect-ratio: 3 / 1;
+  transform: translateX(-50%); pointer-events: none;
+}
+.stamina[hidden], .stamina-intro[hidden] { display: none; }
+.stamina-frame { display: block; width: 100%; height: 100%; }
+/* Nine-slice the existing artwork for compact heart capsules without
+   squeezing its round ends or changing the border thickness. */
+.stamina::before {
+  content: ''; position: absolute; inset: 0;
+  border: 1px solid transparent;
+  border-image-source: var(--stamina-frame);
+  border-image-slice: 90 140 fill;
+  border-image-width: 32.1429% var(--stamina-frame-side, 29.1667%);
+  border-image-repeat: stretch;
+}
+.stamina-frame { visibility: hidden; }
+.stamina-hearts {
+  position: absolute; inset: 0;
+}
+.stamina-hearts img { position: absolute; display: block; object-fit: contain; }
+.stamina-intro {
+  position: absolute; z-index: 25; display: grid; place-items: center;
+  background: #0009; touch-action: none; pointer-events: auto;
+}
+.stamina-intro-card {
+  position: relative; width: var(--stamina-intro-width, 320px);
+  animation: stamina-intro-pop .35s ease-out both;
+}
+.stamina-intro-art { display: block; width: 100%; height: auto; object-fit: contain; }
+@keyframes stamina-intro-pop { from { opacity: 0; transform: scale(.88); } to { opacity: 1; transform: scale(1); } }
+@media (prefers-reduced-motion: reduce) { .stamina-intro-card { animation: none; } }
 .pre-roll-overlay {
   position: absolute;
   z-index: 40;

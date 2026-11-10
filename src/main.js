@@ -13,6 +13,8 @@ import { isValidStoreLink, resolveStoreLink } from './store-links.js';
 import { formatSpeedLabel, normalizeSpeedMultiplier, resolveTimeScale } from './speed-toggle.js';
 import { createCountdown, normalizeCountdownConfig, validateCountdownConfig } from './countdown.js';
 import { createCountdownView } from './countdown-view.js';
+import { normalizeStaminaConfig, validateStaminaConfig } from './stamina.js';
+import { createStaminaView } from './stamina-view.js';
 import { createGameAudioController } from './audio-controller.js';
 import { resolveLevelAudioConfig } from './level-audio-config.js';
 import { createPreRollController } from './pre-roll.js';
@@ -1857,6 +1859,7 @@ async function startRuntime() {
   setActiveLevel(levelSession.currentLevel());
   applyPreviewFrame();
 
+  SCENE_TUNING.stamina = normalizeStaminaConfig(SCENE_TUNING.stamina);
   let game = new BusLoopGame(levelSession.currentLevel());
   const mechanismTypes = getMechanismTypesForLevels(allSessionLevels);
   audio = createGameAudioController({
@@ -1935,12 +1938,32 @@ async function startRuntime() {
     root: $('#countdown'), image: $('#countdown-image'), value: $('#countdown-value'),
     warning: $('#countdown-warning'), stage, speedButton: speedToggleButton
   });
+  const staminaView = createStaminaView({
+    root: $('#stamina'), frame: $('#stamina-frame'), hearts: $('#stamina-hearts'),
+    intro: $('#stamina-intro'), introFrame: $('#stamina-intro-frame'), stage
+  });
+  staminaView.reset(SCENE_TUNING.stamina);
+  function isStaminaIntroPaused() {
+    return !countdownReady || !platformVisible || document.hidden || !countdownPagePresent
+      || spatialEditorActive || Boolean(levelLayoutEditor)
+      || sceneEditorRoot?.classList.contains('is-level-layout-editing')
+      || Boolean(preRollController?.isActive()) || stageAdvancePending || stageChoiceVisible;
+  }
+  function paintStamina() {
+    staminaView.render(game.renderState().stamina, {
+      config: SCENE_TUNING.stamina,
+      visible: countdownReady && !preRollController?.isActive() && !stageChoiceVisible
+        && !spatialEditorActive && !levelLayoutEditor
+        && !sceneEditorRoot?.classList.contains('is-level-layout-editing'),
+      ended: game.status !== 'playing' || gameOverActive || levelSession.shouldOpenStore()
+    });
+  }
   function isCountdownPaused() {
     return !countdownReady || !platformVisible || document.hidden || !countdownPagePresent
       || spatialEditorActive || Boolean(levelLayoutEditor)
       || sceneEditorRoot?.classList.contains('is-level-layout-editing')
       || Boolean(preRollController?.isActive()) || Boolean(view?.isVehicleInputLocked?.())
-      || stageAdvancePending || stageChoiceVisible;
+      || stageAdvancePending || stageChoiceVisible || staminaView.isIntroActive() || game.isStaminaBusy();
   }
   function paintCountdown() {
     countdownView.render(countdown.snapshot(), {
@@ -1948,8 +1971,13 @@ async function startRuntime() {
     });
   }
   refreshCountdownVisibility = () => {
+    // Record the pause immediately: hidden pages can stop animation frames
+    // altogether, so waiting for the next frame would charge the hidden gap.
+    staminaView.tickIntro({ time: performance.now(), paused: isStaminaIntroPaused(),
+      ended: game.status !== 'playing' || gameOverActive || levelSession.shouldOpenStore() });
     countdown.setPaused(isCountdownPaused());
     paintCountdown();
+    paintStamina();
   };
   finishCountdownForStore = () => { countdown.finish('finished'); paintCountdown(); };
   document.addEventListener('visibilitychange', refreshCountdownVisibility);
@@ -1980,6 +2008,7 @@ async function startRuntime() {
   }
 
   const handleVehicleClick = (vehicleId) => {
+    if (staminaView.isIntroActive() || game.isStaminaBusy()) return { ok: false, reason: 'stamina-busy' };
     // During the opening guide only the spotlighted car is playable. Locking
     // every car made the highlighted one look broken: the hint said "tap this",
     // and the tap was refused.
@@ -2031,6 +2060,7 @@ async function startRuntime() {
     applySpeedToggleTuning();
     applyBrandingTuning(view.getBackgroundCanvasBounds());
     countdownView.resize(view.getBackgroundCanvasBounds(), SCENE_TUNING.countdown, getBrandingStageMetrics().uiScale);
+    staminaView.resize(view.getBackgroundCanvasBounds(), SCENE_TUNING.stamina, getBrandingStageMetrics().uiScale);
     if (stageChoiceVisible) positionStageChoiceHand();
   };
   const getCameraPreset = (action) => {
@@ -2278,6 +2308,18 @@ async function startRuntime() {
   }
 
   function applyTuningPatch(next, { path, syncEditor = false } = {}) {
+    if (path?.startsWith('stamina.')) {
+      const previous = normalizeStaminaConfig(SCENE_TUNING.stamina);
+      const settings = validateStaminaConfig(next.stamina);
+      deepMerge(SCENE_TUNING, { ...next, stamina: settings });
+      saveTuning(SCENE_TUNING, { immediate: true });
+      if (settings.enabled !== previous.enabled || settings.lives !== previous.lives) reset();
+      else if (settings.introEnabled !== previous.introEnabled) staminaView.reset(settings);
+      paintStamina();
+      staminaView.resize(view.getBackgroundCanvasBounds(), settings, getBrandingStageMetrics().uiScale);
+      if (syncEditor) editor.sync();
+      return SCENE_TUNING;
+    }
     if (path?.startsWith('countdown.')) {
       const previous = normalizeCountdownConfig(SCENE_TUNING.countdown);
       const settings = validateCountdownConfig(next.countdown);
@@ -2287,6 +2329,7 @@ async function startRuntime() {
       if (settings.enabled !== previous.enabled || settings.durationSeconds !== previous.durationSeconds) reset();
       paintCountdown();
       countdownView.resize(view.getBackgroundCanvasBounds(), settings, getBrandingStageMetrics().uiScale);
+      staminaView.resize(view.getBackgroundCanvasBounds(), SCENE_TUNING.stamina, getBrandingStageMetrics().uiScale);
       if (syncEditor) editor.sync();
       return SCENE_TUNING;
     }
@@ -2340,6 +2383,7 @@ async function startRuntime() {
       deepMerge(SCENE_TUNING, next);
       applySpeedToggleTuning();
       countdownView.resize(view.getBackgroundCanvasBounds(), SCENE_TUNING.countdown, getBrandingStageMetrics().uiScale);
+      staminaView.resize(view.getBackgroundCanvasBounds(), SCENE_TUNING.stamina, getBrandingStageMetrics().uiScale);
       // A multiplier change has to reach the running game even while the button
       // is off, because the next toggle-on has to use the new value.
       applyIdleSpeedMultiplier();
@@ -2348,6 +2392,7 @@ async function startRuntime() {
       return SCENE_TUNING;
     }
     const previousCountdown = normalizeCountdownConfig(SCENE_TUNING.countdown);
+    const previousStamina = normalizeStaminaConfig(SCENE_TUNING.stamina);
     const materialOnly = isPassengerMaterialTuningPath(path);
     const restartOpeningGuide = path?.startsWith('firstClickGuide.')
       && Boolean(Number(next.firstClickGuide?.enabled));
@@ -2374,9 +2419,12 @@ async function startRuntime() {
     }
     saveTuning(tuning, { immediate: conveyorStructureChanged });
     const nextCountdown = normalizeCountdownConfig(tuning.countdown);
+    const nextStamina = normalizeStaminaConfig(tuning.stamina);
+    SCENE_TUNING.stamina = nextStamina;
     countdown.configure(nextCountdown);
     if (nextCountdown.enabled !== previousCountdown.enabled
-      || nextCountdown.durationSeconds !== previousCountdown.durationSeconds) reset();
+      || nextCountdown.durationSeconds !== previousCountdown.durationSeconds
+      || nextStamina.enabled !== previousStamina.enabled || nextStamina.lives !== previousStamina.lives) reset();
     paintCountdown();
     // Selecting artwork that has never been measured leaves the plane where the
     // tuning puts it, which is what made a new background look misplaced. Measure
@@ -2572,6 +2620,7 @@ async function startRuntime() {
   }
 
   function syncHud(state) {
+    paintStamina();
     if (state.status !== 'playing') {
       countdown.finish(state.status);
       paintCountdown();
@@ -2627,6 +2676,8 @@ async function startRuntime() {
     unsubscribeGame();
     setActiveLevel(nextLevel);
     game = new BusLoopGame(nextLevel);
+    staminaView.reset(SCENE_TUNING.stamina, { playIntro: false });
+    paintStamina();
     countdown.reset();
     paintCountdown();
     audio.resetEventHistory();
@@ -2657,6 +2708,7 @@ async function startRuntime() {
     for (const vehicle of state.vehicles ?? []) {
       if (
         vehicle.spotIndex == null ||
+        vehicle.rescueDispatched ||
         !INSTALL_GATE_VEHICLE_STATES.has(vehicle.state) ||
         levelSession.hasCountedVehicle(vehicle.id)
       ) {
@@ -2734,6 +2786,8 @@ async function startRuntime() {
     view.setStageOpening?.(currentStage()?.opening ?? null, currentStage()?.labels ?? []);
     setActiveLevel(initialLevel);
     game = new BusLoopGame(initialLevel);
+    staminaView.reset(SCENE_TUNING.stamina);
+    paintStamina();
     countdown.reset();
     paintCountdown();
     audio.resetEventHistory();
@@ -2768,6 +2822,10 @@ async function startRuntime() {
   });
   canvas.addEventListener('pointerdown', (event) => {
     if (spatialEditorActive) return;
+    if (staminaView.isIntroActive() || game.isStaminaBusy()) {
+      event.stopImmediatePropagation();
+      return;
+    }
     if (levelSession.shouldOpenStore()) {
       event.stopImmediatePropagation();
       InstallFullGame();
@@ -2808,7 +2866,9 @@ async function startRuntime() {
     // level in one frame.
     const delta = Math.min(0.1, (now - previous) / 1000);
     previous = now;
-    if (platformVisible && !spatialEditorActive && !preRollController?.isActive()) {
+    staminaView.tickIntro({ time: now, paused: isStaminaIntroPaused(),
+      ended: game.status !== 'playing' || gameOverActive || levelSession.shouldOpenStore() });
+    if (platformVisible && !spatialEditorActive && !preRollController?.isActive() && !staminaView.isIntroActive()) {
       // game.update clamps one call to 0.1s of simulated time, so the scaled
       // time is fed in substeps; otherwise a low-framerate x2 is truncated.
       let remaining = delta * getTimeScale();
@@ -2821,6 +2881,7 @@ async function startRuntime() {
     countdown.tick({ paused: isCountdownPaused(), status: game.status,
       ended: gameOverActive || levelSession.shouldOpenStore(), time: now });
     paintCountdown();
+    paintStamina();
     const renderState = isSpatialOptimizationEnabled('liveRenderState')
       ? game.renderState()
       : game.snapshot();
@@ -2835,6 +2896,7 @@ async function startRuntime() {
     get view() { return view; },
     snapshot: () => game.snapshot(),
     countdown: () => countdown.snapshot(),
+    stamina: () => ({ ...game.snapshot().stamina, intro: staminaView.introState() }),
     clickVehicle: (id) => handleVehicleClick(Number(id)),
     InstallFullGame,
     openStore,

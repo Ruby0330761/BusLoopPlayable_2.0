@@ -57,6 +57,12 @@ const EARLY_AUDIO_FIXTURE = NONBLANK_CANVAS_FIXTURE.replace(
   '<script>document.createElement("audio").play();</script></body>'
 );
 
+const STAMINA_INTRO_FIXTURE = NONBLANK_CANVAS_FIXTURE.replace(
+  '</body>',
+  `<div id="stamina-intro" style="position:fixed;inset:0;background:#0009;z-index:25">3 REVIVES!</div>
+  <script>setTimeout(() => { document.querySelector('#stamina-intro').hidden = true; }, 2000);</script></body>`
+);
+
 const MUTED_PRE_ROLL_FIXTURE = NONBLANK_CANVAS_FIXTURE.replace(
   '</body>',
   `<div id="pre-roll-overlay" style="position:fixed;inset:0;background:#000;z-index:20">
@@ -177,6 +183,58 @@ test('runtime smoke emulates the branding variant device instead of the host bro
   } finally {
     await rm(root, { recursive: true, force: true });
   }
+});
+
+test('runtime smoke waits for the stamina opening before testing the trusted CTA', { timeout: 30_000 }, async (context) => {
+  const chrome = await findChromeExecutable();
+  if (!chrome) { context.skip('Chrome/Chromium is unavailable.'); return; }
+  const root = await mkdtemp(path.join(os.tmpdir(), 'runtime-stamina-intro-'));
+  try {
+    const artifactPath = path.join(root, 'fixture.html');
+    await writeFile(artifactPath, STAMINA_INTRO_FIXTURE, 'utf8');
+    const report = await checkPlayableRuntimeArtifact({ artifactPath, platform: 'applovin', chrome });
+    assert.equal(report.conclusion, 'PASS');
+    assert.equal(report.checks.find(item => item.id === 'RUNTIME-INTRO-001').status, 'pass');
+    assert.equal(report.checks.find(item => item.id === 'RUNTIME-CTA-002').status, 'pass');
+  } finally { await rm(root, { recursive: true, force: true }); }
+});
+
+test('runtime smoke ignores unused image sources but rejects broken src and srcset images', { timeout: 60_000 }, async (context) => {
+  const chrome = await findChromeExecutable();
+  if (!chrome) { context.skip('Chrome/Chromium is unavailable.'); return; }
+  const root = await mkdtemp(path.join(os.tmpdir(), 'runtime-image-sources-'));
+  try {
+    const artifactPath = path.join(root, 'index.html');
+    await writeFile(path.join(root, 'pixel.png'), Buffer.from(
+      'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=', 'base64'
+    ));
+    const inactiveImages = `<img id="disabled-hud-image" hidden>
+      <img id="empty-source-image" src="">
+      <img id="srcset-only-image" srcset="pixel.png 1x">`;
+    await writeFile(artifactPath, NONBLANK_CANVAS_FIXTURE.replace('</body>', `${inactiveImages}</body>`), 'utf8');
+    const good = await checkPlayableRuntimeArtifact({ artifactPath: root, platform: 'applovin', chrome, timeoutMs: 8_000 });
+    assert.equal(good.conclusion, 'PASS', JSON.stringify(good.checks, null, 2));
+    const imageCheck = good.checks.find((item) => item.id === 'RUNTIME-IMAGE-001');
+    assert.equal(imageCheck.status, 'pass');
+    assert.equal(imageCheck.evidence.images.find((image) => image.id === 'srcset-only-image').naturalWidth, 1);
+    assert.equal(good.checks.find((item) => item.id === 'RUNTIME-RESOURCE-001').status, 'pass');
+    assert.equal(good.checks.find((item) => item.id === 'RUNTIME-CTA-002').status, 'pass');
+    assert.equal(good.ctaCapture.isTrusted, true);
+
+    const brokenImages = `<img id="missing-source-image" src="missing.png">
+      <img id="invalid-payload-image" src="data:image/png;base64,AAAA">
+      <img id="missing-srcset-image" srcset="missing-srcset.png 1x">`;
+    await writeFile(artifactPath, NONBLANK_CANVAS_FIXTURE.replace('</body>', `${brokenImages}</body>`), 'utf8');
+    const bad = await checkPlayableRuntimeArtifact({ artifactPath: root, platform: 'applovin', chrome, timeoutMs: 8_000 });
+    assert.equal(bad.conclusion, 'FAIL');
+    const failures = bad.checks.find((item) => item.id === 'RUNTIME-IMAGE-001');
+    assert.equal(failures.status, 'fail');
+    assert.deepEqual(failures.evidence.brokenImages.map((image) => image.id).sort(),
+      ['invalid-payload-image', 'missing-source-image', 'missing-srcset-image']);
+    assert.equal(bad.checks.find((item) => item.id === 'RUNTIME-RESOURCE-001').status, 'fail');
+    assert.equal(bad.checks.find((item) => item.id === 'RUNTIME-CTA-002').status, 'pass');
+    assert.equal(bad.ctaCapture.isTrusted, true);
+  } finally { await rm(root, { recursive: true, force: true }); }
 });
 
 test('runtime smoke captures the complete Mintegral lifecycle from the real CTA path', { timeout: 30_000 }, async (context) => {
