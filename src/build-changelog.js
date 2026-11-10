@@ -11,6 +11,15 @@
 
 export const BUILD_CHANGELOG = Object.freeze([
   {
+    version: '20261110-1806',
+    date: '2026-11-10',
+    title: 'Play Now 按钮不再跟随语言',
+    changes: [
+      '按钮在所有语言下都显示 Play Now，不再出现「立即游玩」「今すぐプレイ」等译名',
+      '只有底部标题继续跟随系统语言'
+    ]
+  },
+  {
     version: '20261110-1712',
     date: '2026-11-10',
     title: '底部标题跟随系统语言（CTA 不动）',
@@ -18,7 +27,6 @@ export const BUILD_CHANGELOG = Object.freeze([
       '底部标题按玩家设备语言显示，取自需求方「双端商店 title」表',
       'Google / iOS 两端的标题分开：同一语言在两店措辞不同时各自生效',
       '简体中文只有 iOS 表有，Google 端按表里的规则回退英文',
-      'Play Now 按钮维持原有八种语言，其它语言回退 Play Now',
       '加载页标题与底部标题保持一致'
     ]
   },

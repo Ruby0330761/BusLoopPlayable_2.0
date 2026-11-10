@@ -4,7 +4,6 @@ import { join } from 'node:path';
 import test from 'node:test';
 
 import {
-  BRANDING_LOCALIZATION,
   BRANDING_LOCALE_OPTIONS,
   DEFAULT_CTA_LABEL,
   STORE_TITLE_TABLES,
@@ -47,15 +46,22 @@ test('language resolution follows the player preference order and falls back to 
   assert.equal(resolveBrandingLocale(['zh_CN']), 'zh-Hans');
 });
 
-test('every locale ships a CTA label, and every storefront ships a title', () => {
-  for (const [locale, strings] of Object.entries(BRANDING_LOCALIZATION)) {
-    assert.equal(typeof strings.cta, 'string', `${locale} cta`);
-    assert.ok(strings.cta.trim().length > 0, `${locale} cta is non-empty`);
+test('the CTA never localizes, and every storefront ships a title', () => {
+  // The button wording is approved creative and must read the same in every
+  // market ('play now 不要动', 2026-11-10). A per-locale CTA table must not come
+  // back: every caption language below has to keep the English label.
+  for (const locale of ['en', 'zh-Hans', 'zh-Hant', 'ja', 'ko', 'es', 'fr', 'de', 'ru', 'ar', 'vi']) {
+    const copy = resolveLocalizedBranding({
+      languages: [locale],
+      storefront: 'ios',
+      text: 'Bus Fever Party!'
+    });
+    assert.equal(copy.ctaLabel, DEFAULT_CTA_LABEL, `${locale} must keep the Play Now label`);
   }
-  // The title table is a different shape on purpose: it mirrors the requester's
-  // sheet, where Google and iOS word the same market differently and iOS lists
-  // simplified Chinese while Google does not. Every storefront must still cover
-  // the English fallback row, or an unlisted market would render nothing.
+  // The title table mirrors the requester's sheet, where Google and iOS word the
+  // same market differently and iOS lists simplified Chinese while Google does
+  // not. Every storefront must still cover the English fallback row, or an
+  // unlisted market would render nothing.
   for (const [storefront, table] of Object.entries(STORE_TITLE_TABLES)) {
     assert.ok(table.en && table.en.trim().length > 0, `${storefront} needs an English fallback`);
     for (const [locale, title] of Object.entries(table)) {
@@ -67,11 +73,6 @@ test('every locale ships a CTA label, and every storefront ships a title', () =>
   const offered = BRANDING_LOCALE_OPTIONS.map(([value]) => value).filter((value) => value !== 'auto');
   const known = new Set(Object.values(STORE_TITLE_TABLES).flatMap((table) => Object.keys(table)));
   assert.deepEqual(offered.sort(), [...known].sort());
-  // Every CTA locale must also be a title locale, so the caption and the button
-  // never disagree about which languages the ad speaks.
-  for (const locale of Object.keys(BRANDING_LOCALIZATION)) {
-    assert.ok(known.has(locale), `title table is missing ${locale}`);
-  }
 });
 
 test('store titles follow the storefront, not a single shared translation', () => {
@@ -100,7 +101,8 @@ test('the shipped default title and loading title localize, custom copy does not
   // storefront (Google) falls back to its English row.
   assert.equal(chinese.title, STORE_TITLE_TABLES.google.en);
   assert.equal(chinese.loadingTitle, STORE_TITLE_TABLES.google.en);
-  assert.equal(chinese.ctaLabel, BRANDING_LOCALIZATION['zh-Hans'].cta);
+  // Simplified Chinese localizes the caption on iOS but never the button.
+  assert.equal(chinese.ctaLabel, DEFAULT_CTA_LABEL);
 
   // On iOS the same device gets the localized listing.
   const chineseIos = resolveLocalizedBranding({
