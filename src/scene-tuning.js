@@ -531,7 +531,8 @@ export const SCENE_TUNING = {
     "sourceWidth": 2100,
     "sourceHeight": 3382,
     "opacity": 1,
-    "horizonTrim": 0
+    "horizonTrim": 0,
+    "horizon": 0
   },
   "lighting": {
     "hemisphere": {

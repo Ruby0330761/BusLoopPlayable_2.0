@@ -52,3 +52,29 @@ test('pruning preserves optional conveyor layouts such as dualQueueShape', () =>
   assert.ok(cached.conveyorLayouts.dualQueueShape, 'a real layout must not be pruned');
   assert.equal(cached.parkingSpots.hideOutlineWhenOccupied, undefined);
 });
+
+test('a measured background horizon survives pruning and export validation', () => {
+  // The editor writes background.horizon whenever the artwork changes (picker
+  // switch, custom upload, or the startup auto-measure). When that key was
+  // absent from the defaults, the exporter rejected the whole package with
+  // "tuning.background.horizon is not supported" and no platform could be
+  // built from an editor that had touched the background.
+  const template = structuredClone(SCENE_TUNING);
+  const cached = structuredClone(SCENE_TUNING);
+  cached.background.horizon = 0.5744;
+
+  pruneUnknownTuning(cached, template);
+  assert.equal(cached.background.horizon, 0.5744, 'a measured horizon must not be pruned');
+  assert.doesNotThrow(() => validateTuning(cached, template));
+});
+
+test('an unmeasured background horizon stays valid at the 0 sentinel', () => {
+  // 0 means "not measured yet": resolveBackgroundHorizon only accepts 0 < h < 1,
+  // so the exported plane falls back to the built-in table instead of shifting
+  // by a horizon of zero.
+  const template = structuredClone(SCENE_TUNING);
+  const cached = structuredClone(SCENE_TUNING);
+  cached.background.horizon = 0;
+
+  assert.doesNotThrow(() => validateTuning(cached, template));
+});

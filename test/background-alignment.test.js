@@ -15,6 +15,7 @@ import {
   resolveBackgroundHorizon,
   resolveBackgroundOffsetY
 } from '../src/background-alignment.js';
+import { SCENE_TUNING } from '../src/scene-tuning.js';
 
 /**
  * Minimal JPEG dimension reader so the fixtures do not need a decoder dependency.
@@ -191,6 +192,17 @@ test('unmeasured artwork keeps the tuning offset untouched', () => {
     background: { asset: '/assets/editor-backgrounds/unknown-image.jpg', offsetY: 0.75, height: 22.708 }
   });
   assert.equal(result, 0.75);
+});
+
+test('the default tuning carries a horizon sentinel that does not shift the plane', () => {
+  // `horizon: 0` is the documented "not measured yet" value the exported tuning
+  // now always contains. It must keep the built-in table in charge, so adding it
+  // to the defaults cannot move any shipped background.
+  const background = { ...SCENE_TUNING.background, horizon: 0 };
+  const withoutKey = { ...SCENE_TUNING.background };
+  delete withoutKey.horizon;
+  assert.equal(resolveBackgroundOffsetY({ background }), resolveBackgroundOffsetY({ background: withoutKey }));
+  assert.equal(resolveBackgroundHorizon(background.asset, 0), BACKGROUND_HORIZONS['BG01_split01_q60.jpg']);
 });
 
 test('artwork is matched by content hash, so a rename keeps its horizon', () => {
