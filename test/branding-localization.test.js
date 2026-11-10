@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import test from 'node:test';
 
 import {
+  BRANDING_LOCALIZATION,
   BRANDING_LOCALE_OPTIONS,
   DEFAULT_CTA_LABEL,
   STORE_TITLE_TABLES,
@@ -46,18 +47,25 @@ test('language resolution follows the player preference order and falls back to 
   assert.equal(resolveBrandingLocale(['zh_CN']), 'zh-Hans');
 });
 
-test('the CTA never localizes, and every storefront ships a title', () => {
-  // The button wording is approved creative and must read the same in every
-  // market ('play now 不要动', 2026-11-10). A per-locale CTA table must not come
-  // back: every caption language below has to keep the English label.
-  for (const locale of ['en', 'zh-Hans', 'zh-Hant', 'ja', 'ko', 'es', 'fr', 'de', 'ru', 'ar', 'vi']) {
+test('both the CTA and the caption localize, and every storefront ships a title', () => {
+  // Both pieces of copy follow the player's language: the button and the bottom
+  // caption. The button has its own short label per market, because the store
+  // titles below are too long to tap.
+  for (const [locale, strings] of Object.entries(BRANDING_LOCALIZATION)) {
     const copy = resolveLocalizedBranding({
       languages: [locale],
       storefront: 'ios',
       text: 'Bus Fever Party!'
     });
-    assert.equal(copy.ctaLabel, DEFAULT_CTA_LABEL, `${locale} must keep the Play Now label`);
+    assert.equal(copy.ctaLabel, strings.cta, `${locale} CTA`);
+    assert.ok(strings.cta.trim().length > 0, `${locale} CTA is non-empty`);
   }
+  // A market with no CTA row falls back to the English label rather than
+  // rendering nothing.
+  assert.equal(
+    resolveLocalizedBranding({ languages: ['th-TH'] }).ctaLabel,
+    DEFAULT_CTA_LABEL
+  );
   // The title table mirrors the requester's sheet, where Google and iOS word the
   // same market differently and iOS lists simplified Chinese while Google does
   // not. Every storefront must still cover the English fallback row, or an
@@ -73,6 +81,11 @@ test('the CTA never localizes, and every storefront ships a title', () => {
   const offered = BRANDING_LOCALE_OPTIONS.map(([value]) => value).filter((value) => value !== 'auto');
   const known = new Set(Object.values(STORE_TITLE_TABLES).flatMap((table) => Object.keys(table)));
   assert.deepEqual(offered.sort(), [...known].sort());
+  // Every market the title table can serve must also have a CTA label, or that
+  // player reads a translated caption above an English button.
+  for (const locale of known) {
+    assert.ok(BRANDING_LOCALIZATION[locale], `CTA table is missing ${locale}`);
+  }
 });
 
 test('store titles follow the storefront, not a single shared translation', () => {
@@ -101,8 +114,7 @@ test('the shipped default title and loading title localize, custom copy does not
   // storefront (Google) falls back to its English row.
   assert.equal(chinese.title, STORE_TITLE_TABLES.google.en);
   assert.equal(chinese.loadingTitle, STORE_TITLE_TABLES.google.en);
-  // Simplified Chinese localizes the caption on iOS but never the button.
-  assert.equal(chinese.ctaLabel, DEFAULT_CTA_LABEL);
+  assert.equal(chinese.ctaLabel, BRANDING_LOCALIZATION['zh-Hans'].cta);
 
   // On iOS the same device gets the localized listing.
   const chineseIos = resolveLocalizedBranding({
@@ -156,6 +168,20 @@ test('localized strings shrink to the tuned box instead of overflowing it', () =
   assert.equal(fitFontSizeToWidth({ fontSize: 63, measuredWidth: 0, availableWidth: 302 }), 63);
   assert.equal(fitFontSizeToWidth({ fontSize: 63, measuredWidth: 400, availableWidth: 0 }), 63);
   assert.equal(fitFontSizeToWidth({}), 0);
+});
+
+test('the editor header offers a language picker that drives the preview', () => {
+  // The operator asked for a way to *watch* each language without hunting for
+  // the 引导 tab. The picker in the header writes the same tuning key the field
+  // row edits, so both controls stay in sync.
+  assert.match(editorSource, /class="editor-locale-select"/);
+  assert.match(editorSource, /BRANDING_LOCALE_OPTIONS\.map/);
+  assert.match(editorSource, /next\.branding\.localization\.previewLocale = localeSelect\.value;/);
+  // Picking a market turns localization on: a picker that changes nothing looks
+  // broken, and the preview locale is meaningless while localization is off.
+  assert.match(editorSource, /if \(localeSelect\.value !== 'auto'\) next\.branding\.localization\.enabled = 1;/);
+  // The picker mirrors the tuning value, so restoring a profile updates it.
+  assert.match(editorSource, /if \(localeSelect\.value !== previewLocale\) localeSelect\.value = previewLocale;/);
 });
 
 test('tuning exposes a localization switch and an editor preview locale', () => {

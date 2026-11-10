@@ -771,8 +771,13 @@ button:hover { transform: translateY(-1px); background: #fff; }
 }
 .editor-header {
   flex: none; display: flex; align-items: center; justify-content: space-between;
+  flex-wrap: wrap; gap: 8px 10px;
   min-height: 76px; padding: 16px 16px 12px 20px; border-bottom: 1px solid rgba(16,35,61,.09);
 }
+/* The editor panel is ~320px wide. With the language picker in the actions row
+   there is not enough room for the caption beside it, so the row wraps as a
+   whole instead of squeezing the title one glyph per line. */
+.editor-header > div:first-child { min-width: 0; white-space: nowrap; }
 .editor-kicker { color: #51839b; font: 800 9px/1 'Poppins Branding', Arial, sans-serif; letter-spacing: .2em; }
 .editor-version { letter-spacing: .04em; font-weight: 700; }
 .editor-header h2 { margin: 4px 0 0; color: #10233d; font: 800 21px/1 'Poppins Branding', Arial, sans-serif; }
@@ -1107,7 +1112,28 @@ button:hover { transform: translateY(-1px); background: #fff; }
 }
 
 /* --- Editor 关于 / release notes ------------------------------------------- */
-.editor-header-actions { display: flex; align-items: center; gap: 8px; }
+.editor-header-actions { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+/* Header language picker: an operator previews a market without opening 引导 and
+   scrolling to the localization rows. */
+.editor-locale {
+  display: flex; align-items: center; gap: 6px; flex-shrink: 0;
+  height: 42px; padding: 0 10px;
+  border: 1px solid rgba(16,35,61,.14); border-radius: 8px; background: #fff;
+}
+/* `nowrap` on both the label and the select: the editor panel is narrow, and
+   once the row ran out of space the label stacked one glyph per line and pushed
+   the picker out of the header. */
+.editor-locale-label {
+  flex: 0 0 auto; white-space: nowrap;
+  color: #5a7085; font: 700 11px/1 'Poppins Branding', Arial, sans-serif;
+}
+.editor-locale-select {
+  flex: 0 0 auto; white-space: nowrap;
+  min-width: 84px; max-width: 128px; height: 30px; padding: 0 4px;
+  border: 0; background: transparent; color: #10233d;
+  font: 700 12px/1 'Poppins Branding', Arial, sans-serif; cursor: pointer;
+}
+.editor-locale-select:focus-visible { outline: 2px solid #287fa8; outline-offset: 2px; border-radius: 4px; }
 .editor-about {
   min-width: 46px; height: 42px; padding: 0 12px;
   border: 1px solid rgba(16,35,61,.14); border-radius: 8px;

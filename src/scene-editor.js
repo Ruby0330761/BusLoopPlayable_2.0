@@ -1268,6 +1268,14 @@ export function createSceneEditor(root, {
         <h2>\u573a\u666f\u8c03\u8282</h2>
       </div>
       <div class="editor-header-actions">
+        <label class="editor-locale" title="切换后预览与截图都按该语言渲染；导出的包仍跟随玩家设备语言">
+          <span class="editor-locale-label">语言</span>
+          <select class="editor-locale-select" aria-label="预览语言">
+            ${BRANDING_LOCALE_OPTIONS.map(([value, label]) => (
+              `<option value="${value}">${label}</option>`
+            )).join('')}
+          </select>
+        </label>
         <button class="editor-about" type="button" aria-label="\u67e5\u770b\u7248\u672c\u66f4\u65b0\u5185\u5bb9" title="\u7248\u672c\u66f4\u65b0\u5185\u5bb9">\u5173\u4e8e</button>
         <button class="editor-toggle" type="button" aria-label="\u6536\u8d77\u573a\u666f\u7f16\u8f91\u5668" aria-expanded="true">\u00d7</button>
       </div>
@@ -1350,6 +1358,7 @@ export function createSceneEditor(root, {
   const exportAllButton = root.querySelector('.editor-export-all-button');
   const exportStatus = root.querySelector('.editor-export-status');
   const exportEventsStatus = root.querySelector('.editor-export-events');
+  const localeSelect = root.querySelector('.editor-locale-select');
   const screenshotSelect = root.querySelector('.editor-screenshot-select');
   const screenshotButton = root.querySelector('.editor-screenshot-button');
   const screenshotStatus = root.querySelector('.editor-screenshot-status');
@@ -3374,6 +3383,12 @@ export function createSceneEditor(root, {
     }
     setPreRollBusy(preRollBusy);
     setBackgroundBusy(false);
+    // The header picker mirrors the tuning value, so a locale forced from the
+    // field row or restored from a saved profile shows up here too.
+    if (localeSelect) {
+      const previewLocale = String(tuning.branding?.localization?.previewLocale ?? 'auto');
+      if (localeSelect.value !== previewLocale) localeSelect.value = previewLocale;
+    }
   }
 
   const toggle = root.querySelector('.editor-toggle');
@@ -3384,6 +3399,22 @@ export function createSceneEditor(root, {
     toggle.setAttribute('aria-label', collapsed ? '\u5c55\u5f00\u573a\u666f\u7f16\u8f91\u5668' : '\u6536\u8d77\u573a\u666f\u7f16\u8f91\u5668');
   };
   toggle.addEventListener('click', () => setCollapsed(!root.classList.contains('is-collapsed')));
+
+  // Header language picker. It writes the same `branding.localization.previewLocale`
+  // the 引导 field row edits, so switching here and switching there stay in sync;
+  // picking a market also turns localization on, because a picker that appears to
+  // do nothing (localization disabled) is worse than one that just works.
+  if (localeSelect) {
+    localeSelect.addEventListener('change', () => {
+      const next = structuredClone(getTuning());
+      next.branding ??= {};
+      next.branding.localization ??= {};
+      next.branding.localization.previewLocale = localeSelect.value;
+      if (localeSelect.value !== 'auto') next.branding.localization.enabled = 1;
+      commitTuning(next, { path: 'branding.localization.previewLocale' });
+      sync();
+    });
+  }
 
   // Release notes live in their own overlay so they never compete with the
   // tuning rows. Escape and a backdrop click both close it, and focus returns

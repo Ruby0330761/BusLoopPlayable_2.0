@@ -1,14 +1,10 @@
-// The bottom caption follows the player's device language. Playable ads run
-// inside a WebView, so `navigator.languages` is the only reliable signal; the
-// ad-network SDKs do not expose a locale API.
+// Both the CTA button and the bottom caption follow the player's device
+// language. Playable ads run inside a WebView, so `navigator.languages` is the
+// only reliable signal; the ad-network SDKs do not expose a locale API.
 //
 // The caption comes from the requester's store-title sheet, which words the same
 // market differently on Google Play and the App Store — hence one table per
 // storefront.
-//
-// The CTA button is NOT localized. Its wording is part of the approved creative
-// and stays `Play Now` in every market (confirmed 2026-11-10: "play now 不要动").
-// Do not reintroduce a per-locale CTA table.
 //
 // The caption only localizes while it still holds the shipped default. An
 // operator who typed their own line, or a Crowd build whose brand is a different
@@ -22,8 +18,26 @@ export const DEFAULT_CTA_LABEL = 'Play Now';
 // The shipped caption. Anything else in `branding.text.content` is authored copy.
 export const DEFAULT_BRAND_TITLE = 'Bus Fever Party!';
 
-// There is deliberately no per-locale CTA table. The button reads `Play Now` in
-// every market, whatever the caption says.
+// CTA labels. Short, tapping-friendly wording per market — the button must stay
+// readable at the tuned plate width, so it does not reuse the longer store
+// titles below. Markets without a row fall back to `Play Now`.
+export const BRANDING_LOCALIZATION = Object.freeze({
+  en: Object.freeze({ cta: 'Play Now' }),
+  'zh-Hans': Object.freeze({ cta: '立即游玩' }),
+  'zh-Hant': Object.freeze({ cta: '立即遊玩' }),
+  ja: Object.freeze({ cta: '今すぐプレイ' }),
+  ko: Object.freeze({ cta: '지금 플레이' }),
+  es: Object.freeze({ cta: 'Jugar ahora' }),
+  fr: Object.freeze({ cta: 'Jouer' }),
+  de: Object.freeze({ cta: 'Jetzt spielen' }),
+  ru: Object.freeze({ cta: 'Играть' }),
+  ar: Object.freeze({ cta: 'العب الآن' }),
+  pt: Object.freeze({ cta: 'Jogar agora' }),
+  tr: Object.freeze({ cta: 'Oyna' }),
+  it: Object.freeze({ cta: 'Gioca ora' }),
+  id: Object.freeze({ cta: 'Main sekarang' }),
+  vi: Object.freeze({ cta: 'Chơi ngay' })
+});
 
 // Store titles, transcribed from the requester's sheet
 //「Bus fever party 双端商店title（26/11/10）」— Google and iOS sections.
@@ -175,12 +189,12 @@ export function resolveLocalizedBranding({
 } = {}) {
   const active = Boolean(enabled);
   const locale = active ? resolveBrandingLocale(languages) : DEFAULT_BRANDING_LOCALE;
+  const strings = BRANDING_LOCALIZATION[locale] ?? BRANDING_LOCALIZATION[DEFAULT_BRANDING_LOCALE];
   const localizedTitle = active ? resolveStoreTitle(locale, storefront) : DEFAULT_BRAND_TITLE;
   return {
     enabled: active,
     locale,
-    // Never localized: the button keeps the approved wording in every market.
-    ctaLabel: DEFAULT_CTA_LABEL,
+    ctaLabel: active ? strings.cta : DEFAULT_CTA_LABEL,
     title: titleForAuthoredText(text, localizedTitle),
     loadingTitle: titleForAuthoredText(loadingTitle, localizedTitle)
   };
