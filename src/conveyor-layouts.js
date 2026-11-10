@@ -1911,8 +1911,112 @@ export const CONVEYOR_LAYOUTS = deepFreeze({
         "imageHeight": 1300
       }
     }
+  },
+  "dualLoop5": {
+    "id": "dualLoop5",
+    "label": "DualLoop5",
+    "sourcePrefab": "ConveyorBelt_Footage5.prefab",
+    "textureFile": "Loop_footage5.png",
+    "spriteRect": {
+      "x": 0,
+      "y": 58,
+      "width": 2100,
+      "height": 1242,
+      "imageWidth": 2100,
+      "imageHeight": 1300
+    },
+    "conveyorCapacity": 42,
+    "queueCapacities": [42, 42],
+    "exitStart": 0.6679999828338623,
+    "exitEnd": 0.7680000066757202,
+    "splineType": "bSpline",
+    "splinePoints": [[-0.683246, 15.569654], [-0.688845, 15.831096], [-0.662071, 16.11613], [-0.506983, 16.301071], [-0.264011, 16.372015], [-0.008199, 16.337636], [0.145467, 16.167351], [0.1582, 15.892594], [0.295056, 15.718494], [0.59053, 15.686974], [0.776626, 15.487545], [0.801694, 15.169204], [0.649706, 14.951827], [0.339654, 14.910357], [0.048626, 14.905945], [-0.176303, 14.903159], [-0.432012, 14.922657], [-0.691822, 14.995716], [-0.684011, 15.291435]],
+    "queuePaths": [
+      [[-1.014042, 15.737529], [-1.488427, 15.795603], [-1.703878, 16.199636], [-1.683317, 16.746573], [-1.650245, 17.218705], [-1.587788, 17.6873], [-1.515693, 18.173107], [-1.456827, 18.639599]],
+      [[0.901548, 15.659636], [1.292295, 15.898869], [1.437672, 16.346542], [1.442701, 16.826699], [1.40963, 17.298831], [1.347173, 17.767426], [1.275078, 18.241857], [1.216212, 18.719726]]
+    ],
+    "assets": {
+      "loopScene": "/assets/unity/conveyors/Loop_footage5_q80.webp",
+      "loopSpriteRect": {
+        "x": 0,
+        "y": 58,
+        "width": 2100,
+        "height": 1242,
+        "imageWidth": 2100,
+        "imageHeight": 1300
+      }
+    }
+  },
+  "hexLoop": {
+    "id": "hexLoop",
+    "label": "HexLoop",
+    "sourcePrefab": "ConveyorBelt_Footage6.prefab",
+    "textureFile": "Loop_footage6.png",
+    "spriteRect": {
+      "x": 0,
+      "y": 58,
+      "width": 2100,
+      "height": 1242,
+      "imageWidth": 2100,
+      "imageHeight": 1300
+    },
+    "conveyorCapacity": 38,
+    "queueCapacities": [38, 38],
+    "exitStart": 0.6679999828338623,
+    "exitEnd": 0.7680000066757202,
+    "splineType": "bSpline",
+    "splinePoints": [[-0.656586, 15.887218], [-0.525639, 16.113399], [-0.405886, 16.326533], [-0.143487, 16.321414], [0.133828, 16.321414], [0.396228, 16.32652], [0.515981, 16.113399], [0.646928, 15.887218], [0.777875, 15.661038], [0.677144, 15.39752], [0.533838, 15.167012], [0.393963, 14.922975], [0.140621, 14.928314], [-0.150273, 14.928313], [-0.403621, 14.922975], [-0.543496, 15.167012], [-0.686802, 15.39752], [-0.787533, 15.661038]],
+    "queuePaths": [
+      [[-0.978852, 15.320995], [-4.706737, 14.471357]],
+      [[0.969194, 15.320995], [4.69708, 14.471357]]
+    ],
+    "assets": {
+      "loopScene": "/assets/unity/conveyors/Loop_footage6_q80.webp",
+      "loopSpriteRect": {
+        "x": 0,
+        "y": 58,
+        "width": 2100,
+        "height": 1242,
+        "imageWidth": 2100,
+        "imageHeight": 1300
+      }
+    }
+  },
+  "crossLoop": {
+    "id": "crossLoop",
+    "label": "CrossLoop",
+    "sourcePrefab": "ConveyorBelt_Footage7.prefab",
+    "textureFile": "Loop_footage7.png",
+    "spriteRect": {
+      "x": 0,
+      "y": 57,
+      "width": 2100,
+      "height": 1243,
+      "imageWidth": 2100,
+      "imageHeight": 1300
+    },
+    "conveyorCapacity": 60,
+    "queueCapacities": [60, 60],
+    "exitStart": 0.6679999828338623,
+    "exitEnd": 0.7680000066757202,
+    "splineType": "bSpline",
+    "splinePoints": [[-0.357275, 15.756935], [-0.851983, 16.007309], [-0.749375, 16.520415], [-0.331583, 16.598335], [-0.004829, 16.162493], [0.321925, 16.598335], [0.739716, 16.520415], [0.842325, 16.00731], [0.347617, 15.756935], [0.844786, 15.423151], [0.720264, 14.925223], [0.297843, 14.863129], [-0.004829, 15.283779], [-0.307501, 14.863129], [-0.729922, 14.925223], [-0.854445, 15.423151]],
+    "queuePaths": [
+      [[-1.088318, 15.402425], [-3.641528, 15.402425]],
+      [[1.07866, 15.402425], [3.63187, 15.402425]]
+    ],
+    "assets": {
+      "loopScene": "/assets/unity/conveyors/Loop_footage7_q80.webp",
+      "loopSpriteRect": {
+        "x": 0,
+        "y": 57,
+        "width": 2100,
+        "height": 1243,
+        "imageWidth": 2100,
+        "imageHeight": 1300
+      }
+    }
   }
-
 });
 
 export const CONVEYOR_LAYOUT_IDS = Object.freeze(Object.keys(CONVEYOR_LAYOUTS));

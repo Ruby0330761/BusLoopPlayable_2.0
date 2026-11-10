@@ -698,7 +698,10 @@ function ctaTargetExpression(explicitSelector) {
       for (const selector of ['#cta-button', '[data-cta]', '[data-action="cta"]', '[data-testid*="cta" i]', '#cta', '.cta']) {
         try { candidates.push(...document.querySelectorAll(selector)); } catch {}
       }
-      const textPattern = /install|download|get|play now|shop now|learn more|continue|安装|下载|立即|试玩|继续/i;
+      // CTA labels follow the device language, so the fallback text search has
+      // to recognise the shipped translations too (the id selector normally
+      // finds the button first).
+      const textPattern = /install|download|get|play now|shop now|learn more|continue|安装|下载|立即|试玩|继续|游玩|遊玩|プレイ|플레이|jugar|jouer|spielen/i;
       for (const node of document.querySelectorAll('button,a,[role="button"]')) {
         const label = String(node.innerText || node.textContent || node.getAttribute('aria-label') || '');
         if (textPattern.test(label)) candidates.push(node);

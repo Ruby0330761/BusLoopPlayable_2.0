@@ -3,13 +3,22 @@ import assert from 'node:assert/strict';
 import { createCountdownView } from '../src/countdown-view.js';
 import { COUNTDOWN_TIMER_ASSET } from '../src/countdown.js';
 
+const PLACEHOLDER_SRC = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7';
+
 function fixture(width, height, bounds, speedBounds = null, frame = {}) {
   const attrs = new Map();
+  const properties = new Map();
   const root = { style: {}, dataset: {}, setAttribute: (key, value) => attrs.set(key, value) };
+  // `index.html` ships a transparent 1x1 GIF as the placeholder src, so the
+  // fixture starts from the same state the real page does.
+  attrs.set('img:src', PLACEHOLDER_SRC);
   const image = { getAttribute: key => attrs.get(`img:${key}`), removeAttribute: key => attrs.delete(`img:${key}`),
     set src(value) { attrs.set('img:src', value); } };
   const value = { textContent: '' };
-  const warning = { style: {} };
+  const warning = {
+    style: { setProperty: (name, value) => properties.set(name, value) },
+    properties
+  };
   const stage = { ...frame, getBoundingClientRect: () => ({ left: 0, top: 0, width, height }) };
   const speedButton = { hidden: !speedBounds, getBoundingClientRect: () => speedBounds };
   const view = createCountdownView({ root, image, value, warning, stage, speedButton });
@@ -79,13 +88,16 @@ test('disabled HUD never loads an image; enabled display formats time and pauses
   const f = fixture(390, 844);
   f.view.render({ enabled: 0, remaining: 30, state: 'disabled', urgent: false });
   assert.equal(f.root.hidden, true);
-  assert.equal(f.attrs.has('img:src'), false);
+  // A disabled countdown must not request the timer artwork at all.
+  assert.equal(f.attrs.get('img:src'), PLACEHOLDER_SRC);
   f.view.render({ enabled: 1, remaining: 90, state: 'idle', urgent: false });
   assert.equal(f.attrs.get('img:src'), COUNTDOWN_TIMER_ASSET);
   assert.equal(f.value.textContent, '01:30');
   f.view.render({ enabled: 1, remaining: 7, state: 'paused', urgent: true, paused: true });
   assert.equal(f.warning.hidden, false);
-  assert.equal(f.warning.style.animationPlayState, 'paused');
+  assert.equal(f.warning.properties.get('--countdown-warning-play'), 'paused');
+  f.view.render({ enabled: 1, remaining: 6, state: 'running', urgent: true, paused: false });
+  assert.equal(f.warning.properties.get('--countdown-warning-play'), 'running');
   f.view.render({ enabled: 1, remaining: 0, state: 'timeout', urgent: false });
   assert.equal(f.warning.hidden, true);
   assert.equal(f.value.textContent, '00:00');

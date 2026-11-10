@@ -2,9 +2,14 @@
 set -eu
 
 PORT="${1:-5173}"
-PROJECT_NAME="bus-loop-playable-editor"
-IMAGE_NAME="bus-loop-playable-editor"
-DATA_ROOT="/data/${PROJECT_NAME}"
+# The deploy platform identifies a service by its container name, so this has
+# to match the project name it was registered under. The data directory stays
+# on the original path on purpose: /data/bus-loop-playable-editor/artifacts
+# holds the live authored levels, and pointing a fresh, empty volume at it
+# would reseed from the image's 32 bundled levels and lose the other ~70.
+PROJECT_NAME="bus-loop-playable-editor-wxj"
+IMAGE_NAME="bus-loop-playable-editor-wxj"
+DATA_ROOT="/data/bus-loop-playable-editor"
 ARTIFACTS_DIR="${DATA_ROOT}/artifacts"
 SEED_MARKER="${DATA_ROOT}/.seeded-v1"
 
@@ -22,6 +27,14 @@ fi
 
 docker stop "${PROJECT_NAME}" >/dev/null 2>&1 || true
 docker rm "${PROJECT_NAME}" >/dev/null 2>&1 || true
+# Older releases of this editor were deployed as `bus-loop-playable-editor`
+# and may still be holding the port after the service record was removed.
+# Stop that leftover container too, or the new one cannot bind.
+LEGACY_NAME="bus-loop-playable-editor"
+if [ "${LEGACY_NAME}" != "${PROJECT_NAME}" ]; then
+  docker stop "${LEGACY_NAME}" >/dev/null 2>&1 || true
+  docker rm "${LEGACY_NAME}" >/dev/null 2>&1 || true
+fi
 CONTAINER_ID="$(docker run -d \
   --name "${PROJECT_NAME}" \
   --restart unless-stopped \

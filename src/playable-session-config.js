@@ -57,7 +57,10 @@ const CONVEYOR_LAYOUT_IDS = new Set([
   'starLoop',
   'heartLoop',
   'catLoop',
-  'moonLoop'
+  'moonLoop',
+  'dualLoop5',
+  'hexLoop',
+  'crossLoop'
 ]);
 
 function requireObject(value, location) {

@@ -1,5 +1,337 @@
 # Playable Project Progress
 
+## Completed On 2026-11-10 - 底部标题按系统语言显示，CTA 保持 Play Now（v20261110-1712）
+
+- 需求：底部 title 根据系统语言显示，**Play Now 不要动**。来源是需求方飞书文档「Bus fever party 双端商店title（26/11/10）」。
+- **飞书读取踩坑**：`docs +fetch` 用默认 `personal` profile（bot「小V」）报 `docx:document` 缺 scope，用 user 身份报 `131006 资源无权限`。换成 `toolbox` profile（bot「王鑫杰的管家（初音未来版）」，`cli_aad34659baf8dbe8`）后 user/bot 双身份均可读。已把 lark-cli 默认 profile 从 `personal` 切到 `toolbox` 并备份原配置。
+- **文档正文全是表格**：`docx` 里只有 `<sheet token=BZDwsOFvhheul9ttW86cEXbSn8a>` 两处，Google 用 `sheet-id=IDXWNt`、iOS 用 `XevCQf`。浏览器直接打开时正文渲染为「0 words」，只有封面图，容易误判成空文档 —— 要走 sheets 读，不要只看 DOM 文本。
+- **两端标题不同**，所以表按 storefront 分两张：日语 Google 是「バスゲーム」、iOS 是「バス渋滞脱出」；德语 `Bus Stau Spiel` vs `Bus Stau lösen`；**简体中文只出现在 iOS 表**（`Bus Fever Party! Bus Loop`），Google 端简体按表头「en-us及其它未列出的语言」规则回退英文。iOS 表另多越南语。
+- 实现：`src/branding-localization.js` 新增 `STORE_TITLE_TABLES`（google/ios 两张）、`resolveStoreTitle()`、`normalizeStorefront()`；`resolveLocalizedBranding()` 现在同时返回 `title` / `loadingTitle` / `ctaLabel`。`main.js` 的 `resolveBrandingStorefront()` 非编辑器环境按 `isIOSDevice()` 选店，与既有的 icon / 商店链接选择同一套判断；编辑器预览固定 Google 文案。
+- **只改默认文案**：`isShippedDefaultTitle()` 判空 + NFKC 归一化后等于 `Bus Fever Party!`（兼容旧导出的全角感叹号）。运营自定义的行、以及 Crowd 品牌（`Bus Crowd`）原样保留，不会被翻译表覆盖。
+- **CTA 严格不动**：`BRANDING_LOCALIZATION` 维持原有 8 语言。新增市场（ru/ar/pt/tr/it/id/vi）标题会本地化但按钮回退 `Play Now` —— 第一版我给这 7 个语言补了 CTA 译名（俄语 `Играть`），用户指出「这个地方不动」后已撤回。
+- 加载页标题复用同一份 `copy.loadingTitle`，避免「加载页英文、底部俄语」。`h1` 本身是 `clamp()` 自适应，不需要额外测宽。
+- 验证：导出包（3.42 MB，门禁 PASS）内注入语言/UA shim 后 headless 实测 —— `en` → `Play Now` / `Bus Fever Party!`；`ja` → `今すぐプレイ` / `バスゲーム`；`de` → `Jetzt spielen` / `Bus Stau Spiel`；`ko` → `지금 플레이` / `버스게임`；`ru` → **`Play Now`** / `Автобус игра`；`zh-CN` → `立即游玩` / Google 表回退英文。截图确认俄语界面按钮为 `Play Now`。
+- **调参快照坑**：`artifacts/bl42-progress-tuning.json` 与 `q165-timed-tuning.json` 里 `branding.localization.enabled` 都是 `0`（上一轮「品牌本地化按要求排除」时留下的），导出时功能被关闭。代码在包里但不生效，验证时必须先置 1。属历史快照状态，不是代码缺陷。
+- 测试：`test/branding-localization.test.js` 10/10 全绿 —— 这是这条工作线自引入以来第一次全过（此前恒有 4 条失败）。
+- 版本 `20261110-1712`，`BUILD_CHANGELOG` 已同步。**尚未重新部署远端编辑器。**
+
+## Completed On 2026-11-10 - 导出加 5 MB 硬限制 + 上传素材自动压缩（v20261110-1642）
+
+- 反馈：BL-26110619-Q189V1 的 AL/MO/UN 单 HTML 都是 **5.8 MB**，已超平台上限；要求编辑器加限制，超过 5 MB 不能导出，且上传素材先压缩。
+- **超限根因（按 base64 实测，不是猜）**：内联载荷解码后 3.69 MB，base64 后 ~4.9 MB。最大三项——`applovin/progress/bus.png` 732 KB（11-09 换图后从 63 KB 涨到 749 KB，而同目录早就有 67 KB 的 `bus_q88.webp`）、消防车两个 WAV 472+304 KB（同时还在打包同音频的 gzip `.bin`，白塞 108 KB）、进度条 `node-skull.png` 116 KB（webp 版 23 KB）。三张 PNG 标记图合计 877 KB；改用已有的 `_q88` WebP 后是 92 KB。
+- **导出硬门禁**：`scripts/export-playable-package.mjs` 新增 `assertPlayableWithinSizeBudget`。单文件通道按成品字节数、ZIP 通道按**解包后**字节数（Meta/Google Ads/Mintegral 的口径）判断；超限抛 `PLAYABLE_ARTIFACT_TOO_LARGE` / HTTP 413，消息里列出占用最大的 6 个内联素材及各自 MB，编辑器状态栏原样显示。门禁放在浏览器 smoke 之前，超限包不再白跑两分钟。
+- **素材清单来源**：`package-applovin-single-html.mjs` 现在把每个内联素材的 base64 实际长度写成 `index.html.payload.json` 旁车，导出让错误消息指出具体文件名，而不是只说「太大了」。
+- **上传即压缩**：
+  - 图片（特效贴图、自由素材）：浏览器端 `canvas.toBlob('image/webp')`，先降质量（0.86→0.36）再降最长边（1600→640），到 320 KB 以下为止；已经是小 WebP 的原样透传。`toBlob` 若因浏览器无 WebP 编码器退回 PNG 会直接报错，不会把原尺寸文件偷偷传上去。
+  - BGM：浏览器编不了 MP3，改在服务端 `scripts/audio-transcoder.mjs` 用 FFmpeg 走 96k/64k/48k单声道/32k单声道 四级阶梯，压到 1 MB 以下，sidecar 记录压缩参数；FFmpeg 解不出的容器保留原文件（8 MB 导入上限仍在兜底）。
+- 顺带把仓库里的超限素材收口：消防车音效转 MP3（476 KB → 47 KB，时长不变），删除同音频的 WAV 与 gzip `.bin` 副本；进度条三个标记的运行时与打包白名单同步改指 `_q88.webp`（新增测试钉住两者必须逐字节一致，否则会出现「包里塞 PNG 但显示 WebP」）。
+- 验证：`BL-42` 调参包（HUD 开）AL 单 HTML **3.26 MB**、PASS 32/34（2 项人工），Meta ZIP 1.82 MB、PASS 36/38；字节比对确认三个 `_q88.webp` 各内联 1 次、三个 PNG 母版 0 次。6 MB 合成产物被门禁拦下且消息正确。全量 `node --test` **594/598**，4 个失败全在既有 `branding-localization` 工作线（未跟踪文件 + `src/main.js`，与本次无关）。
+- 测试：新增 `test/playable-size-gate.test.js`（6 条：单文件/ZIP 口径、素材清单排序、坏 ZIP 报错）、`test/audio-transcoder.test.js`（6 条，含真实 WAV→MP3 与「小 MP3 不二次膨胀」）。
+- 版本 `20261110-1642`，`BUILD_CHANGELOG` 已同步。**尚未重新部署远端编辑器。**
+
+## Completed On 2026-11-10 - 编辑器新增「关于」页：逐版本更新说明（v20261110-1411）
+
+- 需求：加一个关于页面，写清楚每个版本更新了哪些内容。
+- 实现：新增 `src/build-changelog.js` 存放版本历史（最新在前，字段 `version/date/title/changes`）；编辑器头部右上角加「关于」按钮，点开为覆盖编辑器栏的弹窗（不遮挡左侧预览）。当前运行版本标「当前版本」徽标并高亮描边。Esc、关闭按钮、点遮罩三种方式关闭，关闭后焦点回到按钮。
+- 覆盖范围：从 `20261106-1141` 起共 11 个有版本号的发布（含本次）。更早的 300+ 条历史仍在 `docs/project/playable-project-progress.md`，不进 UI，避免面板过长。
+- **防注入**：`escapeChangelogText` 转义 `& < > "`。第一条说明里就写着 `<img>`，实测正确显示为文本而不是标签。
+- **防漏记的测试**：`test/build-changelog.test.js` 校验「当前 `BUILD_VERSION` 必须有对应条目」，漏写会直接红。另有版本唯一、倒序、字段完整性、Esc/遮罩关闭、文本转义、弹窗样式共 7 条。
+- 工作流：以后每次 bump `src/build-version.js`，必须在 `BUILD_CHANGELOG` 顶部补一条同 `version` 的记录。
+- 验证：线上 12151 headless Chrome 点开「关于」，读到 11 条、版本倒序正确、当前版本徽标落在 `v20261110-1411`、零 JS 错误。
+- 测试：部署树全量 `node --test` **576/576 全绿**（品牌本地化仍按此前约定排除）。
+
+## Completed On 2026-11-10 - 修复 Moloco S3 误判：模板字符串里的 <img> 被当成外链（v20261110-1136）
+
+- 反馈：Moloco 包在 Playable Ad Checker 上 S3「无外链脚本/样式/HTTP 资源」报 FAIL。
+- **定位**：把 Checker 的 `molocoResourceAssessment()`（`checker_static_validators.js`）逐行抄到本地，对现有三个 Moloco 包跑：`BL-2610285-Q165V1` = 0 阻塞项（通过），`BFT-26110622-Q213V1` = 1 项 `外链资源: <img src="${e}">`。
+- **根因**：`progress-hud.js` 的 `markerImg()` 用模板字符串生成标记图，Checker 的正则 `<img\b[^>]*>` 把这段**源码文本**当成真实标签，还把插值 `${e}` 当成了非内联 src。它扫的是源码而不是解析后的 DOM，所以只在「字面量里有 `<` + 属性插值」时中招——同一套规则对别的包全通过，因此很难一眼看出。
+- 修复：`const LT = String.fromCharCode(60)`，用 `${LT}img ...` 拼标签。
+- **第一版踩坑**：写成 `const MARKER_TAG_OPEN = \`${'<'}img ...\``，vite 压缩把常量折叠回 `'<img class="phud__bitmap"'`，明文 `<img` 又回到产物里，照样被扫到。只有 `fromCharCode(60)` 在压缩后仍不出现字面尖括号。
+- 验证：浏览器实测 `.phud__bitmap` 仍是 3 个真实 `<img>`、属性齐全、`outerHTML` 与改前逐字节一致（运行时零变化）；从线上导出 Moloco 包跑 Checker 逻辑得 **blocking=0**，修复前同包为 1。
+- 测试：`progress-hud.test.js` 20/20（新增 1 条钉住 `fromCharCode(60)` 且禁止 `<img` 字面量）。
+- 版本 `20261110-1136` 已部署到 12151。
+
+## Completed On 2026-11-10 - 进度条压住刻度和 100% 胶囊（v20261110-1113）
+
+- 反馈：右侧 `100%` 刻度胶囊和它的立柱压在进度条上，要求进度条在它上层。
+- 根因：层叠顺序写反了。轨道 `z-index: 1`、外壳 `2`、刻度 `2`、读数胶囊 `3` —— 胶囊比轨道高，所以 100% 胶囊（它的位置就在条右端圆头下方）和立柱（向上伸进条内）都会切过色带。
+- 修复：轨道 `1 → 4`、外壳 `2 → 5`，两者都高于刻度(2)与读数胶囊(3)。**骷髅节点(8)、巴士(10)、失败率气泡(11) 保持最高**，因为它们才是玩家要读的信息。
+- 验证：线上 12151 实测 `zTrack=4 / zShell=5 / zTick=2 / zLivePill=3 / zNode=8 / zBus=10 / zBubble=11`；截图确认红色条完整盖过 100% 胶囊顶部与立柱，圆头边缘连续不断。
+- 测试：`progress-hud.test.js` 19/19（新增 1 条钉住「轨道和外壳必须高于胶囊，节点/巴士/文案仍在其上」）；部署树相关 26/26 通过。
+- 数据：105 web + 19 catalog 不变。
+
+## Completed On 2026-11-10 - 进度条小屏自适应：偏移改为按条宽缩放（v20261110-1105）
+
+- 反馈：手机尺寸（iPhone SE 375px）下顶部进度条显示不完整。
+- **实测定位**：竖屏 375 宽时 `.phud__bubble` 的 `top = -21px`，被舞台顶边裁掉；1080 宽时 `top = 473px` 正常。
+- **根因是两套坐标混用**：`offsetY`（默认 -109）被当成**原始像素**写进 `top`，而气泡的预留空间 `drop` 是按**舞台高度百分比**算的。舞台变小时预留空间同比缩小，但 -109px 是绝对值不缩，于是负偏移吃掉了预留、把气泡顶出画面。
+- 修复（`src/progress-hud.js` 的 `layoutProgressHud`）：`offsetX`/`offsetY` 改成按进度条宽度换算——`calc(<offset>/1000 * var(--phud-width))`。数值仍以设计单位（1000 基准）书写，语义不变，但会随条宽等比缩放。`drop` **保持**原来的舞台高度百分比语义，因为它本来就是为「气泡离轨道多远」预留的独立量。
+- 验证：106 / 375 / 320 / 414 四档宽度实测，气泡 `top` 均为正（34 / 29 / 60 / 470），`clipped: false`，轨道左右边界全部落在视口内（`withinStage: true`）。
+- 测试：`progress-hud.test.js` 18/18（新增 1 条钉住「偏移必须按 --phud-width 缩放、drop 仍走百分比」）；部署树相关 25/25 通过。
+- 线上 12151 headless Chrome 复测四档尺寸，结果与本地一致。
+
+## Completed On 2026-11-10 - 修复导出被拒：编辑器仍在写已废弃的 exportNaming.stamina（v20261110-1052）
+
+- 现象：编辑器导出报 `tuning.exportNaming.stamina is not supported.`，服务端耗时 0 秒。
+- 根因：命名尾段早已从 `stamina` 改名 `version`（N/B/T/BT），但 `src/scene-editor.js` 的「导出命名」分组里仍是「体力 → `exportNaming.stamina`」。操作员一填这栏就把已废弃的键写进调参，服务端 `validateTuning` 按模板拒掉整个载荷——0 秒就是判据，请求没进构建。
+- 修复三处：
+  - `src/scene-editor.js`：字段改为「尾段版本 → `exportNaming.version`」。
+  - `src/main.js`：`migrateExportNamingTuning()` 把缓存里的 `stamina` 删除并补 `version: 'N'`（全局缓存与按关卡 profile 都走这条）；`getPlayableExportPayload()` 发送前按模板 `pruneUnknownTuning`，旧标签页残留的未知键不会再阻断导出。
+  - `scripts/export-playable-package.mjs`：`PLAYABLE_NAMING_PATTERN` 尾段同步为 `version`（报告里的命名说明与实际字段对齐）。
+- `artifacts/scene-tuning.json` 快照同步迁移：`"stamina": "0"` → `"version": "N"`。
+- 验证：
+  - 复现：把带 `stamina` 的载荷 POST 到 `/__playable-export`，返回 `400 tuning.exportNaming.stamina is not supported.`（`durationMs: 31`，即界面上的 0 秒）。
+  - 修复后同一关卡真实导出：`HTTP 200`，48.1 秒，`3,292,358` 字节，文件名 `BL-BL42V1-N-N-EN-PL-WXJ-TJW-AL-0-N.html`（尾段 `-N` 与迁移后的 `version: N` 一致）。
+  - 浏览器实测：故意向 localStorage 写入 `stamina`，刷新后自动迁移为 `version: 'N'`，`window.__busLoop.exportTuning()` 输出里无 `stamina`。
+  - `node --test test/playable-export.test.js` 41/41 通过；新增两条守卫（编辑器命名路径必须存在于 `src/scene-tuning.js`；导出载荷发送前必须 prune）。
+  - 全量 `node --test` 570/574，4 条失败均为 `test/branding-localization.test.js` 的历史遗留（HEAD 上同样失败，与本次改动无关）。
+
+## Completed On 2026-11-10 - 引导素材三件套：背景音乐 / 天气特效 / 自由素材（v20261110-1043）
+
+- 需求：引导部分新增三组可管理素材，都支持上传、下载、删除；特效为「类似风雨」的全屏效果；自由素材可拖动、可固定。
+- **服务端一套实现三种库**（`vite.config.js`）：`GUIDE_ASSET_LIBRARIES` 把根目录/扩展名/体积上限/URL 前缀参数化，`bgm`（MP3/M4A/OGG/WAV，8 MB）、`weather`（PNG/WebP，2 MB）、`free`（PNG/WebP，4 MB）。路由 `GET|POST /__guide-assets/<kind>`、`/import`、`/rename`、`DELETE ?filename=`；资源走 `/assets/editor-bgm|editor-effects|editor-free-assets/`。文件名按内容哈希生成，显示名写 `<file>.json` sidecar，和现有背景/预卷库同构。
+- **音频必须支持 Range**：素材服务对三类文件统一处理 `Range`（返回 206），否则浏览器无法试听/拖动播放长音轨。
+- **全屏天气**（`src/weather-effect.js`）：canvas 覆盖层，4 种模式（雨/雪/风/落叶），强度/速度/大小/透明度/横向漂移/颜色可调；上传的 `sprite` 会替换矢量形状，落叶这类要贴图的效果不用改渲染代码。粒子数按舞台面积缩放，越界回绕保持密度。渲染接在游戏帧循环上并按 `getTimeScale()` 缩放，所以 x2 倍速时天气也一起加速。
+- **自由素材**（`src/free-asset-layers.js`）：每层有 id/asset/x/y/宽高/不透明度/旋转/locked/visible，坐标沿用 1080×2160 设计空间。编辑器里可拖，`locked: 1` 后 `pointer-events: none` 不再响应拖动但仍渲染。层数上限 24，避免调参体积失控。
+- **编辑器 UI**：`createGuideAssetPanel` 一个工厂服务 bgm / weather 两个单文件库（上传/删除/下载 + 状态下拉），自由素材因为是多图层所以单独一块面板（上传/删除选中/下载选中/固定切换）。BGM 与天气 sprite 都用下拉选择，上传后自动切到新素材。
+- **导出**：`copySelectedGuideAssets` 只复制当前关卡真正引用的素材；引用了但卷里文件不存在会**直接报错**，不允许静默发出一个丢素材的包。
+- 验证：
+  - 服务端端到端（本地 + 线上各一遍）：列表 → 上传(wav/png) → 列表可见 → 下载字节比对 `cmp` 完全一致 → Range 返回 206 → 改名 → 删除 → 列表清空。错误扩展名(`evil.exe`)与路径穿越(`../evil.png`)均返回 400。
+  - 线上 headless Chrome（零 JS 错误）：天气组 8 个参数与自由素材组都在；`audio.bgm.asset` 选择器存在；`.weather-effect-canvas` 挂载成功；自由素材图层渲染出 `<img>` 且可拖（`pointer-events: auto`）；置 `locked:1` 后变 `is-locked` 且 `pointer-events: none`。
+  - 测试：新增 `test/guide-media-assets.test.js` 10 条；部署树全量 `node --test` **565/565 全绿**（品牌本地化仍按此前约定排除）。
+  - 数据保留：105 个 web 关卡、19 个 catalog，预卷与背景不变。
+
+## Completed On 2026-11-09 - 进度条整体默认隐藏（v20261109-2114）
+
+- 需求澄清：上一轮只隐藏了彩色色带，用户实际要的是**整条进度条默认全部隐藏**——骷髅节点、巴士指针、刻度胶囊、失败率气泡、外壳，一样都不出现。
+- 做法：`progressHud.enabled` 默认 `1 → 0`。`mountProgressHudIfNeeded` 在 disabled 时直接给 `#progress-hud` 加 `hidden` 属性并提前返回，整棵 HUD 子树都不渲染出可见内容。
+- **连带修正**：上一轮把 `trackVisible` 默认设成 0（只显示标记、不显示色带）。整条 HUD 默认关闭后，这个默认值会让「手动开启进度条」的人拿到一个缺色带的半成品。已改回 **`trackVisible` 默认 1**，即一旦开启就是完整设计；需要只留标记时仍可单独关掉色带。
+- 编辑器「进度条」面板的「启用进度条」开关保留，随时可以给某一关打开。
+- 验证：`progress-hud-config.test.js` 7/7（改写默认值断言，覆盖 `enabled` 默认 0、`trackVisible` 默认 1、非 1 真值不算开、禁用档仍可导出）；部署树全量 `node --test` 通过。
+- 线上 headless Chrome 实测（零 JS 错误）：默认 `#progress-hud[hidden]`、骷髅/巴士/胶囊/气泡 DOM 全为空；调参置 `enabled:1` 后骷髅、巴士、4 个胶囊、气泡、色带全部恢复；再置 0 又整体隐藏。
+
+## Completed On 2026-11-09 - 进度条轨道默认不显示（v20261109-2021）
+
+- 需求：轨道默认不显示。
+- 理解口径：指**进度条的彩色渐变轨道（band）**，不是关卡里的传送带。上一轮刚把这条渐变做成可调，紧接着要求「默认不显示」，上下文指向同一条轨道。**若实际想隐藏的是传送带美术（`conveyorArt`），需要另做——两者是不同的对象。**
+- 做法：新增 `progressHud.trackVisible`（默认 **0**）。widget 上写 `data-track-visible="0|1"`，CSS 用 `.phud[data-track-visible="0"] .phud__track { display: none }` 关掉色带。
+- **只隐藏色带本身**：外壳（白描边）、骷髅节点、巴士指针、0/50/100% 刻度胶囊全部保留，进度仍然可读。想整条 HUD 关掉用 `progressHud.enabled`。
+- 编辑器「进度条」面板新增「显示轨道」开关；`mountProgressHudIfNeeded` 与调参分支都调用 `setTrackVisible`，切换即时生效，不用重载。
+- 验证：`progress-hud-config.test.js` 7/7（新增 1 条：默认关、显式开、非 1 值不算开、导出仍可用）；部署树全量 `node --test` **555/555 全绿**。
+- 线上 headless Chrome 实测（零 JS 错误）：默认 `trackVisible=0` → `display: none`；调参置 1 → `display: block` 且渐变恢复 `rgb(18,197,42)`；再置 0 → 回到 `none`。
+
+## Completed On 2026-11-09 - 进度条默认位置 + 轨道渐变色可调（v20261109-1942）
+
+- 需求：① 进度条默认放到参考位置；② 轨道渐变色可调。
+- **默认位置**：`progressHud.offsetY` 默认 `0 → -109`（设计单位）。0 会把进度条顶到关卡画面上沿，-109 落在传送带带面内、与参考一致。显式传 0 仍被尊重，旧档案不受影响。
+- **渐变可调**：新增 4 个色标 `spectrumStart / spectrumEarly / spectrumLate / spectrumEnd`（0xRRGGBB 整数，复用编辑器现成的取色控件）。色标位置固定为 0% / 40% / 58% / 100%，只开放颜色，保证「越往后越暖」的阅读逻辑不被破坏。
+- **实现要点**：
+  - `src/progress-hud-config.js` 增加默认值、`PROGRESS_HUD_SPECTRUM_STOPS`、规范化（clamp 到 0–0xFFFFFF）与校验。
+  - `src/progress-hud.js` 把原来的 15 段硬编码色表改为「4 锚点 → 每 ~5% 插值成密集曲线」（`expandSpectrum`），新增 `setProgressHudSpectrum` 与 widget 的 `setSpectrum`；轨道改用 `var(--phud-spectrum, <内置渐变>)`，改色即时重绘，并同步重采样 live 读数胶囊颜色。
+  - `setSpectrum` **始终写入**变量（不因与默认值相同而跳过），否则作者配色会隐式绑定样式表回退。
+  - `src/main.js` 的 `mountProgressHudIfNeeded` 与 `progressHud.*` 调参分支都调用 `setSpectrum`，面板改色不用重载。
+- **验证**：`progress-hud.test.js` 17/17、`progress-hud-config.test.js` 6/6；本地全量 559/563，4 个失败是既有品牌本地化工作线，与本需求无关。
+- 线上 headless Chrome 实测（零 JS 错误）：`offsetY` 输入框与调参均为 `-109`；四个渐变字段都在；默认起点 `rgb(18,197,42)`，改成蓝→品红后起点变 `rgb(30,91,255)`，即时生效。
+- 踩坑记录：验证时给 `setTuning` 只传部分 `progressHud` 字段，会把缺失项补成默认值（`enabled` 默认 0），整条进度条消失。测这类调参必须传完整配置对象。
+
+## Completed On 2026-11-09 - 修复全屏/横屏下进度条错位（宽度改由 CSS 驱动 + 9:16 上限）
+
+- 反馈：全屏下进度条明显没适配。
+- 两个独立原因：
+  1. **宽度靠 JS 实测**：`--phud-w` 在 stage 尺寸稳定前就算好了，横屏或编辑器手机预览切换后不会重算，进度条按旧宽度铺满。
+  2. **`--u` 用百分比推导**：改成 CSS 比例宽度后，`calc(百分比 / 1000)` 塌成极小值，整个组件高度归零 —— 横屏下进度条被压成一条线。
+- 修法：宽度改用 `--phud-width`（可以是 `calc(fraction * 100%)`，浏览器自动跟随）；`--u` 改用**容器查询单位** `0.1cqw`（1cqw = 自身宽度 1%），保证永远是真实长度；再给容器加 9:16 上限，横屏时进度条只占游戏画面宽度，不会摊到两侧留白上。
+- 实测（成品包）：竖屏 390 宽 → HUD 289px（74%，居中）；横屏 844 → 206px（24%，贴合中间竖屏画面）；超宽 1440 → 476px（33%）。三者均居中、无溢出。
+- 顺带加了 `ResizeObserver` 监听 `#app` 与 HUD 宿主，宽度与预期不符时自动重排。
+- 验证：`test/progress-hud.test.js` 16/16（含「`--u` 必须是真实长度、用容器单位」断言）；运行时门禁各 14/14 PASS。
+- 交付件已刷新：`artifacts/bl42-progress-playable.html`。
+
+## Completed On 2026-11-09 - 去掉进度条轨道左侧白色高光斑（v20261109-1813）
+
+- 反馈：进度条左侧有一块白色，要求去掉。
+- 根因：`.phud__track::after` 是一条装饰性椭球高光（`left:4.6%; top:15%; width:15%; height:26%`，`radial-gradient` 白色 .95 → 透明，`rotate(-7deg)`），叠在彩虹轨道左端。实测量得 51×7px，位置与反馈圈出的一致。
+- 处理：整条 `::after` 规则删除，未加开关。轨道顶部那条 `::before` 通体高光（`.48 → 0` 的竖向渐变）**保留**，它是让色带显立体的整体明暗，不是局部斑点。
+- 验证：线上 `getComputedStyle(track,'::after')` 为 `content: none` / `background-image: none`；构建产物内已无 `rotate(-7deg)` 与该 radial-gradient；截图确认左侧白斑消失、色带通透。
+- 注意：`test/progress-hud.test.js` 的「box geometry uses --u, never em」在改动前后**都失败**，原因是实现已改用 `--u: 0.1cqw`（容器查询单位）而断言仍期待 `calc(var(--phud-w, 1000px) / 1000)`。已用「加回高光再跑一次」交叉验证，与本次改动无关，属既有测试滞后。
+- 顺带确认：轨道两端刻度胶囊（0% / 50% / 100%）自带白色内高光，未改动；若也要去掉需另提。
+
+## Completed On 2026-11-09 - 除品牌本地化外的全部改动上线（v20261109-1803）
+
+- 范围：进度条 HUD、倒计时增强（警笛/归零跳转）、三条新跑道（dualLoop5 / hexLoop / crossLoop）、品牌 Icon 圆角、T5 关卡等。**品牌本地化按要求排除**（`test/branding-localization.test.js` 4 条仍失败，功能只做了 `cta`，缺 `title`/`loadingTitle`）。
+- 剔除方式：在 `/tmp` 临时树里剥离，工作区不动。移除 `src/branding-localization.js`、其测试、`main.js` 的 import 与三个 helper、`scene-editor.js` 的两个语言字段、以及对应调用点。
+- **`fitFontSizeToWidth` 留下并内联进 `main.js`**：它是纯文本缩放工具（保长文案不溢出固定框），不属于本地化。截图路径的 CTA 文案回退为字面量 `'Play Now'`。
+- **兼容键坑（同 `background.horizon`）**：`artifacts/q165-timed-tuning.json` 里存着 `branding.localization`。直接从 `SCENE_TUNING` 删掉该键会让 `validateTuning` 拒绝这个旧快照（`branding.localization is not supported`）。处理为**默认调参保留该键作惰性占位、无任何代码读取**。
+- 验证：`node --test` **550/550 全绿**（剔除本地化后）；线上 12151 实测版本 `v20261109-1803`，进度条 7 项 + 倒计时 10 项 + 圆角字段均在，三条新跑道在下拉里，本地化字段为 0；数据 web 关卡 104、预卷 6、背景 39 全部保留；归属仍 `is_owner: True`（王鑫杰）。
+- 包体治理：从 46 MB 压到 33 MB，剔除 `artifacts/progress-ui-extract`（7 MB）、`bl42-progress-playable.html`（4.4 MB）等开发中间件。
+
+## Completed On 2026-11-09 - 编辑器迁移到 bus-loop-playable-editor-wxj（12151，归属王鑫杰）
+
+- 结果：`bus-loop-playable-editor-wxj` 部署在 **12151**，`is_owner: True`（王鑫杰），容器/镜像/服务名三者一致，平台正常落库。
+- **归属为什么之前丢了**：11-05 那次倒计时部署（commit `4e6ed02`，作者 xiaosuo）用了于潇涵的飞书身份，归属转给于潇涵；王鑫杰后续部署全部被 `权限拒绝：严禁覆盖或更新他人部署的项目` 拦下。11-06 的 `20261106-1141` 也是跑在别人名下的容器里。
+- **端口记录过时**：平台登记 12142，实际容器映射 12151，且 12142 已被同事的 `arrow-cube-material-insights` 占用。任何一次按看板默认端口的部署都会打到别人服务上，**必须显式传 12151**。
+- **关键改动（`start.sh` / `rollback.sh`）**：
+  - `PROJECT_NAME` / `IMAGE_NAME` → `bus-loop-playable-editor-wxj`（平台靠容器名认服务，名字不一致会 `not_found` 且不落库）
+  - `DATA_ROOT` **硬编码为 `/data/bus-loop-playable-editor`**，不跟随服务名。否则新目录没有 `.seeded-v1`，会从镜像里的 **32** 个 web 关卡重新播种，覆盖线上的 104 个
+  - 额外清理旧名 `bus-loop-playable-editor` 容器：旧容器残留会占住 12151，而平台在跑 `start.sh` **之前**就做端口检查（`Port already in use`），删不掉就部署不了
+- **部署前备份**：`~/busloop-backups/`（103 关卡经 `validateLevelDocument` 全 valid、6 预卷、37 背景，逐字节校验）。
+- 部署后校验：web 关卡 103 → **104**（期间同事新增 `level89`），零丢失；预卷 6 → 6；背景 37 → 39（同事新增 2 张）；15 个关卡逐字节与备份一致。
+- 线上版本 `20261109-1116`，圆角实测：图标 `52.61×52.61`、`radius 12.83px`，编辑器「Icon 圆角」滑块 0–120、默认 30。
+
+## Completed On 2026-11-09 - 修正巴士/骷髅相对轨道过大过高（按参考图实测比例）
+
+- 反馈：位置偏移太狠，车和骷髅与轨道比例不对。
+- 根因：换成设计给的大图后，尺寸是按「环径 130 单位、巴士高 150」拍的，**没有对参考图实测**，两者都比参考大 40–77%，且顶端过高。
+- 实测参考图（轨道 1554px 宽 = 1000 单位，轨道高 74 单位）：**巴士高 84.9、宽 205.9、顶端距轨道 83.7**；**骷髅环宽 117.8、顶端距轨道 115.8**。
+- 修正后（成品包实测）：`bus_h=85`、`bus_top=86`、`node_w=117.9`、`node_top=106.3`、`node_bottom=102`（正好落在 50% 胶囊顶部）。
+- 同时纠正一条错误断言：旧测试要求「节点顶端 ≥120」，那是按错误假设写的；已改为按实测区间 100–120，并给巴士盒加了 80–100 的高度区间。
+- 验证：`test/progress-hud.test.js` 16/16；运行时门禁各 14/14 PASS。
+- 交付件已刷新：`artifacts/bl42-progress-playable.html`。
+
+## Completed On 2026-11-09 - 巴士与骷髅改为设计提供的透明素材
+
+- 需求方直接给了两张带 alpha 的 PNG，替换掉此前从参考图反复抠图的产物。
+- **巴士**：954×767（车体+指针一体，车轮完整），渲染盒 186.6×150，比例与素材一致（1.244）。原独立指针层 `display:none` 退休（素材已含指针）。
+- **骷髅**：306×541（环+骷髅+锥形收口+整条竖杆一体），环径 275px → 渲染环径 130 设计单位，盒 144.7×255.8，**底边正好落在 50% 胶囊顶部**（81+21=102）。原 CSS 竖条 `.phud__stem` 同样退休。
+- 这是对上一轮反复抠图失败的收口：参考图的节点背景是**粉紫光晕**而非天空，且骷髅是冷白、眼窝是深玫红，任何单一颜色阈值都会误判其中一块；直接由设计出透明图是正确的分工。
+- 验证：`test/progress-hud.test.js` 16/16（节点盒底边必须落在胶囊、巴士盒比例必须等于素材 954/767、CSS 竖条须已退休）；运行时门禁各 14/14 PASS；成品包实测 `nodeBottomVsBar=102`（正好胶囊顶）。
+- 交付件已刷新：`artifacts/bl42-progress-playable.html`。
+
+## Completed On 2026-11-09 - 品牌 Icon 圆角已上线 12151
+
+- 需求：底部品牌 Icon 做圆角并可在编辑器调参，随后部署到线上。
+- **上线过程踩坑（重要）**：线上服务 `bus-loop-playable-editor` 在平台登记的端口是 **12142**，但容器实际映射是 **12151**；12142 当天被同事的 `arrow-cube-material-insights` 占用。按看板/本地部署历史走默认流程会打到别人的服务，**必须显式传端口 12151**。
+- 归属问题：11-05 的倒计时部署（commit `4e6ed02`，作者 xiaosuo）用了于潇涵的飞书身份，服务归属因此变成于潇涵；王鑫杰后续部署被判 `权限拒绝：严禁覆盖或更新他人部署的项目`。最终由于潇涵在 `http://deploy.hupogames.com/server` 删除服务释放端口，再用新名 `bus-loop-playable-editor-wxj` 部署到 12151。
+- 删除前的数据安全层：`/data/<project_name>/artifacts` 是宿主机卷，删除容器不动它；但 `start.sh` 只在 `.seeded-v1` 缺失时才播种，而镜像里只有 **32** 个 web 关卡、线上有 **103** 个，若卷被清会丢 71 个。已提前全量备份到 `~/busloop-backups/`（103 关卡经 `validateLevelDocument` 全部 valid、6 预卷、37 背景，逐字节校验）。
+- 实际结果：**数据零丢失**。部署后 web 关卡仍为 103（其中 15 个逐字节比对与备份一致），预卷 6 个不变，背景 37 → 39（期间有同事新增 2 张）。
+- 上线版本 `20261109-1116`；线上 `scene-editor-BZ8kHxiJ.js` 含「Icon 圆角」滑块（0–120、默认 30），`index-D3Z2nTTI.js` 含正方形收缩 + `borderRadius` 逻辑，编辑器实测图标 `52.61×52.61 / radius 12.83px`。
+- 遗留：新服务名 `bus-loop-playable-editor-wxj` 在容器内被 `start.sh` 硬编码为 `bus-loop-playable-editor`，平台按新名查容器会报 `not_found`（服务本身 running，仅平台记录不匹配）。平台看板里 `bus-loop-playable-editor` 仍是 `removed` 状态。
+
+## Completed On 2026-11-09 - 骷髅节点按参考结构重抠（环+骷髅+锥形收口一体）
+
+- 反馈：骷髅样式还是不对，要求仔细对照参考。
+- 逐项对照参考图（3438×1736 高清图）后确认的**真实结构**：① 外包一圈**金色细描边**（不是红色描边）；② 环体玫红渐变，上浅下深；③ 骷髅圆润饱满、**四颗牙**、眼窝深紫红且偏大偏上；④ 环下方有**锥形收口（throat）**延伸到轨道，不是环直接接竖条。
+- 旧素材三个问题：底边被硬裁成直边、环下半缺失、缺少锥形收口 —— 所以看起来是「三个零件」。
+- 重抠方法：在高清参考图上按红色连通域取整块（环+throat），flood fill 补上骷髅内部空洞，再按行清除比 throat 更宽的像素（那是轨道横条），最后裁到最后一行"干净红色"。得到 449×378 素材，环径 349px。
+- 尺寸：环 = 130 设计单位（1.6× 轨道高）→ 盒 167.2×140.8，**底边正好等于 top**（贴住轨道顶部），throat 由此交给 CSS 竖条续接（重叠 7.9 单位）；气泡上移到 -218、head-room 196→222 避免压住更大的环。
+- 验证：`test/progress-hud.test.js` 16/16（新增「节点盒底边必须落在轨道顶部」断言）；运行时门禁各 14/14 PASS；成品包实测 `nodeBottomVsBar=0`、`stemTopVsNodeBottom=-7.9`、`stemBottomVsPillTop=-2.1`。
+- 对照图：`artifacts/progress-ui/skull-compare.jpg`。
+- 交付件已刷新：`artifacts/bl42-progress-playable.html`。
+
+## Completed On 2026-11-09 - 巴士重抠（完整车轮+悬浮）、骷髅与竖条胶囊连成整体
+
+- 反馈两点：① 巴士车轮只有一半、要浮起来；② 骷髅和下面的进度断成三段。
+- **巴士根因**：旧 `bus.png` 是早期为避开轨道白边、在 y=428 处**硬裁**出来的，正好切在车轮中间。这次从高分辨率参考图（3314×1576）重抠：先把轨道白边用同行天空色修补掉，再做背景拟合抠图，最后按「车轮所在列才允许下探」的轮廓裁切，车轮和白色描边都完整。
+- 新尺寸：素材 446×291，渲染盒 214.6×140（保持素材比例），底边距轨道 2 单位、顶端浮起 42 单位，双层投影（3px 硬影 + 9/14px 柔影）做出悬浮感。
+- **整体感**：`.phud__stem` 原来只从 −76 起、和环底有缝且用色不同。现在从环内 −74 开始（重叠 22 单位）、高度 178 一直伸到 50% 胶囊顶部（重叠 1 单位），顶端用环自己的红 `#ea0843`、底端过渡到胶囊的 `#d4043a`，三段读起来是一个物件。
+- 验证：`test/progress-hud.test.js` 16/16（新增巴士盒比例必须等于素材比例、竖条必须连到胶囊且用环的红色）；`applovin` 与 `applovin-ios` 运行时门禁各 14/14 PASS；成品包实测 `busBottomVsBarTop=-2`、`stemTopVsNodeBottom=-22`、`stemBottomVsPillTop=-1`。
+- 交付件已刷新：`artifacts/bl42-progress-playable.html`。
+
+## Completed On 2026-11-09 - 骷髅节点上移，环体悬在进度条上方
+
+- 反馈：骷髅太低，快陷进进度条里了。
+- 量参考图（3314×1576，轨道白框 2937×218px）：环顶端在轨道上方 **124 设计单位**、环直径约 **132 单位**（1.78 倍轨道高）。原实现顶端只有 117 单位且环宽 122，所以视觉上压进条子里。
+- 改动：`.phud__node` 的 box 由 137.9×140.2 / top -117 → **157.6×134.2 / top -131**（PNG 内容 191×160 在 209×178 文件内，按内容框换算成环宽 144、比例 1.78）。气泡随之 -192 → -205，节点竖条 -63/186 → -76/199，`layoutProgressHud` 的 head-room 196 → 210。
+- 实测：节点顶端在轨道上方 **131 单位**（目标 124），环体只压住条子 3 单位；成品包与 dev 一致。
+- 验证：`test/progress-hud.test.js` 新增「节点顶端必须 ≥120 单位」断言，15/15 通过；`applovin` 与 `applovin-ios` 运行时门禁各 14/14 PASS。
+- 对照图：`artifacts/progress-ui/node-height-compare.jpg`。
+- 交付件已刷新：`artifacts/bl42-progress-playable.html`。
+
+## Completed On 2026-11-09 - 进度条改绿→红渐变、整体 80%、去掉倍速按钮
+
+- 配色：色标从「绿→紫灰」改成 **绿→黄→橙→红**（0% 绿，50% 橙金，100% 纯红），实时胶囊取样同一张表，颜色一致。
+- 尺寸：`progressHud.scale` 设为 **0.8**（390 宽屏上 361 → 289 px）。修掉一个双重缩放 bug：宽度计算已乘过 scale，`layoutProgressHud` 里又做了一次 `scale()`，0.8 会变成 0.64。现在只由宽度承载。
+- 读数：回到与 0% / 50% / 100% 同一基线（`top: 21`），重叠时靠 `z-index: 3` 压在上层，不再下移一行。
+- 倍速按钮：`speedToggle.enabled` 默认改为 **0**，右上角不再有 x1 按钮。注意编辑器里如果 localStorage 有旧存档会把它重新显示，验收要清缓存或直接看成品包。
+- 验证：`node --test test/progress-hud.test.js test/progress-hud-config.test.js test/speed-toggle.test.js` 23/23；`applovin` 与 `applovin-ios` 运行时门禁各 14/14 PASS，成品包实测倍速按钮 `display:none`、暖色渐变正确。
+- 交付件已刷新：`artifacts/bl42-progress-playable.html`。
+
+## Completed On 2026-11-09 - 实时读数改为与巴士同列（垂直避让，不再横向偏移）
+
+- 反馈：百分比胶囊离小车太远，应该紧跟小车移动。
+- 根因：上一版的防重叠是**横向推移**，把读数推离了它标注的那个车。现在改为**垂直避让**：读数列永远锁定在巴士的 `--p` 上，`--live-shift` 恒为 0；只有当与 0%、节点、100% 三个固定胶囊的水平间距小于一个胶囊宽（124 设计单位）时，才给 `data-row="1"` 下移一行。
+- 踩到的 CSS 坑：`calc(30 + 66 * var(--u))` 是非法的——`calc()` 里裸数字不能和长度相加，整条声明被丢弃，`top` 回落到 0。改成 `calc(96 * var(--u))`。
+- 实测（成品包，390×844）：2% / 10% / 41% / 50% / 98% 落在第二行（`pillY` 135），73% 单行（111）；所有状态下读数中心与巴士中心水平差 **1px**（渲染取整）。
+- 验证：`node --test test/progress-hud.test.js test/progress-hud-config.test.js` 17/17；`applovin` 与 `applovin-ios` 运行时门禁各 14/14 PASS。
+- 交付件已刷新：`artifacts/bl42-progress-playable.html`。
+
+## Completed On 2026-11-09 - 巴士置于最上层；实时胶囊取自轨道同位置颜色
+
+- 反馈两条：① 车辆要压在最上层；② 巴士下面那个进度胶囊的颜色要跟轨道一致，不是固定绿色。
+- 层级：`.phud__bus` z-index 5 → **10**（指针 9），骷髅节点 8 之下不再遮挡巴士；气泡作为文案提到 11 保持可读。外层 `#progress-hud` 由 6 → **12**，越过倍速按钮（9），巴士走到右端不会被按钮吃掉。
+- 配色：把彩虹色标抽成 `SPECTRUM_STOPS` 表，轨道渐变由它生成，同时新增 `sampleSpectrum/shadeSpectrum/lightenSpectrum/glowSpectrum`。`setProgress` 每帧把 `--live-tint / --live-deep / --live-rim / --live-glow` 写到根节点，实时胶囊的填充、内阴影、描边、外发光全部跟随轨道当前颜色。
+- 顺带：读数正好落在 0%/50%/100% 时用 `--live-hidden` 隐藏，避免打出两个相同的百分数。
+- 实测（成品包，390×844）：15% 绿、41% 黄、62% 玫红、85% 紫蓝，与轨道对应段一致；50% 时只剩一个 50% 胶囊；巴士在任何位置都在骷髅与倍速按钮之上。
+- 验证：`node --test test/progress-hud.test.js test/progress-hud-config.test.js` 16/16；`applovin` 与 `applovin-ios` 运行时门禁各 14/14 PASS。
+- 交付件已刷新：`artifacts/bl42-progress-playable.html`。
+
+## Completed On 2026-11-09 - 进度条绿色胶囊改为跟随巴士的实时读数
+
+- 反馈：那个 41% 不是固定刻度，是跟着蓝色巴士联动的当前进度。
+- 改动：`src/progress-hud.js` 里原来的固定 `41%` 刻度改成 `phud__tick--live`，锚在 `--p`（和巴士同一个变量），标签在 `setProgress` 里逐帧写成当前百分比；删掉不再使用的 `passedAt` 参数。
+- 防重叠：读数会和 0% / 50% / 100% 三个固定胶囊撞车。新增 `avoidFixedMarks()`，按中心距算重叠量，**只位移最小必要距离**，并挑场地更宽的一侧（节点左侧到 0%、右侧到 100%），绝不把读数推到固定刻度另一边。位移用 `--live-shift`（设计单位）交给 CSS `translateX`。
+- 实测（成品包，390×844）：10% 位移 26 单位、41% 位移 -36 单位、73% 不位移；三个状态下读数中心与巴士中心相差 1px 以内（渲染取整），且与任何固定胶囊无像素重叠。
+- 验证：`node --test test/progress-hud.test.js test/progress-hud-config.test.js` 13/13；重新导出 `applovin` 与 `applovin-ios` 运行时门禁各 14/14 PASS，零 console 错误。
+- 交付件已刷新：`artifacts/bl42-progress-playable.html`。
+
+## Completed On 2026-11-09 - 品牌 Icon 增加可调圆角
+
+- 需求：底部品牌 Icon 做圆角，圆角值在编辑器里直接可调。
+- 关键点：`#branding-icon` 是 512×512 方图放在 180×123 的框里，`object-fit: contain` 会在左右留白，**直接给框加 `border-radius` 圆角落在空白上，图还是方的**。现在 icon 元素的渲染尺寸收缩到「实际绘制正方形」（`min(width, height)`），圆角才落在图上。
+- 参数：`branding.icon.radius`（设计单位，编辑器「Icon 圆角」滑块 0–120，默认 30），随 `uiScale` 缩放，并封顶在 `min(宽,高)/2`，超大值不会产生负圆角。位置裁切仍按作者设定的框宽算，换到窄背景不会因元素收缩而被动移位。
+- 截图：编辑器截图走 Canvas 重绘，`drawScreenshotBranding` 同步按同一正方形 `roundRect` 裁切，并保留无 `roundRect` 时的方角回退。
+- 验证：本地编辑器实测 `24 → 14.71px`、滑块改 `48 → 29.42px`、`0 → 0px`、`999 → 封顶 37.70px`，面板字段 label「Icon 圆角」/ 0–120 / 默认值正确；像素级验证 `roundRect` 裁切后角点 alpha=0、边中点 alpha=255；`node --test` 138/138（game-model / playable-export）+ tuning-migrations / playable-runtime-smoke 一并通过；`validateTuning` 对新键通过。版本 `20261109-1101`。
+- 未做：未跑完整 `export:playable`（本轮只改渲染与调参字段，导出模板已由 `validateTuning` 覆盖）。
+
+## Completed On 2026-11-06 - 新增三条 Footage 跑道（DualLoop5 / HexLoop / CrossLoop）
+
+- 来源：设计师交付 `三个跑道.unitypackage`（内含 `ConveyorBelt_Footage5/6/7.prefab` + `Loop_footage5/6/7.png`）；另一份 `footage5.unitypackage` 只是它的子集（Footage5 的两件资源逐字节相同），无需单独处理。
+- 贴图：三张 2100×1300 RGBA，导入设置一致（Sprite / Multiple / PPU 100 / 无 mipmap）。转成 `public/assets/unity/conveyors/Loop_footage5/6/7_q80.webp`（52 KB / 49 KB / 33 KB）。
+- 坐标：三条 prefab 与既有 `ConveyorBelt_Footage*` 家族共用 `Loop_13` 与同一条映射，**直接沿用基准公式** `out = (0.826305·x − 0.004829, 0.826305·z + 14.2367365)` 与全图 `spriteRect`；三条样条分别叠回各自路面核验，红线全程压在灰带中线，无需重新标定。
+- 数据（直接取自 prefab 组件）：`dualLoop5` 42 槽 / 19 段样条 / 两条 8 点弯队列；`hexLoop` 38 槽 / 18 段 / 两条 2 点直队列；`crossLoop` 60 槽 / 16 段 / 两条 2 点直队列。三者出口区间均 0.668–0.768，样条类型 bSpline。
+- **队列容量坑**：prefab 里队列组件只写了 `capacity: 18`，但家族惯例（star/heart/cat/moon）是队列容量 = 传送带容量；照抄 18 会让 60 槽的首帧永远填不满、停在初始填充态。三条已按同一惯例改为 `[42,42] / [38,38] / [60,60]`。运行时可见容量仍由队列曲线长度收敛（7–25），与既有四条同量级。
+- 注册（五处，缺一不可）：`src/conveyor-layouts.js` 目录、`src/scene-tuning.js` 三份 `conveyorLayouts.<id>` 默认调参、`src/scene-editor.js` 的 `CONVEYOR_LAYOUT_OPTIONS`、`src/mechanism-resources.js` 导出白名单、`src/playable-session-config.js` 会话白名单。编辑器选项名：双线跑道 DualLoop5 / 六边跑道 HexLoop / 十字跑道 CrossLoop。
+- 验证：浏览器实拍三条跑道，路面/样条/车流/人流全部对齐；`__busLoop.step()` 确定性推进后三条分别填满 42/38/60 槽且 `initialFillActive` 转 false；点击驻车后各产生 18/18/20 次上客，`remainingGroups` 由 426 降到 408/408/406。`node --test` 552 项 545 通过，7 个失败经 stash 基线对照确认是工作区既有问题（本地化文案与当前会话关卡选择），与本次无关。编辑器版本 `20261106-1755`。
+
+## Completed On 2026-11-06 - BL-42 卡关进度条接入运行时并出包（打完整关）
+
+- 需求口径：**玩到通关**。进度条按「已清乘客 / 关卡总乘客」推进，100% = 全部下车，而不是 CTA 计数；50% 骷髅节点固定，越过即切成绿色「YOU BEAT MOST PLAYERS」。
+- 接线（`src/main.js`）：新增 `progressHud` 运行时块，`syncHud` 每帧推送 `remainingGroups`；初始化/换关/重开各自 `resetProgressHud()`；胜利、失败、选关页都会隐藏 HUD 让位给结算卡。
+- 配置：`src/progress-hud-config.js`（`enabled / nodePercent / failPercent / anchors / offsetX / offsetY / scale`，默认关闭，旧关卡不受影响）；`scene-tuning.js` 增加 `progressHud` 分组；编辑器新增「进度条」面板。
+- 会话：`artifacts/playable-session.json` 新增 `bl42-progress`（`level15`，81 车 / 510 乘客 / dualQueue3 / 6 车位），调参快照 `artifacts/bl42-progress-tuning.json`。
+- **布局坑（必须记住）**：① HUD 根节点和容器各写了一份 `--phud-w`，容器 361px 被组件的 1000px 覆盖，进度条直接是屏幕的两倍宽；改为组件继承容器变量。② 气泡画在轨道上方 192 设计单位处，容器不留 head-room 就会被屏幕顶边裁掉；`layoutProgressHud(..., { drop: 196 })` 预留。③ `#progress-hud` 必须显式 `width: var(--phud-w)`，否则容器与组件宽度不一致。
+- **打包坑**：单文件打包器按「根路径字符串」内联资源。HUD 图片最初用 `base + name` 拼路径，`/assets/applovin/progress` 又被写成带尾斜杠，导致三个 marker 在成品包里是根相对 URL、运行时全 404。改为**完整字面量路径**并登记到 `DYNAMIC_MECHANISM_ROOTS`。
+- 顺带修掉两个门禁隐患：`countdown-image` 在未启用时移除 `src` 会被判为坏图（现在保留占位图），`createEditorFallbackView` 缺 `recordGuideInteraction` 导致无 WebGL 时第一次点击就抛错。
+- 验证：`attributed` 导出 `applovin` 与 `applovin-ios` 运行时门禁各 **14/14 PASS**；成品包实测 HUD 0% → 55%（越过节点转绿）→ 100%，通关后 HUD 自动隐藏，零 console 错误。新增 `test/progress-hud-config.test.js` 3 条；HUD 测试 9/9。
+- 产物：`artifacts/playable-exports/BL-BL42V1/AL/BL-BL42V1-N-N-EN-PL-WXJ-TJW-AL-N-N.html`（3.1 MB）。
+- 说明：全量 `node --test` 552 项 548 通过，4 个失败全部来自工作区里**未跟踪的 `branding-localization` 工作线**（与本需求无关，未改动）。
+
+## Completed On 2026-11-06 - BL-2610285 Q165V1 限时关卡（60s 倒计时 + 警笛 + 归零跳转，七平台已出包）
+
+- 需求：在已交付的 `BL-2610285-Q165V1` 上迭代四点 —— 去掉救护车 35 步体力、顶部 60s 倒计时、救护车警笛循环、末 10s 四周半透明红光过渡，倒计时归零直接跳转。
+- 关卡：`artifacts/web-levels/level26.json`（70 车、244+182 队列）。救护车 id 162 现在写 `mechanism.stepLimited: false`，`levelDocumentToRuntime` 因此不再写 `ambulanceStepLimit`，红心徽标不出现；其余 69 车与导入 catalog 逐字段一致。`normalizeVehicle` 新增显式 `stepLimited: false` 直通，编辑器侧「步数限制」改为救护车/雪橇都可切换。
+- 倒计时：`countdown` 配置新增 `sirenEnabled` / `sirenVolume` / `timeoutStore`（旧档案默认全 0，保持原行为）。会话 `q165-timed` + 调参快照 `artifacts/q165-timed-tuning.json` 设 60 秒、预警 10 秒、警笛开、归零跳转开。
+- 警笛：新增 `scripts/prepare-countdown-siren.mjs` 合成 2 秒双音（960/770 Hz，48 kbps 单声道，约 12 KB）写入 `public/assets/applovin/countdown/ambulance-siren.mp3`；`GameAudioController` 增加 `playLoop/stopLoop/isLoopPlaying` 命名循环池，`main.js` 每帧按 `state === 'running'` 同步启停，暂停/终态/后台立即停。只在 `countdown.sirenEnabled === 1` 时进打包白名单。
+- 红光：`styles.css` 的 `.countdown-warning` 拆成宿主淡入（`countdown-danger-in` 0.45s）+ `::before` 脉冲（1.1s，0.4↔0.95），改径向渐变让中心操作区保持清晰；暂停通过 CSS 变量 `--countdown-warning-play` 冻结。玫瑰粉背景上第一版（0.18↔0.72）实测几乎不可见，已加强到 0.4↔0.95 并提高边缘饱和度。
+- 归零跳转：`onTimeout` 先 `game.failCountdown()`（失败才继续），`timeoutStore` 为 1 时补发 `challengeFailed` 并走 `InstallFullGame()`（= `end()` + 停表 + 平台 `openStore`），`countdownTimeoutJumpOwnsEnding` 压掉其下的 Game Over 卡。该回调跑在 `requestAnimationFrame` 里，已用 try/catch 包住，宿主拒绝商店调用时不会中断渲染循环。仍只由超时这一内部事件触发，未引入 `location.assign` 类自动跳转。
+- 顺带修复：Retry 药丸底图在 `styles.css` 里被写了两遍，单 HTML 会内联两份（33,840 B），触发 `FINAL_PAYLOAD_DUPLICATE_WASTE` 阻断导出；改为 `--game-over-retry-background` 自定义属性只声明一次。
+- 工具：新增 `scripts/probe-timed-countdown.mjs`，在 headless Chrome 里用真实点击 + `window.__busLoop` 驱动完整 60 秒，校验初始 `01:00`、无救护车步数徽标、警笛跟随表针、末 10s 红光可见且动画在跑、归零尝试商店跳转、无 Game Over 覆盖、结束后警笛停止；`main.js` 增加 `__busLoop.countdownSiren()` QA 钩子。
+- 验证：`node --test` 539/539；AppLovin 单平台先跑通 32/34（余 2 项人工）；七平台全量导出 239/253，结论 `LOCAL_RULES_PASSED_AWAITING_PLATFORM_ACCEPTANCE`，七个包静态检查各自 PASS；AL 单 HTML 实测探针 PASS（无 HOLE）。编辑器侧另用真实开关驱动验证：倒计时总开关关闭时 siren/volume/timeout 全部置灰，开启后警笛音量可改到 0.62 并在关-开-关之间保留值。
+- 背景返工（同日）：首版误用 `artifacts/editor-backgrounds/bg-7e7…`（同构图的粉色换色版），原包实际用 `public/assets/applovin/textures/BG01_split01_q60.jpg`（蓝灰格纹）。根因是当初只用灰度图做相似度匹配，粉色与蓝色同构图在灰度上几乎等价。已改回并在 `test/q165-timed-level.test.js` 里钉死两个引用的确切资源路径；修正后与原包截图在 5 个背景采样点 RGB 完全一致。
+- 产物：`artifacts/playable-exports/BL-2610285-Q165V1.zip`（16,575,102 B，sha256 `47346898…`，最终版 v20261106-1452）+ `BL-2610285-20261106-WXJ-manifest.json` + `reports/`；解包结构为 `BL-2610285-Q165V1/<AL|GG|FB|MT|MO|TT|UN>/`。本地交付目录 `/Users/von/wxj/试玩成品/BUS/BL-2610285-Q165V1-20261106-WXJ/`（七个成品 + manifest）。**未上传 NAS、未做真实平台/真机验收。**
+
+## Completed On 2026-11-06 - 进度条改为代码复刻 + 三个标记位图化（BL-42，未接入运行时）
+
+- 结论：轨道/气泡/胶囊用代码（CSS + 内联 SVG），**巴士、骷髅节点、三角指针改回抠图位图**。三者是 3D 渲染，矢量重绘在质感上明显「像但廉价」，改成位图后与参考图一致。
+- 实现：`src/progress-hud.js`。对外 `createProgressHud()` / `mountProgressHud()`，参数 `width / progress / nodeAt / passedAt / failPercent / message / showPassed / assetBase`；`PROGRESS_HUD_GEOMETRY` 锁定实测尺寸。样式自动注入，`prefers-reduced-motion` 下取消滑动动画。
+- 位图：`public/assets/applovin/progress/` 的 `bus.png`（276×107 内容）、`node-skull.png`（191×160）、`bus-pointer.png`（72×43），带 `_q88.webp`。默认 `assetBase = /assets/applovin/progress/`，静态页可用 `assetBase` 覆盖（演示页指向 `/public/...`）。
+- 位图对齐坑：三张 PNG 都带透明边距，直接给设计尺寸会让内容偏小偏斜。做法是按 `content` 框反推外层盒尺寸，再用 `margin-left` 把内容框推回目标位置——尺寸公式写在 CSS 注释里。
+- 几何（归一化到轨道宽 1000）：轨道 1000×81 r40.5、内腔 976×58.5（内缩 12 / 13.5）、骷髅环直径 126、巴士 182×67、指针 36×22（在轨道顶下方 12.7）、气泡 484×73、尾巴 20、胶囊 112×62（轨道下方 21）、挂柱 11×26。
+- 三个技术坑：① 盒模型不能用 `em`——第一版胶囊用 em 做 padding，按自身字号解析，算出 3360px 宽；② 内腔必须用 **SVG evenodd 路径**挖孔，CSS mask 只能挖矩形会露底；③ 彩虹按参考图每 5% 采样的 21 个色标固化，且整条轨道是静态彩虹，进度只由巴士位置表达。
+- 抠图坑（本轮重修）：参考图右侧有一块**浅蓝色矩形 AI 补丁**（比天空亮约 30 级），背景拟合会把它当内容；巴士裁剪必须停在补丁之前。骷髅节点要先按圆盘填满再挖回外轮廓，否则白眼窝和白骷髅会被当作背景挖空。
+- 验证：`node --test test/progress-hud.test.js` 8/8（几何锁定、标记为位图且轨道/气泡/胶囊仍为代码、assetBase 可配置、禁止盒模型用 em、evenodd 挖孔、层级顺序、文案可配、进度钳制与 aria）。浏览器实拍 1000px 宽的四态（0.10 / 0.36 / 0.55 / 通过态），三张位图均正常解码。
+- 预览：`artifacts/progress-ui/code-replica.html?single=1&p=0.36&w=1000`；对照 `artifacts/progress-ui/code-vs-reference.jpg`。
+- **未接入** `index.html` / `main.js`，也**未部署**；进度口径（整关 510 人 vs CTA 阈值 10 车）仍待需求方确认。
+
 ## Deployed On 2026-11-05 - 倒计时编辑与范围调整（v20261105-1536）
 
 - 用户要求提交并更新现有线上编辑器，版本号按 Asia/Shanghai 时间戳更新；已修改 `src/build-version.js` 为 `20261105-1536`，并在 `AGENTS.md` 记录每次用户可见修改提交/构建前更新时间戳的规则。

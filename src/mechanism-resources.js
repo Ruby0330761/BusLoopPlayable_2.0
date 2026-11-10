@@ -40,7 +40,10 @@ export const MECHANISM_RESOURCE_MANIFEST = Object.freeze({
     '/assets/unity/conveyors/Loop_07_q80.webp',
     '/assets/unity/conveyors/Loop_footage2_q80.webp',
     '/assets/unity/conveyors/Loop_footage3_q80.webp',
-    '/assets/unity/conveyors/Loop_footage4_q80.webp'
+    '/assets/unity/conveyors/Loop_footage4_q80.webp',
+    '/assets/unity/conveyors/Loop_footage5_q80.webp',
+    '/assets/unity/conveyors/Loop_footage6_q80.webp',
+    '/assets/unity/conveyors/Loop_footage7_q80.webp'
   ]),
   [MECHANISM_TYPES.spatialConveyor]: Object.freeze([]),
   [MECHANISM_TYPES.entryBanner]: Object.freeze([
@@ -82,10 +85,12 @@ export const MECHANISM_RESOURCE_MANIFEST = Object.freeze({
     `${MECHANISM_ROOT}/firetruck/textures/Fire_Engine.png`,
     `${MECHANISM_ROOT}/firetruck/textures/Idle_boy_firefighter.png`,
     `${MECHANISM_ROOT}/firetruck/textures/Car_firetruck_shadow.png`,
-    `${MECHANISM_ROOT}/firetruck/audio/firetruck_1.bin`,
-    `${MECHANISM_ROOT}/firetruck/audio/firetruck_3.bin`,
-    `${MECHANISM_ROOT}/firetruck/audio/firetruck_1.wav`,
-    `${MECHANISM_ROOT}/firetruck/audio/firetruck_3.wav`
+    // MP3, not WAV: the two effects shipped as 44.1 kHz stereo WAVs (476 KB) plus
+    // gzip copies (108 KB) of the same audio, and one single-file ad inlined all
+    // four. Re-encoded at 80 kbps mono they are 47 KB with the same durations,
+    // which puts ~700 KB of base64 back into the package budget.
+    `${MECHANISM_ROOT}/firetruck/audio/firetruck_1.mp3`,
+    `${MECHANISM_ROOT}/firetruck/audio/firetruck_3.mp3`
   ]),
   [MECHANISM_TYPES.police]: Object.freeze([
     `${MECHANISM_ROOT}/police/models/Police_Car_001.fbx`,
@@ -181,8 +186,8 @@ export const MECHANISM_ASSETS = Object.freeze({
     passengerTexture: `${MECHANISM_ROOT}/firetruck/textures/Idle_boy_firefighter.png`,
     shadowTexture: `${MECHANISM_ROOT}/firetruck/textures/Car_firetruck_shadow.png`,
     audio: Object.freeze({
-      alert: `${MECHANISM_ROOT}/firetruck/audio/firetruck_1.wav`,
-      clear: `${MECHANISM_ROOT}/firetruck/audio/firetruck_3.wav`
+      alert: `${MECHANISM_ROOT}/firetruck/audio/firetruck_1.mp3`,
+      clear: `${MECHANISM_ROOT}/firetruck/audio/firetruck_3.mp3`
     })
   }),
   police: Object.freeze({
@@ -316,6 +321,23 @@ export const BASE_RUNTIME_ASSET_PATHS = Object.freeze([
   '/assets/unity/ui/Main_Prop_RedBtn_blank_q90.webp'
 ]);
 
+// Progress HUD markers. The track, bubble and pills are drawn in CSS, but the
+// bus, skull node and pointer are cut from the approved artwork — a package that
+// enables the HUD must inline them or the markers ship as broken images.
+//
+// Kept out of BASE_RUNTIME_ASSET_PATHS on purpose: three unconditional bitmaps
+// are ~92 KB in every ad, including deliveries that never turn the HUD on. The
+// packager adds this list only when `SCENE_TUNING.progressHud.enabled` is 1.
+//
+// These must stay byte-identical to `MARKER_SRC` in `progress-hud.js`: the
+// packager inlines by exact URL, so a PNG here and a WebP in the runtime ships
+// the PNG weight for an image nothing displays.
+export const PROGRESS_HUD_ASSET_PATHS = Object.freeze([
+  '/assets/applovin/progress/bus_q88.webp',
+  '/assets/applovin/progress/node-skull_q88.webp',
+  '/assets/applovin/progress/bus-pointer_q88.webp'
+]);
+
 export const PRE_ROLL_ASSET_PATHS = Object.freeze([
   '/assets/preroll/TP1327.mp4',
   '/assets/preroll/TP1333.mp4',
@@ -343,12 +365,18 @@ export function deriveLevelMechanics(level = {}) {
   const conveyorBelts = Array.isArray(level.conveyorBelts) ? level.conveyorBelts : [];
   const counts = {
     luxuryVehicle: vehicles.filter((vehicle) => vehicle?.isLuxury || vehicle?.colorIndex === 15).length,
-    // A step limit is not an ambulance. The Christmas sled can carry the same
-    // heart countdown, and counting it here would pull the ambulance model,
-    // rescuer passengers and countdown clip into a sled-only package.
-    ambulance: vehicles.filter((vehicle) => Number.isInteger(vehicle?.ambulanceStepLimit)
-      && (vehicle?.mechanism?.type ?? 'ambulance') === 'ambulance').length
-      || vehicleAmbulances.length,
+    // The ambulance family is a visual family, not a step limit. A timed level
+    // may ship an ambulance with `mechanism.stepLimited: false` (no heart
+    // badge); counting step limits here would then drop its model, rescuer
+    // passengers and siren clip out of the package while the scene still
+    // renders an ambulance — which fails at runtime with an FBXLoader error.
+    // An explicit `mechanism.type` always wins, so the Christmas sled keeps its
+    // heart without ever being counted as an ambulance.
+    ambulance: vehicles.filter((vehicle) => {
+      const type = vehicle?.mechanism?.type;
+      if (type) return type === 'ambulance';
+      return Number.isInteger(vehicle?.ambulanceStepLimit) || vehicle?.colorIndex === 13;
+    }).length || vehicleAmbulances.length,
     turnVehicle: vehicles.filter((vehicle) => vehicle?.isTurnVehicle).length,
     hiddenVehicle: vehicles.filter((vehicle) => vehicle?.isHidden).length,
     garage: containers.filter(isGarageContainer).length,

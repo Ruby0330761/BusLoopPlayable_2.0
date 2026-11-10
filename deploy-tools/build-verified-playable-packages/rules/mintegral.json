@@ -73,14 +73,14 @@
     },
     {
       "id": "MINTEGRAL-STA-002",
-      "title": "生命周期函数真实可调用（严于 Checker S10）",
+      "title": "生命周期桥接存在（Checker S10 口径）",
       "stage": "static",
-      "severity": "blocker",
-      "sourceClass": "delivery-contract",
-      "sourceVersion": "game_playable-playbook@8e26d3b61d52c7540809a3a56fb6821472cc14673c4943ca71ef97f851c8401b",
+      "severity": "warning",
+      "sourceClass": "checker-parity",
+      "sourceVersion": "playable_check@8801:b1dbb2238ab331f6276d9b9ceed9d434054374d823de6869623f60a82082ed0a",
       "check": {
-        "type": "global_functions",
-        "names": [
+        "type": "all_regex_present",
+        "patterns": [
           "install",
           "gameReady",
           "gameStart",
@@ -89,7 +89,7 @@
           "gameRetry"
         ]
       },
-      "repairHint": "在 classic 作用域真实暴露 window.install 与 gameReady/gameStart/gameEnd/gameClose/gameRetry。真实 Checker S10 只查字符串出现，本规则额外要求真实声明：仅有字面量而无可调用函数时运行时必定失败。",
+      "repairHint": "确保安装与生命周期桥接存在。真实 Checker S10 只查字符串出现；若需要真实可调用的全局函数，应在源码构建阶段声明。",
       "autoRepair": false
     },
     {

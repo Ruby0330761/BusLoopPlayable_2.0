@@ -130,6 +130,7 @@ test('AppLovin bridge follows the store link from an explicit CTA in a local fil
 
   assert.equal(bridge.openStore({ android: 'https://play.google.com/example' }), true);
   assert.equal(link.href, 'https://play.google.com/example');
+  assert.equal(link.target, '_blank');
   assert.equal(link.rel, 'noopener noreferrer');
   assert.equal(link.clicked, true);
 });
@@ -153,6 +154,7 @@ test('AppLovin bridge follows the store link from an explicit CTA in a hosted br
 
   assert.equal(bridge.openStore({ android: 'https://play.google.com/example' }), true);
   assert.equal(link.href, 'https://play.google.com/example');
+  assert.equal(link.target, '_blank');
   assert.equal(link.rel, 'noopener noreferrer');
   assert.equal(link.clicked, true);
 });

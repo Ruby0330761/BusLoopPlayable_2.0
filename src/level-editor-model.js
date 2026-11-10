@@ -143,18 +143,22 @@ function normalizeVehicle(vehicle, fallbackId) {
       distance: Math.max(0.15, finite(vehicle?.mechanism?.distance, 0.25)),
       wrenchColor: Math.max(0, Math.round(finite(vehicle?.mechanism?.wrenchColor))),
       secondColorIndex: Math.max(0, Math.round(finite(vehicle?.mechanism?.secondColorIndex))),
-      // The ambulance is step-limited by definition. A Christmas sled that opts
-      // in keeps the heart countdown without borrowing the ambulance model.
-      // A sled carrying an explicit stepLimit is treated as opted in: the
-      // authoring round-trip must not silently drop the mechanic, which is what
-      // happened when a restored board lost `stepLimited` and shipped with a
-      // heart that never counted down.
-      ...(mechanismType === 'ambulance'
-        || vehicle?.mechanism?.stepLimited
-        || Number.isInteger(vehicle?.ambulanceStepLimit)
-        || (mechanismType === 'christmas' && vehicle?.mechanism?.stepLimit != null)
-        ? { stepLimited: true }
-        : {}),
+      // The ambulance is step-limited by default, but that is a gameplay field
+      // and not part of the vehicle family: a timed level can ship a plain
+      // ambulance with no heart badge by writing `stepLimited: false` here.
+      // A Christmas sled that opts in keeps the heart countdown without
+      // borrowing the ambulance model. A sled carrying an explicit stepLimit is
+      // treated as opted in: the authoring round-trip must not silently drop
+      // the mechanic, which is what happened when a restored board lost
+      // `stepLimited` and shipped with a heart that never counted down.
+      ...(vehicle?.mechanism?.stepLimited === false
+        ? { stepLimited: false }
+        : (mechanismType === 'ambulance'
+          || vehicle?.mechanism?.stepLimited
+          || Number.isInteger(vehicle?.ambulanceStepLimit)
+          || (mechanismType === 'christmas' && vehicle?.mechanism?.stepLimit != null)
+          ? { stepLimited: true }
+          : {})),
       stepLimit: positiveInt(vehicle?.mechanism?.stepLimit ?? vehicle?.ambulanceStepLimit, 35),
       timeLimit: positiveInt(vehicle?.mechanism?.timeLimit ?? vehicle?.firetruckTimeLimit, 30)
     }

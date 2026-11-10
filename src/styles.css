@@ -17,6 +17,32 @@ body { user-select: none; overscroll-behavior: none; }
 }
 .stage { position: relative; flex: 1 1 auto; min-width: 0; min-height: 0; overflow: hidden; }
 #game-canvas { width: 100%; height: 100%; display: block; touch-action: none; }
+.progress-hud {
+  position: absolute;
+  /* Above the speed switch (9): the marker travels the full bar and must never
+     disappear behind that button near the right end. */
+  z-index: 12;
+  left: 50%;
+  top: 10px;
+  /* The widget's own units are bar-relative; layoutProgressHud writes --phud-w
+     and the transform, so this rule only owns stacking and positioning. */
+  transform: translateX(-50%);
+  transform-origin: top center;
+  pointer-events: none;
+  user-select: none;
+  /* Width comes from --phud-frac when the runtime provides one, so the bar
+     follows the stage through rotation and the editor's phone-preview switch
+     without waiting on a JS measurement. --phud-w is the standalone fallback. */
+  /* --phud-frac wins when the runtime supplies it; otherwise fall back to the
+     pixel width the standalone/demo callers pass. */
+  width: var(--phud-width, 1000px);
+  /* Reserve the bubble/head-room above the bar and the pills below it. */
+  height: calc(var(--phud-width, 1000px) * 0.42);
+  overflow: visible;
+}
+.progress-hud[hidden] { display: none; }
+.progress-hud.is-mounted { display: block; }
+
 .countdown {
   position: absolute;
   z-index: 6;
@@ -49,17 +75,39 @@ body { user-select: none; overscroll-behavior: none; }
   position: absolute;
   z-index: 7;
   pointer-events: none;
+  /* The soft vignette lives on ::before so the host can fade the whole effect
+     in while the pseudo-element keeps pulsing. */
+  opacity: 0;
+  animation: countdown-danger-in 0.45s ease-out forwards;
+}
+.countdown-warning::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  /* A soft ring rather than a flat wash: the play area in the middle stays
+     readable while the border keeps pulsing. The board art on this level is
+     already pink, so the ring needs real saturation to read as red. */
   background:
-    linear-gradient(to right, #ff122ba8, #f5223c00 17%, #f5223c00 83%, #ff122ba8),
-    linear-gradient(to bottom, #ff122b9e, #f5223c00 16%, #f5223c00 84%, #ff122b9e);
+    radial-gradient(ellipse at center,
+      rgba(255, 12, 40, 0) 42%,
+      rgba(255, 12, 40, 0.16) 60%,
+      rgba(255, 12, 40, 0.48) 80%,
+      rgba(214, 0, 24, 0.82) 100%);
   animation: countdown-danger-pulse 1.1s ease-in-out infinite;
+  animation-play-state: var(--countdown-warning-play, running);
+  will-change: opacity;
+}
+@keyframes countdown-danger-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
 }
 @keyframes countdown-danger-pulse {
-  0%, 100% { opacity: 0.08; }
-  50% { opacity: 0.7; }
+  0%, 100% { opacity: 0.4; }
+  50% { opacity: 0.95; }
 }
 @media (prefers-reduced-motion: reduce) {
-  .countdown-warning { animation: none; opacity: 0.35; }
+  .countdown-warning { animation: none; opacity: 1; }
+  .countdown-warning::before { animation: none; opacity: 0.4; }
 }
 .pre-roll-overlay {
   position: absolute;
@@ -579,7 +627,10 @@ button:hover { transform: translateY(-1px); background: #fff; }
   padding: 0;
   border: 0;
   border-radius: 0;
-  background: transparent url('/assets/unity/ui/Main_Prop_RedBtn_blank_q90.webp') center / 100% 100% no-repeat;
+  /* One declaration so the single-HTML export inlines the pill art once: the
+     hover/active restatement below reuses the same custom property. */
+  --game-over-retry-background: url('/assets/unity/ui/Main_Prop_RedBtn_blank_q90.webp') center / 100% 100% no-repeat;
+  background: transparent var(--game-over-retry-background);
   color: #fff;
   font: 900 var(--game-over-retry-font-size, 44px)/1 'Poppins Branding', Arial, sans-serif;
   letter-spacing: .01em;
@@ -606,7 +657,7 @@ button:hover { transform: translateY(-1px); background: #fff; }
    translate. Both have to be restated here — the same trap the speed toggle hit. */
 .game-over-retry:hover,
 .game-over-retry:focus-visible {
-  background: transparent url('/assets/unity/ui/Main_Prop_RedBtn_blank_q90.webp') center / 100% 100% no-repeat;
+  background: transparent var(--game-over-retry-background);
   color: #fff;
   transform: translate(-50%, -50%);
 }
@@ -835,6 +886,10 @@ button:hover { transform: translateY(-1px); background: #fff; }
 .editor-export-status[data-state="busy"] { color: #8a5b16; }
 .editor-export-status[data-state="success"] { color: #21764f; }
 .editor-export-status[data-state="error"] { color: #a43a38; }
+.editor-export-limit {
+  margin: 6px 0 0; color: #7a6a48; font-size: 10px; line-height: 1.4;
+  padding: 5px 7px; border-radius: 5px; background: rgba(255, 246, 224, .9);
+}
 .editor-export-events {
   margin: 2px 0 0; color: #62788c; font-size: 10px; line-height: 1.4;
 }
@@ -1014,4 +1069,107 @@ button:hover { transform: translateY(-1px); background: #fff; }
   }
   #app.is-phone-preview #game-canvas { border-radius: 0; }
   #app.is-phone-preview .scene-editor.is-collapsed { height: 48px; }
+}
+
+/* Guide-stage media: weather overlay and free-placed asset layers sit inside
+   #stage above the canvas but below the interaction HUD. */
+.weather-effect-canvas {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  pointer-events: none;
+}
+.free-asset-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 7;
+  overflow: hidden;
+  pointer-events: none;
+}
+.free-asset-layer {
+  position: absolute;
+  display: block;
+  max-width: none;
+  transform-origin: center;
+  user-select: none;
+  -webkit-user-drag: none;
+}
+.free-asset-layer.is-locked {
+  outline: 2px dashed rgba(255, 255, 255, .8);
+  outline-offset: 3px;
+}
+.editor-free-asset-panel {
+  margin-top: 8px;
+  padding: 10px;
+  border: 1px solid rgba(215, 241, 255, .16);
+  border-radius: 10px;
+  background: rgba(13, 28, 43, .35);
+}
+
+/* --- Editor 关于 / release notes ------------------------------------------- */
+.editor-header-actions { display: flex; align-items: center; gap: 8px; }
+.editor-about {
+  min-width: 46px; height: 42px; padding: 0 12px;
+  border: 1px solid rgba(16,35,61,.14); border-radius: 8px;
+  background: #fff; color: #2f6d8c; box-shadow: none;
+  font: 700 12px/1 'Poppins Branding', Arial, sans-serif; cursor: pointer;
+}
+.editor-about:hover { color: #1d6f92; border-color: rgba(40,127,168,.42); background: #f3f9fc; }
+.editor-about:focus-visible { outline: 2px solid #287fa8; outline-offset: 2px; }
+
+.editor-about-panel {
+  position: absolute; inset: 0; z-index: 40;
+  display: flex; align-items: center; justify-content: center;
+  padding: 18px; background: rgba(9, 26, 42, .58);
+}
+.editor-about-panel[hidden] { display: none; }
+.editor-about-dialog {
+  display: flex; flex-direction: column;
+  width: min(560px, 100%); max-height: 100%;
+  border-radius: 14px; background: #f7fbfe;
+  box-shadow: 0 24px 70px rgba(9,32,50,.36);
+  overflow: hidden;
+}
+.editor-about-head {
+  flex: none; display: flex; align-items: flex-start; justify-content: space-between;
+  gap: 12px; padding: 16px 18px 12px; border-bottom: 1px solid rgba(16,35,61,.1);
+  background: #fff;
+}
+.editor-about-head h3 { margin: 4px 0 0; color: #10233d; font: 800 19px/1.2 'Poppins Branding', Arial, sans-serif; }
+.editor-about-current { margin: 6px 0 0; color: #62788c; font-size: 11px; font-weight: 700; letter-spacing: .02em; }
+.editor-about-close { min-width: 38px; height: 38px; padding: 0 10px; box-shadow: none; }
+.editor-about-list {
+  min-height: 0; padding: 14px 18px 20px; overflow-y: auto; scrollbar-width: thin;
+}
+.editor-about-empty { color: #62788c; font-size: 12px; }
+.editor-about-entry {
+  margin: 0 0 12px; padding: 12px 14px;
+  border: 1px solid rgba(16,35,61,.09); border-radius: 10px; background: #fff;
+}
+.editor-about-entry.is-current {
+  border-color: rgba(40,127,168,.5); box-shadow: 0 0 0 2px rgba(40,127,168,.14);
+}
+.editor-about-entry-head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.editor-about-entry-version {
+  color: #2f6d8c; font: 800 11px/1 'Poppins Branding', Arial, sans-serif; letter-spacing: .04em;
+}
+.editor-about-entry-badge {
+  padding: 2px 7px; border-radius: 999px; background: #287fa8; color: #fff;
+  font: 800 9px/1.5 'Poppins Branding', Arial, sans-serif; letter-spacing: .04em;
+}
+.editor-about-entry-date { margin-left: auto; color: #8aa0b2; font-size: 10px; font-weight: 700; }
+.editor-about-entry-title {
+  margin: 7px 0 0; color: #10233d;
+  font: 800 14px/1.35 'Poppins Branding', Arial, sans-serif;
+}
+.editor-about-entry-changes {
+  margin: 7px 0 0; padding-left: 17px; color: #4d6577;
+  font-size: 11.5px; line-height: 1.65;
+}
+.editor-about-entry-changes li { margin: 2px 0; }
+
+@media (max-width: 560px) {
+  .editor-about-panel { padding: 10px; }
+  .editor-about-head { padding: 12px 14px 10px; }
+  .editor-about-list { padding: 10px 12px 14px; }
 }

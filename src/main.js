@@ -11,8 +11,17 @@ import { SCENE_TUNING } from './scene-tuning.js';
 import { pruneUnknownTuning } from './tuning-migrations.js';
 import { isValidStoreLink, resolveStoreLink } from './store-links.js';
 import { formatSpeedLabel, normalizeSpeedMultiplier, resolveTimeScale } from './speed-toggle.js';
-import { createCountdown, normalizeCountdownConfig, validateCountdownConfig } from './countdown.js';
+import { COUNTDOWN_SIREN_ASSET, createCountdown, normalizeCountdownConfig, validateCountdownConfig } from './countdown.js';
 import { createCountdownView } from './countdown-view.js';
+import { createWeatherEffect } from './weather-effect.js';
+import { mountFreeAssetLayers } from './free-asset-layers.js';
+import { mountProgressHud, layoutProgressHud } from './progress-hud.js';
+import {
+  normalizeProgressHudConfig,
+  validateProgressHudConfig,
+  resolveProgressHudRatio,
+  PROGRESS_HUD_SPECTRUM_STOPS
+} from './progress-hud-config.js';
 import { createGameAudioController } from './audio-controller.js';
 import { resolveLevelAudioConfig } from './level-audio-config.js';
 import { createPreRollController } from './pre-roll.js';
@@ -28,6 +37,7 @@ import {
   refreshSpatialConveyorPackages
 } from './spatial-conveyor-runtime.js';
 import { detectPlayfieldHorizon, resolveBackgroundHorizon } from './background-alignment.js';
+import { DEFAULT_STOREFRONT, fitFontSizeToWidth, resolveLocalizedBranding } from './branding-localization.js';
 
 const EDITOR_ENABLED = import.meta.env.DEV || __REMOTE_EDITOR__;
 const DEFAULT_SCENE_TUNING = EDITOR_ENABLED ? structuredClone(SCENE_TUNING) : null;
@@ -91,6 +101,7 @@ const ctaButton = $('#cta-button');
 const speedToggleButton = $('#speed-toggle');
 const speedToggleIcon = $('#speed-toggle-icon');
 const speedToggleLabel = $('#speed-toggle-label');
+const progressHudRoot = $('#progress-hud');
 const brandingItems = {
   icon: $('#branding-icon'),
   logo: $('#branding-logo'),
@@ -160,6 +171,9 @@ function createEditorFallbackView(level, initializationError = null) {
     replaceActiveLevel() {},
     refreshSpatialConveyorDraft() {},
     resetGuideHandActivity() {},
+    recordGuideInteraction() {},
+    isVehicleInputLocked() { return false; },
+    isFirstClickGuideTarget() { return false; },
     showEntryBanner() {},
     getBackgroundCanvasBounds() {
       const rect = canvas?.getBoundingClientRect?.();
@@ -557,7 +571,7 @@ function migrateCustomBackgroundSourceSize(source) {
 function migrateExportNamingTuning(savedTuning) {
   // Browsers that already saved the old delivery defaults keep overriding the
   // new ones, so realign the fields this project unified (BL / WXJ / TJW,
-  // steps and stamina cleared). Values an operator typed themselves stay.
+  // steps cleared). Values an operator typed themselves stay.
   // Each entry lists the shipped defaults this project used before the current
   // one, so caches written between shipments are migrated too.
   const naming = savedTuning?.exportNaming;
@@ -566,10 +580,17 @@ function migrateExportNamingTuning(savedTuning) {
     ['requirementCode', ['AC-2607141', 'BUS'], 'BL'],
     ['designer', ['NLY'], 'WXJ'],
     ['requester', ['ZZN'], 'TJW'],
-    ['steps', ['5moves'], '0'],
-    ['stamina', ['5hp'], '0']
+    ['steps', ['5moves'], '0']
   ];
   let changed = false;
+  // The tail segment was renamed from `stamina` to `version` (N/B/T/BT). The
+  // exporter validates against the template and rejects any unknown key, so a
+  // cache still carrying `stamina` must lose it here instead of at export time.
+  if (Object.hasOwn(naming, 'stamina')) {
+    delete naming.stamina;
+    naming.version ??= 'N';
+    changed = true;
+  }
   for (const [key, previousValues, next] of replacements) {
     if (previousValues.includes(naming[key])) {
       naming[key] = next;
@@ -1024,6 +1045,8 @@ function getBrandingStageMetrics() {
   };
 }
 
+let brandingFitFontsReadyHooked = false;
+
 function fitBrandingText(element, boxHeight) {
   const maxFontSize = Math.max(1, boxHeight * 0.62);
   element.style.fontSize = `${maxFontSize}px`;
@@ -1032,8 +1055,48 @@ function fitBrandingText(element, boxHeight) {
   textRange.selectNodeContents(element);
   const contentWidth = textRange.getBoundingClientRect().width;
   if (availableWidth > 0 && contentWidth > availableWidth) {
-    element.style.fontSize = `${Math.max(1, maxFontSize * availableWidth / contentWidth * 0.98)}px`;
+    element.style.fontSize = `${fitFontSizeToWidth({
+      fontSize: maxFontSize,
+      measuredWidth: contentWidth,
+      availableWidth
+    })}px`;
   }
+}
+
+// The ad is viewed inside a WebView, so the device language is taken from the
+// browser preference list. The editor can force a locale for preview only; an
+// exported package always follows the player's device.
+function readBrowserLanguages() {
+  const tags = Array.isArray(navigator.languages) ? [...navigator.languages] : [];
+  if (navigator.language) tags.push(navigator.language);
+  return tags;
+}
+
+// One package serves both stores, so the caption has to read the same storefront
+// the icon and store link already resolve to. The editor previews one line at a
+// time, so it shows the Bus (Google) wording unless a locale is forced.
+function resolveBrandingStorefront() {
+  if (EDITOR_ENABLED) return DEFAULT_STOREFRONT;
+  return isIOSDevice() ? 'ios' : 'google';
+}
+
+function resolveBrandingCopy() {
+  const localization = SCENE_TUNING.branding?.localization ?? {};
+  const previewLocale = EDITOR_ENABLED ? String(localization.previewLocale ?? 'auto') : 'auto';
+  const textConfig = SCENE_TUNING.branding?.text ?? {};
+  const loadingConfig = SCENE_TUNING.branding?.loading ?? {};
+  return resolveLocalizedBranding({
+    languages: previewLocale && previewLocale !== 'auto' ? [previewLocale] : readBrowserLanguages(),
+    enabled: Boolean(localization.enabled ?? 1),
+    text: typeof textConfig.content === 'string' ? textConfig.content : '',
+    loadingTitle: typeof loadingConfig.title === 'string' ? loadingConfig.title : '',
+    storefront: resolveBrandingStorefront()
+  });
+}
+
+function applyDocumentLanguage(locale) {
+  const resolved = locale || 'en';
+  if (document.documentElement.lang !== resolved) document.documentElement.lang = resolved;
 }
 
 // One Bus build is uploaded to both stores. `branding.icon.deviceAssets` carries
@@ -1057,6 +1120,10 @@ function resolveBrandingIconAsset(config = {}) {
 
 function applyBrandingTuning(backgroundBounds = null) {
   const metrics = getBrandingStageMetrics();
+  const copy = resolveBrandingCopy();
+  // The resolved locale also sets <html lang>, so assistive tech announces the
+  // caption and the button in the same language the player reads them in.
+  applyDocumentLanguage(copy.locale);
   for (const [key, element] of Object.entries(brandingItems)) {
     if (!element) continue;
     const config = SCENE_TUNING.branding?.[key] ?? {};
@@ -1066,14 +1133,25 @@ function applyBrandingTuning(backgroundBounds = null) {
     const y = Number.isFinite(Number(config.y)) ? Number(config.y) : metrics.designHeight / 2;
     const width = Math.max(1, Number(config.width) || 180);
     const height = Math.max(1, Number(config.height) || width);
-    const renderedWidth = width * metrics.uiScale;
-    const renderedHeight = height * metrics.uiScale;
+    // The store icon is square art shown in a box that is usually wider than
+    // tall. `object-fit: contain` letterboxes it, so a radius on the box would
+    // clip empty margin and leave the artwork square. Size the icon element to
+    // the painted square so the radius lands on the art itself.
+    const squareIcon = key === 'icon';
+    const renderedWidth = squareIcon
+      ? Math.min(width, height) * metrics.uiScale
+      : width * metrics.uiScale;
+    const renderedHeight = squareIcon
+      ? renderedWidth
+      : height * metrics.uiScale;
     const authoredCenterX = x * metrics.positionScaleX;
+    // Clamp against the authored box, not the shrunken icon element, so the
+    // letterboxed-then-squared icon keeps the position the operator set.
     const renderedCenterX = key === 'text'
       ? authoredCenterX
       : clampCenteredRectX({
         centerX: authoredCenterX,
-        width: renderedWidth,
+        width: width * metrics.uiScale,
         left: backgroundBounds?.left,
         right: backgroundBounds?.right
       });
@@ -1088,7 +1166,11 @@ function applyBrandingTuning(backgroundBounds = null) {
       if (key === 'logo' && gameOverLogo) gameOverLogo.src = element.src;
     }
     if (key === 'text') {
-      const content = String(config.content ?? 'Bus Fever Party!');
+      // The bottom caption follows the device language and storefront, but only
+      // while it still holds the shipped default: `resolveLocalizedBranding`
+      // hands back authored copy untouched, so a custom line (or a Crowd brand)
+      // is never overwritten by a translation.
+      const content = copy.title;
       element.textContent = content;
       element.setAttribute('aria-label', content);
     }
@@ -1100,24 +1182,53 @@ function applyBrandingTuning(backgroundBounds = null) {
     element.style.top = `${y * metrics.positionScaleY}px`;
     element.style.width = `${renderedWidth}px`;
     element.style.height = `${renderedHeight}px`;
-    if (key === 'text') fitBrandingText(element, renderedHeight);
+    // Icon/Logo radius is authored in design units, so it follows the same
+    // scale as the box and is capped at a half-round so a large value can never
+    // produce an invalid negative corner.
+    const authoredRadius = Math.max(0, Number(config.radius) || 0);
+    const renderedRadius = Math.min(
+      authoredRadius * metrics.uiScale,
+      Math.min(renderedWidth, renderedHeight) / 2
+    );
+    element.style.borderRadius = renderedRadius > 0 ? `${renderedRadius}px` : '';
+    if (key === 'text') {
+      fitBrandingText(element, renderedHeight);
+      // The first fit can measure a fallback face; a webfont with wider
+      // metrics would then overflow the fixed box, so measure again once the
+      // bundled font has loaded (mirrors the CTA behaviour).
+      if (!brandingFitFontsReadyHooked && document.fonts?.ready) {
+        brandingFitFontsReadyHooked = true;
+        document.fonts.ready.then(() => {
+          if (!brandingItems.text || brandingItems.text.hidden) return;
+          const settledMetrics = getBrandingStageMetrics();
+          const settledHeight = Math.max(1, Number(SCENE_TUNING.branding?.text?.height) || 100)
+            * settledMetrics.uiScale;
+          fitBrandingText(brandingItems.text, settledHeight);
+        }).catch(() => {});
+      }
+    }
   }
   applyLoadingBranding();
 }
 
-// The loading screen is not an editable overlay, but a Crowd export must not
-// flash the Bus Fever name while it waits. An empty icon follows the overlaid
-// branding icon instead of embedding the same bytes a second time.
 function applyLoadingBranding() {
+  // The loading screen is not an editable overlay, but a Crowd export must not
+  // flash the Bus Fever name while it waits. An empty icon follows the overlaid
+  // branding icon instead of embedding the same bytes a second time.
   const config = SCENE_TUNING.branding?.loading ?? {};
   const icon = typeof config.icon === 'string' ? config.icon : '';
   const iconSource = icon || brandingItems.icon?.getAttribute('src') || '';
   if (loadingIcon && iconSource && loadingIcon.getAttribute('src') !== iconSource) {
     loadingIcon.setAttribute('src', iconSource);
   }
-  if (loadingTitle && typeof config.title === 'string' && config.title && loadingTitle.textContent !== config.title) {
-    loadingTitle.textContent = config.title;
-    loadingIcon?.setAttribute('alt', `${config.title} icon`);
+  // The loader shows the same title the bottom caption does, so a localized
+  // build does not open in English and finish in the player's language. The
+  // heading sizes itself with `clamp()`, so a longer localization wraps rather
+  // than needing a fit pass.
+  const title = resolveBrandingCopy().loadingTitle;
+  if (loadingTitle && title && loadingTitle.textContent !== title) {
+    loadingTitle.textContent = title;
+    loadingIcon?.setAttribute('alt', `${title} icon`);
   }
 }
 
@@ -1198,8 +1309,8 @@ function fitCtaLabel({ fontSize, fontHeight, uiScale, availableWidth }) {
   textRange.selectNodeContents(ctaButton);
   const contentWidth = textRange.getBoundingClientRect().width;
   if (!(contentWidth > availableWidth)) return { fontSize, fontHeight };
-  const ratio = availableWidth / contentWidth * 0.98;
-  return { fontSize: fontSize * ratio, fontHeight: fontHeight * ratio };
+  const fittedSize = fitFontSizeToWidth({ fontSize, measuredWidth: contentWidth, availableWidth });
+  return { fontSize: fittedSize, fontHeight: fontHeight * (fittedSize / fontSize) };
 }
 
 function applyCtaTuning() {
@@ -1231,6 +1342,13 @@ function applyCtaTuning() {
     metrics.stageHeight - renderedHeight / 2,
     metrics.stageHeight - renderedHeight / 2
   );
+  // A localized CTA is wider than "Play Now" in most languages; the label is
+  // swapped before fitting so the measurement is of the text that ships.
+  const ctaLabel = resolveBrandingCopy().ctaLabel;
+  if (ctaButton.textContent !== ctaLabel) {
+    ctaButton.textContent = ctaLabel;
+    ctaButton.setAttribute('aria-label', ctaLabel);
+  }
   // The picker owns the screen while it is open; the store button belongs to
   // the end of the ad and must not leak onto it.
   ctaButton.hidden = !Boolean(cta.enabled ?? 1) || stageChoiceActive;
@@ -1315,8 +1433,12 @@ async function drawScreenshotBranding(context, metrics, width) {
     if (!source) continue;
     const image = await loadScreenshotImage(source).catch(() => null);
     if (!image) continue;
-    const renderedWidth = Math.max(1, Number(config.width) || 180) * metrics.uiScale;
-    const renderedHeight = Math.max(1, Number(config.height) || renderedWidth) * metrics.uiScale;
+    const boxWidth = Math.max(1, Number(config.width) || 180) * metrics.uiScale;
+    const boxHeight = Math.max(1, Number(config.height) || boxWidth) * metrics.uiScale;
+    // The icon element is sized to the painted square, so the snapshot clamps
+    // and clips against that same square.
+    const renderedWidth = key === 'icon' ? Math.min(boxWidth, boxHeight) : boxWidth;
+    const renderedHeight = key === 'icon' ? renderedWidth : boxHeight;
     const centerX = clampConfigNumber(
       (Number.isFinite(Number(config.x)) ? Number(config.x) : metrics.designWidth / 2) * metrics.positionScaleX,
       renderedWidth / 2,
@@ -1325,6 +1447,27 @@ async function drawScreenshotBranding(context, metrics, width) {
     );
     const centerY = (Number.isFinite(Number(config.y)) ? Number(config.y) : metrics.designHeight / 2)
       * metrics.positionScaleY;
+    // The icon box shrinks to the painted square (see applyBrandingTuning), so
+    // the snapshot has to clip the same square or the screenshot and the stage
+    // would disagree about where the rounded corners sit.
+    if (key === 'icon') {
+      const side = renderedWidth;
+      const radius = Math.min(
+        Math.max(0, Number(config.radius) || 0) * metrics.uiScale,
+        side / 2
+      );
+      context.save();
+      context.beginPath();
+      if (radius > 0 && typeof context.roundRect === 'function') {
+        context.roundRect(centerX - side / 2, centerY - side / 2, side, side, radius);
+      } else {
+        context.rect(centerX - side / 2, centerY - side / 2, side, side);
+      }
+      context.clip();
+      drawContainImage(context, image, centerX, centerY, side, side);
+      context.restore();
+      continue;
+    }
     drawContainImage(context, image, centerX, centerY, renderedWidth, renderedHeight);
   }
 
@@ -1384,10 +1527,17 @@ async function drawScreenshotCta(context, metrics, width, height) {
 
   const fontSize = Math.max(1, Number(cta.fontSize) || 28) * metrics.uiScale;
   const strokeWidth = Math.max(0, Number(cta.strokeWidth) || 0) * metrics.uiScale;
+  const ctaLabel = resolveBrandingCopy().ctaLabel;
   context.save();
   context.textAlign = 'center';
   context.textBaseline = 'middle';
   context.font = `900 ${fontSize}px 'Poppins Branding', Arial, sans-serif`;
+  // A localized label may be wider than the captured button; shrink it so the
+  // screenshot never shows text outside the green plate.
+  const labelWidth = context.measureText(ctaLabel).width;
+  const availableWidth = Math.max(1, renderedWidth - 24 * metrics.uiScale * 2);
+  const fittedSize = fitFontSizeToWidth({ fontSize, measuredWidth: labelWidth, availableWidth });
+  if (fittedSize !== fontSize) context.font = `900 ${fittedSize}px 'Poppins Branding', Arial, sans-serif`;
   context.lineJoin = 'round';
   context.lineWidth = Math.max(1, strokeWidth * 2);
   context.strokeStyle = formatHexColor(cta.strokeColor, 0x196b07);
@@ -1395,8 +1545,8 @@ async function drawScreenshotCta(context, metrics, width, height) {
   context.shadowColor = 'rgba(20, 86, 4, .35)';
   context.shadowBlur = 4 * metrics.uiScale;
   context.shadowOffsetY = 3 * metrics.uiScale;
-  context.strokeText('Play Now', centerX, centerY);
-  context.fillText('Play Now', centerX, centerY);
+  context.strokeText(ctaLabel, centerX, centerY);
+  context.fillText(ctaLabel, centerX, centerY);
   context.restore();
 }
 
@@ -1670,8 +1820,15 @@ async function ensureBackgroundHorizon({ onMeasured } = {}) {
 function getPlayableExportPayload() {
   const selectedKey = String(SCENE_TUNING.level?.selected ?? '');
   const previewEntry = readLevelEditorPreviewDocument();
+  // The server validates the payload against the shipped template and rejects
+  // the whole export for a single unknown key (0-second failure, no build). A
+  // field that stopped being defined after this browser session started can
+  // still be sitting in SCENE_TUNING, so send the same pruned shape the saved
+  // cache is loaded through instead of letting one stale key block the export.
+  const tuning = structuredClone(SCENE_TUNING);
+  if (DEFAULT_SCENE_TUNING) pruneUnknownTuning(tuning, DEFAULT_SCENE_TUNING);
   return {
-    tuning: SCENE_TUNING,
+    tuning,
     ...(previewEntry?.mode === 'draft' && previewEntry.document.key === selectedKey
       ? {
           levelDocument: previewEntry.document,
@@ -1924,17 +2081,176 @@ async function startRuntime() {
   };
 
   let view;
+  // ---- progress HUD ("how far am I, and where do most players fail?") ----
+  // A level is played to the end, so 100% means every passenger is out; the
+  // bar is driven by cleared passengers, not by the CTA counter.
+  SCENE_TUNING.progressHud = normalizeProgressHudConfig(SCENE_TUNING.progressHud);
+  let progressHud = null;
+  let progressHudTotal = 0;
+  let progressHudPassed = false;
+
+  function progressHudSettings() {
+    return normalizeProgressHudConfig(SCENE_TUNING.progressHud);
+  }
+
+  /**
+   * The four authored gradient anchors as [hex, percent] pairs, in the order
+   * setProgressHudSpectrum consumes. Percentages are fixed (see
+   * PROGRESS_HUD_SPECTRUM_STOPS); only the colours are tunable, so the meter
+   * keeps its even distribution.
+   */
+  function progressHudSpectrumStops(settings) {
+    return PROGRESS_HUD_SPECTRUM_STOPS.map(([key, at]) => [settings[key], at]);
+  }
+
+  /** The passenger count the current stage started with (0 when disabled). */
+  function measureProgressHudTotal() {
+    const level = game?.level ?? {};
+    const queues = level.passengerQueues ?? [level.passengerSequence ?? []];
+    return queues.reduce((sum, queue) => sum + (Array.isArray(queue) ? queue.length : 0), 0);
+  }
+
+  function mountProgressHudIfNeeded() {
+    const settings = progressHudSettings();
+    if (!Number(settings.enabled) || !progressHudRoot) {
+      progressHudRoot?.setAttribute('hidden', '');
+      return null;
+    }
+    if (!progressHud) {
+      progressHud = mountProgressHud(progressHudRoot, {
+        width: 1000,
+        progress: 0,
+        nodeAt: settings.nodePercent / 100,
+        failPercent: settings.failPercent,
+        showPassed: Boolean(settings.anchors),
+        trackVisible: Boolean(settings.trackVisible)
+      });
+      progressHudRoot.classList.add('is-mounted');
+    }
+    // Re-apply every mount so a colour edited in the panel reaches an
+    // already-mounted bar instead of waiting for a reload.
+    progressHud.setSpectrum?.(progressHudSpectrumStops(settings));
+    progressHud.setTrackVisible?.(Boolean(settings.trackVisible));
+    progressHudRoot.removeAttribute('hidden');
+    progressHud.setFailPercent(settings.failPercent);
+    progressHud.setMessage(`OF PLAYERS FAIL HERE`);
+    progressHudPassed = false;
+    progressHud.setPassed(false);
+    return progressHud;
+  }
+
+  /**
+   * Push the current state into the bar.
+   *
+   * Called from syncHud, which fires on every model change; the ratio is cheap
+   * to compute and setProgress is a CSS custom property write.
+   */
+  function paintProgressHud(state) {
+    if (!progressHud) return;
+    const settings = progressHudSettings();
+    if (!Number(settings.enabled)) return;
+    const remaining = Number(state?.remainingGroups);
+    const ratio = resolveProgressHudRatio(remaining, progressHudTotal);
+    progressHud.setProgress(ratio);
+    // Crossing the node flips the bubble from "this is where people fail" to
+    // "you beat them", which is the whole point of the mechanic.
+    const crossed = ratio > settings.nodePercent / 100;
+    if (crossed !== progressHudPassed) {
+      progressHudPassed = crossed;
+      progressHud.setPassed(crossed);
+    }
+  }
+
+  /** Re-measure the level and reset the bar (stage swap, retry, level change). */
+  function resetProgressHud() {
+    progressHudTotal = measureProgressHudTotal();
+    progressHudPassed = false;
+    const hud = mountProgressHudIfNeeded();
+    if (!hud) return;
+    hud.setProgress(0);
+    layoutProgressHud(progressHudRoot, {
+      width: progressHudRootWidth(),
+      fraction: progressHudFraction(),
+      offsetX: progressHudSettings().offsetX,
+      offsetY: progressHudSettings().offsetY,
+      drop: 222
+    });
+  }
+
+  function progressHudRootWidth() {
+    const settings = progressHudSettings();
+    // The design space is 1080 wide and the bar occupies 1000 of it. Returning
+    // the fraction (not a pixel width) lets CSS resize the bar itself, so a
+    // rotation or the editor's phone-preview switch can never leave it stale.
+    const metrics = getBrandingStageMetrics();
+    const fraction = Math.min(0.96, (1000 / 1080) * (settings.scale || 1));
+    return Math.max(120, Math.round(metrics.stageWidth * fraction));
+  }
+
+  /** Fraction of the stage the bar should occupy, for CSS-driven sizing. */
+  function progressHudFraction() {
+    const desired = Math.min(0.96, (1000 / 1080) * (progressHudSettings().scale || 1));
+    const metrics = getBrandingStageMetrics();
+    const stageW = Math.max(1, metrics.stageWidth);
+    const stageH = Math.max(1, metrics.stageHeight);
+    // The game picture is 9:16. In landscape the stage is wider than that, so a
+    // bar sized off the stage's width would spill onto the letterbox background.
+    const artworkWidth = Math.min(stageW, (stageH * 9) / 16);
+    return Math.min(desired, (artworkWidth / stageW) * 0.94);
+  }
+
   let countdownReady = false;
   let countdownPagePresent = true;
   // Keep legacy profiles within the current bounds for both UI and export.
   SCENE_TUNING.countdown = normalizeCountdownConfig(SCENE_TUNING.countdown);
   const countdown = createCountdown(SCENE_TUNING.countdown, {
-    onTimeout: () => game.failCountdown()
+    onTimeout: () => {
+      // The loss has to land first: it freezes vehicle input and is what makes
+      // the deadline terminal. A refused loss (already won/lost) must never
+      // still trigger a store jump.
+      if (!game.failCountdown()) return;
+      if (Number(SCENE_TUNING.countdown?.timeoutStore) !== 1) return;
+      // The Game Over card is skipped for this ending, so it cannot be the one
+      // that reports the failed challenge to the host.
+      try {
+        platformBridge?.challengeFailed?.();
+        InstallFullGame();
+      } catch (error) {
+        // This runs inside the animation frame, and a throw here would cancel
+        // `requestAnimationFrame(frame)` and freeze the ad on the last rendered
+        // frame. A host that refuses the store call must leave the loss in
+        // place, not kill the loop.
+        console.warn('Countdown store jump failed.', error);
+      }
+    }
   });
   const countdownView = createCountdownView({
     root: $('#countdown'), image: $('#countdown-image'), value: $('#countdown-value'),
     warning: $('#countdown-warning'), stage, speedButton: speedToggleButton
   });
+  // Guide-stage overlays. Both live inside the stage so they track the phone
+  // preview, and both read their tuning live so an editor change applies
+  // without a reload.
+  const weatherEffect = createWeatherEffect(stage, { config: SCENE_TUNING.weatherEffect });
+  const freeAssetLayers = mountFreeAssetLayers(stage, {
+    config: SCENE_TUNING.freeAssets,
+    interactive: EDITOR_ENABLED,
+    onLayerDrag: (layerId, position) => {
+      const layers = SCENE_TUNING.freeAssets?.layers ?? [];
+      const index = layers.findIndex((layer) => layer?.id === layerId);
+      if (index < 0) return;
+      const next = structuredClone(SCENE_TUNING.freeAssets);
+      next.layers[index].x = Math.round(position.x);
+      next.layers[index].y = Math.round(position.y);
+      applyTuningPatch({ freeAssets: next }, { path: `freeAssets.layers.${index}.position`, syncEditor: true });
+    }
+  });
+  function syncStageOverlays() {
+    weatherEffect.setConfig(SCENE_TUNING.weatherEffect);
+    freeAssetLayers.setConfig(SCENE_TUNING.freeAssets);
+    const metrics = getBrandingStageMetrics();
+    freeAssetLayers.setDesignScale({ x: metrics.positionScaleX, y: metrics.positionScaleY });
+  }
   function isCountdownPaused() {
     return !countdownReady || !platformVisible || document.hidden || !countdownPagePresent
       || spatialEditorActive || Boolean(levelLayoutEditor)
@@ -1943,8 +2259,27 @@ async function startRuntime() {
       || stageAdvancePending || stageChoiceVisible;
   }
   function paintCountdown() {
-    countdownView.render(countdown.snapshot(), {
+    const state = countdown.snapshot();
+    countdownView.render(state, {
       visible: countdownReady && !preRollController?.isActive() && !stageChoiceVisible
+    });
+    syncCountdownSiren(state);
+  }
+  // The siren is a looping bed tied to the clock actually running: paused,
+  // idle, finished or hidden states all stop it, and `playLoop` is idempotent
+  // so calling it every frame is free. It deliberately starts only after the
+  // player's first successful tap unlocked audio.
+  function syncCountdownSiren(state) {
+    if (!audio) return;
+    const shouldPlay = state.enabled && state.sirenEnabled && state.state === 'running';
+    if (!shouldPlay) {
+      audio.stopLoop('countdown_siren');
+      return;
+    }
+    audio.playLoop('countdown_siren', {
+      asset: COUNTDOWN_SIREN_ASSET,
+      volume: state.sirenVolume,
+      fadeInSeconds: 0.4
     });
   }
   refreshCountdownVisibility = () => {
@@ -2030,7 +2365,17 @@ async function startRuntime() {
     applyCtaTuning();
     applySpeedToggleTuning();
     applyBrandingTuning(view.getBackgroundCanvasBounds());
+    syncStageOverlays();
     countdownView.resize(view.getBackgroundCanvasBounds(), SCENE_TUNING.countdown, getBrandingStageMetrics().uiScale);
+    layoutProgressHud(progressHudRoot, {
+      width: progressHudRootWidth(),
+      fraction: progressHudFraction(),
+      offsetX: progressHudSettings().offsetX,
+      offsetY: progressHudSettings().offsetY,
+      // The bubble is drawn 192 design units above the bar; reserve that much
+      // so the "N% OF PLAYERS FAIL HERE" copy is never clipped.
+      drop: 222
+    });
     if (stageChoiceVisible) positionStageChoiceHand();
   };
   const getCameraPreset = (action) => {
@@ -2050,6 +2395,17 @@ async function startRuntime() {
   updateCtaPosition();
   if (__PLAYABLE_PLATFORM__ !== 'mintegral' && 'ResizeObserver' in window && stage) {
     new ResizeObserver(updateCtaPosition).observe(stage);
+    // The editor's phone preview resizes the stage by toggling a class on #app,
+    // and its size can land a frame after the HUD's own layout. Watch both the
+    // wrapper and the HUD host so the bar never keeps a stale width.
+    const hudObserver = new ResizeObserver(() => {
+      if (!progressHud) return;
+      const expected = progressHudRootWidth();
+      const actual = Math.round(progressHudRoot.getBoundingClientRect().width);
+      if (Math.abs(actual - expected) > 2) updateCtaPosition();
+    });
+    hudObserver.observe(app);
+    if (progressHudRoot) hudObserver.observe(progressHudRoot);
   } else {
     window.addEventListener('resize', updateCtaPosition);
   }
@@ -2153,6 +2509,7 @@ async function startRuntime() {
     game.setSpeedMultiplier(getIdleSpeedMultiplier());
   }
   initializeGameQueues();
+  resetProgressHud();
   applyIdleSpeedMultiplier();
   let editor = { sync: () => {} };
 
@@ -2278,6 +2635,34 @@ async function startRuntime() {
   }
 
   function applyTuningPatch(next, { path, syncEditor = false } = {}) {
+    if (path?.startsWith('progressHud.')) {
+      const previous = normalizeProgressHudConfig(SCENE_TUNING.progressHud);
+      const settings = validateProgressHudConfig(next.progressHud);
+      deepMerge(SCENE_TUNING, { ...next, progressHud: settings });
+      saveTuning(SCENE_TUNING, { immediate: true });
+      // Enabling the bar (or changing the node) has to rebuild it, because the
+      // node position is baked into the markup's custom properties.
+      if (settings.enabled !== previous.enabled
+        || settings.nodePercent !== previous.nodePercent
+        || settings.anchors !== previous.anchors) {
+        progressHud = null;
+        progressHudRoot?.replaceChildren();
+        resetProgressHud();
+      }
+      if (progressHud) {
+        progressHud.setFailPercent(settings.failPercent);
+        // Colour-only edits must not rebuild the widget; apply them in place.
+        progressHud.setSpectrum?.(progressHudSpectrumStops(settings));
+        progressHud.setTrackVisible?.(Boolean(settings.trackVisible));
+        progressHud.setProgress(resolveProgressHudRatio(game?.snapshot?.().remainingGroups, progressHudTotal));
+      }
+      layoutProgressHud(progressHudRoot, {
+        width: progressHudRootWidth(), fraction: progressHudFraction(),
+        offsetX: settings.offsetX, offsetY: settings.offsetY, drop: 222
+      });
+      if (syncEditor) editor.sync();
+      return SCENE_TUNING;
+    }
     if (path?.startsWith('countdown.')) {
       const previous = normalizeCountdownConfig(SCENE_TUNING.countdown);
       const settings = validateCountdownConfig(next.countdown);
@@ -2332,6 +2717,9 @@ async function startRuntime() {
     if (path?.startsWith('branding.')) {
       deepMerge(SCENE_TUNING, next);
       applyBrandingTuning(view.getBackgroundCanvasBounds());
+      // The CTA label follows the same language as the caption, so a locale
+      // change must re-measure the button instead of waiting for a resize.
+      applyCtaTuning();
       saveTuning(SCENE_TUNING);
       if (syncEditor) editor.sync();
       return SCENE_TUNING;
@@ -2500,6 +2888,7 @@ async function startRuntime() {
   function showStageChoice(choice) {
     if (!stageChoiceOverlay || !choice) return;
     stageChoiceVisible = true;
+    progressHud?.setVisible(false);
     stageChoiceActive = true;
     endPanel.hidden = true;
     buildStageChoice(choice);
@@ -2514,6 +2903,7 @@ async function startRuntime() {
 
   function hideStageChoice() {
     stageChoiceVisible = false;
+    if (progressHud) progressHud.setVisible(true);
     stageChoiceActive = false;
     stageChoiceOverlay?.classList.remove('is-active');
     if (stageChoiceOverlay) stageChoiceOverlay.hidden = true;
@@ -2571,6 +2961,15 @@ async function startRuntime() {
     return stepLimit > 0 && getSuccessfulOperationThreshold() === stepLimit;
   }
 
+  // A countdown that is configured to jump to the store owns its own ending:
+  // the model still records the loss (so input freezes and the platform sees a
+  // failed challenge), but drawing Game Over underneath the store jump would
+  // contradict it.
+  function countdownTimeoutJumpOwnsEnding(state) {
+    return state.lastEvent?.reason === 'challenge-timeout'
+      && Number(SCENE_TUNING.countdown?.timeoutStore) === 1;
+  }
+
   function syncHud(state) {
     if (state.status !== 'playing') {
       countdown.finish(state.status);
@@ -2584,11 +2983,13 @@ async function startRuntime() {
     for (const event of state.frameAudioEvents ?? []) audio.handleGameEvent(event, state.time);
     audio.handleGameEvent(state.lastEvent, state.time);
     updateInstallGate(state);
+    paintProgressHud(state);
     if (state.status === 'lost') {
       endPanel.hidden = true;
       // The click that consumed the last move already fired the install gate;
       // drawing a failure card on top of the store jump would contradict it.
       if (stepLimitedSledJumpOwnsEnding(state)) return;
+      if (countdownTimeoutJumpOwnsEnding(state)) return;
       showResultOverlay(state.lastEvent.reason === 'ambulance-exceed-step' ? 'Ambulance Failed' : 'Game Over');
       return;
     }
@@ -2632,6 +3033,7 @@ async function startRuntime() {
     audio.resetEventHistory();
     view.replaceActiveLevel({ animate: true });
     initializeGameQueues({ resetSlots: true });
+    resetProgressHud();
     applyIdleSpeedMultiplier();
     unsubscribeGame = game.subscribe(syncHud);
   }
@@ -2682,6 +3084,7 @@ async function startRuntime() {
   function showResultOverlay(title = 'Game Over', { failed = true } = {}) {
     if (!gameOverOverlay || gameOverActive) return;
     gameOverActive = true;
+    progressHud?.setVisible(false);
     platformBridge?.end();
     if (failed) platformBridge?.challengeFailed?.();
     clearGameOverTimers();
@@ -2708,6 +3111,7 @@ async function startRuntime() {
 
   function hideGameOver() {
     gameOverActive = false;
+    if (progressHud) progressHud.setVisible(true);
     clearGameOverTimers();
     gameOverOverlay?.classList.remove('is-active', 'is-title-fading', 'is-cta-ready');
     if (gameOverOverlay) gameOverOverlay.hidden = true;
@@ -2739,6 +3143,7 @@ async function startRuntime() {
     audio.resetEventHistory();
     view.replaceActiveLevel();
     initializeGameQueues({ resetSlots: true });
+    resetProgressHud();
     // A retry starts from the authored pace again; the button is a session
     // preference, not a permanent override of the tuned belt speed.
     setSpeedToggleBoosted(false);
@@ -2747,11 +3152,20 @@ async function startRuntime() {
   }
   $('#reset-button')?.addEventListener('click', reset);
   $('#end-reset-button').addEventListener('click', reset);
-  // Retry restarts the run the player just lost. reset() already rebuilds the
-  // level, the session and the queues, and tells the platform bridge, so a
-  // retry is reported as CHALLENGE_RETRY rather than a fresh challenge start.
+  // The red pill is "Retry" by default and restarts the round. A delivery can
+  // repoint it at the store with `gameOver.retryAction = 'store'`; the Q165V1
+  // timed build uses it as a second CTA so a lost player still has a way out.
+  // Both branches stop propagation: the stage click handler would otherwise
+  // start the long-press boost underneath the card.
   gameOverRetryButton?.addEventListener('click', (event) => {
     event.stopPropagation();
+    if (SCENE_TUNING.gameOver?.retryAction === 'store') {
+      InstallFullGame();
+      return;
+    }
+    // reset() rebuilds the level, the session and the queues, and tells the
+    // platform bridge, so a retry is reported as CHALLENGE_RETRY rather than a
+    // fresh challenge start.
     audio.unlock();
     reset();
   });
@@ -2826,6 +3240,9 @@ async function startRuntime() {
       : game.snapshot();
     view.update(renderState, game);
     view.render();
+    // Screen-space weather runs on the same clock as the game so a x2 speed
+    // toggle also speeds it up, matching what the player perceives.
+    weatherEffect.render(delta * getTimeScale());
     requestAnimationFrame(frame);
   }
   requestAnimationFrame(frame);
@@ -2835,6 +3252,17 @@ async function startRuntime() {
     get view() { return view; },
     snapshot: () => game.snapshot(),
     countdown: () => countdown.snapshot(),
+    // QA hook for the progress HUD: a smoke test has to read the bar's ratio and
+    // prove it reaches 1 without playing a whole level out.
+    progressHud: () => ({
+      enabled: Number(SCENE_TUNING.progressHud?.enabled) === 1,
+      mounted: Boolean(progressHud),
+      total: progressHudTotal,
+      progress: progressHud ? Number(getComputedStyle(progressHudRoot).getPropertyValue('--p')) || 0 : 0,
+      passed: progressHudPassed,
+      nodePercent: progressHudSettings().nodePercent,
+      failPercent: progressHudSettings().failPercent
+    }),
     clickVehicle: (id) => handleVehicleClick(Number(id)),
     InstallFullGame,
     openStore,
@@ -2896,6 +3324,13 @@ async function startRuntime() {
       enabled: Number(SCENE_TUNING.audio?.bgm?.enabled) === 1,
       playing: Boolean(audio?.isBgmPlaying),
       asset: SCENE_TUNING.audio?.bgm?.asset ?? null
+    }),
+    // QA hook for the countdown siren: a headless run has to prove the loop
+    // follows the clock (starts on the first dispatch, stops on pause/end).
+    countdownSiren: () => ({
+      enabled: Number(SCENE_TUNING.countdown?.sirenEnabled) === 1,
+      playing: Boolean(audio?.isLoopPlaying?.('countdown_siren')),
+      asset: COUNTDOWN_SIREN_ASSET
     }),
     reset,
     ...(EDITOR_ENABLED ? {

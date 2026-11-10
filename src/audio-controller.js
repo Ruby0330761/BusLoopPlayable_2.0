@@ -74,6 +74,9 @@ export class GameAudioController {
     this.playedGameEventKeys = new Set();
     this.queuedPlays = [];
     this.activeSources = new Set();
+    // Named looping beds (countdown siren) keyed by purpose. The looping music
+    // source stays separate in `bgm` because retry/stage changes must not touch it.
+    this.loops = new Map();
     // The looping music source is tracked separately from the effect pool.
     this.bgm = null;
   }
@@ -210,6 +213,74 @@ export class GameAudioController {
 
   playPassengerUp() {
     this.play('passenger_up');
+  }
+
+  /**
+   * Starts (or keeps) a named loop, such as the countdown siren.
+   *
+   * Loops live outside `audioConfig` for the same reason as BGM: that table is
+   * preloaded on unlock, while a loop is only needed while its owner is active.
+   * Each name owns one gain/source pair, so distinct loops can play together
+   * without either one stopping the other.
+   *
+   * Called every frame by the countdown owner, so it must be idempotent and
+   * silent when audio is still locked; the next call retries.
+   */
+  playLoop(name, { asset, volume = 0.4, fadeInSeconds = 0.25 } = {}) {
+    if (!name || !asset) return false;
+    const existing = this.loops.get(name);
+    if (existing?.asset === asset) return true;
+    if (!this.unlocked || !this.visible) return false;
+    const context = this.getContext();
+    if (!context || context.state !== 'running') return false;
+    this.stopLoop(name);
+    const gain = context.createGain();
+    const target = Math.max(0, Math.min(1, Number(volume) || 0));
+    const fade = Math.max(0, Number(fadeInSeconds) || 0);
+    gain.gain.value = fade > 0 ? 0 : target;
+    gain.connect(context.destination);
+    const source = context.createBufferSource();
+    source.loop = true;
+    const entry = { asset, source, gain, volume: target };
+    // Registered before the buffer resolves so stopLoop can cancel a loop that
+    // is still decoding instead of letting it start afterwards.
+    this.loops.set(name, entry);
+    void this.loadClip(asset)
+      .then((buffer) => {
+        if (!buffer || this.loops.get(name) !== entry) return;
+        source.buffer = buffer;
+        source.connect(gain);
+        source.start();
+        if (fade > 0) {
+          const now = context.currentTime;
+          gain.gain.setValueAtTime(0, now);
+          gain.gain.linearRampToValueAtTime(target, now + fade);
+        }
+      })
+      .catch((error) => {
+        console.warn(`Unable to start looping audio "${name}".`, error);
+        if (this.loops.get(name) === entry) this.loops.delete(name);
+      });
+    return true;
+  }
+
+  stopLoop(name) {
+    const entry = this.loops?.get(name);
+    if (!entry) return;
+    this.loops.delete(name);
+    try { entry.source.stop(); } catch {}
+    try {
+      entry.source.disconnect();
+      entry.gain.disconnect();
+    } catch {}
+  }
+
+  stopAllLoops() {
+    for (const name of [...(this.loops?.keys() ?? [])]) this.stopLoop(name);
+  }
+
+  isLoopPlaying(name) {
+    return Boolean(this.loops?.has(name));
   }
 
   /**

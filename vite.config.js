@@ -27,6 +27,10 @@ import {
   compressPreRollBuffer
 } from './scripts/pre-roll-transcoder.mjs';
 import {
+  AUDIO_COMPRESSION_VERSION,
+  compressAudioBuffer
+} from './scripts/audio-transcoder.mjs';
+import {
   findLevelNameConflict,
   normalizeLevelDisplayName
 } from './scripts/level-name-registry.mjs';
@@ -66,6 +70,22 @@ const PRE_ROLL_ASSET_ROOT = path.resolve('artifacts', 'editor-prerolls');
 const MAX_PRE_ROLL_ASSET_BYTES = 50 * 1024 * 1024;
 const MAX_PRE_ROLL_COMPRESSED_BYTES = PRE_ROLL_MAX_COMPRESSED_BYTES;
 let preRollCompressionInFlight = null;
+
+// Guide-stage media libraries. Same shape as the background and pre-roll
+// libraries: files live on the artifacts volume, metadata in a JSON sidecar
+// beside them, and the editor talks to plain list/import/rename/delete routes.
+//   editor-bgm/         background music tracks (one selected per level)
+//   editor-effects/     full-screen weather particle sprites
+//   editor-free-assets/ free-placed overlays (drag + lock)
+const BGM_ASSET_ROOT = path.resolve('artifacts', 'editor-bgm');
+const MAX_BGM_ASSET_BYTES = 8 * 1024 * 1024;
+// Compressed target for an uploaded track. A 30 s loop at 96 kbps is ~360 KB,
+// which leaves room for the game art inside the 5 MB package budget.
+const MAX_BGM_COMPRESSED_BYTES = 1 * 1024 * 1024;
+const WEATHER_ASSET_ROOT = path.resolve('artifacts', 'editor-effects');
+const MAX_WEATHER_ASSET_BYTES = 2 * 1024 * 1024;
+const FREE_ASSET_ROOT = path.resolve('artifacts', 'editor-free-assets');
+const MAX_FREE_ASSET_BYTES = 4 * 1024 * 1024;
 
 const MAX_PREFAB_BYTES = 12 * 1024 * 1024;
 const MAX_SPATIAL_PACKAGE_BYTES = 4 * 1024 * 1024;
@@ -1142,6 +1162,258 @@ async function deleteEditorBackgroundAsset(filename) {
   return { filename };
 }
 
+/* --- Guide-stage media libraries --------------------------------------------
+ * Three libraries share one implementation because they differ only in root
+ * directory, allowed extensions, size cap and URL prefix. Each one stores the
+ * uploaded bytes under a content-hash filename, keeps a display label in a
+ * `<file>.json` sidecar, and reports the same item shape the editor's existing
+ * background/pre-roll pickers already consume.
+ */
+const GUIDE_ASSET_LIBRARIES = {
+  bgm: {
+    root: BGM_ASSET_ROOT,
+    urlPrefix: '/assets/editor-bgm',
+    maxBytes: MAX_BGM_ASSET_BYTES,
+    kind: 'Background music',
+    extensions: ['.mp3', '.m4a', '.ogg', '.wav'],
+    mime: new Map([
+      ['.mp3', 'audio/mpeg'],
+      ['.m4a', 'audio/mp4'],
+      ['.ogg', 'audio/ogg'],
+      ['.wav', 'audio/wav']
+    ])
+  },
+  weather: {
+    root: WEATHER_ASSET_ROOT,
+    urlPrefix: '/assets/editor-effects',
+    maxBytes: MAX_WEATHER_ASSET_BYTES,
+    kind: 'Weather particle sprite',
+    extensions: ['.png', '.webp'],
+    mime: new Map([
+      ['.png', 'image/png'],
+      ['.webp', 'image/webp']
+    ])
+  },
+  free: {
+    root: FREE_ASSET_ROOT,
+    urlPrefix: '/assets/editor-free-assets',
+    maxBytes: MAX_FREE_ASSET_BYTES,
+    kind: 'Free asset',
+    extensions: ['.png', '.webp'],
+    mime: new Map([
+      ['.png', 'image/png'],
+      ['.webp', 'image/webp']
+    ])
+  }
+};
+
+function guideAssetLibrary(kind) {
+  const library = GUIDE_ASSET_LIBRARIES[kind];
+  if (!library) throw new Error(`Unknown guide asset library: ${kind}`);
+  return library;
+}
+
+function isGuideAssetFilename(kind, filename) {
+  const library = guideAssetLibrary(kind);
+  const ext = path.extname(filename).toLowerCase();
+  return library.extensions.includes(ext)
+    && /^[A-Za-z0-9][A-Za-z0-9._-]{0,119}$/u.test(filename)
+    && path.basename(filename) === filename;
+}
+
+function guideAssetUrl(kind, filename) {
+  return `${guideAssetLibrary(kind).urlPrefix}/${filename}`;
+}
+
+function guideAssetMime(kind, filename) {
+  const library = guideAssetLibrary(kind);
+  return library.mime.get(path.extname(filename).toLowerCase()) ?? 'application/octet-stream';
+}
+
+function decodeGuideAssetFilename(kind, request) {
+  const library = guideAssetLibrary(kind);
+  const raw = request.headers['x-guide-asset-filename'];
+  if (typeof raw !== 'string') throw new Error(`Missing ${library.kind} filename.`);
+  let filename;
+  try {
+    filename = decodeURIComponent(raw);
+  } catch {
+    throw new Error(`${library.kind} filename encoding is invalid.`);
+  }
+  const ext = path.extname(filename).toLowerCase();
+  if (!library.extensions.includes(ext) || path.basename(filename) !== filename) {
+    throw new Error(`Only one local ${library.extensions.join(' / ')} ${library.kind.toLowerCase()} can be imported.`);
+  }
+  return filename;
+}
+
+function normalizeGuideAssetLabel(filename) {
+  const base = path.basename(filename, path.extname(filename))
+    .replace(/^[a-z]+-[a-f0-9]{10}-/iu, '')
+    .replace(/[^A-Za-z0-9\u4e00-\u9fff._ -]+/gu, ' ')
+    .trim();
+  return (base || 'asset').slice(0, 80);
+}
+
+async function listGuideAssets(kind) {
+  const library = guideAssetLibrary(kind);
+  let entries;
+  try {
+    entries = await readdir(library.root, { withFileTypes: true });
+  } catch (error) {
+    if (error.code === 'ENOENT') return [];
+    throw error;
+  }
+  const items = await Promise.all(entries
+    .filter((entry) => entry.isFile() && isGuideAssetFilename(kind, entry.name))
+    .map(async (entry) => {
+      const filePath = path.join(library.root, entry.name);
+      const fileStat = await stat(filePath);
+      let label = normalizeGuideAssetLabel(entry.name);
+      try {
+        const metadata = JSON.parse(await readFile(`${filePath}.json`, 'utf8'));
+        if (typeof metadata.label === 'string' && metadata.label.trim()) label = metadata.label.trim();
+      } catch {
+        // No sidecar yet: fall back to the derived name.
+      }
+      return {
+        filename: entry.name,
+        label,
+        value: guideAssetUrl(kind, entry.name),
+        bytes: fileStat.size,
+        mime: guideAssetMime(kind, entry.name),
+        mtimeMs: fileStat.mtimeMs
+      };
+    }));
+  return items.sort((first, second) => second.mtimeMs - first.mtimeMs)
+    .map(({ mtimeMs: _mtimeMs, ...item }) => item);
+}
+
+async function saveGuideAsset(kind, { filename, bytes, label = null }) {
+  const library = guideAssetLibrary(kind);
+  if (!Buffer.isBuffer(bytes) || bytes.byteLength === 0) throw new Error(`${library.kind} is empty.`);
+  if (bytes.byteLength > library.maxBytes) {
+    const error = new Error(`${library.kind} exceeds the ${Math.round(library.maxBytes / 1024 / 1024)} MB import limit.`);
+    error.statusCode = 413;
+    throw error;
+  }
+  // Music is the one library a browser cannot compress for us, so every upload
+  // is re-encoded to MP3 here. Without this a WAV track ships as base64 in the
+  // single-file ad at ~1.35x its on-disk size and eats the 5 MB budget alone.
+  const compression = kind === 'bgm'
+    ? await compressBgmAsset(filename, bytes)
+    : null;
+  const storedBytes = compression?.bytes ?? bytes;
+  const storedName = compression?.extension
+    ? `${path.basename(filename, path.extname(filename))}${compression.extension}`
+    : filename;
+  const hash = createHash('sha256').update(storedBytes).digest('hex').slice(0, 10);
+  const ext = path.extname(storedName).toLowerCase();
+  const prefix = kind === 'bgm' ? 'bgm' : kind === 'weather' ? 'fx' : 'asset';
+  const slug = normalizeGuideAssetLabel(filename).replace(/[^A-Za-z0-9\u4e00-\u9fff_-]+/gu, '-').slice(0, 60) || 'asset';
+  const outputName = `${prefix}-${hash}-${slug}${ext}`;
+  await mkdir(library.root, { recursive: true });
+  const targetPath = path.join(library.root, outputName);
+  const temporaryPath = path.join(library.root, `.${outputName}.${process.pid}.tmp`);
+  try {
+    await writeFile(temporaryPath, storedBytes);
+    await rename(temporaryPath, targetPath);
+  } catch (error) {
+    await unlink(temporaryPath).catch(() => {});
+    throw error;
+  }
+  const storedLabel = String(label ?? '').normalize('NFKC').trim().slice(0, 80) || normalizeGuideAssetLabel(filename);
+  const sidecar = {
+    label: storedLabel,
+    ...(compression ? {
+      compression: {
+        ...compression.compression,
+        sourceBytes: compression.sourceBytes,
+        outputBytes: compression.outputBytes
+      }
+    } : {})
+  };
+  await writeFile(`${targetPath}.json`, `${JSON.stringify(sidecar, null, 2)}\n`, 'utf8').catch(() => {});
+  return {
+    filename: outputName,
+    label: storedLabel,
+    value: guideAssetUrl(kind, outputName),
+    bytes: storedBytes.byteLength,
+    mime: guideAssetMime(kind, outputName),
+    ...(compression ? { sourceBytes: compression.sourceBytes } : {})
+  };
+}
+
+// Music uploads bypass the browser encoder, so this is the one place a track is
+// shrunk. A track that FFmpeg cannot read is stored as uploaded rather than
+// rejected: an unusual container that still plays is better than no BGM at all,
+// and the 8 MB import cap still bounds the damage. A compression failure inside
+// FFmpeg (timeout, missing binary) is a different case and does propagate.
+async function compressBgmAsset(filename, bytes) {
+  const extension = path.extname(filename).toLowerCase();
+  try {
+    return await compressAudioBuffer(bytes, {
+      maxOutputBytes: MAX_BGM_COMPRESSED_BYTES,
+      sourceExtension: extension
+    });
+  } catch (error) {
+    if (error.code === 'FFMPEG_FAILED' || error.code === 'FFMPEG_EMPTY_OUTPUT') {
+      return {
+        bytes,
+        extension,
+        sourceBytes: bytes.byteLength,
+        outputBytes: bytes.byteLength,
+        compressed: false,
+        compression: { version: AUDIO_COMPRESSION_VERSION, profile: 'retained-source', codec: 'source', reason: error.code }
+      };
+    }
+    throw error;
+  }
+}
+
+async function renameGuideAsset(kind, filename, label) {
+  const library = guideAssetLibrary(kind);
+  if (!isGuideAssetFilename(kind, filename)) throw new Error(`Invalid ${library.kind} filename.`);
+  const normalized = String(label ?? '').normalize('NFKC').trim();
+  if (!normalized || normalized.length > 80 || /[\x00-\x1f]/u.test(normalized)) {
+    throw new Error(`${library.kind} name must be between 1 and 80 characters.`);
+  }
+  const targetPath = path.join(library.root, filename);
+  await stat(targetPath).catch((error) => {
+    if (error.code === 'ENOENT') {
+      const missing = new Error(`${library.kind} does not exist.`);
+      missing.statusCode = 404;
+      throw missing;
+    }
+    throw error;
+  });
+  await writeFile(`${targetPath}.json`, `${JSON.stringify({ label: normalized }, null, 2)}\n`, 'utf8');
+  return {
+    filename,
+    label: normalized,
+    value: guideAssetUrl(kind, filename),
+    mime: guideAssetMime(kind, filename)
+  };
+}
+
+async function deleteGuideAsset(kind, filename) {
+  const library = guideAssetLibrary(kind);
+  if (!isGuideAssetFilename(kind, filename)) throw new Error(`Invalid ${library.kind} filename.`);
+  const targetPath = path.join(library.root, filename);
+  await unlink(targetPath).catch((error) => {
+    if (error.code === 'ENOENT') {
+      const missing = new Error(`${library.kind} does not exist.`);
+      missing.statusCode = 404;
+      throw missing;
+    }
+    throw error;
+  });
+  await unlink(`${targetPath}.json`).catch((error) => {
+    if (error.code !== 'ENOENT') throw error;
+  });
+  return { filename };
+}
+
 async function listSpatialConveyors() {
   let entries;
   try {
@@ -1536,6 +1808,90 @@ export default defineConfig({
             response.end(file);
           } catch (error) {
             sendJson(response, error.code === 'ENOENT' ? 404 : 400, { error: error.message });
+          }
+          return;
+        }
+        // Guide-stage media: /assets/editor-bgm|editor-effects|editor-free-assets/<file>.
+        // Audio needs Range support so a browser can seek/preview a long track.
+        const guideAssetMatch = pathname.match(/^\/assets\/(editor-bgm|editor-effects|editor-free-assets)\/([^/]+)$/u);
+        if (guideAssetMatch && (request.method === 'GET' || request.method === 'HEAD')) {
+          const kind = guideAssetMatch[1] === 'editor-bgm'
+            ? 'bgm'
+            : guideAssetMatch[1] === 'editor-effects' ? 'weather' : 'free';
+          try {
+            const filename = decodeURIComponent(guideAssetMatch[2]);
+            if (!isGuideAssetFilename(kind, filename)) throw new Error(`Invalid ${kind} filename.`);
+            const library = guideAssetLibrary(kind);
+            const file = await readFile(path.join(library.root, filename));
+            let start = 0;
+            let end = file.byteLength - 1;
+            let statusCode = 200;
+            const range = request.headers.range;
+            if (range) {
+              const match = /^bytes=(\d*)-(\d*)$/u.exec(range);
+              if (match) {
+                if (match[1]) start = Number(match[1]);
+                if (match[2]) end = Number(match[2]);
+                if (!match[1] && match[2]) {
+                  start = Math.max(0, file.byteLength - Number(match[2]));
+                  end = file.byteLength - 1;
+                }
+                if (Number.isInteger(start) && Number.isInteger(end)
+                  && start >= 0 && start < file.byteLength && start <= end) {
+                  end = Math.min(end, file.byteLength - 1);
+                  statusCode = 206;
+                } else {
+                  start = 0;
+                  end = file.byteLength - 1;
+                }
+              }
+            }
+            const body = request.method === 'HEAD' ? null : file.subarray(start, end + 1);
+            response.statusCode = statusCode;
+            response.setHeader('Content-Type', guideAssetMime(kind, filename));
+            response.setHeader('Accept-Ranges', 'bytes');
+            response.setHeader('Content-Length', end - start + 1);
+            if (statusCode === 206) response.setHeader('Content-Range', `bytes ${start}-${end}/${file.byteLength}`);
+            response.setHeader('Cache-Control', 'no-cache');
+            response.setHeader('X-Content-Type-Options', 'nosniff');
+            response.end(body);
+          } catch (error) {
+            sendJson(response, error.code === 'ENOENT' ? 404 : 400, { error: error.message });
+          }
+          return;
+        }
+        // Guide-stage libraries: list / import / rename / delete per kind.
+        const guideAssetRouteMatch = pathname.match(/^\/__guide-assets\/(bgm|weather|free)(\/[a-z]+)?$/u);
+        if (guideAssetRouteMatch) {
+          const kind = guideAssetRouteMatch[1];
+          const action = guideAssetRouteMatch[2] || '';
+          try {
+            if (request.method === 'GET' && !action) {
+              sendJson(response, 200, { items: await listGuideAssets(kind) });
+              return;
+            }
+            if (request.method === 'POST' && action === '/import') {
+              const library = guideAssetLibrary(kind);
+              const item = await saveGuideAsset(kind, {
+                filename: decodeGuideAssetFilename(kind, request),
+                bytes: await readRequestBuffer(request, library.maxBytes, library.kind)
+              });
+              sendJson(response, 201, { item });
+              return;
+            }
+            if (request.method === 'POST' && action === '/rename') {
+              const body = JSON.parse(await readRequestBody(request, 16 * 1024, `${kind} name`));
+              sendJson(response, 200, { item: await renameGuideAsset(kind, body?.filename, body?.label) });
+              return;
+            }
+            if (request.method === 'DELETE' && !action) {
+              const filename = requestUrl.searchParams.get('filename');
+              sendJson(response, 200, await deleteGuideAsset(kind, filename));
+              return;
+            }
+            sendJson(response, 405, { error: `Unsupported ${kind} asset request.` });
+          } catch (error) {
+            sendJson(response, error.statusCode ?? 400, { error: error.message });
           }
           return;
         }

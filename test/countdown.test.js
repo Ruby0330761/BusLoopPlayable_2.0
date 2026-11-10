@@ -122,6 +122,29 @@ test('configuration validates active ranges and normalizes inactive or old profi
   assert.throws(() => validateCountdownConfig({ enabled: 1, durationSeconds: 120, warningSeconds: 121 }));
 });
 
+test('siren and timeout-jump switches default off and validate their ranges', () => {
+  const legacy = normalizeCountdownConfig({ enabled: 1, durationSeconds: 60 });
+  assert.equal(legacy.sirenEnabled, 0);
+  assert.equal(legacy.timeoutStore, 0);
+  assert.equal(legacy.sirenVolume, 0.35);
+  const active = validateCountdownConfig({
+    enabled: 1, durationSeconds: 60, sirenEnabled: 1, sirenVolume: 0.5, timeoutStore: 1
+  });
+  assert.equal(active.sirenEnabled, 1);
+  assert.equal(active.sirenVolume, 0.5);
+  assert.equal(active.timeoutStore, 1);
+  for (const sirenEnabled of [2, -1, '1']) {
+    assert.throws(() => validateCountdownConfig({ enabled: 1, sirenEnabled }), /警笛/);
+  }
+  for (const sirenVolume of [-0.1, 1.5, NaN, 'loud']) {
+    assert.throws(() => validateCountdownConfig({ enabled: 1, sirenVolume }), /警笛音量/);
+  }
+  assert.throws(() => validateCountdownConfig({ enabled: 1, timeoutStore: 2 }), /归零跳转/);
+  // A disabled countdown must stay exportable even with junk in the new fields.
+  assert.doesNotThrow(() => validateCountdownConfig({ enabled: 0, sirenVolume: 9 }));
+  assert.equal(validateTuning({ countdown: active }, SCENE_TUNING).countdown.timeoutStore, 1);
+});
+
 test('zero duration waits for the first dispatch and times out once; zero warning stays silent', () => {
   const settings = validateCountdownConfig({ enabled: 1, durationSeconds: 0 });
   assert.equal(settings.durationSeconds, 0);

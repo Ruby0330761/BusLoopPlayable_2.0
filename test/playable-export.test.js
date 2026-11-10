@@ -55,6 +55,17 @@ const EXPORT_NAMING = Object.freeze({
   }),
 });
 
+// Resolve a dotted tuning path such as `exportNaming.channels.applovin`, the
+// same shape the scene editor's field table uses.
+function hasPath(root, dottedPath) {
+  let cursor = root;
+  for (const segment of dottedPath.split('.')) {
+    if (!cursor || typeof cursor !== 'object' || !Object.hasOwn(cursor, segment)) return false;
+    cursor = cursor[segment];
+  }
+  return true;
+}
+
 test('export is package-only and does not opt into resource optimization', () => {
   assert.equal(EXPORT_RESOURCE_MODE, 'package-only');
 });
@@ -74,7 +85,7 @@ test('exporter exposes every supported delivery platform', () => {
 test('artifact names follow the playable request naming rule for every platform', () => {
   assert.equal(
     PLAYABLE_NAMING_PATTERN,
-    'requirement-material-iteration-N-language-format-designer-requester-channel-steps-stamina'
+    'requirement-material-iteration-N-language-format-designer-requester-channel-steps-version'
   );
   const extensions = {
     applovin: 'html',
@@ -117,7 +128,7 @@ test('artifact naming omits blank fields and keeps platform names distinct', () 
     }
   };
   // Blank fields drop out, but the two fixed segments survive: the `N` after the
-  // pre-roll slot and the steps/stamina tail both always print.
+  // pre-roll slot and the steps/version tail both always print.
   assert.equal(buildPlayableArtifactName(tuning, 'applovin'), 'Q4V1-N-applovin-N-N.html');
   assert.equal(buildPlayableArtifactName(tuning, 'google-ads'), 'Q4V1-N-google-ads-N-N.zip');
   assert.equal(buildPlayableArtifactName(tuning, 'mintegral'), 'Q4V1_N_mintegral_N_N.zip');
@@ -163,12 +174,12 @@ test('one Bus package serves both stores and carries both icons', () => {
   // Mintegral delivery names may contain only letters, digits, and underscores, so the
   // branding suffix has to follow the same hyphen replacement as the business base name.
   assert.equal(buildPlayableArtifactName({ exportNaming: EXPORT_NAMING }, 'mintegral', '-Crowd'), 'AC_2607141_Q1V1_N_N_EN_PL_NLY_ZZN_MT_N_N_Crowd.zip');
-  // Both tail segments are always present: an empty steps/stamina field falls back to N
+  // Both tail segments are always present: an empty steps/version field falls back to N
   // so a delivery name never silently loses the last two segments.
-  assert.equal(buildPlayableArtifactName({ exportNaming: { ...EXPORT_NAMING, steps: '', stamina: '' } }, 'applovin'), 'AC-2607141-Q1V1-N-N-EN-PL-NLY-ZZN-AL-N-N.html');
+  assert.equal(buildPlayableArtifactName({ exportNaming: { ...EXPORT_NAMING, steps: '', version: '' } }, 'applovin'), 'AC-2607141-Q1V1-N-N-EN-PL-NLY-ZZN-AL-N-N.html');
   assert.match(buildPlayableArtifactName({ exportNaming: EXPORT_NAMING }, 'mintegral', '-Android'), /^[A-Za-z0-9_]+\.zip$/u);
   // Google Ads caps the delivery name at 128 chars; the naming rule still has to
-  // reject a name that overruns it now that steps/stamina are not emitted.
+  // reject a name that overruns it now that the two tail segments are emitted.
   assert.throws(
     () => buildPlayableArtifactName({
       exportNaming: { ...EXPORT_NAMING, materialCode: 'Q1V1'.repeat(16), designer: 'N'.repeat(64) }
@@ -548,6 +559,9 @@ test('editor and server expose production-only single-platform and all-platform 
   assert.match(editor, /\\u6b63\\u5728\\u6253\\u5305/);
   assert.match(editor, /getPlayableExportPayload\(\)[\s\S]*?JSON\.stringify\(all[\s\S]*?\.\.\.exportPayload, platform, brandingSet/);
   assert.match(mainSource, /function getPlayableExportPayload\(\)[\s\S]*?levelDocumentBaseRevision/);
+  // One stale key makes the server reject the whole export at 0 seconds, so the
+  // payload is pruned against the shipped template before it is posted.
+  assert.match(mainSource, /function getPlayableExportPayload\(\)[\s\S]*?pruneUnknownTuning\(tuning, DEFAULT_SCENE_TUNING\)/);
   assert.match(mainSource, /getPlayableExportPayload,/);
   assert.match(editor, /payload\.detail/);
   assert.match(editor, /payload\.durationMs/);
@@ -621,6 +635,27 @@ test('editor exposes every request naming component and platform channel code', 
   }
   assert.match(editor, /control === 'filename'/);
   assert.match(editor, /isValidExportNamingPart/);
+
+  // A naming row that edits a key the template does not define seats the value
+  // into SCENE_TUNING, and the exporter then rejects the whole payload with
+  // "tuning.exportNaming.<key> is not supported" at 0 seconds. Check every path
+  // the editor's naming group writes against the live template.
+  const { SCENE_TUNING } = await import('../src/scene-tuning.js');
+  const namingPaths = new Set(
+    [...editor.matchAll(/'(exportNaming\.[A-Za-z0-9_.-]+)'/g)].map(([, path]) => path)
+  );
+  assert.ok(namingPaths.size > 0);
+  for (const namingPath of namingPaths) {
+    assert.ok(
+      hasPath(SCENE_TUNING, namingPath),
+      `${namingPath} is edited by the scene editor but missing from src/scene-tuning.js`
+    );
+  }
+  // The retired tail field must not come back: it fails tune validation.
+  assert.equal(hasPath(SCENE_TUNING, 'exportNaming.stamina'), false);
+  assert.equal(hasPath(SCENE_TUNING, 'exportNaming.version'), true);
+  assert.match(editor, /'exportNaming\.version'/);
+  assert.doesNotMatch(editor, /'exportNaming\.stamina'/);
 });
 
 test('scene editor separates controls into keyboard-accessible category tabs', async () => {

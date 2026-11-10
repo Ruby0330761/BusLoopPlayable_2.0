@@ -1,5 +1,100 @@
 # Findings
 
+## 2026-11-10 Checker P4「实际点击目标」只认桥接调用的第一个参数，平台托管 CTA 必然待复核
+
+- **症状**：Playable Ad Checker（`http://10.0.0.54:18291/checker.html`，逻辑版本 `2611101347`）里 AppLovin、UnityAds 两个页签 P4 正常，Moloco、Meta、TikTok、Mintegral、Google Ads 全部 `NEEDS_REVIEW`，展开是「Android/iOS：尚未验证正确跳转」+「`ExitApi.exit` · ios · 接口未提供目标地址，需在投放后台复核目标产品」。
+- **根因**：P4 的目标地址不是解析产物里的商店链接，而是取**每次运行时桥接调用的第一个实参**：
+  ```js
+  // hook_normal.js:205
+  p({ type: "PLATFORM_BRIDGE_CALL", bridge, method, url: args[0], time: Date.now() });
+  // checker_product_checks.js:104-106
+  function assessTarget(value, product, expectedOs, products) {
+    var target = parseStoreUrl(value);
+    if (!target) return { status: 'needs_review', text: value ? '目标地址暂无法解析…' : '接口未提供目标地址，需在投放后台复核目标产品' };
+  ```
+  只有 `mraid.open(url)` 带 URL，所以 AppLovin / UnityAds 能过；其余四家的官方 CTA API 签名本身就不收 URL，目标地址在投放后台配置：
+  - `ExitApi.exit()`（官方 `exitapi.js` 里 `f.prototype.h=function(){h(...)}` 无参）
+  - `FbPlayableAd.onCTAClick()`（Meta/Moloco）
+  - `playableSDK.openAppStore()`（TikTok SDK 里 `openAppStore:function(){…}` 无参）
+  - `window.install()`（Mintegral）
+
+  我们的 `src/platform-bridges/*.js` 正是按官方签名无参调用，于是观测记录的 `url` 恒为空 → `assessTarget` 恒返回 `needs_review`。
+- **不是包的问题**：同一页签 P2/P3「静态跳转」PASS（说明产物里的商店 ID 与产品对得上）、R2 桥接 PASS（说明 CTA 真调到了平台 API）。P4 的状态是 `needs_review` 而不是 `fail`，整体徽标变「待复核」还叠加了 P5–P7 的人工复核项。
+- **验收影响**：`deploy-tools/.../scripts/lib/checker_acceptance.py:495-496` 只抓 `staticNodes` / `runtimeNodes`，P4 不进 acceptance，不阻断本地候选 ready。
+- **可选修法**：① 保持现状，把 P4 当「平台托管跳转待后台复核」记录；② 把设备对应的商店 URL 作为第一个参数传给桥接（`ExitApi.exit(url)` 等），真实 SDK 会忽略多余参数，检查器即可解析并逐机型点击凑够 2/2。②属于为检查器补证据参数，会改 5 个 bridge 和 `test/platform-bridge.test.js` 的断言，需明确取舍后再动。
+
+**Why:** 检查器的 P4 不是「校验产物里的链接」，而是「回放点击时桥接收到的 URL」。对平台托管型 CTA，这个 URL 在协议层不存在，所以该检查项对这类平台结构性不可判，不是产物缺陷。
+
+**How to apply:** 看到 P4 待复核先看展开里的 bridge 名称：`mraid.open` 带 URL 才算真失败；`exit-api` / `fb-cta` / `open-app-store` / `mintegral` 显示「接口未提供目标地址」时，应到投放后台核对目标产品，不要按产物缺陷返工。只有 P2/P3 静态跳转 FAIL 才是链接真的写错了。
+
+## 2026-11-10 Moloco S3「外链资源」会把 JS 模板字符串里的 `<img>` 当真实标签，导致整包 FAIL
+
+- **症状**：`BFT-26110622-Q213V1` 的 Moloco 包在 Playable Ad Checker（`http://10.0.0.54:18291/checker.html`）上 S3 报 FAIL，提示 `外链资源: <img src="${e}">`。同一个检查器跑 `BL-2610285-Q165V1` 却是 0 阻塞项，所以不是「规则整体坏了」，而是特定写法触发。
+- **根因**：`progress-hud.js` 的 `markerImg()` 用模板字符串生成标记图：
+  ```js
+  return `<img class="phud__bitmap"${src ? ` src="${src}"` : ''} alt="${alt}" draggable="false">`;
+  ```
+  这段文本是 **JS 源码**，不是 HTML —— `src` 在运行时会被替换成 base64 data URI。但 Checker 的 `attrRefs()` 只做正则扫描：
+  ```js
+  new RegExp(`<${tagName}\\b[^>]*>`, 'gi')  // 匹配到模板文本里的 <img ...>
+  ```
+  于是它把 `${e}` 这个插值当成 `src` 值，判定「既不是 data: 也不是 http: → 外链资源」。
+- **检查器源码位置**：`checker_static_validators.js` 的 `molocoResourceAssessment()` 第 145-149 行对 `img/audio/video/source/track/iframe` 做 `attrRefs(src)`，**不跳过含 `${...}` 的值，也不排除 `<script>` 内部内容**。这是扫描器的固有缺陷，其他平台模板里若出现同类写法也会中招。
+- **修法（不改运行时行为）**：把尖括号从字符串字面量里拿掉，运行时再拼回来：
+  ```js
+  const LT = String.fromCharCode(60);
+  return `${LT}img class="phud__bitmap"${src ? ` src="${src}"` : ''} alt="${alt}" draggable="false">`;
+  ```
+  **关键点：不能用 `'<img ...'` 这种普通字符串常量。** 第一版写成 `const MARKER_TAG_OPEN = \`${'<'}img ...\``，vite 压缩把常量折叠成 `'<img class="phud__bitmap"'`，明文 `<img` 又回到产物里，照样被扫到。只有 `String.fromCharCode(60)` 在压缩后仍不出现字面尖括号。
+- **验收方式**：把 Checker 的 `molocoResourceAssessment` 逐行抄到本地脚本，对导出包跑一遍看 `blocking.length`。修复前 BFT 包 = 1，修复后线上导出的 Moloco 包 = 0；同时浏览器里确认 `.phud__bitmap` 仍是 3 个真实 `<img>`、属性齐全、`outerHTML` 与改前逐字节一致。
+
+**Why:** 静态检查器扫描的是**源码文本**，不是解析后的 DOM；模板字符串里长得像 HTML 的片段会被当成真标签，而其中的插值又会被当成确定的 URL 值。这类误判只在「字面量里有 `<` + 属性插值」时出现，所以同一套规则对别的包全通过，极难一眼看出。
+
+**How to apply:** 任何会进 playable 产物、且要生成 HTML 标签的字符串，都别在字面量里写完整 `<tag ...>`。用 `String.fromCharCode(60)`（或 `document.createElement`）规避；改完必须**检查压缩产物**里是否还残留明文标签，压缩器会把常量折叠回来。验收用检查器自己的函数跑，而不是只看本地规则。
+
+## 2026-11-09 品牌 Icon 的圆角必须加在「绘制出来的正方形」上，加在外框上无效
+
+- **症状**：给 `#branding-icon` 直接写 `border-radius` 后视觉毫无变化。元素 computed 值是 `border-radius: 14.71px`，看起来「生效了」。
+- **根因**：这是一张 512×512 方图，被 `branding.icon.width/height`（默认 180×123）塞进一个扁框，`object-fit: contain` 于是把它缩成 123×123 居中显示，左右各留 28 设计单位空白。圆角落在框上就是切空白，图本身仍是直角。改动后元素宽高都变成 123，computed `width/height/border-radius` 三项同时对上才算真的生效。
+- **正确做法**：图标元素尺寸收缩到 `min(width, height)` 的正方形，再把圆角按 `uiScale` 缩放后套上去，并封顶 `min(w,h)/2`。
+- **连带**：编辑器截图是 Canvas 重绘而非 DOM 截图，`drawScreenshotBranding` 必须用同一正方形做 `roundRect` 裁切，否则截图与舞台不一致。截图里用 `typeof context.roundRect === 'function'` 判断，避免旧 WebView 直接抛错。
+
+**Why:** `object-fit: contain` 的留白让「元素框」和「可见图像」不再重合，任何作用在框上的视觉修饰（圆角、边框、描边）都会落在空白处，而 computed style 依然显示成功。
+
+**How to apply:** 给 contain 的图片加圆角/描边前，先量 `getBoundingClientRect()` 与 `naturalWidth/Height` 推算出实际绘制区域；要么把元素收缩到绘制区域，要么用同尺寸的 mask/clip。验收时同时读 computed `width`、`height`、`borderRadius` 并与预期正方形一致。
+
+## 2026-11-06 救护车「35 步体力」是玩法字段而不是车型，去掉它不能顺手去掉救护车
+
+- **症状**：需求只要「去掉救护车上的 35 体力」，最省事的改法是把 `ambulanceStepLimit` 删掉。但 `deriveLevelMechanics` 之前用「有没有步数字段」统计救护车数量，删字段会让打包器认为这关没有救护车，救护车 FBX、女救援员乘客和警笛音效全部不再内联；场景仍然渲染救护车，于是成品能跑但资源缺失。
+- **正确模型**：`mechanism.type` 是视觉家族，`mechanism.stepLimited` 是玩法开关。`normalizeVehicle` 现在接受显式 `stepLimited: false`（救护车默认仍为 true，省略字段时行为不变），`levelDocumentToRuntime` 只在 `stepLimited` 为真时写 `ambulanceStepLimit`。`deriveLevelMechanics` 改为先看 `mechanism.type`，没有 type 的旧 catalog 才回退到步数字段或色号 13。
+- **验证方式**：出包后必须同时确认「关卡 payload 里没有 `ambulanceStepLimit`」和「运行时救护车徽标不存在（`view.vehicleViews.get(162).userData.ambulanceStepBoard === false`）」，再确认包里仍有 `Ambulance_001`/`Idle_girl_rescuer` 资源。只看前者会把资源缺失当成成功。
+
+**Why:** 一个字段同时承担「车型」和「玩法」两种语义时，任何一种需求的单边改动都会静默破坏另一边，而且静态检查和单元测试都不会报错。
+
+**How to apply:** 再出现「去掉某个机制行为但保留其外观」的需求时，先确认这个行为字段是否被别处当作类型判据使用（`rg` 该字段名在 `derive*`、`is*Vehicle`、资源清单里的出现）。是的话先引入独立的类型字段或显式 opt-out 布尔，再改数据。
+
+## 2026-11-06 用灰度图找「原包用的是哪张背景」会挑错同构图的换色版本
+
+- **症状**：要复现一个已交付包的背景，把内嵌 data URI 解出来、和 `artifacts/editor-backgrounds/` 里的候选逐张做相似度。灰度图打分里粉色换色版 `bg-7e7…` 排第一（4.44），真正的蓝灰原图反而不在候选里；照此出包后画面整体变粉。
+- **根因两层**：① 灰度化丢掉了色相，同构图不同配色的两张图灰度结构几乎相同；② 原包用的是 `public/assets/applovin/textures/BG01_split01_q60.jpg`，根本不在 `editor-backgrounds/` 目录里，只在编辑器的候选集里找永远找不到正确答案。
+- **正确做法**：先按 SHA-256 做**精确匹配**（内嵌资源通常就是某个已入库文件的原字节，`cmp`/`shasum` 一句话就能确认），匹配不到再用 RGB（不是灰度）通道差值排序；候选集要同时覆盖 `artifacts/editor-backgrounds/` 和 `public/assets/applovin/textures/`。
+- **验证**：改回后把原包与新版各跑一张同机位截图，在 5 个纯背景采样点（地面左上、地面中部、右上、下半区、底部空隙）逐点比 RGB，全部完全相等才算对齐。
+
+**Why:** 灰度相似度对「同一构图换了主色」几乎没有分辨力，而这个项目的背景恰恰是按同一构图批量换色的；同时只在一个目录里找会把「不在候选集里」误报成「最相似的是这张」。
+
+**How to apply:** 任何「这个包当时用的是哪个素材」的复原任务，第一步永远是按内容哈希精确匹配，第二步才是有损相似度，且必须用 RGB 而不是灰度、必须把两个素材根目录都纳入候选。
+
+## 2026-11-06 倒计时红光的「半透明过渡」要在实拍像素上验，不能只看 CSS 存在
+
+- **症状**：红光写在 `.countdown-warning` 上、`@keyframes` 也在，元素 `hidden=false`、`animation` 名正确，静态检查全绿；但截图对比几乎量不出差异。
+- **原因**：脉冲动画从 `opacity: 0.18` 起跳，在玫瑰粉的关卡背景上（本身约 `rgb(241,192,196)`）叠加一层 18% 的红色径向渐变，边缘色差只有个位数；视觉上等同于没有。
+- **做法**：用同一机位的两张截图（红光关 / 开）做逐像素差分，量「边框带」与「中心区」的平均 RGB 变化。改到 `0.4↔0.95` 且边缘色提到 `rgba(214,0,24,0.82)` 后，边框带红通道几乎不变、绿/蓝各降约 65，中心区基本不动——这才是「四周红、中间清晰」的可测定义。
+- **结构**：宿主元素负责 0.45s 淡入（`countdown-danger-in`），`::before` 负责 1.1s 脉冲，暂停用 CSS 变量传递，避免 `animationPlayState` 只能作用在宿主上而漏掉伪元素。
+
+**Why:** 「CSS 里有这段规则」和「玩家能看见」是两件事；红光是否成立取决于底层画面颜色，只能靠像素差分确认。
+
+**How to apply:** 任何叠加型警示效果都按「关/开同机位截图 → 分区平均 RGB 差分」验收，并把可感知的门限写进探针脚本，而不是靠人眼扫一眼截图。
+
 ## 2026-11-05 部署验证必须使用相同的构建输入
 
 - 本轮整仓本地构建读取 `artifacts/playable-session.json` 的 `q159-christmas` 会话；既有 Docker 白名单不包含该文件，部署快照按 `artifacts/selected-level.txt` 生成 `level34`。即使运行时代码和锁定依赖完全相同，生成关卡和依赖 chunk 哈希也会不同。
@@ -81,7 +176,7 @@
 - **会话的 `preRoll: 0` 不会自动传达到打包器。** 运行时在 `main.js` 里用 `ACTIVE_PLAYABLE_SESSION.preRollEnabled === false` 把 `SCENE_TUNING.preRoll.enabled` 清零，但打包器和静态检查器直接读调参里的原始开关。只要调参快照里还是 `enabled: 1`，视频就会被打进单 HTML，运行时却从不播——Q159 的 AppLovin 包因此白背了 519 KB 的 TP1327.mp4。
 - **这类不一致静态检查抓不到，因为它自己也读同一个错误来源。** `check-applovin-package.mjs` 的「configured pre-roll video inlined」在视频存在时是 PASS，于是打包器和检查器互相印证了一个错误结论。只有把包体按资源类型拆开、拿 data-uri 的 sha256 回查 `public/` 才暴露出来。
 - 修法是把判定收敛成一个纯函数 `resolvePreRollAsset(tuning, activeSession)`：会话 opt-out 优先，其次调参开关，最后校验 asset 形状。三处共用同一个函数，才不会再出现「运行时不用、打包器照打」。
-- 顺带记一条命名迁移坑：尾段字段已从 `stamina` 改为 `version`（`N`/`B`/`T`/`BT`，标识交付附加项）。旧的调参快照如果还带 `stamina`，导出会直接报 `tuning.exportNaming.stamina is not supported`，必须迁移快照而不是改回导出器。
+- 顺带记一条命名迁移坑：尾段字段已从 `stamina` 改为 `version`（`N`/`B`/`T`/`BT`，标识交付附加项）。旧的调参快照如果还带 `stamina`，导出会直接报 `tuning.exportNaming.stamina is not supported`，必须迁移快照而不是改回导出器。**改名只改导出器不够**：编辑器字段表若还留着旧键，操作员一保存就把 `stamina` 写回调参；「服务端耗时 0 秒」就是判据——请求在 `validateTuning` 被拒，没进构建。现在三处兜住：编辑器行改为 `exportNaming.version`、加载缓存时把 `stamina` 迁移成 `version`、`getPlayableExportPayload()` 发送前按模板 `pruneUnknownTuning` 剪掉未知键。
 
 **Why:** 打包器和检查器共用一个错误来源时，静态全绿也没有意义；真正有效的证据是把成品按资源拆开反查来源。
 
@@ -212,6 +307,13 @@
 **Why:** 这类补充素材的贴图与坐标约定不在代码里，只能从交付原文推导；错了不会报错，只会静默渲染成怪形状或错色。
 
 **How to apply:** 再加同类 Unity 顶点动画乘客时，直接用 `scripts/extract-unity-santa-vat.mjs` 当模板，并先跑一遍「bbox/UV 与同资源 FBX 对照」再接入。
+
+## 2026-11-06 `ConveyorBelt_Footage5/6/7` 沿用同一家族坐标映射；队列组件容量不能照抄
+
+- **映射无需重标定**：`Footage5/6/7` 的 `Loop_13` 本地变换与 `Footage/2/3/4` 不同（`localPosition.z` 是 `1.727`，家族基准是 `1.8`），但样条点仍走同一条 `out_x = 0.826305·x − 0.004829, out_z = 0.826305·z + 14.2367365` 映射与同一 `art { x: 0, y: -0.045, z: -5.3394, width: 16.685, depth: 10.3288 }` 平面。把三条样条按该公式投影回各自 2100×1300 贴图后，红线全程落在灰带中线，说明 `Loop_13` 位移只影响美术贴图摆放，不影响样条坐标空间。**不要**因为 transform 数值不同就重新拟合比例——自由拟合会退化成「缩得越小越贴线」的病态解。
+- **队列 `capacity` 必须放大到传送带容量**：三个 prefab 的队列组件都写 `capacity: 18`（模板默认值），而三条传送带是 42/38/60 槽。首帧填充要求队列能供应整条传送带，队列总量不足会让 `initialFillActive` 永远为 true、车流不动。家族里 star/heart/cat/moon 都是队列 = 传送带容量，照此处理即可。
+- **`hexLoop` / `crossLoop` 的队列只有两个控制点**（一条直线），不是导出丢失：制作人在 Unity 里只截了直段。运行时 `getQueueCapacities()` 会再按「队列曲线长度 ÷ 槽距」收敛可见容量（得到 16/17 或 16/16），所以实际站位比 `queueCapacities` 声明的少，这是既有四条跑道同样存在的正常行为。
+- **`ConveyorBelt_Footage6.prefab` 有一个 inactive 残留节点** `Loop_Road_Footage6`（缩放 0.328、绕 X 90°），其 SpriteRenderer 指向包里没有的 sprite `b0e50af1…`。不影响渲染，导出数据时忽略即可。
 
 ## 2026-10-29 `ConveyorBelt_Footage*` 家族跑道的饱满度校准、3D 身高视差与 `passengerViews` 池尾部清理
 
@@ -1415,3 +1517,25 @@ Full detailed 2026-07-07 findings were archived to:
 - 修复：默认调参加 `"horizon": 0` 作哨兵值。`resolveBackgroundHorizon` 只接受 `0 < h < 1`，0 会被当作“未测量”并回落到内置表，因此现有背景的渲染结果完全不变；实测值（0.5165 / 0.5744 等）现在能通过校验并被烘焙进导出包。
 - 不要走“放宽 `validateTuning` 白名单”这条路。这个项目里未知键报错是有意的护栏（见上面 `stamina`、`starLoop`、`hideOutlineWhenOccupied` 几次同类事故），正确做法始终是让默认调参跟模板同步。
 - 回归：`test/tuning-migrations.test.js` 新增“实测 horizon 能过 prune 和导出校验”＋“0 哨兵合法”两条；`test/background-alignment.test.js` 钉住 0 哨兵不改变渲染偏移。改动后 `node --test` 521/521、`npm run build` 通过。
+
+## 2026-11-10 - 单文件包体必须先看 base64 后的体积
+
+**发现**：一个 3.69 MB 的解码载荷会变成 ~4.9 MB 的 base64 加进单 HTML，再加 CSS/JS/标记就是 5.8 MB。所以判断「什么让包变大」不能看素材目录体积，要看**内联后**的字节数。用 `base64(len)*4/3` 或直接统计 `<data:...;base64,...>` 的长度。
+
+**教训**：同一个素材在仓库里常有多份编码。`applovin/progress/` 的 PNG 母版 877 KB 与 `_q88.webp` 92 KB 并存，换图时只换了 PNG 母版，运行时和打包白名单还指向 PNG，于是包体凭空多 1 MB。**任何「母版 + 压缩变体」并存的目录，运行时路径必须指向压缩变体，且要有一条测试钉住运行时和打包白名单是同一份路径。**
+
+**教训**：同一段音频不要同时保留 WAV 和 gzip `.bin`。消防车两个音效 476 KB WAV + 108 KB gzip 副本都被打进同一个包，而实际只播一份。转 MP3 后 47 KB。
+
+**结论**：平台 5 MB 是硬上限，导出链路必须自己拦，不能等平台审核才发现；ZIP 通道要按解包后字节数判断（`common.json` 的 `max_bytes` 与 `meta.json` 的 `max_uncompressed_bytes` 是两条不同的规则）。
+
+## 2026-11-10 - 双端商店标题要按 storefront 分表，简体中文只有 iOS 有
+
+**发现**：需求方的「双端商店title」表里，Google 和 iOS 对同一语言措辞不同 —— 日语 Google「バスゲーム」/ iOS「バス渋滞脱出」，德语 `Bus Stau Spiel` / `Bus Stau lösen`，葡语 `Jogo de Ônibus` / `Fuga de Ônibus`。所以标题不能做成一张「语言→标题」表，必须是「端→语言→标题」。
+
+**发现**：**简体中文只出现在 iOS 表**（`Bus Fever Party! Bus Loop`），Google 表没有。表头写的是「en-us及其它未列出的语言」，所以 Google 端简体按表规则回退英文，不是遗漏。iOS 表另多越南语。
+
+**教训**：飞书 docx 里如果内容是 `<sheet>` 嵌表，浏览器打开会显示「0 words」+ 只有封面图，DOM 里抓不到正文。必须 `docs +fetch` 拿到 `<sheet token=... sheet-id=...>` 再切 `sheets +read`。本次因此先误判成空文档。
+
+**身份坑**：默认 `personal` profile 的 bot 没有 `docx:document` scope，user 对目标 wiki 节点报 `131006`；`toolbox` profile（`cli_aad34659baf8dbe8`）双身份都能读。lark-cli 默认 profile 已切到 `toolbox`。
+
+**结论**：CTA 语言表和标题语言表必须解耦。标题可以扩到表里所有市场，CTA 只能留在签过的那几种语言上，其余回退 `Play Now` —— 给新市场补 CTA 译名等于改动了已验收的创意。

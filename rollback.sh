@@ -2,9 +2,11 @@
 set -eu
 
 PORT="${1:-5173}"
-PROJECT_NAME="bus-loop-playable-editor"
-IMAGE_NAME="bus-loop-playable-editor"
-DATA_ROOT="/data/${PROJECT_NAME}"
+PROJECT_NAME="bus-loop-playable-editor-wxj"
+IMAGE_NAME="bus-loop-playable-editor-wxj"
+# Keep the data directory on the original path so a rollback still sees the
+# live authored levels instead of seeding an empty volume.
+DATA_ROOT="/data/bus-loop-playable-editor"
 
 if ! docker image inspect "${IMAGE_NAME}:rollback" >/dev/null 2>&1; then
   echo "No rollback image is available."

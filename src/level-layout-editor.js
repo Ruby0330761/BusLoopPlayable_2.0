@@ -1332,8 +1332,8 @@ function renderInspector(root, model) {
       ${['linkHead', 'linkTail'].includes(item.mechanism.type) ? numberField('连接距离', 'mechanism.distance', item.mechanism.distance, { min: 0.15, max: 0.5, step: 0.01 }) : ''}
       ${['wrench', 'gear'].includes(item.mechanism.type) ? selectField('扳手颜色', 'mechanism.wrenchColor', item.mechanism.wrenchColor, [[0,'粉'],[1,'蓝'],[2,'紫'],[3,'绿'],[4,'黄']]) : ''}
       ${item.mechanism.type === 'combination' ? vehicleColorField('组合颜色（同步小人）', 'mechanism.secondColorIndex', item.mechanism.secondColorIndex) : ''}
-      ${item.mechanism.type === 'christmas' ? toggleField('限制步数（红心倒计时）', 'mechanism.stepLimited', item.mechanism.stepLimited) : ''}
-      ${item.mechanism.type === 'ambulance' || item.mechanism.stepLimited ? numberField('步数限制', 'mechanism.stepLimit', item.mechanism.stepLimit, { min: 1, step: 1 }) : ''}
+      ${['christmas', 'ambulance'].includes(item.mechanism.type) ? toggleField(item.mechanism.type === 'ambulance' ? '步数限制（红心倒计时）' : '限制步数（红心倒计时）', 'mechanism.stepLimited', item.mechanism.stepLimited) : ''}
+      ${item.mechanism.stepLimited ? numberField('步数限制', 'mechanism.stepLimit', item.mechanism.stepLimit, { min: 1, step: 1 }) : ''}
       ${item.mechanism.type === 'firetruck' ? numberField('倒计时', 'mechanism.timeLimit', item.mechanism.timeLimit, { min: 1, step: 1 }) : ''}
       <div class="level-layout-inspector-actions"><button type="button" data-action="rotate-left" title="Q：左转 15°；Alt+Q：绕选区中心左转">左转 15°</button><button type="button" data-action="rotate-right" title="E：右转 15°；Alt+E：绕选区中心右转">右转 15°</button></div>
       <button class="is-danger" type="button" data-action="delete">删除选中对象</button>`;

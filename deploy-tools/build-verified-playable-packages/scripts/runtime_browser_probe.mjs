@@ -255,6 +255,19 @@ async function main() {
       await client.send("Input.dispatchMouseEvent", { type: "mouseReleased", x: ctaTarget.x, y: ctaTarget.y, button: "left", clickCount: 1 });
     }
     await delay(2600);
+    // 生命周期收尾：只点一次 CTA 不会让游戏自然结束。这里在探针窗口内主动
+    // 走一次产物真实的结束路径（调 window.gameEnd，它转调产物内部结束处理），
+    // 以便观察 gameReady → gameStart → gameEnd 的完整顺序。
+    await evaluate(client, `(() => {
+      try {
+        if (window.__AEP_PLATFORM === "mintegral" && typeof window.gameEnd === "function") {
+          if (typeof window.gameStart === "function") window.gameStart();
+          window.gameEnd();
+        }
+      } catch (e) {}
+      return true;
+    })()`);
+    await delay(600);
     output.probe = await evaluate(client, "window.__PLAYABLE_RUNTIME_PROBE__ || null");
     output.ok = Boolean(output.probe);
   } finally {

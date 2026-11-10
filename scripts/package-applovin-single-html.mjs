@@ -1,7 +1,7 @@
 import { mkdir, readFile, readdir, stat, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { transformWithEsbuild } from 'vite';
-import { COUNTDOWN_TIMER_ASSET } from '../src/countdown.js';
+import { COUNTDOWN_SIREN_ASSET, COUNTDOWN_TIMER_ASSET } from '../src/countdown.js';
 
 const ROOT = process.cwd();
 const DIST_DIR = path.resolve(process.env.PLAYABLE_DIST_DIR || path.join(ROOT, 'dist'));
@@ -138,7 +138,11 @@ function replaceAssetUrls(content, assetMap) {
 // root-relative URL that does not exist inside a single-file ad.
 const DYNAMIC_MECHANISM_ROOTS = Object.freeze([
   '/assets/unity/mechanisms',
-  '/assets/unity/christmas'
+  '/assets/unity/christmas',
+  // Progress HUD markers are addressed the same way (`${assetBase}bus.png`), so
+  // the single-file packager has to rewrite that root too or the packaged ad
+  // ships three broken <img> elements.
+  '/assets/applovin/progress'
 ]);
 
 function replaceBundledDynamicAssetUrls(content, assetMap) {
@@ -238,6 +242,7 @@ async function main() {
   const [{ PLAYABLE_STAGES, PLAYABLE_STAGE_CHOICES, PLAYABLE_ALL_LEVELS, ACTIVE_PLAYABLE_SESSION }, { SCENE_TUNING }, {
     BASE_RUNTIME_ASSET_PATHS,
     PRE_ROLL_ASSET_PATHS,
+    PROGRESS_HUD_ASSET_PATHS,
     getMechanismResourcePaths,
     getMechanismTypesForLevels
   }, { isPreRollAssetPath, resolvePreRollAsset }, { LEVEL_AUDIO_CONFIG }] = await Promise.all([
@@ -281,7 +286,20 @@ async function main() {
     )
   });
   const realAssetUrls = new Set(BASE_RUNTIME_ASSET_PATHS);
+  // The progress HUD's three marker bitmaps (~193 KB) are only inlined for a
+  // build that actually turns the HUD on. Inlining them unconditionally bloated
+  // every delivery and, worse, made the runtime gate report missing assets for a
+  // package whose tuning had the HUD disabled.
+  if (Number(SCENE_TUNING.progressHud?.enabled) === 1) {
+    for (const asset of PROGRESS_HUD_ASSET_PATHS) realAssetUrls.add(asset);
+  }
   if (Number(SCENE_TUNING.countdown?.enabled) === 1) realAssetUrls.add(COUNTDOWN_TIMER_ASSET);
+  // The siren is a separate ~12 KB clip and only belongs in a build whose clock
+  // was explicitly asked to loop it.
+  if (Number(SCENE_TUNING.countdown?.enabled) === 1
+    && Number(SCENE_TUNING.countdown?.sirenEnabled) === 1) {
+    realAssetUrls.add(COUNTDOWN_SIREN_ASSET);
+  }
   // A session can disable the pre-roll, and the runtime applies that by zeroing
   // the tuning flag. Reading the raw `SCENE_TUNING.preRoll.enabled` here inlined
   // a 519 KB MP4 the runtime never played, so the session has to be consulted
@@ -352,6 +370,18 @@ async function main() {
 
   const { size } = await stat(OUTPUT_FILE);
   const sizeMiB = size / (1024 * 1024);
+  // The exporter enforces the platform size budget and, once a package is over
+  // it, has to name the upload that caused it. Base64 inflates every payload by
+  // a third, so this sidecar records the cost each inlined asset adds to the
+  // final file, largest first.
+  await writeFile(`${OUTPUT_FILE}.payload.json`, `${JSON.stringify({
+    platform: PLAYABLE_PLATFORM,
+    bytes: size,
+    assets: [...assetMap.entries()]
+      .filter(([url]) => realAssetUrls.has(url))
+      .map(([url, dataUri]) => ({ url, bytes: dataUri.length }))
+      .sort((first, second) => second.bytes - first.bytes)
+  }, null, 2)}\n`, 'utf8');
   console.log(`Mechanism whitelist: ${mechanismTypes.join(', ')}.`);
   console.log(`Inlined assets: ${realAssetUrls.size}; omitted assets replaced: ${availableUrls.size - realAssetUrls.size}.`);
   console.log(`Wrote ${path.relative(ROOT, OUTPUT_FILE)} (${size} bytes, ${sizeMiB.toFixed(3)} MiB).`);

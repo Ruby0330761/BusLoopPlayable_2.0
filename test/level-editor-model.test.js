@@ -594,6 +594,31 @@ test('converts an authored document back to the playable runtime shape', () => {
   assert.match(exportLevelExcelXml(document), /Excel\.Sheet/);
 });
 
+test('an ambulance can be authored without a step budget and keeps its family', () => {
+  // A timed level ends on the clock. Dropping the heart must not drop the
+  // ambulance model, so the opt-out is an explicit `stepLimited: false`
+  // rather than a missing mechanism type.
+  const source = makeDocument();
+  const document = createLevelDocument({
+    ...source,
+    vehicles: [{
+      ...source.vehicles[0],
+      mechanism: { type: 'ambulance', stepLimited: false, stepLimit: 35 }
+    }]
+  });
+  assert.equal(document.vehicles[0].mechanism.type, 'ambulance');
+  assert.equal(document.vehicles[0].mechanism.stepLimited, false);
+  const runtime = levelDocumentToRuntime(document, {});
+  assert.equal(runtime.vehicles[0].mechanism.type, 'ambulance');
+  assert.equal(Object.hasOwn(runtime.vehicles[0], 'ambulanceStepLimit'), false);
+  // Omitted `stepLimited` still means the traditional step-limited ambulance.
+  const classic = levelDocumentToRuntime(createLevelDocument({
+    ...source,
+    vehicles: [{ ...source.vehicles[0], mechanism: { type: 'ambulance' } }]
+  }), {});
+  assert.equal(classic.vehicles[0].ambulanceStepLimit, 35);
+});
+
 test('keeps the Unity background material and scene transform through a save and export', () => {
   // Both fields sit beside `passengerMethod` on every shipped level asset. The
   // editor used to drop them, so an imported level could not be exported back

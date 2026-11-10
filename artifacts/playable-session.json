@@ -1,6 +1,6 @@
 {
   "format": "bus-loop-playable-session-v1",
-  "active": "q159-christmas",
+  "active": "bl42-progress",
   "sessions": {
     "q159-christmas": {
       "stages": [
@@ -317,6 +317,83 @@
       ],
       "exportNaming": {
         "materialCode": "Q22V1"
+      },
+      "preRoll": 0
+    },
+    "q165-timed": {
+      "stages": [
+        {
+          "id": "q165-timed-level26",
+          "levelKey": "level26",
+          "opening": {
+            "firstClickGuide": {
+              "enabled": 0
+            },
+            "entryBanner": {
+              "enabled": 0
+            }
+          },
+          "labels": [],
+          "scene": {
+            "conveyorLayout": "dualQueue3",
+            "background": "/assets/applovin/textures/BG01_split01_q60.jpg"
+          }
+        }
+      ],
+      "exportNaming": {
+        "materialCode": "Q165V1"
+      },
+      "preRoll": 0
+    },
+    "bl42-progress": {
+      "stages": [
+        {
+          "id": "bl42-progress",
+          "levelKey": "level15",
+          "opening": {
+            "firstClickGuide": {
+              "enabled": 0
+            },
+            "entryBanner": {
+              "enabled": 0
+            }
+          },
+          "labels": [],
+          "scene": {
+            "conveyorLayout": "dualQueue3",
+            "parkingSpots": {
+              "count": 6
+            }
+          }
+        }
+      ],
+      "exportNaming": {
+        "materialCode": "BL42V1"
+      },
+      "preRoll": 0
+    },
+    "q213-timed-bft": {
+      "stages": [
+        {
+          "id": "q213-timed-level26",
+          "levelKey": "level26",
+          "opening": {
+            "firstClickGuide": {
+              "enabled": 0
+            },
+            "entryBanner": {
+              "enabled": 0
+            }
+          },
+          "labels": [],
+          "scene": {
+            "conveyorLayout": "dualQueue3",
+            "background": "/assets/applovin/textures/BG01_split01_q60.jpg"
+          }
+        }
+      ],
+      "exportNaming": {
+        "materialCode": "Q213V1"
       },
       "preRoll": 0
     }

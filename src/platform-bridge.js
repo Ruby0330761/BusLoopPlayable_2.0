@@ -45,6 +45,10 @@ function track(eventName) {
   safely(() => window.ALPlayableAnalytics.trackEvent(eventName), `AppLovin event ${eventName} failed.`);
 }
 
+// Preview fallback when no ad host is present (plain browser / upload preview).
+// Opens the store in a NEW tab with the same hidden-anchor technique as
+// `openBrowserStorePreview` in `platform-bridges/basic.js`; see the note there
+// for why the anchor must stay `hidden` and must not navigate the current tab.
 function openBrowserPreview(url) {
   const protocol = window.location?.protocol;
   if (

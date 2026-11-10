@@ -1,3 +1,12 @@
+// Direct browser preview (no ad host present: a plain mobile browser opening the
+// HTML file, or an upload preview page).
+//
+// The store opens in a NEW tab, so the playable stays loaded behind it and the
+// player can come back. Verified in a real (non-headless) Chrome window: this
+// `hidden` anchor + `target="_blank"` does create the tab. An earlier attempt to
+// make the anchor "visible" (1x1, opacity 0) actually stopped the jump, and
+// switching to `_self` would have replaced the playable itself — do not
+// reintroduce either.
 export function openBrowserStorePreview(url) {
   const protocol = window.location?.protocol;
   if (

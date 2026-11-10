@@ -1,9 +1,19 @@
 export const COUNTDOWN_TIMER_ASSET = '/assets/applovin/countdown/timer-frame.png';
+// Synthesised two-tone ambulance siren loop. It is only packaged when the
+// countdown siren toggle is on, so an unrelated countdown stays the same size.
+export const COUNTDOWN_SIREN_ASSET = '/assets/applovin/countdown/ambulance-siren.mp3';
 export const DEFAULT_COUNTDOWN_CONFIG = Object.freeze({
   enabled: 0,
   durationSeconds: 30,
   warningEnabled: 1,
   warningSeconds: 10,
+  // Loop the ambulance siren while the clock is running. Off by default: a
+  // countdown on a level without an ambulance must stay silent.
+  sirenEnabled: 0,
+  sirenVolume: 0.35,
+  // Jump straight to the store when the clock reaches zero instead of showing
+  // the Game Over card. Off by default so old profiles keep the failure flow.
+  timeoutStore: 0,
   offsetX: 0,
   offsetY: 0,
   scale: 1
@@ -25,6 +35,9 @@ export function normalizeCountdownConfig(value = {}) {
     warningSeconds: Number.isInteger(warning) && warning >= 0
       ? Math.min(warning, durationSeconds)
       : Math.min(10, durationSeconds),
+    sirenEnabled: Number(source.sirenEnabled ?? 0) === 1 ? 1 : 0,
+    sirenVolume: displayNumber(source.sirenVolume ?? 0.35, 0, 1, 0.35),
+    timeoutStore: Number(source.timeoutStore ?? 0) === 1 ? 1 : 0,
     offsetX: displayNumber(source.offsetX ?? 0, -1080, 1080, 0),
     offsetY: displayNumber(source.offsetY ?? 0, -2160, 2160, 0),
     scale: displayNumber(source.scale ?? 1, 0.25, 3, 1)
@@ -43,6 +56,11 @@ export function validateCountdownConfig(value = {}) {
     throw new TypeError('倒计时时长须为 0–120 的整数');
   }
   if (![0, 1].includes(source.warningEnabled)) throw new TypeError('临近结束红光必须为 0 或 1');
+  if (![0, 1].includes(source.sirenEnabled)) throw new TypeError('救护车警笛开关必须为 0 或 1');
+  if (!Number.isFinite(Number(source.sirenVolume)) || Number(source.sirenVolume) < 0 || Number(source.sirenVolume) > 1) {
+    throw new TypeError('警笛音量须为 0–1 的数值');
+  }
+  if (![0, 1].includes(source.timeoutStore)) throw new TypeError('归零跳转开关必须为 0 或 1');
   if (source.warningEnabled && source.durationSeconds > 0
     && !integerInRange(source.warningSeconds, 0, source.durationSeconds)) {
     throw new TypeError('红光提前时间须为 0 到倒计时时长之间的整数');

@@ -11,7 +11,9 @@ import { LEVEL_1 } from './level-data.js';
 import { isValidStoreLink } from './store-links.js';
 import { detectPlayfieldHorizon, resolveBackgroundHorizon } from './background-alignment.js';
 import { BUILD_VERSION } from './build-version.js';
+import { BUILD_CHANGELOG } from './build-changelog.js';
 import { normalizeCountdownConfig } from './countdown.js';
+import { BRANDING_LOCALE_OPTIONS } from './branding-localization.js';
 import {
   isForeignLevelOwner,
   levelOwnerHeaders,
@@ -34,6 +36,9 @@ const CONVEYOR_LAYOUT_OPTIONS = [
   ['heartLoop', '爱心跑道 HeartLoop'],
   ['catLoop', '猫咪跑道 CatLoop'],
   ['moonLoop', '月亮跑道 MoonLoop'],
+  ['dualLoop5', '双线跑道 DualLoop5'],
+  ['hexLoop', '六边跑道 HexLoop'],
+  ['crossLoop', '十字跑道 CrossLoop'],
 ];
 
 const BACKGROUND_OPTIONS = [
@@ -69,6 +74,20 @@ const PRE_ROLL_OPTIONS = [
   ['/assets/preroll/TP1334.mp4', 'TP1334 (5.0s)']
 ];
 
+// Built-in background-music choices. The editor appends every uploaded track
+// from the BGM library, so this list only seeds the picker before the first
+// fetch resolves.
+const BGM_OPTIONS = [
+  ['/assets/unity/audio/christmas_bgm.mp3', '\u5723\u8bde BGM']
+];
+
+const WEATHER_MODE_OPTIONS = [
+  ['rain', '\u96e8'],
+  ['snow', '\u96ea'],
+  ['wind', '\u98ce'],
+  ['leaf', '\u843d\u53f6']
+];
+
 const PLAYABLE_EXPORT_PLATFORMS = [
   ['applovin', 'AppLovin', 'HTML'],
   ['google-ads', 'Google Ads', 'ZIP'],
@@ -94,6 +113,24 @@ const CUSTOM_PRE_ROLL_ENDPOINT = '/__pre-roll-assets';
 const CUSTOM_PRE_ROLL_ASSET_PREFIX = '/assets/editor-prerolls/';
 const CUSTOM_PRE_ROLL_MAX_SOURCE_BYTES = 50 * 1024 * 1024;
 
+// Every image the editor stores is inlined into a single-file ad, so what an
+// operator uploads is not what ships: a 4 MB PNG would cost ~5.4 MB of base64 on
+// its own and blow the platform budget before any game art is added. Uploads are
+// therefore re-encoded to WebP here, in the browser, at the smallest quality that
+// keeps the file inside the per-asset cap.
+const IMAGE_UPLOAD_MAX_OUTPUT_BYTES = 320 * 1024;
+const IMAGE_UPLOAD_QUALITIES = [0.86, 0.8, 0.74, 0.68, 0.6, 0.52, 0.44, 0.36];
+// WebP quality alone cannot help a 4000px-wide sprite that is drawn at 300
+// design units, so the ladder also steps the longest edge down.
+const IMAGE_UPLOAD_MAX_EDGES = [1600, 1280, 1024, 800, 640];
+
+function formatKilobytes(bytes) {
+  const value = Number(bytes) || 0;
+  return value >= 1024 * 1024
+    ? `${(value / 1024 / 1024).toFixed(2)} MB`
+    : `${Math.max(1, Math.round(value / 1024))} KB`;
+}
+
 const EDITOR_CATEGORIES = [
   ['level', '\u5173\u5361'],
   ['visual', '\u753b\u9762'],
@@ -104,6 +141,9 @@ const EDITOR_CATEGORIES = [
 ];
 
 function editorCategoryForGroup(group) {
+  // A group may declare its tab explicitly; sections whose rows are built by a
+  // custom panel (free-asset layers) have no tuning path to infer from.
+  if (group.category) return group.category;
   const path = group.fields?.[0]?.[1] ?? '';
   if (path.startsWith('exportNaming.')) return 'export';
   if (path.startsWith('level.')) return 'level';
@@ -111,7 +151,9 @@ function editorCategoryForGroup(group) {
     return 'conveyor';
   }
   if (/^(?:parkingSpots|vehiclePath|vehicleDeparturePath|vehicleArea)\./.test(path)) return 'vehicle';
-  if (/^(?:cta|speedToggle|countdown|installGate|gameOver|vehicleGuideHand|firstClickGuide|entryBanner)\./.test(path)) return 'guide';
+  // Sound belongs with the guide stage: the BGM library, its delay/volume
+  // controls and the effect groups are all part of setting up an opening beat.
+  if (/^(?:cta|speedToggle|countdown|installGate|gameOver|vehicleGuideHand|firstClickGuide|entryBanner|weatherEffect|freeAssets|audio)\./.test(path)) return 'guide';
   if (path.startsWith('preRoll.')) return 'guide';
   return 'visual';
 }
@@ -265,6 +307,70 @@ function canvasToJpegBlob(canvas, quality) {
       else reject(new Error('\u80cc\u666f\u56fe\u538b\u7f29\u5931\u8d25'));
     }, 'image/jpeg', quality);
   });
+}
+
+function canvasToWebpBlob(canvas, quality) {
+  return new Promise((resolve, reject) => {
+    canvas.toBlob((blob) => {
+      if (!blob) {
+        reject(new Error('\u56fe\u7247\u538b\u7f29\u5931\u8d25'));
+        return;
+      }
+      // Browsers without a WebP encoder silently hand back a PNG. Accepting it
+      // would ship the exact oversized file this path exists to remove.
+      if (blob.type && blob.type !== 'image/webp') {
+        reject(new Error('\u5f53\u524d\u6d4f\u89c8\u5668\u4e0d\u652f\u6301 WebP \u538b\u7f29'));
+        return;
+      }
+      resolve(blob);
+    }, 'image/webp', quality);
+  });
+}
+
+function drawScaledToCanvas(image, maxEdge) {
+  const sourceWidth = image.naturalWidth || image.width;
+  const sourceHeight = image.naturalHeight || image.height;
+  const scale = Math.min(1, maxEdge / Math.max(sourceWidth, sourceHeight));
+  const canvas = document.createElement('canvas');
+  canvas.width = Math.max(1, Math.round(sourceWidth * scale));
+  canvas.height = Math.max(1, Math.round(sourceHeight * scale));
+  const context = canvas.getContext('2d');
+  if (!context) throw new Error('\u6d4f\u89c8\u5668\u65e0\u6cd5\u5904\u7406\u56fe\u7247');
+  context.imageSmoothingQuality = 'high';
+  context.drawImage(image, 0, 0, canvas.width, canvas.height);
+  return canvas;
+}
+
+/**
+ * Re-encode an uploaded image to WebP under `IMAGE_UPLOAD_MAX_OUTPUT_BYTES`.
+ *
+ * Walks quality first, then the longest edge, and stops at the first
+ * combination inside the cap. A WebP that is already inside the cap is passed
+ * through untouched: re-encoding it can only lose quality.
+ */
+async function compressUploadedImage(file, { maxBytes = IMAGE_UPLOAD_MAX_OUTPUT_BYTES } = {}) {
+  const alreadyWebp = /\.webp$/i.test(file.name ?? '') && /^image\/webp$/i.test(file.type || '');
+  if (alreadyWebp && file.size <= maxBytes) {
+    return { blob: file, filename: file.name, compressed: false, sourceBytes: file.size };
+  }
+  const image = await loadImageFromFile(file);
+  for (const maxEdge of IMAGE_UPLOAD_MAX_EDGES) {
+    const canvas = drawScaledToCanvas(image, maxEdge);
+    for (const quality of IMAGE_UPLOAD_QUALITIES) {
+      const blob = await canvasToWebpBlob(canvas, quality);
+      if (blob.size <= maxBytes) {
+        return {
+          blob,
+          filename: `${file.name.replace(/\.[^.]+$/u, '')}.webp`,
+          compressed: true,
+          sourceBytes: file.size,
+          width: canvas.width,
+          height: canvas.height
+        };
+      }
+    }
+  }
+  throw new Error(`图片压缩后仍超过 ${Math.round(maxBytes / 1024)} KB，请缩小尺寸后再上传`);
 }
 
 async function prepareBackgroundUpload(file) {
@@ -431,7 +537,10 @@ const FIELD_GROUPS = [
       ['\u8bbe\u8ba1\u5e08', 'exportNaming.designer', 0, 0, 1, null, 'filename'],
       ['\u9700\u6c42\u4eba', 'exportNaming.requester', 0, 0, 1, null, 'filename'],
       ['\u6b65\u6570', 'exportNaming.steps', 0, 0, 1, null, 'filename'],
-      ['\u4f53\u529b', 'exportNaming.stamina', 0, 0, 1, null, 'filename'],
+      // The tail segment is the delivery version tag (N/B/T/BT). It used to be
+      // the stamina field; a stale `stamina` key fails tune validation outright,
+      // so the row must write the key the export template actually defines.
+      ['\u5c3e\u6bb5\u7248\u672c', 'exportNaming.version', 0, 0, 1, null, 'filename'],
       ['AppLovin \u6e20\u9053', 'exportNaming.channels.applovin', 0, 0, 1, null, 'filename'],
       ['Google Ads \u6e20\u9053', 'exportNaming.channels.google-ads', 0, 0, 1, null, 'filename'],
       ['Meta \u6e20\u9053', 'exportNaming.channels.meta', 0, 0, 1, null, 'filename'],
@@ -464,6 +573,7 @@ const FIELD_GROUPS = [
       ['Icon Y', 'branding.icon.y', 0, 4320, 1],
       ['Icon \u5bbd\u5ea6', 'branding.icon.width', 16, 2160, 1],
       ['Icon \u9ad8\u5ea6', 'branding.icon.height', 16, 2160, 1],
+      ['Icon \u5706\u89d2', 'branding.icon.radius', 0, 120, 1],
       ['Logo \u7248\u672c', 'branding.logo.asset', 0, 0, 1, BRANDING_LOGO_OPTIONS],
       ['Logo \u663e\u793a', 'branding.logo.enabled', 0, 1, 1, null, 'toggle'],
       ['Logo \u9501\u5b9a', 'branding.logo.locked', 0, 1, 1, null, 'toggle'],
@@ -477,7 +587,9 @@ const FIELD_GROUPS = [
       ['\u6587\u672c X', 'branding.text.x', 0, 4320, 1],
       ['\u6587\u672c Y', 'branding.text.y', 0, 4320, 1],
       ['\u6587\u672c\u5bbd\u5ea6', 'branding.text.width', 16, 2160, 1],
-      ['\u6587\u672c\u9ad8\u5ea6', 'branding.text.height', 16, 2160, 1]
+      ['\u6587\u672c\u9ad8\u5ea6', 'branding.text.height', 16, 2160, 1],
+      ['\u591a\u8bed\u8a00\u9002\u914d', 'branding.localization.enabled', 0, 1, 1, null, 'toggle'],
+      ['\u8bed\u8a00\u9884\u89c8', 'branding.localization.previewLocale', 0, 0, 1, BRANDING_LOCALE_OPTIONS]
     ]
   },
   {
@@ -584,6 +696,27 @@ const FIELD_GROUPS = [
     ]
   },
   {
+    title: '\u8fdb\u5ea6\u6761',
+    defaultOpen: true,
+    progressHud: true,
+    fields: [
+      ['\u542f\u7528\u8fdb\u5ea6\u6761', 'progressHud.enabled', 0, 1, 1, null, 'toggle'],
+      ['\u9ad8\u5931\u8d25\u7387\u8282\u70b9\uff08%\uff09', 'progressHud.nodePercent', 1, 99, 1],
+      ['\u5931\u8d25\u7387\u6587\u6848\uff08%\uff09', 'progressHud.failPercent', 0, 100, 1],
+      ['\u663e\u793a\u4e2d\u95f4\u951a\u70b9', 'progressHud.anchors', 0, 1, 1, null, 'toggle'],
+      ['\u6c34\u5e73\u504f\u79fb X', 'progressHud.offsetX', -1080, 1080, 1],
+      ['\u5782\u76f4\u504f\u79fb Y', 'progressHud.offsetY', -2160, 2160, 1],
+      ['\u6574\u4f53\u7f29\u653e', 'progressHud.scale', 0.2, 3, 0.01],
+      ['\u663e\u793a\u8f68\u9053', 'progressHud.trackVisible', 0, 1, 1, null, 'toggle'],
+      // Track gradient anchors. Colours are stored as 0xRRGGBB numbers so the
+      // shared colour picker applies; the percentages between them are fixed.
+      ['\u8d77\u70b9\u989c\u8272', 'progressHud.spectrumStart', 0, 16777215, 1],
+      ['\u524d\u6bb5\u989c\u8272', 'progressHud.spectrumEarly', 0, 16777215, 1],
+      ['\u540e\u6bb5\u989c\u8272', 'progressHud.spectrumLate', 0, 16777215, 1],
+      ['\u7ec8\u70b9\u989c\u8272', 'progressHud.spectrumEnd', 0, 16777215, 1]
+    ]
+  },
+  {
     title: '倒计时挑战',
     defaultOpen: true,
     countdown: true,
@@ -592,6 +725,13 @@ const FIELD_GROUPS = [
       ['倒计时时长（秒）', 'countdown.durationSeconds', 0, 120, 1, null, 'countdown-number'],
       ['临近结束红光', 'countdown.warningEnabled', 0, 1, 1, null, 'toggle'],
       ['红光提前时间（秒）', 'countdown.warningSeconds', 0, 120, 1, null, 'countdown-number'],
+      // The siren belongs to the clock, not to the ambulance: the timed level
+      // may keep a silent ambulance, and the clock may run on a level with none.
+      ['救护车警笛循环', 'countdown.sirenEnabled', 0, 1, 1, null, 'toggle'],
+      ['警笛音量', 'countdown.sirenVolume', 0, 1, 0.01],
+      // The reference playable ends its countdown by opening the store instead
+      // of showing Game Over. Off keeps the ordinary failure card.
+      ['归零跳转商店', 'countdown.timeoutStore', 0, 1, 1, null, 'toggle'],
       ['水平偏移 X', 'countdown.offsetX', -1080, 1080, 1],
       ['垂直偏移 Y', 'countdown.offsetY', -2160, 2160, 1],
       ['整体缩放', 'countdown.scale', 0.25, 3, 0.01]
@@ -629,6 +769,9 @@ const FIELD_GROUPS = [
       // policy can never reject it. Off by default: only a level that asks for
       // music should make noise.
       ['\u5f00\u542f', 'audio.bgm.enabled', 0, 1, 1, null, 'toggle'],
+      // The track list is populated from the editor's BGM library; this field
+      // exists so the panel can attach its upload/download/delete controls.
+      ['\u66f2\u76ee', 'audio.bgm.asset', 0, 0, 1, BGM_OPTIONS],
       ['\u97f3\u91cf', 'audio.bgm.volume', 0, 1, 0.01],
       ['\u6de1\u5165(\u79d2)', 'audio.bgm.fadeInSeconds', 0, 3, 0.1]
     ]
@@ -659,6 +802,12 @@ const FIELD_GROUPS = [
       // A failed run offers a second attempt. It never appears on a win, so the
       // store button keeps owning the successful ending.
       ['\u542f\u7528\u91cd\u8bd5\u6309\u94ae', 'gameOver.retryEnabled', 0, 1, 1, null, 'toggle'],
+      // Per-delivery: either rebuild the round or use the red pill as a second
+      // store button.
+      ['\u6309\u94ae\u884c\u4e3a', 'gameOver.retryAction', 0, 0, 1, [
+        ['restart', '\u91cd\u5f00\u672c\u5c40'],
+        ['store', '\u6253\u5f00\u5546\u5e97']
+      ]],
       ['\u91cd\u8bd5 X', 'gameOver.retryX', 0, 1080, 1],
       ['\u91cd\u8bd5 Y', 'gameOver.retryY', 0, 2160, 1],
       ['\u91cd\u8bd5\u5bbd\u5ea6', 'gameOver.retryWidth', 120, 900, 1],
@@ -935,6 +1084,27 @@ const FIELD_GROUPS = [
       ['\u5149\u6548\u5bbd\u5ea6', 'firstClickGuide.holeScaleX', 0.2, 3, 0.01],
       ['\u5149\u6548\u9ad8\u5ea6', 'firstClickGuide.holeScaleY', 0.2, 3, 0.01]
     ]
+  },
+  {
+    title: '\u7279\u6548\uff08\u5168\u5c4f\u5929\u6c14\uff09',
+    fields: [
+      ['\u542f\u7528\u7279\u6548', 'weatherEffect.enabled', 0, 1, 1, null, 'toggle'],
+      ['\u7c92\u5b50\u6a21\u5f0f', 'weatherEffect.mode', 0, 0, 1, WEATHER_MODE_OPTIONS],
+      ['\u5f3a\u5ea6', 'weatherEffect.intensity', 0, 4, 0.05],
+      ['\u901f\u5ea6', 'weatherEffect.speed', 0.1, 5, 0.05],
+      ['\u7c92\u5b50\u5927\u5c0f', 'weatherEffect.size', 0.2, 4, 0.05],
+      ['\u900f\u660e\u5ea6', 'weatherEffect.opacity', 0, 1, 0.01],
+      ['\u6a2a\u5411\u98d8\u79fb', 'weatherEffect.windX', -2, 2, 0.01],
+      ['\u7c92\u5b50\u989c\u8272', 'weatherEffect.color', 0, 16777215, 1]
+    ]
+  },
+  {
+    title: '\u81ea\u7531\u7d20\u6750',
+    defaultOpen: true,
+    // Layer rows are owned by the panel appended to this section; an empty field
+    // list keeps the section (and its category) without inventing a tuning key.
+    category: 'guide',
+    fields: []
   }
 ,
   {
@@ -1028,6 +1198,38 @@ function formatColor(value) {
   return `#${hex.toString(16).padStart(6, '0')}`;
 }
 
+// Release notes for the 关于 panel. The entry matching the running build is
+// marked so an operator can tell at a glance whether these are the notes for
+// the editor in front of them.
+function escapeChangelogText(value) {
+  return String(value ?? '')
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;');
+}
+
+function renderChangelogList(currentVersion) {
+  if (!BUILD_CHANGELOG.length) {
+    return '<p class="editor-about-empty">还没有版本记录。</p>';
+  }
+  return BUILD_CHANGELOG.map((entry) => {
+    const isCurrent = entry.version === currentVersion;
+    const items = (entry.changes ?? [])
+      .map((change) => `<li>${escapeChangelogText(change)}</li>`)
+      .join('');
+    return `<article class="editor-about-entry${isCurrent ? ' is-current' : ''}">`
+      + `<div class="editor-about-entry-head">`
+      + `<span class="editor-about-entry-version">v${escapeChangelogText(entry.version)}</span>`
+      + (isCurrent ? '<span class="editor-about-entry-badge">当前版本</span>' : '')
+      + `<span class="editor-about-entry-date">${escapeChangelogText(entry.date)}</span>`
+      + `</div>`
+      + `<h4 class="editor-about-entry-title">${escapeChangelogText(entry.title)}</h4>`
+      + (items ? `<ul class="editor-about-entry-changes">${items}</ul>` : '')
+      + `</article>`;
+  }).join('');
+}
+
 function downloadFilename(response, platform) {
   const disposition = response.headers.get('Content-Disposition') ?? '';
   const encoded = disposition.match(/filename\*=UTF-8''([^;]+)/i)?.[1];
@@ -1065,8 +1267,24 @@ export function createSceneEditor(root, {
         <span class="editor-kicker">SCENE EDITOR <span class="editor-version">v${BUILD_VERSION}</span></span>
         <h2>\u573a\u666f\u8c03\u8282</h2>
       </div>
-      <button class="editor-toggle" type="button" aria-label="\u6536\u8d77\u573a\u666f\u7f16\u8f91\u5668" aria-expanded="true">\u00d7</button>
+      <div class="editor-header-actions">
+        <button class="editor-about" type="button" aria-label="\u67e5\u770b\u7248\u672c\u66f4\u65b0\u5185\u5bb9" title="\u7248\u672c\u66f4\u65b0\u5185\u5bb9">\u5173\u4e8e</button>
+        <button class="editor-toggle" type="button" aria-label="\u6536\u8d77\u573a\u666f\u7f16\u8f91\u5668" aria-expanded="true">\u00d7</button>
+      </div>
     </header>
+    <div class="editor-about-panel" role="dialog" aria-modal="true" aria-labelledby="editor-about-title" hidden>
+      <div class="editor-about-dialog">
+        <header class="editor-about-head">
+          <div>
+            <span class="editor-kicker">SCENE EDITOR</span>
+            <h3 id="editor-about-title">\u7248\u672c\u66f4\u65b0\u5185\u5bb9</h3>
+            <p class="editor-about-current">\u5f53\u524d\u7248\u672c v${BUILD_VERSION}</p>
+          </div>
+          <button class="editor-about-close" type="button" aria-label="\u5173\u95ed\u7248\u672c\u8bf4\u660e">\u00d7</button>
+        </header>
+        <div class="editor-about-list">${renderChangelogList(BUILD_VERSION)}</div>
+      </div>
+    </div>
     <div class="editor-body">
       <p class="editor-help">\u56fe\u7247\u4e0e\u884c\u8d70\u66f2\u7ebf\u53ef\u5206\u522b\u8c03\u8282\u3002\u53c2\u6570\u6309\u5f53\u524d\u5173\u5361\u5355\u72ec\u4fdd\u5b58\uff0c\u6bcf\u6b21\u8c03\u6574\u4f1a\u81ea\u52a8\u4fdd\u5b58\u3002</p>
       <details class="editor-section editor-screenshot" open>
@@ -1110,6 +1328,7 @@ export function createSceneEditor(root, {
           <button class="editor-export-button" type="button">\u5bfc\u51fa\u5f53\u524d\u5e73\u53f0</button>
           <button class="editor-export-all-button" type="button">\u4e00\u952e\u5bfc\u51fa\u5168\u90e8</button>
         </div>
+        <p class="editor-export-limit" role="note">\u6240\u6709\u6e20\u9053\u4e0a\u9650 5 MB\uff1a\u8d85\u8fc7\u7684\u5305\u4e0d\u4f1a\u4e0b\u8f7d\uff0c\u5bfc\u51fa\u4f1a\u76f4\u63a5\u62a5\u9519\u5e76\u5217\u51fa\u5360\u7528\u6700\u5927\u7684\u7d20\u6750\u3002</p>
         <p class="editor-export-status" role="status" aria-live="polite" aria-atomic="true">\u5c31\u7eea</p>
         <p class="editor-export-events" role="status" aria-live="polite" aria-atomic="true">\u5bfc\u51fa\u5305\u81ea\u5e26 AppLovin 12 \u4e2a\u6807\u51c6\u4e8b\u4ef6</p>
       </details>
@@ -1146,10 +1365,12 @@ export function createSceneEditor(root, {
   function updateCountdownControls() {
     const countdown = normalizeCountdownConfig(getTuning().countdown);
     let invalid = false;
-    for (const key of ['durationSeconds', 'warningEnabled', 'warningSeconds', 'offsetX', 'offsetY', 'scale']) {
+    for (const key of ['durationSeconds', 'warningEnabled', 'warningSeconds', 'sirenEnabled', 'sirenVolume', 'timeoutStore', 'offsetX', 'offsetY', 'scale']) {
       const controls = inputs.get(`countdown.${key}`);
       if (!controls) continue;
-      const disabled = !countdown.enabled || (key === 'warningSeconds' && !countdown.warningEnabled);
+      const disabled = !countdown.enabled
+        || (key === 'warningSeconds' && !countdown.warningEnabled)
+        || (key === 'sirenVolume' && !countdown.sirenEnabled);
       controls.row.classList.toggle('is-readonly', disabled);
       (controls.number ?? controls.checkbox).disabled = disabled;
       if (controls.range) controls.range.disabled = disabled;
@@ -1344,7 +1565,11 @@ export function createSceneEditor(root, {
       const checkMessage = check?.startsWith('skipped;')
         ? '\uff08\u672a\u6267\u884c\u672c\u5730\u68c0\u6d4b\uff09'
         : check ? `\uff08\u672c\u5730\u68c0\u6d4b ${check}\uff09` : '';
-      exportStatus.textContent = `\u5df2\u4e0b\u8f7d ${filename}${checkMessage}${timingMessage}\uff0c\u5f85\u5e73\u53f0\u9a8c\u6536`;
+      // Package size is part of the result: it is the number the platform
+      // measures, so showing it here is what lets an operator notice a package
+      // creeping toward the cap before it is refused.
+      const sizeMessage = blob.size > 0 ? `\uff08${formatKilobytes(blob.size)}\uff09` : '';
+      exportStatus.textContent = `\u5df2\u4e0b\u8f7d ${filename}${sizeMessage}${checkMessage}${timingMessage}\uff0c\u5f85\u5e73\u53f0\u9a8c\u6536`;
     } catch (error) {
       exportStatus.dataset.state = 'error';
       const message = error instanceof TypeError && /fetch|network|failed to fetch/i.test(error.message)
@@ -2063,6 +2288,380 @@ export function createSceneEditor(root, {
     } finally {
       setBackgroundBusy(false);
     }
+  });
+
+  /* --- Guide media libraries --------------------------------------------------
+   * Background music, weather sprites and free-asset artwork all come from the
+   * same kind of library (list / upload / rename / delete) and all offer the
+   * same download affordance. One factory keeps the three panels honest instead
+   * of three near-copies drifting apart.
+   */
+  function createGuideAssetPanel({ kind, label, accept, selectPath, section, hint }) {
+    const tools = document.createElement('div');
+    tools.className = 'editor-pre-roll-tools';
+    tools.innerHTML = `
+      <div class="editor-pre-roll-actions">
+        <button class="editor-guide-asset-import" type="button">\u4e0a\u4f20${label}</button>
+        <button class="editor-guide-asset-delete" type="button">\u5220\u9664${label}</button>
+        <button class="editor-guide-asset-download" type="button">\u4e0b\u8f7d${label}</button>
+      </div>
+      <input class="editor-guide-asset-file" type="file" accept="${accept}" hidden>
+      <p class="editor-pre-roll-status" role="status" aria-live="polite">${hint}</p>
+    `;
+    section?.append(tools);
+    const importButton = tools.querySelector('.editor-guide-asset-import');
+    const deleteButton = tools.querySelector('.editor-guide-asset-delete');
+    const downloadButton = tools.querySelector('.editor-guide-asset-download');
+    const fileInput = tools.querySelector('.editor-guide-asset-file');
+    const status = tools.querySelector('.editor-pre-roll-status');
+    const endpoint = `/__guide-assets/${kind}`;
+    let busy = false;
+
+    const currentAsset = () => {
+      const value = getAtPath(getTuning(), selectPath);
+      return typeof value === 'string' ? value : '';
+    };
+    const assetOptions = () => inputs.get(selectPath)?.select;
+    const setBusy = (next) => {
+      busy = next;
+      importButton.disabled = busy;
+      deleteButton.disabled = busy || !currentAsset();
+      downloadButton.disabled = busy || !currentAsset();
+    };
+
+    function replaceOptions(items) {
+      const select = assetOptions();
+      if (!select) return;
+      for (const option of [...select.querySelectorAll('[data-guide-asset]')]) option.remove();
+      for (const item of items) {
+        if (!item?.value) continue;
+        if (select.querySelector(`option[value="${CSS.escape(item.value)}"]`)) continue;
+        const option = document.createElement('option');
+        option.value = item.value;
+        option.textContent = item.label || item.filename;
+        option.dataset.guideAsset = kind;
+        select.append(option);
+      }
+    }
+
+    async function refresh() {
+      const response = await fetch(endpoint, { cache: 'no-store' });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(payload.error || `HTTP ${response.status}`);
+      replaceOptions(payload.items ?? []);
+      const select = assetOptions();
+      const current = currentAsset();
+      if (select && current) select.value = current;
+    }
+
+    async function commitAssetValue(value, assetLabel = '') {
+      const next = structuredClone(getTuning());
+      setAtPath(next, selectPath, value);
+      commitTuning(next, { path: selectPath });
+      const select = assetOptions();
+      if (select && value) {
+        if (assetLabel && !select.querySelector(`option[value="${CSS.escape(value)}"]`)) {
+          const option = document.createElement('option');
+          option.value = value;
+          option.textContent = assetLabel;
+          option.dataset.guideAsset = kind;
+          select.append(option);
+        }
+        select.value = value;
+      }
+      sync();
+      setBusy(false);
+    }
+
+    importButton.addEventListener('click', () => fileInput.click());
+    fileInput.addEventListener('change', async () => {
+      const [file] = fileInput.files ?? [];
+      fileInput.value = '';
+      if (!file) return;
+      setBusy(true);
+      status.dataset.state = 'busy';
+      status.textContent = `\u6b63\u5728\u4e0a\u4f20${label}...`;
+      try {
+        // Images are re-encoded before they leave the browser: these files end
+        // up base64-inlined in the ad, so the upload size is a package-size
+        // problem, not just a storage one. Audio is compressed server-side by
+        // FFmpeg because a browser cannot encode MP3.
+        const prepared = kind === 'bgm' ? null : await compressUploadedImage(file);
+        if (prepared) {
+          status.textContent = prepared.compressed
+            ? `\u5df2\u538b\u7f29 ${formatKilobytes(prepared.sourceBytes)} \u2192 ${formatKilobytes(prepared.blob.size)}\uff0c\u6b63\u5728\u4e0a\u4f20${label}...`
+            : `\u6b63\u5728\u4e0a\u4f20${label}...`;
+        } else {
+          status.textContent = `\u6b63\u5728\u4e0a\u4f20\u5e76\u538b\u7f29${label}...`;
+        }
+        const body = prepared?.blob ?? file;
+        const filename = prepared?.filename ?? file.name;
+        const response = await fetch(`${endpoint}/import`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': body.type || 'application/octet-stream',
+            'X-Guide-Asset-Filename': encodeURIComponent(filename)
+          },
+          body
+        });
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(payload.error || `HTTP ${response.status}`);
+        await refresh();
+        await commitAssetValue(payload.item.value, payload.item.label);
+        status.dataset.state = 'success';
+        status.textContent = `\u5df2\u4e0a\u4f20\u5e76\u5207\u6362\u5230 ${payload.item.label}`;
+      } catch (error) {
+        status.dataset.state = 'error';
+        status.textContent = `\u4e0a\u4f20\u5931\u8d25\uff1a${error.message}`;
+        setBusy(false);
+      }
+    });
+
+    deleteButton.addEventListener('click', async () => {
+      const current = currentAsset();
+      if (!current) return;
+      if (!window.confirm(`\u786e\u5b9a\u5220\u9664\u5f53\u524d${label}\uff1f`)) return;
+      setBusy(true);
+      status.dataset.state = 'busy';
+      status.textContent = `\u6b63\u5728\u5220\u9664${label}...`;
+      try {
+        const filename = current.split('/').pop();
+        const response = await fetch(`${endpoint}?filename=${encodeURIComponent(filename)}`, { method: 'DELETE' });
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(payload.error || `HTTP ${response.status}`);
+        await commitAssetValue('', '');
+        await refresh();
+        status.dataset.state = 'success';
+        status.textContent = `\u5df2\u5220\u9664${label}`;
+      } catch (error) {
+        status.dataset.state = 'error';
+        status.textContent = `\u5220\u9664\u5931\u8d25\uff1a${error.message}`;
+        setBusy(false);
+      }
+    });
+
+    downloadButton.addEventListener('click', async () => {
+      const current = currentAsset();
+      if (!current) return;
+      const selectedLabel = assetOptions()?.selectedOptions?.[0]?.textContent || label;
+      setBusy(true);
+      status.dataset.state = 'busy';
+      status.textContent = `\u6b63\u5728\u51c6\u5907\u4e0b\u8f7d${label}...`;
+      let objectUrl = '';
+      try {
+        const response = await fetch(current, { cache: 'no-store' });
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        const blob = await response.blob();
+        if (!blob.size) throw new Error(`${label}\u5185\u5bb9\u4e3a\u7a7a`);
+        objectUrl = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = objectUrl;
+        const extension = current.split('.').pop() || 'bin';
+        link.download = `${selectedLabel}.${extension}`.replace(/[\\/:*?"<>|]+/gu, '_');
+        link.rel = 'noopener';
+        document.body.append(link);
+        link.click();
+        link.remove();
+        status.dataset.state = 'success';
+        status.textContent = `\u5df2\u4e0b\u8f7d ${link.download}`;
+      } catch (error) {
+        status.dataset.state = 'error';
+        status.textContent = `\u4e0b\u8f7d\u5931\u8d25\uff1a${error.message}`;
+      } finally {
+        if (objectUrl) URL.revokeObjectURL(objectUrl);
+        setBusy(false);
+      }
+    });
+
+    setBusy(false);
+    void refresh().catch((error) => {
+      status.dataset.state = 'error';
+      status.textContent = `\u83b7\u53d6${label}\u5217\u8868\u5931\u8d25\uff1a${error.message}`;
+    });
+    return { refresh, setBusy };
+  }
+
+  const bgmSection = inputs.get('audio.bgm.asset')?.row.closest('.editor-section');
+  if (bgmSection) {
+    createGuideAssetPanel({
+      kind: 'bgm',
+      label: '\u80cc\u666f\u97f3\u4e50',
+      accept: 'audio/mpeg,audio/mp4,audio/ogg,audio/wav,.mp3,.m4a,.ogg,.wav',
+      selectPath: 'audio.bgm.asset',
+      section: bgmSection,
+      hint: '\u652f\u6301 8 MB \u4ee5\u5185 MP3 / M4A / OGG / WAV\uff0c\u4e0a\u4f20\u540e\u81ea\u52a8\u5207\u6362\u4e3a\u672c\u5173\u80cc\u666f\u97f3\u4e50'
+    });
+  }
+
+  const weatherSection = inputs.get('weatherEffect.mode')?.row.closest('.editor-section');
+  if (weatherSection) {
+    createGuideAssetPanel({
+      kind: 'weather',
+      label: '\u7279\u6548\u8d34\u56fe',
+      accept: 'image/png,image/webp,.png,.webp',
+      selectPath: 'weatherEffect.sprite',
+      section: weatherSection,
+      hint: '\u4e0a\u4f20\u7c92\u5b50\u8d34\u56fe\uff08PNG / WebP\uff0c2 MB \u4ee5\u5185\uff09\uff0c\u7559\u7a7a\u5219\u7528\u7a0b\u5e8f\u7ed8\u5236\u7684\u96e8\u96ea\u5f62\u72b6'
+    });
+  }
+
+  const freeAssetPanel = document.createElement('div');
+  freeAssetPanel.className = 'editor-free-asset-panel';
+  freeAssetPanel.innerHTML = `
+    <div class="editor-pre-roll-actions">
+      <button class="editor-free-asset-import" type="button">\u4e0a\u4f20\u7d20\u6750</button>
+      <button class="editor-free-asset-delete" type="button">\u5220\u9664\u9009\u4e2d\u56fe\u5c42</button>
+      <button class="editor-free-asset-download" type="button">\u4e0b\u8f7d\u9009\u4e2d\u56fe\u5c42</button>
+      <button class="editor-free-asset-lock" type="button">\u56fa\u5b9a / \u89e3\u9664</button>
+    </div>
+    <input class="editor-free-asset-file" type="file" accept="image/png,image/webp,.png,.webp" hidden>
+    <p class="editor-pre-roll-status" role="status" aria-live="polite">\u4e0a\u4f20\u540e\u56fe\u5c42\u4f1a\u51fa\u73b0\u5728\u9884\u89c8\u753b\u9762\u4e2d\u95f4\uff0c\u62d6\u52a8\u5373\u53ef\u6446\u653e\uff1b\u300c\u56fa\u5b9a\u300d\u540e\u4e0d\u518d\u53ef\u62d6</p>
+  `;
+  // The free-asset group has no tuning rows; find its section by title.
+  const freeAssetSection = [...document.querySelectorAll('.editor-section')]
+    .find((section) => section.querySelector('h3')?.textContent === '\u81ea\u7531\u7d20\u6750');
+  freeAssetSection?.append(freeAssetPanel);
+  const freeAssetImportButton = freeAssetPanel.querySelector('.editor-free-asset-import');
+  const freeAssetDeleteButton = freeAssetPanel.querySelector('.editor-free-asset-delete');
+  const freeAssetDownloadButton = freeAssetPanel.querySelector('.editor-free-asset-download');
+  const freeAssetLockButton = freeAssetPanel.querySelector('.editor-free-asset-lock');
+  const freeAssetFileInput = freeAssetPanel.querySelector('.editor-free-asset-file');
+  const freeAssetStatus = freeAssetPanel.querySelector('.editor-pre-roll-status');
+  let freeAssetSelection = 0;
+
+  function freeAssetLayers() {
+    return getTuning().freeAssets?.layers ?? [];
+  }
+
+  async function addFreeAssetLayer(asset, label) {
+    const next = structuredClone(getTuning());
+    next.freeAssets ??= { layers: [] };
+    next.freeAssets.layers ??= [];
+    const index = next.freeAssets.layers.length;
+    next.freeAssets.layers.push({
+      id: `layer-${Date.now().toString(36)}-${index + 1}`,
+      asset,
+      label: label || `\u81ea\u7531\u7d20\u6750 ${index + 1}`,
+      x: Math.round(getTuning().preview?.width / 2 || 540),
+      y: Math.round((getTuning().preview?.height || 2160) / 2),
+      width: 300,
+      height: 300,
+      opacity: 1,
+      rotation: 0,
+      locked: 0,
+      visible: 1
+    });
+    commitTuning(next, { path: 'freeAssets.layers' });
+    freeAssetSelection = index;
+    sync();
+  }
+
+  freeAssetImportButton.addEventListener('click', () => freeAssetFileInput.click());
+  freeAssetFileInput.addEventListener('change', async () => {
+    const [file] = freeAssetFileInput.files ?? [];
+    freeAssetFileInput.value = '';
+    if (!file) return;
+    freeAssetStatus.dataset.state = 'busy';
+    freeAssetStatus.textContent = '\u6b63\u5728\u4e0a\u4f20\u7d20\u6750...';
+    try {
+      const prepared = await compressUploadedImage(file);
+      freeAssetStatus.textContent = prepared.compressed
+        ? `\u5df2\u538b\u7f29 ${formatKilobytes(prepared.sourceBytes)} \u2192 ${formatKilobytes(prepared.blob.size)}\uff0c\u6b63\u5728\u4e0a\u4f20\u7d20\u6750...`
+        : '\u6b63\u5728\u4e0a\u4f20\u7d20\u6750...';
+      const response = await fetch('/__guide-assets/free/import', {
+        method: 'POST',
+        headers: {
+          'Content-Type': prepared.blob.type || 'application/octet-stream',
+          'X-Guide-Asset-Filename': encodeURIComponent(prepared.filename)
+        },
+        body: prepared.blob
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(payload.error || `HTTP ${response.status}`);
+      await addFreeAssetLayer(payload.item.value, payload.item.label);
+      freeAssetStatus.dataset.state = 'success';
+      freeAssetStatus.textContent = `\u5df2\u6dfb\u52a0 ${payload.item.label}\uff0c\u53ef\u5728\u753b\u9762\u4e2d\u62d6\u52a8`;
+    } catch (error) {
+      freeAssetStatus.dataset.state = 'error';
+      freeAssetStatus.textContent = `\u4e0a\u4f20\u5931\u8d25\uff1a${error.message}`;
+    }
+  });
+
+  freeAssetDeleteButton.addEventListener('click', async () => {
+    const layers = freeAssetLayers();
+    const layer = layers[freeAssetSelection];
+    if (!layer) {
+      freeAssetStatus.dataset.state = 'error';
+      freeAssetStatus.textContent = '\u8bf7\u5148\u5728\u753b\u9762\u4e2d\u70b9\u9009\u4e00\u4e2a\u56fe\u5c42';
+      return;
+    }
+    if (!window.confirm(`\u786e\u5b9a\u5220\u9664\u56fe\u5c42\u300c${layer.label || layer.id}\u300d\uff1f`)) return;
+    try {
+      if (layer.asset) {
+        const filename = layer.asset.split('/').pop();
+        await fetch(`/__guide-assets/free?filename=${encodeURIComponent(filename)}`, { method: 'DELETE' })
+          .catch(() => {});
+      }
+      const next = structuredClone(getTuning());
+      next.freeAssets.layers.splice(freeAssetSelection, 1);
+      commitTuning(next, { path: 'freeAssets.layers' });
+      freeAssetSelection = Math.max(0, freeAssetSelection - 1);
+      sync();
+      freeAssetStatus.dataset.state = 'success';
+      freeAssetStatus.textContent = '\u5df2\u5220\u9664\u56fe\u5c42';
+    } catch (error) {
+      freeAssetStatus.dataset.state = 'error';
+      freeAssetStatus.textContent = `\u5220\u9664\u5931\u8d25\uff1a${error.message}`;
+    }
+  });
+
+  freeAssetDownloadButton.addEventListener('click', async () => {
+    const layer = freeAssetLayers()[freeAssetSelection];
+    if (!layer?.asset) {
+      freeAssetStatus.dataset.state = 'error';
+      freeAssetStatus.textContent = '\u8bf7\u5148\u70b9\u9009\u4e00\u4e2a\u5e26\u7d20\u6750\u7684\u56fe\u5c42';
+      return;
+    }
+    let objectUrl = '';
+    try {
+      const response = await fetch(layer.asset, { cache: 'no-store' });
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      const blob = await response.blob();
+      objectUrl = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = objectUrl;
+      const extension = layer.asset.split('.').pop() || 'png';
+      link.download = `${layer.label || layer.id}.${extension}`.replace(/[\\/:*?"<>|]+/gu, '_');
+      link.rel = 'noopener';
+      document.body.append(link);
+      link.click();
+      link.remove();
+      freeAssetStatus.dataset.state = 'success';
+      freeAssetStatus.textContent = `\u5df2\u4e0b\u8f7d ${link.download}`;
+    } catch (error) {
+      freeAssetStatus.dataset.state = 'error';
+      freeAssetStatus.textContent = `\u4e0b\u8f7d\u5931\u8d25\uff1a${error.message}`;
+    } finally {
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    }
+  });
+
+  freeAssetLockButton.addEventListener('click', () => {
+    const layers = freeAssetLayers();
+    const layer = layers[freeAssetSelection];
+    if (!layer) {
+      freeAssetStatus.dataset.state = 'error';
+      freeAssetStatus.textContent = '\u8bf7\u5148\u5728\u753b\u9762\u4e2d\u70b9\u9009\u4e00\u4e2a\u56fe\u5c42';
+      return;
+    }
+    const next = structuredClone(getTuning());
+    next.freeAssets.layers[freeAssetSelection].locked = Number(layer.locked) === 1 ? 0 : 1;
+    commitTuning(next, { path: `freeAssets.layers.${freeAssetSelection}.locked` });
+    sync();
+    freeAssetStatus.dataset.state = 'success';
+    freeAssetStatus.textContent = next.freeAssets.layers[freeAssetSelection].locked
+      ? '\u56fe\u5c42\u5df2\u56fa\u5b9a\uff0c\u4e0d\u518d\u53ef\u62d6\u52a8'
+      : '\u56fe\u5c42\u5df2\u89e3\u9664\u56fa\u5b9a';
   });
 
   const levelSection = inputs.get('level.selected')?.row.closest('.editor-section');
@@ -2785,6 +3384,28 @@ export function createSceneEditor(root, {
     toggle.setAttribute('aria-label', collapsed ? '\u5c55\u5f00\u573a\u666f\u7f16\u8f91\u5668' : '\u6536\u8d77\u573a\u666f\u7f16\u8f91\u5668');
   };
   toggle.addEventListener('click', () => setCollapsed(!root.classList.contains('is-collapsed')));
+
+  // Release notes live in their own overlay so they never compete with the
+  // tuning rows. Escape and a backdrop click both close it, and focus returns
+  // to the 关于 button so keyboard navigation does not restart from the top.
+  const aboutPanel = root.querySelector('.editor-about-panel');
+  const aboutButton = root.querySelector('.editor-about');
+  const aboutClose = root.querySelector('.editor-about-close');
+  const setAboutOpen = (open) => {
+    aboutPanel.hidden = !open;
+    root.classList.toggle('is-about-open', open);
+    if (open) aboutClose.focus?.();
+    else aboutButton.focus?.();
+  };
+  aboutButton.addEventListener('click', () => setAboutOpen(true));
+  aboutClose.addEventListener('click', () => setAboutOpen(false));
+  aboutPanel.addEventListener('click', (event) => {
+    if (event.target === aboutPanel) setAboutOpen(false);
+  });
+  document.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape' && !aboutPanel.hidden) setAboutOpen(false);
+  });
+
   root.querySelector('.editor-reset').addEventListener('click', () => {
     const selectedLevel = getTuning().level?.selected;
     clearSavedTuning();

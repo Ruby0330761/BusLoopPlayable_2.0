@@ -4,14 +4,25 @@ import { COUNTDOWN_TIMER_ASSET, formatCountdownTime, normalizeCountdownConfig } 
 // The clock extends beyond its panel; the speed art has transparent margins.
 const TIMER_ART = { width: 1001, height: 392, frameTop: 47, frameBottom: 354 };
 const SPEED_ART = { height: 340, frameTop: 17, frameBottom: 329 };
+// The transparent 1x1 GIF `index.html` uses as a pre-load placeholder.
+const TRANSPARENT_PIXEL_SRC = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7';
 
 export function createCountdownView({ root, image, value, warning, stage, speedButton }) {
   function render(state, { visible = true } = {}) {
     if (!root) return;
     root.hidden = !state.enabled || !visible;
     if (image) {
-      if (state.enabled && !image.getAttribute('src')) image.src = COUNTDOWN_TIMER_ASSET;
-      if (!state.enabled) image.removeAttribute('src');
+      // `index.html` ships a 1x1 transparent GIF as the placeholder src so the
+      // element is never "broken" before the countdown starts. Testing for a
+      // *missing* src therefore never fired, and the real timer artwork was
+      // never loaded — the HUD rendered the digits with no clock around them.
+      // Match on the placeholder (or an empty src) instead.
+      const currentSrc = image.getAttribute('src') ?? '';
+      const needsArtwork = !currentSrc || currentSrc === TRANSPARENT_PIXEL_SRC;
+      if (state.enabled && needsArtwork) image.src = COUNTDOWN_TIMER_ASSET;
+      // Removing src makes the element report naturalWidth 0, which every
+      // runtime gate reads as "broken image". The host is hidden when the
+      // countdown is off, so the last loaded frame is harmless.
     }
     const text = formatCountdownTime(state.remaining);
     if (value && value.textContent !== text) value.textContent = text;
@@ -20,7 +31,10 @@ export function createCountdownView({ root, image, value, warning, stage, speedB
     root.setAttribute('aria-label', `Time remaining ${text}`);
     if (warning) {
       warning.hidden = !visible || !state.urgent;
-      warning.style.animationPlayState = state.paused ? 'paused' : 'running';
+      // The vignette pulses on a pseudo-element so its fade-in can run on the
+      // host at the same time; an inline animationPlayState would only reach
+      // the host animation.
+      warning.style.setProperty?.('--countdown-warning-play', state.paused ? 'paused' : 'running');
     }
   }
 

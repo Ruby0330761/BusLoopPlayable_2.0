@@ -340,6 +340,55 @@ test('audio remains dormant until a user gesture unlocks playback', async () => 
   assert.equal(audio.queuedPlays.length, 0);
 });
 
+test('countdown siren loop is idempotent, reconnectable and stoppable', async () => {
+  const created = [];
+  const audio = new GameAudioController({});
+  audio.unlocked = true;
+  audio.context = {
+    state: 'running',
+    currentTime: 0,
+    destination: {},
+    createGain: () => ({ gain: { value: 0, setValueAtTime() {}, linearRampToValueAtTime() {} }, connect: () => ({}) }),
+    createBufferSource: () => {
+      const source = {
+        loop: false,
+        stopped: false,
+        connect: () => source,
+        start() { this.started = true; },
+        stop() { this.stopped = true; },
+        disconnect() {}
+      };
+      created.push(source);
+      return source;
+    }
+  };
+  audio.loadClip = () => Promise.resolve({});
+  assert.equal(audio.playLoop('countdown_siren', { asset: 'siren.mp3', volume: 0.4 }), true);
+  // A second per-frame call must reuse the running loop instead of stacking one.
+  assert.equal(audio.playLoop('countdown_siren', { asset: 'siren.mp3', volume: 0.4 }), true);
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  assert.equal(created.length, 1);
+  assert.equal(created[0].loop, true);
+  assert.equal(created[0].started, true);
+  assert.equal(audio.isLoopPlaying('countdown_siren'), true);
+  audio.stopLoop('countdown_siren');
+  assert.equal(created[0].stopped, true);
+  assert.equal(audio.isLoopPlaying('countdown_siren'), false);
+  // After a stop the next start builds a fresh source rather than replaying a
+  // stopped one, which WebAudio refuses.
+  audio.playLoop('countdown_siren', { asset: 'siren.mp3' });
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  assert.equal(created.length, 2);
+  audio.stopAllLoops();
+  assert.equal(audio.loops.size, 0);
+});
+
+test('audio unlocking and source reuse stay disabled before a gesture', () => {
+  const audio = new GameAudioController({});
+  assert.equal(audio.playLoop('countdown_siren', { asset: 'siren.mp3' }), false);
+  assert.equal(audio.isLoopPlaying('countdown_siren'), false);
+});
+
 test('audio preload contains individual decode failures without rejecting', async () => {
   const audio = new GameAudioController({
     bus_hit: { clips: ['valid'] },
@@ -534,7 +583,8 @@ test('level12 initializes Unity-authored layout and counts', () => {
 test('Unity conveyor layout catalog includes all requested prefab shapes and assets', () => {
   assert.deepEqual(
     CONVEYOR_LAYOUT_IDS,
-    ['dualQueue2', 'dualQueue3', 'dualQueue5', 'dualQueue10', 'starLoop', 'heartLoop', 'catLoop', 'moonLoop']
+    ['dualQueue2', 'dualQueue3', 'dualQueue5', 'dualQueue10', 'starLoop', 'heartLoop', 'catLoop', 'moonLoop',
+      'dualLoop5', 'hexLoop', 'crossLoop']
   );
   assert.equal(MAX_CONVEYOR_CAPACITY, 60);
   assert.equal(MAX_QUEUE_CAPACITY, 60);
@@ -551,7 +601,13 @@ test('Unity conveyor layout catalog includes all requested prefab shapes and ass
       starLoop: { conveyor: 52, queues: [52, 52] },
       heartLoop: { conveyor: 45, queues: [45, 45] },
       catLoop: { conveyor: 60, queues: [60, 60] },
-      moonLoop: { conveyor: 60, queues: [60, 60] }
+      moonLoop: { conveyor: 60, queues: [60, 60] },
+      // The three 2026-11-06 imports follow the same Footage convention: the
+      // prefab's queue component still says 18, but the family sizes each queue
+      // to the belt so the first fill can never deadlock.
+      dualLoop5: { conveyor: 42, queues: [42, 42] },
+      hexLoop: { conveyor: 38, queues: [38, 38] },
+      crossLoop: { conveyor: 60, queues: [60, 60] }
     }
   );
   // StarLoop and the Footage2/3/4 heart/cat/moon belts come from other Unity
@@ -568,6 +624,17 @@ test('Unity conveyor layout catalog includes all requested prefab shapes and ass
     } else if (id === 'catLoop' || id === 'moonLoop') {
       assert.equal(layout.splinePoints.length, 27);
       assert.deepEqual(layout.queuePaths.map((path) => path.length), [15, 15]);
+    } else if (id === 'dualLoop5') {
+      assert.equal(layout.splinePoints.length, 19);
+      assert.deepEqual(layout.queuePaths.map((path) => path.length), [8, 8]);
+    } else if (id === 'hexLoop') {
+      assert.equal(layout.splinePoints.length, 18);
+      // Footage6/7 author a straight two-point queue each; the renderer trims
+      // the tail to the screen edge, so a short authored queue is expected.
+      assert.deepEqual(layout.queuePaths.map((path) => path.length), [2, 2]);
+    } else if (id === 'crossLoop') {
+      assert.equal(layout.splinePoints.length, 16);
+      assert.deepEqual(layout.queuePaths.map((path) => path.length), [2, 2]);
     } else {
       assert.equal(layout.splinePoints.length, 19);
       assert.deepEqual(layout.queuePaths.map((path) => path.length), [20, 20]);
@@ -1440,6 +1507,9 @@ test('editor sizing, source background ratio, and passenger shadow anchor stay w
     logoRadius: 30,
     logoAppearSpeed: 1.45,
     retryEnabled: 1,
+    // What the red pill does: restart the round (default) or open the store.
+    // Only a delivery that opts in changes it.
+    retryAction: 'restart',
     retryX: 540,
     retryY: 1360,
     retryWidth: 420,
@@ -2493,9 +2563,10 @@ test('main thread saves and restores scene tuning from localStorage', () => {
   assert.match(mainSource, /function applyCtaTuning/);
   assert.match(mainSource, /ctaButton\.hidden = !Boolean\(cta\.enabled \?\? 1\)/);
   // A wider fallback face on some Windows engines must shrink the CTA label
-  // instead of letting it wrap onto overlapping lines.
+  // instead of letting it wrap onto overlapping lines. Localized labels use the
+  // same shrink path, so the maths lives in one shared helper.
   assert.match(mainSource, /function fitCtaLabel\(\{ fontSize, fontHeight, uiScale, availableWidth \}\)/);
-  assert.match(mainSource, /const ratio = availableWidth \/ contentWidth \* 0\.98/);
+  assert.match(mainSource, /fitFontSizeToWidth\(\{ fontSize, measuredWidth: contentWidth, availableWidth \}\)/);
   assert.match(mainSource, /const fitted = fitCtaLabel\(\{/);
   assert.match(mainSource, /availableWidth: renderedWidth - paddingX \* uiScale \* 2/);
   assert.match(mainSource, /showResultOverlay\(state\.lastEvent\.reason === 'ambulance-exceed-step' \? 'Ambulance Failed' : 'Game Over'\)/);
@@ -2612,6 +2683,11 @@ test('Icon, Logo, and text overlays expose independent responsive editor control
     }
   }
   assert.equal(SCENE_TUNING.branding.icon.asset, '/assets/icon-android.jpg');
+  // The store icon is square art in a wider box. Its radius is authored in
+  // design units and applied to the painted square, which only works if the
+  // default tuning carries the key (the exporter validates against it).
+  assert.equal(Number.isFinite(SCENE_TUNING.branding.icon.radius), true);
+  assert.equal(SCENE_TUNING.branding.icon.radius >= 0, true);
   assert.equal(SCENE_TUNING.branding.logo.asset, '/assets/main-loading-icon-small.png');
   assert.equal(typeof SCENE_TUNING.branding.text.content, 'string');
   assert.equal(existsSync(join('public', 'assets', 'icon-crowd.jpg')), true);
@@ -2622,7 +2698,8 @@ test('Icon, Logo, and text overlays expose independent responsive editor control
   assert.match(editorSource, /preview\.height/);
   for (const path of [
     'branding.icon.asset', 'branding.icon.enabled', 'branding.icon.locked', 'branding.icon.x', 'branding.icon.y',
-    'branding.icon.width', 'branding.icon.height', 'branding.logo.asset', 'branding.logo.enabled', 'branding.logo.locked',
+    'branding.icon.width', 'branding.icon.height',
+    'branding.icon.radius', 'branding.logo.asset', 'branding.logo.enabled', 'branding.logo.locked',
     'branding.logo.x', 'branding.logo.y', 'branding.logo.width', 'branding.logo.height',
     'branding.text.enabled', 'branding.text.locked', 'branding.text.content', 'branding.text.x',
     'branding.text.y', 'branding.text.width', 'branding.text.height'
@@ -2659,6 +2736,11 @@ test('Icon, Logo, and text overlays expose independent responsive editor control
   assert.match(mainSource, /element\.textContent = content/);
   assert.match(mainSource, /element\.style\.left = `\$\{renderedCenterX\}px`/);
   assert.match(mainSource, /element\.style\.top = `\$\{y \* metrics\.positionScaleY\}px`/);
+  // The icon radius is authored in design units and clipped against the painted
+  // square, so the box has to shrink to that square first.
+  assert.match(mainSource, /const squareIcon = key === 'icon'/);
+  assert.match(mainSource, /element\.style\.borderRadius = renderedRadius > 0/);
+  assert.match(mainSource, /context\.roundRect\(centerX - side \/ 2, centerY - side \/ 2, side, side, radius\)/);
   assert.match(mainSource, /const x = localX \/ metrics\.positionScaleX/);
   assert.match(mainSource, /const y = localY \/ metrics\.positionScaleY/);
   assert.match(mainSource, /setPointerCapture/);
@@ -2975,9 +3057,15 @@ test('the failure card offers a Retry that restarts the run, and a win never sho
   assert.match(mainSource, /showResultOverlay\('You Win!', \{ failed: false \}\)/);
   assert.match(mainSource, /function hideGameOver\(\)[\s\S]{0,400}gameOverRetryButton\.hidden = true/);
 
-  // Tapping it restarts the run through the same reset path as the other replay
-  // buttons, so the session, install gate and speed state are all rebuilt.
-  assert.match(mainSource, /gameOverRetryButton\?\.addEventListener\('click',[\s\S]{0,200}reset\(\);/);
+  // Tapping it restarts the run by default, through the same reset path as the
+  // other replay buttons, so the session, install gate and speed state are all
+  // rebuilt. A delivery can repoint it at the store with `retryAction: 'store'`
+  // (the Q165V1 timed build uses it as a second CTA); that branch must route
+  // through the install path, not reset().
+  assert.match(
+    mainSource,
+    /gameOverRetryButton\?\.addEventListener\('click',[\s\S]{0,400}retryAction === 'store'[\s\S]{0,120}InstallFullGame\(\);[\s\S]{0,400}reset\(\);/
+  );
 
   // The pill art ships blank and the word is a text layer, so the operator can
   // size the label independently of the button. It must render exactly once.
@@ -2987,10 +3075,21 @@ test('the failure card offers a Retry that restarts the run, and a win never sho
 
   // The shared `button:hover` rule paints `background: #fff`, which turned this
   // button into a blank white pill. The art and the centering transform both
-  // have to be restated in the hover rule.
+  // have to be restated in the hover rule. The art itself is declared once as a
+  // custom property, so the single-HTML export inlines it once instead of twice
+  // (a repeat trips FINAL_PAYLOAD_DUPLICATE_WASTE).
   assert.match(
     stylesSource,
-    /\.game-over-retry:hover,\s*\n\.game-over-retry:focus-visible \{\s*\n\s*background: transparent url\('\/assets\/unity\/ui\/Main_Prop_RedBtn_blank_q90\.webp'\) center \/ 100% 100% no-repeat;/
+    /--game-over-retry-background: url\('\/assets\/unity\/ui\/Main_Prop_RedBtn_blank_q90\.webp'\) center \/ 100% 100% no-repeat;/
+  );
+  assert.match(
+    stylesSource,
+    /\.game-over-retry:hover,\s*\n\.game-over-retry:focus-visible \{\s*\n\s*background: transparent var\(--game-over-retry-background\);/
+  );
+  assert.equal(
+    stylesSource.split("Main_Prop_RedBtn_blank_q90.webp").length - 1,
+    1,
+    'the retry pill art must be referenced exactly once so it is inlined once'
   );
 
   // Default placement is under the logo, not on the CTA strip: the button's

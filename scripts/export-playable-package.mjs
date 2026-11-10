@@ -37,7 +37,7 @@ const PLATFORM_FORMATS = Object.freeze({
   moloco: 'html',
   tiktok: 'zip'
 });
-export const PLAYABLE_NAMING_PATTERN = 'requirement-material-iteration-N-language-format-designer-requester-channel-steps-stamina';
+export const PLAYABLE_NAMING_PATTERN = 'requirement-material-iteration-N-language-format-designer-requester-channel-steps-version';
 // The Bus branding variant prints as the delivery requirement prefix (`BL`) in
 // every artifact name. It used to print as `bus`, so the download container and
 // the check reports disagreed with the packaged files they described.
@@ -223,10 +223,9 @@ export function buildPlayableArtifactName(tuning, platform, suffix = '', { compa
   const safeNaming = naming ?? {};
   const channels = safeNaming.channels ?? {};
   // Delivery names carry one fixed `N` after the pre-roll/inducement segment and
-  // end with steps + stamina. The steps and stamina segments default to `N`
-  // (neither a step limit nor stamina is used) instead of being dropped: the
-  // requirement sheet compares names field by field, so a name with the tail
-  // segments missing reads as a different deliverable.
+  // end with steps + the version tag. Both tail segments default to `N` instead
+  // of being dropped: the requirement sheet compares names field by field, so a
+  // name with the tail segments missing reads as a different deliverable.
   const parts = [
     ['requirementCode', safeNaming.requirementCode],
     ['materialCode', safeNaming.materialCode],
@@ -584,6 +583,47 @@ async function copySelectedEditorPreRoll(projectRoot, workRoot, tuning) {
   }
 }
 
+// Guide-stage media lives in three sibling libraries. Only the asset the level
+// actually references is copied, so a shared editor volume full of uploads does
+// not inflate every package.
+const GUIDE_ASSET_SOURCES = Object.freeze({
+  '/assets/editor-bgm/': { dir: 'editor-bgm', extensions: ['.mp3', '.m4a', '.ogg', '.wav'] },
+  '/assets/editor-effects/': { dir: 'editor-effects', extensions: ['.png', '.webp'] },
+  '/assets/editor-free-assets/': { dir: 'editor-free-assets', extensions: ['.png', '.webp'] }
+});
+
+function guideAssetReferences(tuning) {
+  const values = [];
+  const push = (value) => {
+    if (typeof value === 'string' && value) values.push(value);
+  };
+  push(tuning?.audio?.bgm?.asset);
+  push(tuning?.weatherEffect?.sprite);
+  for (const layer of tuning?.freeAssets?.layers ?? []) push(layer?.asset);
+  return values;
+}
+
+async function copySelectedGuideAssets(projectRoot, workRoot, tuning) {
+  for (const reference of guideAssetReferences(tuning)) {
+    for (const [prefix, spec] of Object.entries(GUIDE_ASSET_SOURCES)) {
+      if (!reference.startsWith(prefix)) continue;
+      const filename = path.basename(reference);
+      if (filename !== reference.slice(prefix.length)) break;
+      if (!spec.extensions.includes(path.extname(filename).toLowerCase())) break;
+      const source = path.join(projectRoot, 'artifacts', spec.dir, filename);
+      const destination = path.join(workRoot, 'public', 'assets', spec.dir, filename);
+      await mkdir(path.dirname(destination), { recursive: true });
+      await copyFile(source, destination).catch((error) => {
+        if (error.code === 'ENOENT') {
+          throw new Error(`Guide asset is referenced but missing from the editor volume: ${reference}`);
+        }
+        throw error;
+      });
+      break;
+    }
+  }
+}
+
 async function loadBrandingIconDataUri(projectRoot, tuning) {
   const asset = tuning?.branding?.icon?.asset;
   if (
@@ -659,6 +699,7 @@ async function prepareWorkspace(projectRoot, tuning, levelDocument = null) {
   }
   await copySelectedEditorBackground(projectRoot, workRoot, tuning);
   await copySelectedEditorPreRoll(projectRoot, workRoot, tuning);
+  await copySelectedGuideAssets(projectRoot, workRoot, tuning);
   await applyWorkspaceBrandingIcon(workRoot, tuning);
   await symlink(path.join(projectRoot, 'node_modules'), path.join(workRoot, 'node_modules'), 'dir');
   const tuningPath = path.join(workRoot, 'artifacts', 'export-tuning.json');
@@ -800,7 +841,18 @@ async function buildUniversalHtml(workRoot, platform, signal) {
     signal,
     label: `Inline ${platform}`
   });
-  return readFile(outputPath, 'utf8');
+  const html = await readFile(outputPath, 'utf8');
+  // The packager's sidecar lists what it inlined and how many bytes each asset
+  // costs in the final file. It is optional: an older workspace or a cached
+  // source has none, and the size gate still reports the total.
+  let payloadAssets = null;
+  try {
+    const payload = JSON.parse(await readFile(`${outputPath}.payload.json`, 'utf8'));
+    if (Array.isArray(payload?.assets)) payloadAssets = payload.assets;
+  } catch (error) {
+    if (error.code !== 'ENOENT' && !(error instanceof SyntaxError)) throw error;
+  }
+  return { html, payloadAssets };
 }
 
 async function writePlatformArtifact({
@@ -1107,7 +1159,8 @@ async function buildOne({
   cachedRuntimeReport = null,
   skipRuntime = false,
   cachedBackupImagePath = null,
-  skipChecks = false
+  skipChecks = false,
+  payloadAssets = null
 }) {
   const artifactPath = await writePlatformArtifact({
     platform,
@@ -1122,6 +1175,13 @@ async function buildOne({
     cachedBackupImagePath,
     skipChecks
   });
+  const artifactLabel = brandingVariant
+    ? `${platform} (${brandingVariant === 'bus' ? BUS_BRANDING_LABEL : brandingVariant}) `
+    : `${platform} `;
+  // Size is checked first: a package over the platform cap is not deliverable,
+  // and failing here skips a two-minute browser smoke for an artifact that can
+  // never be uploaded.
+  await assertPlayableWithinSizeBudget({ platform, artifactPath, payloadAssets, label: artifactLabel });
   const checkSummary = await checkArtifact({
     skill,
     platform,
@@ -1176,6 +1236,107 @@ async function verifyPublishedArtifact(filePath, expected, label) {
     throw new Error(`${label} changed while being published; export is blocked.`);
   }
   return actual;
+}
+
+// Every delivery channel caps the playable at 5 MB (AppLovin/Moloco/Unity Ads
+// single HTML, Meta/Google Ads/TikTok/Mintegral ZIP). Over-budget packages were
+// previously produced happily and only failed at the platform, so the operator
+// learned about it after uploading. The gate runs on the artifact itself, which
+// is the thing the platform measures.
+export const PLAYABLE_MAX_ARTIFACT_BYTES = 5 * 1024 * 1024;
+const PAYLOAD_REPORT_ASSET_LIMIT = 6;
+
+function formatMegabytes(bytes) {
+  return `${(bytes / 1024 / 1024).toFixed(2)} MB`;
+}
+
+// Names the assets that ate the budget, biggest first. Without this the error
+// only says "too large" and the operator has to guess between a progress-HUD
+// bitmap, a stray WAV and a re-uploaded background.
+function describeHeaviestPayloadAssets(payloadAssets) {
+  const heaviest = (payloadAssets ?? [])
+    .filter((asset) => typeof asset?.url === 'string' && Number(asset.bytes) > 0)
+    .sort((first, second) => Number(second.bytes) - Number(first.bytes))
+    .slice(0, PAYLOAD_REPORT_ASSET_LIMIT);
+  if (heaviest.length === 0) return '';
+  const lines = heaviest.map((asset) => `${path.basename(asset.url)} ${formatMegabytes(Number(asset.bytes))}`);
+  return ` 占用最大的内联素材：${lines.join('、')}`;
+}
+
+export async function assertArtifactWithinSizeBudget({ platform, artifactPath, payloadAssets, label }) {
+  const { size } = await stat(artifactPath);
+  if (size <= PLAYABLE_MAX_ARTIFACT_BYTES) return size;
+  const error = new Error(
+    `${label}导出产物 ${formatMegabytes(size)}，超过平台 5 MB 上限，已阻止导出。`
+    + `${describeHeaviestPayloadAssets(payloadAssets)}。`
+    + '请压缩或替换这些素材（图片转 WebP、音频转 MP3），然后重新导出。'
+  );
+  error.statusCode = 413;
+  error.code = 'PLAYABLE_ARTIFACT_TOO_LARGE';
+  error.platform = platform;
+  error.artifactBytes = size;
+  throw error;
+}
+
+// ZIP channels are limited on the extracted payload, not on the archive: a
+// 4 MB ZIP can still unpack to 6 MB, and Meta/Google Ads/Mintegral reject that.
+// Reading the end-of-central-directory record keeps this honest without pulling
+// in a zip dependency.
+export function readZipUncompressedBytes(buffer) {
+  const minimumEocdOffset = Math.max(0, buffer.length - 0xffff - 22);
+  let eocd = -1;
+  for (let offset = buffer.length - 22; offset >= minimumEocdOffset; offset -= 1) {
+    if (buffer.readUInt32LE(offset) === 0x06054b50) {
+      eocd = offset;
+      break;
+    }
+  }
+  if (eocd < 0) return null;
+  const entryCount = buffer.readUInt16LE(eocd + 10);
+  const directoryOffset = buffer.readUInt32LE(eocd + 16);
+  let cursor = directoryOffset;
+  let total = 0;
+  for (let index = 0; index < entryCount; index += 1) {
+    if (cursor + 46 > buffer.length || buffer.readUInt32LE(cursor) !== 0x02014b50) return null;
+    total += buffer.readUInt32LE(cursor + 24);
+    const nameLength = buffer.readUInt16LE(cursor + 28);
+    const extraLength = buffer.readUInt16LE(cursor + 30);
+    const commentLength = buffer.readUInt16LE(cursor + 32);
+    cursor += 46 + nameLength + extraLength + commentLength;
+  }
+  return total;
+}
+
+async function assertZipPayloadWithinSizeBudget({ platform, artifactPath, payloadAssets, label }) {
+  const buffer = await readFile(artifactPath);
+  const uncompressedBytes = readZipUncompressedBytes(buffer);
+  if (uncompressedBytes == null) {
+    throw new Error(`${label}导出产物不是可读取的 ZIP，已阻止导出。`);
+  }
+  if (uncompressedBytes <= PLAYABLE_MAX_ARTIFACT_BYTES) return uncompressedBytes;
+  const error = new Error(
+    `${label}导出产物解包后 ${formatMegabytes(uncompressedBytes)}，超过平台 5 MB 上限，已阻止导出。`
+    + `${describeHeaviestPayloadAssets(payloadAssets)}。`
+    + '请压缩或替换这些素材（图片转 WebP、音频转 MP3），然后重新导出。'
+  );
+  error.statusCode = 413;
+  error.code = 'PLAYABLE_ARTIFACT_TOO_LARGE';
+  error.platform = platform;
+  error.artifactBytes = uncompressedBytes;
+  throw error;
+}
+
+/**
+ * Enforce the 5 MB delivery cap on a finished artifact.
+ *
+ * Single-file channels are measured as-is; ZIP channels are measured after
+ * extraction, which is the number their reviewers enforce. Returns the measured
+ * payload size.
+ */
+export async function assertPlayableWithinSizeBudget({ platform, artifactPath, payloadAssets = null, label = '' }) {
+  return PLATFORM_FORMATS[platform] === 'zip'
+    ? assertZipPayloadWithinSizeBudget({ platform, artifactPath, payloadAssets, label })
+    : assertArtifactWithinSizeBudget({ platform, artifactPath, payloadAssets, label });
 }
 
 async function publishCheckReports(checkSummary, destinationRoot, reportLabel) {
@@ -1440,21 +1601,27 @@ async function exportPlatforms({ projectRoot, tuning, levelDocument = null, plat
         getExportConcurrency(platforms.length),
         async (platform) => {
           let sourceHtml;
+          let payloadAssets = null;
           if (reusesBuiltSources) {
             const reusableSource = reusableSources.get(platform);
             if (!reusableSource) throw new Error(`Reusable ${platform} build is missing.`);
             sourceHtml = retargetBrandingVariantHtml(
-              reusableSource,
+              reusableSource.html,
               sourceVariantTuning,
               variantTuning,
               targetIconDataUri
             );
+            payloadAssets = reusableSource.payloadAssets;
           } else if (cachedSources) {
-            sourceHtml = reusableSources.get(platform);
-            if (!sourceHtml) throw new Error(`Cached ${platform} build is missing.`);
+            const cachedSource = reusableSources.get(platform);
+            if (!cachedSource) throw new Error(`Cached ${platform} build is missing.`);
+            sourceHtml = cachedSource.html;
+            payloadAssets = cachedSource.payloadAssets;
           } else {
-            sourceHtml = await buildUniversalHtml(workspace.workRoot, platform, signal);
-            reusableSources?.set(platform, sourceHtml);
+            const built = await buildUniversalHtml(workspace.workRoot, platform, signal);
+            sourceHtml = built.html;
+            payloadAssets = built.payloadAssets;
+            reusableSources?.set(platform, built);
           }
           assertEmbeddedStoreLinks(sourceHtml, variantTuning);
           return buildOne({
@@ -1474,7 +1641,8 @@ async function exportPlatforms({ projectRoot, tuning, levelDocument = null, plat
             cachedRuntimeReport: null,
             skipRuntime,
             skipChecks,
-            cachedBackupImagePath
+            cachedBackupImagePath,
+            payloadAssets
           });
         }
       );

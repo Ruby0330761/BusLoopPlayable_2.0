@@ -49,13 +49,12 @@ test('scaled substeps advance the game twice as far as real time at x2', () => {
   assert.equal(run(2), 2);
 });
 
-test('speed toggle tuning ships visible in the top-right corner and stays switchable', () => {
+test('speed toggle tuning keeps its top-right geometry and a valid multiplier', () => {
   const tuning = SCENE_TUNING.speedToggle;
-  // The delivered playables show the difficulty pill at top centre and the
-  // play-speed control in the top-right corner, so the switch is on for every
-  // export built from this tuning. A tuning object that omits the flag still
-  // resolves to hidden -- see the next test.
-  assert.equal(tuning.enabled, 1);
+  // The switch is off by default: the progress-bar delivery owns the top-right
+  // corner and the button crowded the bar. The geometry and multiplier stay
+  // valid so a level that wants it can just flip `enabled` back on.
+  assert.equal(tuning.enabled, 0);
   assert.equal(tuning.multiplier, 2);
   assert.ok(tuning.width > 0 && tuning.height > 0);
   // Design space is 1080x2160, so the button's centre sits far right and near

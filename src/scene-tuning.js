@@ -1,9 +1,26 @@
 export const SCENE_TUNING = {
+  "progressHud": {
+    "enabled": 0,
+    "nodePercent": 50,
+    "failPercent": 29,
+    "anchors": 1,
+    "offsetX": 0,
+    "offsetY": -109,
+    "scale": 0.8,
+    "trackVisible": 1,
+    "spectrumStart": 1230122,
+    "spectrumEarly": 13821192,
+    "spectrumLate": 16749824,
+    "spectrumEnd": 15340056
+  },
   "countdown": {
     "enabled": 0,
     "durationSeconds": 30,
     "warningEnabled": 1,
     "warningSeconds": 10,
+    "sirenEnabled": 0,
+    "sirenVolume": 0.35,
+    "timeoutStore": 0,
     "offsetX": 0,
     "offsetY": 0,
     "scale": 1
@@ -62,7 +79,8 @@ export const SCENE_TUNING = {
       "x": 966,
       "y": 2018,
       "width": 180,
-      "height": 123
+      "height": 123,
+      "radius": 30
     },
     "logo": {
       "enabled": 1,
@@ -85,6 +103,10 @@ export const SCENE_TUNING = {
     "loading": {
       "icon": "/assets/applovin/icon_q75.jpg",
       "title": "Bus Fever Party!"
+    },
+    "localization": {
+      "enabled": 1,
+      "previewLocale": "auto"
     }
   },
   "camera": {
@@ -119,7 +141,7 @@ export const SCENE_TUNING = {
     "appearSpeed": 1.45
   },
   "speedToggle": {
-    "enabled": 1,
+    "enabled": 0,
     "x": 916,
     "y": 118,
     "width": 210,
@@ -158,6 +180,10 @@ export const SCENE_TUNING = {
     "logoRadius": 30,
     "logoAppearSpeed": 1.45,
     "retryEnabled": 1,
+    // What the failure card's red button does. "restart" keeps the original
+    // behaviour (rebuild the round); "store" turns it into a second CTA that
+    // opens the store. Per-delivery, so every other package is unaffected.
+    "retryAction": "restart",
     "retryX": 540,
     "retryY": 1360,
     "retryWidth": 420,
@@ -460,6 +486,96 @@ export const SCENE_TUNING = {
         }
       ]
     },
+    "dualLoop5": {
+      "art": {
+        "x": 0,
+        "y": -0.045,
+        "z": -5.3394,
+        "width": 16.685,
+        "depth": 10.3288,
+        "opacity": 1
+      },
+      "curve": {
+        "offsetX": 0,
+        "offsetZ": 0,
+        "scaleX": 1,
+        "scaleZ": 1
+      },
+      "queueCurves": [
+        {
+          "offsetX": 0,
+          "offsetZ": 0,
+          "scaleX": 1,
+          "scaleZ": 1
+        },
+        {
+          "offsetX": 0,
+          "offsetZ": 0,
+          "scaleX": 1,
+          "scaleZ": 1
+        }
+      ]
+    },
+    "hexLoop": {
+      "art": {
+        "x": 0,
+        "y": -0.045,
+        "z": -5.3394,
+        "width": 16.685,
+        "depth": 10.3288,
+        "opacity": 1
+      },
+      "curve": {
+        "offsetX": 0,
+        "offsetZ": 0,
+        "scaleX": 1,
+        "scaleZ": 1
+      },
+      "queueCurves": [
+        {
+          "offsetX": 0,
+          "offsetZ": 0,
+          "scaleX": 1,
+          "scaleZ": 1
+        },
+        {
+          "offsetX": 0,
+          "offsetZ": 0,
+          "scaleX": 1,
+          "scaleZ": 1
+        }
+      ]
+    },
+    "crossLoop": {
+      "art": {
+        "x": 0,
+        "y": -0.045,
+        "z": -5.3394,
+        "width": 16.685,
+        "depth": 10.3288,
+        "opacity": 1
+      },
+      "curve": {
+        "offsetX": 0,
+        "offsetZ": 0,
+        "scaleX": 1,
+        "scaleZ": 1
+      },
+      "queueCurves": [
+        {
+          "offsetX": 0,
+          "offsetZ": 0,
+          "scaleX": 1,
+          "scaleZ": 1
+        },
+        {
+          "offsetX": 0,
+          "offsetZ": 0,
+          "scaleX": 1,
+          "scaleZ": 1
+        }
+      ]
+    },
     "dualQueueShape": {
       "art": {
         "x": 0.05,
@@ -706,6 +822,20 @@ export const SCENE_TUNING = {
     "holeOffsetY": 0,
     "holeScaleX": 0.54,
     "holeScaleY": 0.4
+  },
+  "weatherEffect": {
+    "enabled": 0,
+    "mode": "rain",
+    "sprite": "",
+    "intensity": 1,
+    "speed": 1,
+    "size": 1,
+    "opacity": 0.85,
+    "windX": 0.18,
+    "color": 16777215
+  },
+  "freeAssets": {
+    "layers": []
   },
   "hiddenVehicleReveal": {
     "durationSeconds": 0.45,

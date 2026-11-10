@@ -2,7 +2,7 @@
 
 ## Service
 
-- Project: `bus-loop-playable-editor`
+- Project: `bus-loop-playable-editor-wxj`
 - Container port: `5173`
 - Runtime: Node.js 22 with a prebuilt Vite editor, preview middleware, and FFmpeg-backed pre-roll compression
 - Container limits: 2 GB memory and 1 CPU
@@ -18,7 +18,9 @@ so platform package export and runtime validation stay available on the server.
 
 ## Persistence
 
-Editor data is stored under `/data/bus-loop-playable-editor` on the host:
+Editor data is stored under `/data/bus-loop-playable-editor` on the host
+(the path predates the `-wxj` service name and is kept so existing levels
+survive redeploys):
 
 - `artifacts/`: authored levels, backups, selected level, and the generated
   Unity level catalog updated by remote imports
