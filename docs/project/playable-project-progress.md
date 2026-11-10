@@ -1,5 +1,15 @@
 # Playable Project Progress
 
+## Completed On 2026-11-10 - CTA 与标题都跟随语言 + 编辑器语言切换（12151，v20261110-1815）
+
+- 反馈：「失误了，这两个都要变」，并要求在编辑器里加语言选择方便观看。上一版（v20261110-1806）我把 CTA 从语言表里移除了，理解反了 —— 用户要的是**两处都本地化**。
+- 修复：恢复 `BRANDING_LOCALIZATION` CTA 表并扩到 15 个市场（新增 ru/ar/pt/tr/it/id/vi），`resolveLocalizedBranding()` 回到 `active ? strings.cta : DEFAULT_CTA_LABEL`。CTA 用短标签（如 `Играть`），与较长的商店标题（如 `Bus Fever Party! Автобус игра`）分开，避免按钮文字撑破调好的底板宽度。
+- **编辑器语言下拉**：`.editor-locale-select` 加在头部 actions，16 个选项（跟随浏览器 + 15 市场）。它写的是同一个 `branding.localization.previewLocale`，与「引导」里的字段行双向同步；选具体语言还会自动把 `localization.enabled` 置 1，避免「选了没反应」。
+- **布局坑**：编辑器面板只有 ~320px。加了选择器之后原来的单行头部放不下，`语言` 标签被挤成竖排（一字一行）、`关于` 也一样。修法：头部 `flex-wrap: wrap` + 标题区 `white-space: nowrap`，改成「标题一行、控件一行」两行布局，头部高 128px。
+- 验证（本地构建树 + 线上 12151 各跑一遍）：下拉切 `ja/de/ru/ko/en`，预览实时变化 —— `今すぐプレイ`/`バスゲーム`、`Jetzt spielen`/`Bus Stau Spiel`、`Играть`/`Автобус игра`、`지금 플레이`/`버스게임`、`Play Now`/`Bus Fever Party!`。截图确认头部两行布局与日语预览。
+- 测试：`test/branding-localization.test.js` 11/11，新增「header 语言选择器」断言（选择器存在、写 previewLocale、自动开启开关、从 tuning 回填）。全量 600/600。
+- 部署：zip `http://10.0.0.6:8081/c4/c4edda29ea062615b6f16d470aa68830.zip`，`index-CaGbOQkT.js` sha256 本地=线上，线上版本 `v20261110-1815`。commit `cad745c`。
+
 ## Completed On 2026-11-10 - 底部标题按系统语言显示，CTA 保持 Play Now（v20261110-1712）
 
 - 需求：底部 title 根据系统语言显示，**Play Now 不要动**。来源是需求方飞书文档「Bus fever party 双端商店title（26/11/10）」。
