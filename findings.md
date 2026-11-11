@@ -1539,3 +1539,15 @@ Full detailed 2026-07-07 findings were archived to:
 **身份坑**：默认 `personal` profile 的 bot 没有 `docx:document` scope，user 对目标 wiki 节点报 `131006`；`toolbox` profile（`cli_aad34659baf8dbe8`）双身份都能读。lark-cli 默认 profile 已切到 `toolbox`。
 
 **结论**：CTA 语言表和标题语言表必须解耦。标题可以扩到表里所有市场，CTA 只能留在签过的那几种语言上，其余回退 `Play Now` —— 给新市场补 CTA 译名等于改动了已验收的创意。
+
+## 2026-11-11 - 被挡却"看不出动"是动画时长问题，不是判定问题
+
+**现象**：点一台箭头朝左、左边空白的车，只冒火花、车不动，看起来像点击失效。
+
+**不是判定问题**：遍历 19 个关卡共 1133 次「被挡」判定，用「正前方 2 个车长内、横向 0.35 内是否真有车」对照，**0 例误判**。密集关卡里 70%+ 的车被挡是正常的（车队首尾相接）。
+
+**根因**：斜停的邻车会贴住车头，`noseCornerContact` / `projectedFallbackContact` 的几何间距算出来是 0；`getCollisionMotion` 用 `distance / forwardSpeed` 求时长并把结果钳在 1ms，碰撞动画只有一帧，肉眼等于没有。**201 次被挡点击里 143 次（71%）落在 1ms。**
+
+**结论**：碰撞反馈必须给位移设可见下限（`MIN_VISIBLE_BUMP_DISTANCE = 0.06`，约 1/8 车长）。判定逻辑与动画时长是两件事，改动画不影响可玩性。相关测试要断言 `forwardDuration >= 0.01`，而不是只断言"被挡了"。
+
+**排查方法备忘**：「车不动」这类反馈先量 `collision.forwardDuration`，不要一上来查碰撞几何 —— 几何往往是对的。
