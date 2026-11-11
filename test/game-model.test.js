@@ -1941,10 +1941,11 @@ test('blocked click uses Unity collision advance, contact hit, and return phases
   assert.equal(attacker.state, 'colliding');
   assert.equal(attacker.collision.targetId, 1);
   // The bump travel is the collision gap PLUS both cars' model-vs-collision
-  // overhang: the rendered car is 1.42x longer than its 0.27x0.47 footprint, so
-  // stopping at the raw gap (0.00842) leaves a visible hole and the impact reads
-  // as "it hit nothing". Two 4-seaters contribute ~0.200.5 in total.
-  assert.equal(Number(attacker.collision.distance.toFixed(5)), 0.20884);
+  // overhang. Measured in the running scene the rendered body is 1.141x its
+  // collision length, so the raw gap (0.00842) is widened by two cars' worth of
+  // that sliver. Deriving it from `modelDepthBySeats x modelScale` instead
+  // overstates it 22% and drives the bumper into the blocker.
+  assert.equal(Number(attacker.collision.distance.toFixed(5)), 0.07491);
   assert.ok(attacker.collision.forwardDuration >= 0.01,
     `bump must stay visible, got ${attacker.collision.forwardDuration}s`);
   // The real geometric gap still travels with the animation for diagnostics.
@@ -2956,15 +2957,16 @@ test('a blocked bump always reaches the rendered touch point, never a capped sho
   // E-21 v#57 needs 1.40 units and a 0.5 cap left it marooned with a car-length
   // of empty space ahead. Assert travel covers the collision gap plus BOTH cars'
   // model-vs-footprint overhang for every blocked tap on the shipped levels.
-  const depth = SCENE_TUNING.vehicleArea.modelDepthBySeats;
-  const modelScale = SCENE_TUNING.vehicleArea.modelScale;
+  // 1.141 is measured in the running scene (rendered AABB vs collision box),
+  // not derived from modelDepthBySeats x modelScale — that product is 22% too
+  // long and makes the car drive into its blocker.
+  const RENDERED_OVER_COLLISION = 1.141;
   const overhang = (seats, level) => {
     const collisionLength = Number(
       level.collision?.vehicleSizes?.[seats]?.length ?? level.collision?.maxVehicleSize?.length
     );
-    const visualLength = Number(depth?.[seats]) * modelScale;
-    if (!(visualLength > 0) || !(collisionLength > 0)) return 0;
-    return Math.max(0, (visualLength - collisionLength) / 2);
+    if (!(collisionLength > 0)) return 0;
+    return Math.max(0, (collisionLength * RENDERED_OVER_COLLISION - collisionLength) / 2);
   };
   let checked = 0;
   for (const [key, level] of Object.entries(LEVEL_CATALOG)) {

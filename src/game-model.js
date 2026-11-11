@@ -56,25 +56,30 @@ const CONVEYOR_RIGHT_VISIBILITY_SCALE = CONVEYOR_MECHANISM_TUNING.rightVehicleVi
 /**
  * How much longer a rendered car is than its collision box, per side.
  *
- * Collision uses `level.collision.vehicleSizes` (0.27 × 0.47 for a 4-seater),
- * while the playable draws `modelDepthBySeats × modelScale` (0.672 for the same
- * car — 1.42x). A bump that stops at the collision gap therefore leaves half
- * that difference as a visible hole between the two models, which the player
- * reads as "it collided with nothing".
+ * The playable draws a normalized 3D model, and measured in the running scene
+ * that body is **1.141x** its collision length (10-seater: 1.084 world units ÷
+ * 1.401 world-per-level = 0.774, against a 0.679 collision box). A bump that
+ * stops at the collision gap therefore leaves half that difference as a visible
+ * hole between the two models, which the player reads as "it collided with
+ * nothing".
+ *
+ * Do NOT derive this from `vehicleArea.modelDepthBySeats × modelScale`: that
+ * product (0.947 for the same car) is 22% longer than what actually renders, so
+ * using it overshoots and the bumper drives INTO the blocker.
  *
  * Returns the sum of both cars' overhang along the attacker's heading, so
  * `collisionGap + overhang` is where the rendered bodies touch.
  */
+const RENDERED_OVER_COLLISION_RATIO = 1.141;
+
 function collisionVisualOverhang(candidate, attacker, level) {
   const overhangFor = (seats) => {
-    const depth = Number(SCENE_TUNING.vehicleArea?.modelDepthBySeats?.[seats]);
-    const modelScale = Number(SCENE_TUNING.vehicleArea?.modelScale);
     const collisionLength = Number(
       level?.collision?.vehicleSizes?.[seats]?.length
         ?? level?.collision?.maxVehicleSize?.length
     );
-    if (!(depth > 0) || !(modelScale > 0) || !(collisionLength > 0)) return 0;
-    return Math.max(0, (depth * modelScale - collisionLength) / 2);
+    if (!(collisionLength > 0)) return 0;
+    return Math.max(0, (collisionLength * RENDERED_OVER_COLLISION_RATIO - collisionLength) / 2);
   };
   // Containers (garage bodies, conveyor walls) keep their authored footprint:
   // only cars carry the model-vs-collision overhang.
