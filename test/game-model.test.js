@@ -2910,36 +2910,84 @@ test('sound delay tuning is wired from the editor through the audio controller',
   assert.match(editorSource, /'audio\.vehicleTapVolume', 0, 2, 0\.01/);
 });
 
-test('collision bump distance is capped for animation while the real gap is preserved', () => {
-  const original = { ...SCENE_TUNING.collision };
-  try {
-    const game = new BusLoopGame(LEVEL_1);
-    game.initializeQueues([10, 10], 0.4, [4, 4], LEVEL_1.conveyorPathLength ?? 1, {
-      layoutId: 'dualQueue2',
-      capacity: LEVEL_1.conveyorCapacity,
-      queueCapacities: [10, 10],
-      entryPercents: [...(LEVEL_1.entryPercents ?? [])],
-      exitStart: LEVEL_1.exitStart,
-      exitEnd: LEVEL_1.exitEnd,
-      directEntrance: false,
-      initiallyFull: false
-    });
-    // The cap only affects the bump animation; blocking behaviour is unchanged.
-    SCENE_TUNING.collision.maxBumpDistance = 0.5;
-    assert.equal(SCENE_TUNING.collision.maxBumpDistance, 0.5);
-    const source = readFileSync(join('src', 'game-model.js'), 'utf8');
-    assert.match(source, /const maxBumpDistance = Math\.max\(0, Number\(SCENE_TUNING\.collision\?\.maxBumpDistance\) \|\| 0\)/);
-    // The travel fed to the animation is the geometric gap raised to a visible
-    // floor, then capped by `maxBumpDistance`.
-    assert.match(source, /const visualOverhang = collisionVisualOverhang\(contact\.candidate, vehicle, this\.level\)/);
-    assert.match(source, /const collisionDistance = Math\.max\(\s*MIN_VISIBLE_BUMP_DISTANCE,\s*contact\.distance \+ visualOverhang\s*\)/);
-    assert.match(source, /const bumpDistance = maxBumpDistance > 0[\s\S]*?Math\.min\(collisionDistance, maxBumpDistance\)/);
-    assert.match(source, /const motion = getCollisionMotion\(bumpDistance\)/);
-    // The true obstacle gap stays available for diagnostics and future tuning.
-    assert.match(source, /actualDistance: contact\.distance/);
-  } finally {
-    Object.assign(SCENE_TUNING.collision, original);
+test('collision bump travels to the rendered touch point, with the true gap preserved', () => {
+  // `maxBumpDistance` used to cap the animation at 0.5. That is fine for the
+  // usual 0.1-gap neighbour, but it stranded an isolated car in mid-air: E-21
+  // v#57 sits 0.78 away and needed 1.05 of travel to reach its blocker, so the
+  // capped bump stopped with a car-length of empty space in front of it and the
+  // player read it as "it hit nothing". Meeting the blocker wins over a short
+  // lunge, so the cap no longer applies to the bump travel.
+  const source = readFileSync(join('src', 'game-model.js'), 'utf8');
+  // No live read of the tuning key remains (the comment above the code mentions
+  // it to explain why it was dropped).
+  assert.doesNotMatch(source, /Number\(SCENE_TUNING\.collision\?\.maxBumpDistance\)/);
+  // Travel = geometric gap + both cars' visual overhang, floored so a
+  // nose-touching neighbour still shows movement.
+  assert.match(source, /const visualOverhang = collisionVisualOverhang\(contact\.candidate, vehicle, this\.level\)/);
+  assert.match(source, /const bumpDistance = Math\.max\(MIN_VISIBLE_BUMP_DISTANCE, contact\.distance \+ visualOverhang\)/);
+  assert.match(source, /const motion = getCollisionMotion\(bumpDistance\)/);
+  // The true obstacle gap stays available for diagnostics and future tuning.
+  assert.match(source, /actualDistance: contact\.distance/);
+
+  // A blocked bump must always reach its contact point: travel >= gap.
+  const game = new BusLoopGame(LEVEL_1);
+  game.initializeQueues([10, 10], 0.4, [4, 4], LEVEL_1.conveyorPathLength ?? 1, {
+    layoutId: 'dualQueue2',
+    capacity: LEVEL_1.conveyorCapacity,
+    queueCapacities: [10, 10],
+    entryPercents: [...(LEVEL_1.entryPercents ?? [])],
+    exitStart: LEVEL_1.exitStart,
+    exitEnd: LEVEL_1.exitEnd,
+    directEntrance: false,
+    initiallyFull: false
+  });
+  for (const v of game.vehicles.filter((item) => item.state === 'parked')) {
+    const result = game.clickVehicle(v.id);
+    if (result.ok || result.reason !== 'blocked' || !v.collision) continue;
+    assert.ok(
+      v.collision.distance >= v.collision.actualDistance,
+      `v#${v.id} travel ${v.collision.distance} must reach gap ${v.collision.actualDistance}`
+    );
   }
+});
+
+test('a blocked bump always reaches the rendered touch point, never a capped short one', () => {
+  // A cap on bump travel is incompatible with "the car reaches its blocker":
+  // E-21 v#57 needs 1.40 units and a 0.5 cap left it marooned with a car-length
+  // of empty space ahead. Assert travel covers the collision gap plus BOTH cars'
+  // model-vs-footprint overhang for every blocked tap on the shipped levels.
+  const depth = SCENE_TUNING.vehicleArea.modelDepthBySeats;
+  const modelScale = SCENE_TUNING.vehicleArea.modelScale;
+  const overhang = (seats, level) => {
+    const collisionLength = Number(
+      level.collision?.vehicleSizes?.[seats]?.length ?? level.collision?.maxVehicleSize?.length
+    );
+    const visualLength = Number(depth?.[seats]) * modelScale;
+    if (!(visualLength > 0) || !(collisionLength > 0)) return 0;
+    return Math.max(0, (visualLength - collisionLength) / 2);
+  };
+  let checked = 0;
+  for (const [key, level] of Object.entries(LEVEL_CATALOG)) {
+    if (!level?.vehicles?.length) continue;
+    for (const entry of level.vehicles) {
+      const game = new BusLoopGame(structuredClone(level));
+      const vehicle = game.getVehicle(entry.id);
+      if (!vehicle || vehicle.state !== 'parked') continue;
+      const result = game.clickVehicle(vehicle.id);
+      if (result.reason !== 'blocked' || !vehicle.collision) continue;
+      const collision = vehicle.collision;
+      const target = collision.targetId ? game.getVehicle(collision.targetId) : null;
+      const needed = collision.actualDistance
+        + overhang(vehicle.seats, level)
+        + (target ? overhang(target.seats, level) : 0);
+      checked += 1;
+      assert.ok(
+        collision.distance >= needed - 1e-6,
+        `${key} v#${vehicle.id}: travel ${collision.distance} < needed ${needed}`
+      );
+    }
+  }
+  assert.ok(checked > 20, `expected many blocked taps, measured ${checked}`);
 });
 
 test('hit particles fire for every collision event in a frame, not only lastEvent', () => {

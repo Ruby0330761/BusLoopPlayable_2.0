@@ -1102,26 +1102,20 @@ export class BusLoopGame {
       if (this.stamina.enabled && this.stamina.remaining > 0 && target) {
         this.pendingStaminaRescue = { phase: 'contact', source: 'collision', targetId: target.id };
       }
-      // A distant blocker makes the car lunge across the board before the hit
-      // lands, which reads as "the collision happened far away". The bump
-      // travel is clamped for the ANIMATION only: blocking behaviour is
-      // unchanged, the car just meets the obstacle sooner.
-      const maxBumpDistance = Math.max(0, Number(SCENE_TUNING.collision?.maxBumpDistance) || 0);
-      // The bump travel is measured against COLLISION boxes, but the player
-      // watches the 3D model, which is 1.4–1.6x longer (`modelDepthBySeats` ×
-      // `modelScale` vs the 0.27×0.47 footprint). Stopping at the collision gap
-      // therefore parks the car with a visible hole in front of it — the impact
-      // reads as "it hit nothing" — and a tiny floor made that worse by pushing
-      // it partway into that dead zone. Add the model's overhang on both sides
-      // so the nose stops where the two rendered bodies actually touch.
+      // The bump has to end where the two RENDERED bodies touch, not where the
+      // collision boxes touch: the 3D model is 1.4–1.6x longer than the
+      // footprint (`modelDepthBySeats` × `modelScale`), so a bump measured
+      // against the collision gap stops with a visible hole in front of the car.
+      //
+      // The travel is NOT capped. `collision.maxBumpDistance` used to bound the
+      // animation so a distant blocker would not read as "the hit happened
+      // across the board", but any cap below the touch distance strands the car
+      // in mid-air — the blocker the game itself says is blocking you is never
+      // reached, which players report as "distant cars never touch" (E-21 v#57
+      // needs 1.40 and was cut to 0.5). Reaching the blocker wins; the contact
+      // target is always the nearest one, so the travel is bounded by the board.
       const visualOverhang = collisionVisualOverhang(contact.candidate, vehicle, this.level);
-      const collisionDistance = Math.max(
-        MIN_VISIBLE_BUMP_DISTANCE,
-        contact.distance + visualOverhang
-      );
-      const bumpDistance = maxBumpDistance > 0
-        ? Math.min(collisionDistance, maxBumpDistance)
-        : collisionDistance;
+      const bumpDistance = Math.max(MIN_VISIBLE_BUMP_DISTANCE, contact.distance + visualOverhang);
       const motion = getCollisionMotion(bumpDistance);
       Object.assign(vehicle, {
         state: 'colliding', motion: 0,

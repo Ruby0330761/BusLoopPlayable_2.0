@@ -1146,11 +1146,10 @@ const FIELD_GROUPS = [
       ['\u6574\u4f53\u5927\u5c0f', 'effects.hit.sizeScale', 0.1, 5, 0.01],
       ['ParticleHit_2 \u5927\u5c0f', 'effects.hit.particleHit2SizeScale', 0.1, 5, 0.01],
       ['ParticleHit_1 \u5927\u5c0f', 'effects.hit.particleHit1SizeScale', 0.1, 5, 0.01],
-      ['ParticleHit \u5927\u5c0f', 'effects.hit.particleHitSizeScale', 0.1, 5, 0.01],
-      // 0 = keep the true obstacle gap (Unity behaviour). Positive values cap
-      // how far the car travels before the bump lands, so a distant blocker
-      // no longer reads as a hit happening far away.
-      ['\u649e\u51fb\u51b2\u523a\u8ddd\u79bb\u4e0a\u9650', 'collision.maxBumpDistance', 0, 3, 0.01]
+      ['ParticleHit \u5927\u5c0f', 'effects.hit.particleHitSizeScale', 0.1, 5, 0.01]
+      // `collision.maxBumpDistance` retired: any cap below the touch distance
+      // left the car short of the blocker it was told to hit. The key stays in
+      // the tuning so older profiles still validate, but there is no slider.
     ]
   },
   {

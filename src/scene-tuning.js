@@ -160,7 +160,7 @@ export const SCENE_TUNING = {
     "successfulOperationThreshold": 64
   },
   "collision": {
-    "maxBumpDistance": 0.5
+    "maxBumpDistance": 0
   },
   "audio": {
     "busHitDelay": 0,
