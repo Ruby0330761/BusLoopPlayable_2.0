@@ -1,0 +1,1267 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>BUS 编辑器布局原型</title>
+<style>
+  :root {
+    --accent: #287fa8;
+    --accent-soft: #eaf4f9;
+    --rail: #1e242c;
+    --rail-hi: #2f3844;
+    --ink: #17242d;
+    --ink-2: #4d6272;
+    --ink-3: #7d919f;
+    --line: #e2e8ee;
+    --bg: #f6f8fa;
+    --panel: #ffffff;
+    --stage: #262d36;
+    --ok: #2f7d59;
+    --warn: #a9701a;
+    --bad: #ad3b38;
+    --row: 34px;
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; }
+  body {
+    font: 12px/1.45 -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+    color: var(--ink);
+    background: var(--bg);
+    overflow: hidden;
+    -webkit-font-smoothing: antialiased;
+  }
+  button, input, select { font: inherit; color: inherit; }
+  button { cursor: pointer; }
+
+  .app { display: grid; grid-template-rows: 46px minmax(0, 1fr) 24px; width: 100vw; height: 100vh; }
+
+  /* ---------- top bar ---------- */
+  .top {
+    display: flex; align-items: center; gap: 14px; padding: 0 12px;
+    background: var(--panel); border-bottom: 1px solid var(--line);
+  }
+  .brand { display: flex; align-items: center; gap: 9px; min-width: 0; }
+  .brand-mark {
+    display: grid; place-items: center; width: 28px; height: 28px; border-radius: 7px;
+    background: linear-gradient(140deg, #2fa0c8, #1c6f95); color: #fff;
+    font-weight: 800; font-size: 12px; letter-spacing: .02em;
+  }
+  .brand-text { display: grid; gap: 1px; min-width: 0; }
+  .brand-text strong { font-size: 12.5px; letter-spacing: .01em; }
+  .brand-text small { color: var(--ink-3); font-size: 10px; white-space: nowrap; }
+  .brand-text small b { color: var(--ink-2); font-weight: 600; }
+
+  .top-mid { display: flex; align-items: center; gap: 6px; margin: 0 auto; }
+  .seg { display: flex; padding: 3px; gap: 2px; border-radius: 8px; background: #eef1f5; }
+  .seg button {
+    display: flex; align-items: center; gap: 5px; height: 26px; padding: 0 11px;
+    border: 0; border-radius: 6px; background: transparent; color: var(--ink-2);
+    font-weight: 600; font-size: 11px;
+  }
+  .seg button.on { background: #fff; color: var(--accent); box-shadow: 0 1px 2px rgba(20,40,60,.12); }
+  .seg button:disabled { opacity: .45; cursor: not-allowed; }
+
+  .top-right { display: flex; align-items: center; gap: 8px; }
+  .icon-btn {
+    display: grid; place-items: center; width: 30px; height: 30px;
+    border: 1px solid transparent; border-radius: 7px; background: transparent; color: var(--ink-2);
+  }
+  .icon-btn:hover { border-color: var(--line); background: #f4f7f9; }
+  .icon-btn:disabled { opacity: .35; cursor: default; }
+  .icon-btn svg { width: 15px; height: 15px; }
+  .mini-select {
+    height: 30px; padding: 0 24px 0 8px; border: 1px solid var(--line); border-radius: 7px;
+    background: #fff; font-size: 11px; font-weight: 600; color: var(--ink-2);
+  }
+  .btn {
+    display: inline-flex; align-items: center; gap: 6px; height: 30px; padding: 0 12px;
+    border: 1px solid var(--line); border-radius: 7px; background: #fff; color: var(--ink-2);
+    font-weight: 700; font-size: 11px;
+  }
+  .btn svg { width: 14px; height: 14px; }
+  .btn:hover { border-color: #c6d2db; background: #f7fafb; }
+  .btn.primary { border-color: #1d6f92; background: var(--accent); color: #fff; }
+  .btn.primary:hover { background: #1d6f92; }
+  .btn .pill {
+    display: inline-grid; place-items: center; min-width: 16px; height: 16px; padding: 0 4px;
+    border-radius: 8px; background: rgba(255,255,255,.24); font-size: 9px;
+  }
+  .sep { width: 1px; height: 20px; background: var(--line); }
+
+  /* ---------- workspace ---------- */
+  .work { display: grid; grid-template-columns: 62px 322px minmax(0, 1fr) 306px; min-height: 0; }
+
+  .rail {
+    display: flex; flex-direction: column; align-items: center; gap: 3px;
+    padding: 8px 0; background: var(--rail); overflow-y: auto;
+  }
+  .rail button {
+    position: relative; display: grid; place-items: center; gap: 2px;
+    width: 50px; height: 46px; border: 0; border-radius: 8px;
+    background: transparent; color: #9fb0bd;
+  }
+  .rail button:hover { background: var(--rail-hi); color: #e6eef4; }
+  /* Long panel names (车辆与角色 / 引导与流程) wrap to three lines in a 50px
+     button, so the rail carries the short form and the tooltip keeps the full
+     name. */
+  .rail button.on { background: var(--accent); color: #fff; }
+  .rail button svg { width: 17px; height: 17px; }
+  .rail button span { font-size: 9.5px; font-weight: 600; letter-spacing: .02em; white-space: nowrap; }
+  .rail button em {
+    position: absolute; top: 3px; right: 3px; min-width: 15px; height: 15px; padding: 0 3px;
+    display: grid; place-items: center; border-radius: 8px; background: #46525f; color: #dfe8ef;
+    font: 700 8px/1 inherit; font-style: normal;
+  }
+  .rail button.on em { background: rgba(0,0,0,.22); }
+
+  .ctx { display: grid; grid-template-rows: auto auto minmax(0, 1fr); min-height: 0; background: var(--panel); border-right: 1px solid var(--line); }
+  .ctx-head { padding: 11px 13px 9px; border-bottom: 1px solid var(--line); }
+  .ctx-head h2 { margin: 0; font-size: 13.5px; letter-spacing: .01em; }
+  .ctx-head p { margin: 2px 0 0; color: var(--ink-3); font-size: 10px; }
+  .ctx-head .tally { display: flex; gap: 5px; margin-top: 7px; flex-wrap: wrap; }
+  .tag {
+    padding: 1.5px 6px; border-radius: 5px; background: #eff3f6; color: var(--ink-2);
+    font-size: 9.5px; font-weight: 600;
+  }
+  .tag.accent { background: var(--accent-soft); color: #1a6785; }
+
+  .search-wrap { padding: 9px 13px; border-bottom: 1px solid var(--line); }
+  .search-box { position: relative; }
+  .search-box svg { position: absolute; left: 8px; top: 50%; width: 13px; height: 13px; transform: translateY(-50%); color: var(--ink-3); }
+  .search-box input {
+    width: 100%; height: 30px; padding: 0 8px 0 27px; border: 1px solid var(--line);
+    border-radius: 7px; background: #fafcfd; font-size: 11px;
+  }
+  .search-box input:focus { outline: 2px solid rgba(40,127,168,.35); outline-offset: -1px; background: #fff; }
+  .search-box .clear {
+    position: absolute; right: 5px; top: 50%; width: 20px; height: 20px; transform: translateY(-50%);
+    display: none; place-items: center; border: 0; border-radius: 5px; background: #eaeff2; color: var(--ink-2);
+    font-size: 12px; line-height: 1;
+  }
+  .search-box.has-value .clear { display: grid; }
+
+  .ctx-body { min-height: 0; overflow-y: auto; padding: 10px 13px 40px; scrollbar-width: thin; }
+  .ctx-body::-webkit-scrollbar { width: 9px; }
+  .ctx-body::-webkit-scrollbar-thumb { background: #d3dce3; border-radius: 5px; border: 3px solid #fff; }
+
+  .hint {
+    display: flex; gap: 7px; margin: 0 0 9px; padding: 7px 9px; border-radius: 7px;
+    background: #fdf7ea; color: #7a5c1e; font-size: 10px; line-height: 1.45;
+  }
+  .hint b { font-weight: 700; }
+
+  /* Sections are grouped by job inside a panel: the guide panel alone covers
+     "catch the eye", "deadline and failure" and "atmosphere", which are three
+     different things to be thinking about while editing. */
+  .group-head {
+    display: flex; align-items: center; gap: 7px; margin: 12px 0 6px;
+    color: #5b7386; font-size: 9.5px; font-weight: 800; letter-spacing: .06em;
+    text-transform: uppercase; white-space: nowrap;
+  }
+  .group-head:first-child { margin-top: 0; }
+  .group-head::after { content: ""; flex: 1; height: 1px; background: #e6edf2; }
+  .group-head em { order: 3; color: #9caab5; font-size: 9px; font-style: normal; font-weight: 600; letter-spacing: 0; }
+
+  details.sec {
+    margin: 0 0 7px; border: 1px solid var(--line); border-radius: 8px; background: #fff;
+    overflow: hidden;
+  }
+  details.sec[open] { border-color: #cfdbe4; box-shadow: 0 1px 3px rgba(23,45,61,.05); }
+  details.sec > summary {
+    display: flex; align-items: center; gap: 7px; padding: 8px 9px; cursor: pointer;
+    list-style: none; user-select: none;
+  }
+  details.sec > summary::-webkit-details-marker { display: none; }
+  details.sec > summary::before {
+    content: ""; flex: none; width: 0; height: 0; margin-left: 1px;
+    border-left: 4.5px solid #8ba0ae; border-top: 3.6px solid transparent; border-bottom: 3.6px solid transparent;
+    transition: transform .12s ease;
+  }
+  details.sec[open] > summary::before { transform: rotate(90deg) translateX(1px); }
+  details.sec > summary:hover { background: #f8fbfc; }
+  details.sec > summary h3 { margin: 0; font-size: 11.5px; font-weight: 700; color: #24445b; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  details.sec .sec-meta { margin-left: auto; display: flex; gap: 4px; flex: none; }
+  .mini-tag {
+    padding: 1px 5px; border-radius: 4px; background: #f1f4f7; color: var(--ink-3);
+    font-size: 9px; font-weight: 600; letter-spacing: .01em;
+  }
+  .mini-tag.warn { background: #fdf3e2; color: #8a6115; }
+  .mini-tag.scope { background: #eef4fb; color: #3a6a92; }
+  .sec-body { padding: 2px 9px 9px; }
+  /* Nested disclosure for matrix sections (one per EntryBanner component) and for
+     material sub-blocks. Same rows, one click closer. */
+  details.sub { margin: 3px 0; border: 1px solid #eef2f5; border-radius: 6px; background: #fcfdfe; }
+  details.sub > summary {
+    display: flex; align-items: center; gap: 6px; padding: 5px 7px; cursor: pointer;
+    list-style: none; color: #46647a; font-size: 10px; font-weight: 700;
+  }
+  details.sub > summary::-webkit-details-marker { display: none; }
+  details.sub > summary::before {
+    content: ""; width: 0; height: 0;
+    border-left: 4px solid #9db0be; border-top: 3.2px solid transparent; border-bottom: 3.2px solid transparent;
+    transition: transform .12s ease;
+  }
+  details.sub[open] > summary::before { transform: rotate(90deg) translateX(1px); }
+  details.sub > summary em {
+    margin-left: auto; padding: 0 4px; border-radius: 4px; background: #f0f4f7;
+    color: #8b9ba7; font-size: 8.5px; font-style: normal; font-weight: 600;
+  }
+  details.sub > .fld { padding: 0 7px; }
+  .sec-note { margin: 0 0 7px; color: var(--ink-3); font-size: 10px; }
+  .sec-empty { margin: 2px 0 4px; padding: 8px 9px; border-radius: 6px; background: #f7fafb; color: var(--ink-2); font-size: 10px; }
+
+  /* ---------- field rows ---------- */
+  .fld {
+    display: grid; grid-template-columns: 74px minmax(0, 1fr) 58px; align-items: center; gap: 6px;
+    min-height: var(--row); border-top: 1px dashed #eef2f5;
+  }
+  .fld:first-child { border-top: 0; }
+  .fld > label { color: #5b7183; font-size: 10.5px; line-height: 1.25; overflow-wrap: anywhere; }
+  .fld.narrow { grid-template-columns: 82px minmax(0, 1fr); }
+  input[type="range"] { width: 100%; height: 16px; margin: 0; accent-color: var(--accent); }
+  .numbox {
+    width: 100%; height: 24px; padding: 0 5px; border: 1px solid var(--line); border-radius: 5px;
+    background: #fff; font: 700 10.5px/1 inherit; text-align: right; font-variant-numeric: tabular-nums;
+  }
+  .numbox:focus { outline: 2px solid rgba(40,127,168,.35); outline-offset: -1px; border-color: var(--accent); }
+  .sel {
+    width: 100%; height: 25px; padding: 0 18px 0 6px; border: 1px solid var(--line);
+    border-radius: 5px; background: #fff; font-size: 10.5px; font-weight: 600; color: #2b4a5e;
+  }
+  .txt {
+    width: 100%; height: 25px; padding: 0 7px; border: 1px solid var(--line); border-radius: 5px;
+    background: #fff; font-size: 10.5px;
+  }
+  .txt::placeholder { color: #b6c3cc; }
+  .sw { display: flex; align-items: center; justify-content: flex-end; }
+  .sw input[type="color"] {
+    width: 24px; height: 22px; padding: 1px; border: 1px solid var(--line); border-radius: 5px; background: #fff;
+  }
+  .switch { display: flex; justify-content: flex-end; }
+  .switch input {
+    appearance: none; position: relative; width: 32px; height: 18px; margin: 0; border-radius: 9px;
+    background: #d5dee5; transition: background .14s ease; cursor: pointer;
+  }
+  .switch input::after {
+    content: ""; position: absolute; top: 2px; left: 2px; width: 14px; height: 14px; border-radius: 50%;
+    background: #fff; box-shadow: 0 1px 2px rgba(20,40,60,.28); transition: transform .14s ease;
+  }
+  .switch input:checked { background: var(--accent); }
+  .switch input:checked::after { transform: translateX(14px); }
+
+  .swatches { display: grid; grid-template-columns: repeat(6, 1fr); gap: 5px; margin: 3px 0 6px; }
+  .swatches .chip {
+    display: grid; gap: 2px; justify-items: center; padding: 3px 0 2px; border: 1px solid var(--line);
+    border-radius: 6px; background: #fff;
+  }
+  .swatches .chip i { width: 20px; height: 14px; border-radius: 3px; }
+  .swatches .chip b { font-size: 8px; font-weight: 600; color: var(--ink-3); }
+
+  /* 11 colours × (solid / base / emission): a row per colour keeps the pairing
+     that a flat 33-cell grid destroys. */
+  .color-table { display: grid; gap: 1px; margin-top: 5px; }
+  .ct-head, .ct-row {
+    display: grid; grid-template-columns: minmax(0, 1fr) 30px 30px 30px;
+    align-items: center; gap: 5px; padding: 2px 3px;
+  }
+  .ct-head { color: #9caab5; font-size: 8.5px; font-weight: 700; letter-spacing: .03em; text-align: center; }
+  .ct-head span:first-child { text-align: left; }
+  .ct-row { border-top: 1px dashed #f0f4f7; }
+  .ct-row > span { color: #4f6979; font-size: 10px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .ct-row input[type="color"] {
+    width: 26px; height: 20px; padding: 1px; border: 1px solid var(--line); border-radius: 4px; background: #fff;
+  }
+  .ct-empty { width: 26px; height: 20px; border-radius: 4px; background: #f4f7f9; box-shadow: inset 0 0 0 1px #eaeff3; }
+
+  /* ---------- search results ---------- */
+  .results { display: grid; gap: 5px; }
+  .res-head { display: flex; align-items: center; gap: 6px; margin: 9px 0 3px; color: var(--ink-3); font-size: 9.5px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; }
+  .res-head:first-child { margin-top: 0; }
+  .res {
+    display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 7px; width: 100%;
+    padding: 6px 8px; border: 1px solid var(--line); border-radius: 6px; background: #fff; text-align: left;
+  }
+  .res:hover { border-color: #bcd4e2; background: #f7fcfe; }
+  .res strong { display: block; font-size: 11px; font-weight: 700; color: #23455c; }
+  .res small { display: block; color: var(--ink-3); font-size: 9.5px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+  .res .where { color: var(--ink-3); font-size: 9px; white-space: nowrap; }
+  .res mark { padding: 0 1px; border-radius: 2px; background: #ffe9a8; color: #6b4d05; }
+  .no-hit { padding: 18px 4px; color: var(--ink-3); text-align: center; font-size: 11px; }
+
+  .flash { animation: flash 1.4s ease-out; }
+  @keyframes flash { 0% { background: #fff4cf; box-shadow: inset 0 0 0 2px #e8bf4a; } 100% { background: #fff; box-shadow: none; } }
+
+  /* ---------- stage ---------- */
+  .stage-col { display: grid; grid-template-rows: 40px minmax(0, 1fr); min-width: 0; background: var(--stage); }
+  .stage-bar {
+    display: flex; align-items: center; gap: 8px; padding: 0 12px;
+    background: #fff; border-bottom: 1px solid var(--line); min-width: 0;
+  }
+  .stage-bar strong { font-size: 11px; color: #26455c; white-space: nowrap; }
+  .stage-bar .crumb { color: var(--ink-3); font-size: 10.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .stage-bar .grow { flex: 1; }
+  .stage-bar .readout { color: var(--ink-3); font-size: 10px; white-space: nowrap; }
+  .stage-bar .tiny {
+    display: inline-flex; align-items: center; gap: 4px; height: 26px; padding: 0 8px;
+    border: 1px solid var(--line); border-radius: 6px; background: #fff; color: var(--ink-2);
+    font-size: 10px; font-weight: 600;
+  }
+  .stage-bar .tiny.on { border-color: #9dc4d8; background: var(--accent-soft); color: #16637f; }
+
+  .workbench {
+    position: relative; display: grid; place-items: center; min-height: 0; padding: 16px;
+    background:
+      radial-gradient(circle at 50% 30%, rgba(255,255,255,.07), transparent 60%),
+      var(--stage);
+  }
+  .phone {
+    position: relative; width: min(100%, 336px); aspect-ratio: 9 / 16; max-height: 100%;
+    display: grid; grid-template-rows: 1fr; border: 8px solid #101820; border-radius: 26px;
+    overflow: hidden; background: linear-gradient(180deg, #bfe8f7 0%, #8fd0e8 46%, #6fbfa8 47%, #57a891 100%);
+    box-shadow: 0 22px 50px rgba(0,0,0,.42), inset 0 0 0 1px rgba(255,255,255,.1);
+  }
+  .phone::before {
+    content: ""; position: absolute; inset: 0;
+    background: radial-gradient(circle at 26% 22%, rgba(255,255,255,.85), transparent 26%);
+    pointer-events: none;
+  }
+  .mock-hud {
+    position: absolute; top: 9px; left: 50%; width: 64%; transform: translateX(-50%);
+    display: grid; gap: 3px; text-align: center;
+  }
+  .mock-hud .bar { height: 7px; border-radius: 4px; background: rgba(255,255,255,.55); box-shadow: inset 0 0 0 1px rgba(255,255,255,.6); }
+  .mock-hud .bar i { display: block; width: 42%; height: 100%; border-radius: 4px; background: #f2b13a; }
+  .mock-hud .lbl { font-size: 6.5px; font-weight: 800; color: #1c5f78; letter-spacing: .05em; }
+  .mock-belt {
+    position: absolute; left: 9%; right: 9%; top: 30%; height: 42%;
+    border: 7px solid #4d5a66; border-radius: 22px; background: #6c7a86;
+    box-shadow: inset 0 0 0 2px #3b4650, 0 5px 12px rgba(10,30,40,.28);
+  }
+  .mock-belt::after {
+    content: ""; position: absolute; inset: 7px; border: 2px dashed rgba(255,255,255,.35); border-radius: 15px;
+  }
+  .car { position: absolute; width: 20px; height: 27px; border-radius: 4px; box-shadow: inset 0 -4px 0 rgba(0,0,0,.16), 0 2px 4px rgba(10,25,35,.3); }
+  .car::after { content: ""; position: absolute; left: 3px; right: 3px; top: 4px; height: 8px; border-radius: 2px; background: rgba(255,255,255,.5); }
+  .seat-row { position: absolute; left: 12%; right: 12%; bottom: 11%; display: grid; grid-template-columns: repeat(6, 1fr); gap: 5px; }
+  .seat-row i { height: 9px; border-radius: 5px; background: rgba(255,255,255,.55); box-shadow: inset 0 0 0 1px rgba(255,255,255,.45); }
+  .mock-cta {
+    position: absolute; left: 50%; bottom: 24%; transform: translateX(-50%);
+    padding: 6px 20px; border-radius: 13px; background: linear-gradient(180deg, #57c46a, #2f9c48);
+    color: #fff; font-size: 9px; font-weight: 800; letter-spacing: .04em;
+    box-shadow: 0 4px 10px rgba(10,50,25,.35), inset 0 -2px 0 rgba(0,0,0,.18);
+  }
+  .phone-badge {
+    position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%);
+    padding: 4px 9px; border-radius: 20px; background: rgba(12,22,30,.62); color: #d9e7ef;
+    font-size: 9px; font-weight: 700; letter-spacing: .04em; backdrop-filter: blur(3px);
+    pointer-events: none; white-space: nowrap;
+  }
+  .workbench-note {
+    position: absolute; left: 14px; bottom: 12px; color: #7d8d9a; font-size: 9.5px;
+    line-height: 1.5; max-width: 300px;
+  }
+  .workbench-note b { color: #aab9c4; }
+
+  /* ---------- inspector ---------- */
+  .insp { display: grid; grid-template-rows: auto minmax(0, 1fr); min-height: 0; background: var(--panel); border-left: 1px solid var(--line); }
+  .insp-tabs { display: grid; grid-template-columns: repeat(3, 1fr); gap: 3px; padding: 8px 10px; border-bottom: 1px solid var(--line); }
+  .insp-tabs button {
+    height: 27px; border: 0; border-radius: 6px; background: #eff2f5; color: var(--ink-2);
+    font-size: 10.5px; font-weight: 700;
+  }
+  .insp-tabs button.on { background: var(--accent-soft); color: #16637f; box-shadow: inset 0 0 0 1px #a8cbdd; }
+  .insp-body { min-height: 0; overflow-y: auto; padding: 10px 12px 30px; }
+  .insp-body::-webkit-scrollbar { width: 9px; }
+  .insp-body::-webkit-scrollbar-thumb { background: #d3dce3; border-radius: 5px; border: 3px solid #fff; }
+
+  .card { margin-bottom: 9px; padding: 9px 10px; border: 1px solid var(--line); border-radius: 8px; background: #fff; }
+  .card h4 { display: flex; align-items: center; gap: 6px; margin: 0 0 7px; font-size: 10px; font-weight: 800; color: var(--ink-3); letter-spacing: .05em; text-transform: uppercase; }
+  .card h4 .badge { margin-left: auto; padding: 1px 5px; border-radius: 4px; background: #f2f5f8; color: #8c9ba7; font-size: 8.5px; letter-spacing: 0; text-transform: none; }
+  .kv { display: grid; grid-template-columns: 62px minmax(0, 1fr); gap: 3px 8px; font-size: 10.5px; }
+  .kv dt { color: var(--ink-3); }
+  .kv dd { margin: 0; color: #274257; font-weight: 600; }
+  .obj-head { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+  .obj-swatch { width: 26px; height: 26px; border-radius: 6px; background: #e0483f; box-shadow: inset 0 -5px 0 rgba(0,0,0,.16); }
+  .obj-head strong { display: block; font-size: 12px; }
+  .obj-head small { color: var(--ink-3); font-size: 9.5px; }
+  .stages { display: grid; gap: 4px; }
+  .stage-row { display: flex; align-items: center; gap: 7px; padding: 5px 7px; border: 1px solid var(--line); border-radius: 6px; background: #fbfdfe; font-size: 10.5px; }
+  .stage-row b { display: grid; place-items: center; width: 15px; height: 15px; border-radius: 4px; background: var(--accent-soft); color: #16637f; font-size: 8.5px; }
+  .stage-row span { color: #2a4557; font-weight: 600; }
+  .stage-row small { margin-left: auto; color: var(--ink-3); font-size: 9px; }
+
+  .check { display: grid; grid-template-columns: 14px 1fr auto; align-items: start; gap: 7px; padding: 6px 0; border-top: 1px dashed #eef2f5; font-size: 10.5px; }
+  .check:first-of-type { border-top: 0; }
+  .check .dot { width: 8px; height: 8px; margin-top: 4px; border-radius: 50%; background: var(--ok); }
+  .check.warn .dot { background: var(--warn); }
+  .check.bad .dot { background: var(--bad); }
+  .check strong { display: block; font-weight: 700; color: #274257; }
+  .check small { display: block; color: var(--ink-3); font-size: 9.5px; }
+  .check .state { color: var(--ok); font-size: 9px; font-weight: 800; white-space: nowrap; }
+  .check.warn .state { color: var(--warn); }
+
+  .budget-head { display: flex; align-items: baseline; gap: 5px; margin-bottom: 6px; }
+  .budget-head strong { font: 800 17px/1 inherit; color: #1f4356; font-variant-numeric: tabular-nums; }
+  .budget-head span { color: var(--ink-3); font-size: 10px; }
+  .budget-head .free { margin-left: auto; padding: 1px 6px; border-radius: 5px; background: #edf7f1; color: #2f7d59; font-size: 9.5px; font-weight: 700; }
+  .budget-bar { height: 8px; border-radius: 4px; background: #eef2f5; overflow: hidden; }
+  .budget-bar i { display: block; height: 100%; width: 65%; border-radius: 4px; background: linear-gradient(90deg, #4aa8c9, #287fa8); }
+  .budget-legend { display: flex; justify-content: space-between; margin: 4px 0 9px; color: var(--ink-3); font-size: 9px; }
+  .asset-line { display: grid; grid-template-columns: 1fr auto; gap: 8px; padding: 4px 0; border-top: 1px dashed #eef2f5; font-size: 10px; }
+  .asset-line span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #3c5a6e; }
+  .asset-line b { color: #7d919f; font-weight: 600; font-variant-numeric: tabular-nums; }
+  .asset-line:first-of-type { border-top: 0; }
+
+  /* ---------- status bar ---------- */
+  .status {
+    display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 10px;
+    padding: 0 12px; background: #fbfcfd; border-top: 1px solid var(--line); color: var(--ink-3); font-size: 9.5px;
+  }
+  .status .left { display: flex; align-items: center; gap: 6px; min-width: 0; }
+  .status .left i { width: 6px; height: 6px; border-radius: 50%; background: var(--ok); flex: none; }
+  .status .left span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .status .mid { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; color: #93a3ae; }
+  .status .right { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; display: flex; align-items: center; justify-content: flex-end; gap: 10px; }
+  .status .link { border: 0; background: none; color: #4f7c95; font-size: 9.5px; font-weight: 700; text-decoration: underline; text-underline-offset: 2px; padding: 0; }
+
+  /* ---------- dialog ---------- */
+  dialog {
+    width: min(760px, calc(100vw - 60px)); padding: 0; border: 0; border-radius: 12px;
+    background: #fff; color: var(--ink); box-shadow: 0 30px 80px rgba(12,30,45,.4);
+  }
+  dialog::backdrop { background: rgba(14,26,36,.5); }
+  .dlg-head { display: flex; align-items: flex-start; gap: 10px; padding: 15px 18px 12px; border-bottom: 1px solid var(--line); }
+  .dlg-head h3 { margin: 0; font-size: 14px; }
+  .dlg-head p { margin: 2px 0 0; color: var(--ink-3); font-size: 10.5px; }
+  .dlg-head button { margin-left: auto; width: 26px; height: 26px; border: 0; border-radius: 6px; background: #f1f4f7; font-size: 14px; line-height: 1; }
+  .dlg-body { padding: 14px 18px 18px; }
+  .cmp { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .cmp-col { border: 1px solid var(--line); border-radius: 9px; overflow: hidden; }
+  .cmp-col header { padding: 8px 10px; font-size: 10.5px; font-weight: 800; letter-spacing: .03em; }
+  .cmp-col.before header { background: #fdf2f1; color: #9c3a35; }
+  .cmp-col.after header { background: #eef7f2; color: #276c4c; }
+  .cmp-col .rows { display: grid; gap: 0; }
+  .cmp-col .rows div { display: flex; align-items: baseline; gap: 8px; padding: 6px 10px; border-top: 1px solid #f0f3f6; font-size: 10.5px; }
+  .cmp-col .rows div b { margin-left: auto; font-variant-numeric: tabular-nums; color: #274257; }
+  .cmp-col .rows div span { color: var(--ink-2); }
+  .cmp-foot { margin: 12px 0 0; padding: 9px 11px; border-radius: 7px; background: #f6fafc; color: #40606f; font-size: 10.5px; line-height: 1.55; }
+  .cmp-foot b { color: #1d4d63; }
+
+  .proto-note {
+    display: inline-flex; align-items: center; gap: 5px; padding: 2px 7px; border-radius: 20px;
+    background: #fdf4e3; color: #8a6115; font-size: 9px; font-weight: 700; white-space: nowrap;
+  }
+</style>
+</head>
+<body>
+<div class="app">
+  <header class="top">
+    <div class="brand">
+      <span class="brand-mark">BF</span>
+      <div class="brand-text">
+        <strong>Bus Fever Party! <span class="proto-note">布局原型</span></strong>
+        <small>场景编辑器 v20261111-1015 · <b>level26</b></small>
+      </div>
+    </div>
+
+    <div class="top-mid">
+      <button class="icon-btn" title="撤销" disabled aria-label="撤销"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 14 4 9l5-5"/><path d="M4 9h10a6 6 0 0 1 0 12h-3"/></svg></button>
+      <button class="icon-btn" title="重做" disabled aria-label="重做"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 14 5-5-5-5"/><path d="M20 9H10a6 6 0 0 0 0 12h3"/></svg></button>
+      <span class="sep"></span>
+      <div class="seg" id="mode-seg">
+        <button class="on" data-mode="edit">编辑</button>
+        <button data-mode="play">试玩</button>
+        <button data-mode="phone">手机</button>
+      </div>
+    </div>
+
+    <div class="top-right">
+      <select class="mini-select" aria-label="预览语言" title="预览语言，导出包仍跟随玩家设备语言">
+        <option>跟随浏览器</option><option>日本語</option><option>English</option><option>Русский</option>
+      </select>
+      <button class="icon-btn" title="关于 / 版本记录" aria-label="关于">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 11v5"/><path d="M12 7.6v.4"/></svg>
+      </button>
+      <span class="sep"></span>
+      <button class="btn" id="check-btn">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3 4.5 6v6c0 4.4 3.2 7.6 7.5 9 4.3-1.4 7.5-4.6 7.5-9V6Z"/><path d="m8.6 12 2.3 2.3 4.5-4.6"/></svg>
+        校验<span class="pill" id="check-count">1</span>
+      </button>
+      <button class="btn primary" id="export-btn">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 16V4"/><path d="m7.5 8.5 4.5-4.5 4.5 4.5"/><path d="M4 16v3a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-3"/></svg>
+        导出
+      </button>
+    </div>
+  </header>
+
+  <main class="work">
+    <nav class="rail" id="rail" aria-label="编辑器导航"></nav>
+
+    <section class="ctx">
+      <div class="ctx-head">
+        <h2 id="ctx-title">轨道</h2>
+        <p id="ctx-note"></p>
+        <div class="tally" id="ctx-tally"></div>
+      </div>
+      <div class="search-wrap">
+        <div class="search-box" id="search-box">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m15.5 15.5 4 4"/></svg>
+          <input id="search" type="search" placeholder="搜索字段（跨 9 个面板）" autocomplete="off" aria-label="搜索字段" />
+          <button class="clear" id="search-clear" aria-label="清除搜索">×</button>
+        </div>
+      </div>
+      <div class="ctx-body" id="ctx-body"></div>
+    </section>
+
+    <section class="stage-col">
+      <div class="stage-bar">
+        <strong>关卡</strong>
+        <span class="crumb" id="stage-crumb">level26 · dualQueue5 · 4 车 12 人</span>
+        <span class="grow"></span>
+        <select class="mini-select" id="layout-select" aria-label="当前跑道" style="height:26px;font-size:10px"></select>
+        <button class="tiny on" id="density-btn" title="切换字段行高">紧凑</button>
+        <button class="tiny" id="reset-btn" title="恢复默认参数">恢复默认</button>
+        <span class="readout" id="stage-size">420 × 746 · 9:16</span>
+      </div>
+      <div class="workbench">
+        <div class="phone" id="phone">
+          <div class="mock-hud">
+            <div class="lbl">PROGRESS</div>
+            <div class="bar"><i></i></div>
+          </div>
+          <div class="mock-belt" id="mock-belt"></div>
+          <div class="seat-row"><i></i><i></i><i></i><i></i><i></i><i></i></div>
+          <div class="mock-cta">PLAY NOW</div>
+        </div>
+        <div class="workbench-note">
+          <b>3D 舞台占位</b><br />
+          真实实现对同一张 canvas 渲染，编辑态与试玩态共用。
+        </div>
+      </div>
+    </section>
+
+    <aside class="insp">
+      <div class="insp-tabs" id="insp-tabs">
+        <button class="on" data-tab="props">属性</button>
+        <button data-tab="checks">校验</button>
+        <button data-tab="budget">预算</button>
+      </div>
+      <div class="insp-body" id="insp-body"></div>
+    </aside>
+  </main>
+
+  <footer class="status">
+    <div class="left"><i></i><span id="status-msg">已自动保存</span></div>
+    <div class="mid" id="status-path">—</div>
+    <div class="right">
+      <button class="link" id="cmp-btn">结构对比</button>
+      <span id="status-right"></span>
+    </div>
+  </footer>
+</div>
+
+<dialog id="cmp-dialog">
+  <div class="dlg-head">
+    <div>
+      <h3>改造前后结构对比</h3>
+      <p>数字来自 src/scene-editor.js 的 FIELD_GROUPS，不是估算</p>
+    </div>
+    <button id="cmp-close" aria-label="关闭">×</button>
+  </div>
+  <div class="dlg-body">
+    <div class="cmp" id="cmp-grid"></div>
+    <p class="cmp-foot" id="cmp-foot"></p>
+  </div>
+</dialog>
+
+<script>/*__EDITOR_SHELL_INVENTORY__*/</script>
+<script>
+(() => {
+  const DATA = window.__EDITOR_SHELL_DATA__;
+  const INVENTORY = DATA.inventory;
+  const PANELS = DATA.panels;
+  const SECTIONS = INVENTORY.sections;
+
+  const LAYOUTS = [...new Set(SECTIONS.map((s) => s.layout).filter(Boolean))];
+  const LAYOUT_LABEL = {
+    dualQueue2: 'GameSceneDualQueue2', dualQueue3: 'GameSceneDualQueue3',
+    dualQueue5: 'GameSceneDualQueue5', dualQueue10: 'GameSceneDualQueue10',
+    starLoop: '星形 StarLoop', heartLoop: '爱心 HeartLoop', catLoop: '猫咪 CatLoop',
+    moonLoop: '月亮 MoonLoop', dualLoop5: '双线 DualLoop5', hexLoop: '六边 HexLoop',
+    crossLoop: '十字 CrossLoop',
+  };
+
+  // Sections that are not tuning rows: the shipped editor builds these with a
+  // dedicated panel or a DOM action row, so they have no FIELD_GROUPS entry.
+  const VIRTUAL = {
+    level: [{
+      id: 'v-level-tools', panel: 'level', subgroup: '全部', title: '关卡工具', virtual: 'actions', fieldCount: 0,
+      note: '现状：这 5 个动作埋在「关卡」段下方，进全屏编辑器后没有返回路径提示。',
+      actions: [
+        ['关卡总览', '缩略图网格，按编号/名称/时间排序'],
+        ['游戏内关卡', '浏览正式版自带关卡，选中后导入'],
+        ['编辑布局（全屏）', 'level-layout-editor：车位、车辆、参考图识别'],
+        ['编辑立体轨道点位', 'spatial-conveyor-editor：仅空间轨道包可用'],
+        ['归属与排序', '操作者身份 + 关卡写权限'],
+      ],
+    }],
+    assets: [
+      {
+        id: 'v-asset-ledger', panel: 'assets', subgroup: '全部', title: '素材库台账', virtual: 'libraries', fieldCount: 0,
+        note: '现状没有这一页：五类素材各藏在各自段里，看不到总量，5 MB 超限只能在导出失败时发现。',
+        libraries: [
+          ['背景图', '/assets/applovin/textures/', 5, '2100 × 3382 · q60'],
+          ['BGM', 'artifacts/editor-bgm/', 1, '服务端 FFmpeg 压到 1 MB 以下'],
+          ['前贴视频', 'artifacts/editor-prerolls/', 3, 'H.264 · 转码后 3.0–5.0 s'],
+          ['特效贴图', 'artifacts/editor-effects/', 4, '上传即转 WebP ≤ 320 KB'],
+          ['自由素材', 'artifacts/editor-free-assets/', 0, '可拖拽 / 锁定 / 删除'],
+        ],
+      },
+      {
+        id: 'v-asset-layers', panel: 'assets', subgroup: '全部', title: '自由素材图层', virtual: 'layers', fieldCount: 0,
+        note: '这一段在「引导」里由自定义面板渲染（空字段列表），搬到素材页只换位置、不改逻辑。',
+      },
+    ],
+    export: [
+      {
+        id: 'v-export-shot', panel: 'export', subgroup: '出图与交付', title: '截图出图', virtual: 'screenshot', fieldCount: 0,
+        note: '2 个尺寸 × 不含手机边框；现状是页签之上单独一段，导出时容易被忽略。',
+      },
+      {
+        id: 'v-export-delivery', panel: 'export', subgroup: '出图与交付', title: '导出设置', virtual: 'delivery', fieldCount: 0,
+        note: '套系 / 平台 / 一键全部 / 5 MB 门禁。现状与调参共用一条滚动条。',
+      },
+    ],
+  };
+
+  const state = {
+    panel: 'track',
+    tab: 'props',
+    query: '',
+    layout: 'dualQueue5',
+    density: 'compact',
+    open: new Set(['s21', 's22']),
+    spatial: false,
+  };
+
+  const $ = (id) => document.getElementById(id);
+  const esc = (value) => String(value).replace(/[&<>"]/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[ch]));
+
+  const ICONS = {    level: '<path d="M5 21V4"/><path d="M5 5h9l-1.2 2.6L14 10H5"/><path d="M5 14h7l-1 2.2L12 18H5"/>',
+    scene: '<circle cx="12" cy="12" r="4"/><path d="M12 3v2M12 19v2M3 12h2M19 12h2M5.6 5.6l1.4 1.4M17 17l1.4 1.4M18.4 5.6 17 7M7 17l-1.4 1.4"/>',
+    track: '<rect x="3.5" y="6" width="17" height="12" rx="6"/><path d="M8 6v12M16 6v12" stroke-dasharray="2 2.5"/>',
+    cars: '<path d="M4 15v-2.5l1.8-3.2A2 2 0 0 1 7.5 8h9a2 2 0 0 1 1.7 1.3L20 12.5V15"/><path d="M4 15h16v2.5H4z"/><circle cx="7.5" cy="18" r="1.6"/><circle cx="16.5" cy="18" r="1.6"/>',
+    guide: '<path d="M9 11V5.5a1.5 1.5 0 0 1 3 0V11"/><path d="M12 11V7.5a1.5 1.5 0 0 1 3 0V12"/><path d="M15 12v-1a1.5 1.5 0 0 1 3 0v4.5A5.5 5.5 0 0 1 12.5 21h-1A5.5 5.5 0 0 1 6 15.5V13a1.5 1.5 0 0 1 3 0v1"/>',
+    ui: '<rect x="3.5" y="4.5" width="17" height="15" rx="2.5"/><path d="M3.5 9h17"/><path d="M9.5 9v10.5"/>',
+    audio: '<path d="M5 9.5h3L12.5 6v12L8 14.5H5z"/><path d="M16 9a4.2 4.2 0 0 1 0 6"/><path d="M18.6 6.4a8 8 0 0 1 0 11.2"/>',
+    assets: '<rect x="3.5" y="5" width="17" height="14" rx="2.2"/><circle cx="8.6" cy="9.8" r="1.5"/><path d="m4.5 17 4.6-4.3 3 2.6 3-3.2 4.4 4.9"/>',
+    export: '<path d="M12 16V4"/><path d="m7.5 8.5 4.5-4.5 4.5 4.5"/><path d="M4 16v3a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-3"/>',
+  };
+
+  const DEFAULT_SWATCH = ['#e0483f', '#3f7fd6', '#3fa06a', '#e5a92f', '#8b5cc8', '#2b9fb5', '#d76f2f', '#4a5568', '#c2417f', '#5f9e3f', '#2e6fbf'];
+
+  const sectionsFor = (panel) => {
+    const real = SECTIONS.filter((section) => section.panel === panel);
+    const extra = VIRTUAL[panel] ?? [];
+    if (panel === 'export') return [...real, ...extra];
+    if (panel === 'level' || panel === 'assets') return [...real, ...extra];
+    return real;
+  };
+
+  const isVisible = (section) => {
+    if (section.layout && section.layout !== state.layout) return false;
+    if (section.spatialOnly && !state.spatial) return false;
+    return true;
+  };
+
+  // "GameSceneDualQueue5 - 图片" is redundant once the section is filtered to the
+  // selected belt and carries a scope tag; the row label should say what it edits.
+  const SCOPED_SUFFIX = /^.*? - /;
+  const displayTitle = (section) => {
+    if (!section.layout) return section.title;
+    const tail = section.title.replace(SCOPED_SUFFIX, '');
+    return tail === '图片' ? '跑道图片' : tail;
+  };
+
+  const panelStats = (panel) => {
+    const sections = sectionsFor(panel).filter(isVisible);
+    return {
+      sections: sections.length,
+      fields: sections.reduce((sum, section) => sum + section.fieldCount, 0),
+      hidden: sectionsFor(panel).filter((section) => !isVisible(section) && section.layout).length,
+    };
+  };
+
+  // ---------- rail ----------
+  function renderRail() {
+    $('rail').innerHTML = PANELS.map((panel) => {
+      const stats = panelStats(panel.id);
+      const count = panel.id === 'assets' ? '5' : String(stats.sections);
+      return `<button data-panel="${panel.id}" class="${state.panel === panel.id ? 'on' : ''}" title="${esc(panel.note)}">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">${ICONS[panel.id]}</svg>
+        <span>${esc(panel.short ?? panel.label)}</span>
+        <em>${count}</em>
+      </button>`;
+    }).join('');
+  }
+
+  // ---------- fields ----------
+  function fieldRow(field) {
+    const label = esc(field.label);
+    if (field.kind === 'toggle') {
+      return `<div class="fld narrow" data-path="${esc(field.path)}"><label>${label}</label><span class="switch"><input type="checkbox" aria-label="${label}"></span></div>`;
+    }
+    if (field.kind === 'select') {
+      const isBelt = field.path === 'conveyorLayout.selected';
+      const list = field.options.map(([value, text]) => {
+        const chosen = isBelt && value === state.layout ? ' selected' : '';
+        return `<option value="${esc(value)}"${chosen}>${esc(text)}</option>`;
+      }).join('');
+      const more = field.moreOptions ? `<option disabled>… 另有 ${field.moreOptions} 项</option>` : '';
+      const id = isBelt ? ' id="belt-select"' : '';
+      return `<div class="fld narrow" data-path="${esc(field.path)}"><label>${label}</label><select class="sel"${id} aria-label="${label}">${list}${more}</select></div>`;
+    }
+    if (field.kind === 'text') {
+      const placeholder = field.note === '命名片段' ? '英文字母/数字/下划线' : '';
+      return `<div class="fld narrow" data-path="${esc(field.path)}"><label>${label}</label><input class="txt" type="text" placeholder="${placeholder}" aria-label="${label}"></div>`;
+    }
+    if (field.kind === 'url') {
+      return `<div class="fld narrow" data-path="${esc(field.path)}"><label>${label}</label><input class="txt" type="url" placeholder="https://" aria-label="${label}"></div>`;
+    }
+    if (field.kind === 'color') {
+      const value = DEFAULT_SWATCH[(field.colorIndex ?? 0) % DEFAULT_SWATCH.length];
+      return `<div class="fld narrow" data-path="${esc(field.path)}"><label>${label}</label><span class="sw"><input type="color" value="${value}" aria-label="${label}"></span></div>`;
+    }
+    const min = field.min ?? 0;
+    const max = field.max ?? 100;
+    const value = min <= 0 && max >= 0 ? 0 : min;
+    const step = field.step ?? 1;
+    return `<div class="fld" data-path="${esc(field.path)}">
+      <label>${label}</label>
+      <input type="range" min="${min}" max="${max}" step="${step}" value="${value}" aria-label="${label}">
+      <input class="numbox" type="number" min="${min}" max="${max}" step="${step}" value="${value}" aria-label="${label}数值">
+    </div>`;
+  }
+
+  function colorGrid(fields) {
+    // The material block is really 11 colours × three slots: one solid swatch and
+    // a base/emission pair. Rendering that as a 33-cell grid loses the pairing and
+    // truncates names ("LightBlue B"); a row per colour keeps it readable.
+    const byIndex = new Map();
+    for (const field of fields) {
+      const solid = /^passengerMaterial\.solidColors\.(\d+)$/.exec(field.path);
+      const pair = /^passengerMaterial\.colors\.(\d+)\.(baseColor|emissionColor)$/.exec(field.path);
+      const index = Number(solid?.[1] ?? pair?.[1]);
+      if (!Number.isInteger(index)) continue;
+      if (!byIndex.has(index)) byIndex.set(index, { name: '', solid: null, base: null, emission: null });
+      const entry = byIndex.get(index);
+      if (solid) entry.solid = field;
+      else entry[pair[2] === 'baseColor' ? 'base' : 'emission'] = field;
+      if (!entry.name) entry.name = field.label.replace(/ (?:Base|Emission|Color)$/, '');
+    }
+    const rows = [...byIndex].sort((a, b) => a[0] - b[0]);
+    return `<div class="color-table">
+      <div class="ct-head"><span>颜色</span><span>实色</span><span>底色</span><span>自发光</span></div>
+      ${rows.map(([index, entry]) => {
+        const swatch = (field) => {
+          if (!field) return '<i class="ct-empty" title="无此槽位"></i>';
+          const value = DEFAULT_SWATCH[index % DEFAULT_SWATCH.length];
+          return `<input type="color" value="${value}" aria-label="${esc(field.label)}" title="${esc(field.path)}">`;
+        };
+        return `<div class="ct-row"><span>${esc(entry.name)}</span>${swatch(entry.solid)}${swatch(entry.base)}${swatch(entry.emission)}</div>`;
+      }).join('')}
+    </div>`;
+  }
+
+  function sectionBody(section) {
+    if (section.virtual === 'actions') {
+      return `<p class="sec-note">${esc(section.note)}</p>` + section.actions.map(([label, note], index) =>
+        `<div class="fld narrow"><label>${index + 1}. ${esc(label)}</label><span class="sec-note" style="margin:0;text-align:right">${esc(note)}</span></div>`).join('');
+    }
+    if (section.virtual === 'libraries') {
+      return `<p class="sec-note">${esc(section.note)}</p>` + section.libraries.map(([name, path, count, note]) =>
+        `<div class="asset-line"><span><b style="color:#2a4557">${esc(name)}</b> · ${esc(note)}<br><small style="color:#93a3ae;font-family:ui-monospace,Menlo,monospace;font-size:9px">${esc(path)}</small></span><b>${count} 项</b></div>`).join('');
+    }
+    if (section.virtual === 'layers') {
+      return `<p class="sec-note">${esc(section.note)}</p>
+        <div class="sec-empty">图层列表：导入 / 下载 / 删除 / 锁定 · 位置与缩放沿用自由素材面板</div>`;
+    }
+    if (section.virtual === 'screenshot') {
+      return `<p class="sec-note">${esc(section.note)}</p>
+        <div class="fld narrow"><label>画面尺寸</label><select class="sel"><option>720 × 1280</option><option>1080 × 1920</option></select></div>
+        <div class="fld narrow"><label>动作</label><button class="btn" style="justify-self:stretch;height:27px;justify-content:center">下载截图</button></div>`;
+    }
+    if (section.virtual === 'delivery') {
+      return `<p class="sec-note">${esc(section.note)}</p>
+        <div class="fld narrow"><label>导出套系</label><select class="sel"><option>BL：安卓 / iOS 合并一套</option><option>BFT：安卓 / iOS 合并一套</option></select></div>
+        <div class="fld narrow"><label>投放平台</label><select class="sel"><option>AppLovin (HTML)</option><option>Google Ads (ZIP)</option><option>Meta (ZIP)</option><option>Unity Ads (HTML)</option><option>Mintegral (ZIP)</option><option>Moloco (HTML)</option><option>TikTok (ZIP)</option></select></div>
+        <div class="fld narrow"><label></label><span style="display:flex;gap:6px"><button class="btn" style="flex:1;justify-content:center;height:27px">导出当前平台</button><button class="btn primary" style="flex:1;justify-content:center;height:27px">一键导出全部</button></span></div>
+        <p class="sec-note" style="margin-top:7px">所有渠道上限 5 MB：超限直接报错并列出占用最大的素材。</p>`;
+    }
+    if (!section.fieldCount) {
+      return `<p class="sec-note">${section.note ? esc(section.note) : '该段由自定义面板渲染，没有调参行。'}</p><div class="sec-empty">自定义面板挂载点</div>`;
+    }
+    // Colour-heavy and matrix sections: 33 colour rows become one swatch grid, and
+    // a "10 components × xyz/scale/rotation" block (入场横幅 = 35 rows) becomes one
+    // collapsible per component. Both are the same rows, just legible.
+    const colorFields = section.fields.filter((field) => field.kind === 'color');
+    const rows = section.fields.filter((field) => field.kind !== 'color');
+    const note = section.note ? `<p class="sec-note">${esc(section.note)}</p>` : '';
+
+    // entryBanner.components.<name>.position.x → component <name>
+    const componentRows = (list) => {
+      const byComponent = new Map();
+      for (const field of list) {
+        const match = /^entryBanner\.components\.([^.]+)\./.exec(field.path);
+        const key = match ? match[1] : '';
+        if (!byComponent.has(key)) byComponent.set(key, []);
+        byComponent.get(key).push(field);
+      }
+      if (byComponent.size < 3) return null;
+      return [...byComponent].map(([name, fields]) => `<details class="sub">
+        <summary>${esc(name)}<em>${fields.length}</em></summary>
+        ${fields.map(fieldRow).join('')}
+      </details>`).join('');
+    };
+
+    const matrix = componentRows(rows);
+    const rowsMarkup = matrix ?? rows.map(fieldRow).join('');
+    const grid = colorFields.length >= 8
+      ? `<p class="sec-note" style="margin-top:6px">${colorFields.length} 个颜色槽位 → 按颜色分组（现状是 ${colorFields.length} 行滑条 + 取色器）</p>${colorGrid(colorFields)}`
+      : colorFields.map(fieldRow).join('');
+    return note + rowsMarkup + grid;
+  }
+
+  function sectionMeta(section) {
+    const tags = [];
+    if (section.fieldCount) tags.push(`<span class="mini-tag">${section.fieldCount} 字段</span>`);
+    if (section.virtual) tags.push('<span class="mini-tag">面板</span>');
+    if (section.layout) tags.push(`<span class="mini-tag scope">${esc(LAYOUT_LABEL[section.layout] ?? section.layout)}</span>`);
+    if (section.spatialOnly) tags.push('<span class="mini-tag scope">仅立体轨道</span>');
+    if (section.fieldCount >= 30) tags.push('<span class="mini-tag warn">最重</span>');
+    return tags.join('');
+  }
+
+  function renderSections() {
+    const panel = PANELS.find((entry) => entry.id === state.panel);
+    const sections = sectionsFor(state.panel).filter(isVisible);
+    const hidden = sectionsFor(state.panel).filter((section) => !isVisible(section) && section.layout).length;
+
+    $('ctx-title').textContent = panel.label;
+    $('ctx-note').textContent = panel.note;
+
+    const stats = panelStats(state.panel);
+    const tally = [`<span class="tag accent">${stats.sections} 段</span>`];
+    if (stats.fields) tally.push(`<span class="tag">${stats.fields} 字段</span>`);
+    if (hidden) tally.push(`<span class="tag">另有 ${hidden} 段随跑道切换</span>`);
+    if (state.panel === 'assets') tally.push('<span class="tag">5 个素材库</span>');
+    $('ctx-tally').innerHTML = tally.join('');
+
+    const controls = [];
+    if (state.panel === 'track') {
+      controls.push(`<label class="hint" style="align-items:center;gap:9px;background:#f1f7fb;color:#2b5f77">
+        <span><b>当前跑道</b> ${esc(LAYOUT_LABEL[state.layout] ?? state.layout)}</span>
+        <span style="margin-left:auto;display:flex;align-items:center;gap:5px">
+          <input type="checkbox" id="spatial-toggle" ${state.spatial ? 'checked' : ''}> 立体轨道
+        </span>
+      </label>`);
+    }
+
+    const visible = sections;
+    // Bucket by sub-group before rendering. Walking the section list in place
+    // order makes a group reappear whenever a later section shares its name
+    // (入场横幅 sorts after 特效, so "开场引导" rendered twice).
+    const order = [];
+    const buckets = new Map();
+    for (const section of visible) {
+      const key = section.subgroup ?? '';
+      if (!buckets.has(key)) { buckets.set(key, []); order.push(key); }
+      buckets.get(key).push(section);
+    }
+    const hasGroups = order.length > 1;
+
+    let html = controls.join('');
+    for (const key of order) {
+      const list = buckets.get(key);
+      if (hasGroups) {
+        const groupFields = list.reduce((sum, entry) => sum + entry.fieldCount, 0);
+        html += `<div class="group-head"><span>${esc(key || '其他')}</span><em>${list.length} 段${groupFields ? ` · ${groupFields} 字段` : ''}</em></div>`;
+      }
+      list.forEach((section, index) => {
+        // Open the first section of every group plus anything heavy; all-collapsed
+        // hides the fields the split exists for.
+        const open = state.open.has(section.id) || index === 0 || section.fieldCount >= 20;
+        html += `<details class="sec" data-id="${section.id}" ${open ? 'open' : ''}>
+          <summary><h3>${esc(displayTitle(section))}</h3><span class="sec-meta">${sectionMeta(section)}</span></summary>
+          <div class="sec-body">${sectionBody(section)}</div>
+        </details>`;
+      });
+    }
+    $('ctx-body').innerHTML = html;
+
+    $('ctx-body').querySelectorAll('details.sec').forEach((node) => {
+      node.addEventListener('toggle', () => {
+        if (node.open) state.open.add(node.dataset.id);
+        else state.open.delete(node.dataset.id);
+      });
+    });
+
+    const spatial = $('spatial-toggle');
+    if (spatial) spatial.addEventListener('change', () => { state.spatial = spatial.checked; renderSections(); });
+
+    // The panel picker and the stage-toolbar picker write the same state; two
+    // controls reading one value is fine, two controls owning it is not.
+    const belt = $('belt-select');
+    if (belt) belt.addEventListener('change', () => applyLayout(belt.value));
+  }
+
+  function applyLayout(layout) {
+    state.layout = layout;
+    renderStage();
+    renderRail();
+    if (state.query) renderSearch(); else renderSections();
+    setPath(`conveyorLayout.selected = ${layout}`);
+  }
+
+  // ---------- search ----------
+  function renderSearch() {
+    const query = state.query.trim().toLowerCase();
+    if (!query) { renderSections(); return; }
+    const hits = [];
+    for (const section of SECTIONS) {
+      if (section.layout && section.layout !== state.layout) continue;
+      if (section.spatialOnly && !state.spatial) continue;
+      for (const field of section.fields) {
+        const haystack = `${field.label} ${field.path} ${section.title}`.toLowerCase();
+        if (haystack.includes(query)) hits.push({ section, field });
+      }
+      if (section.title.toLowerCase().includes(query) && !section.fields.some((field) => `${field.label} ${field.path} ${section.title}`.toLowerCase().includes(query))) {
+        hits.push({ section, field: null });
+      }
+    }
+    const panelLabel = (id) => PANELS.find((entry) => entry.id === id)?.label ?? id;
+    $('ctx-title').textContent = '搜索';
+    $('ctx-note').textContent = `“${state.query.trim()}” 命中 ${hits.length} 项`;
+    $('ctx-tally').innerHTML = `<span class="tag accent">${hits.length} 命中</span><span class="tag">${new Set(hits.map((hit) => hit.section.panel)).size} 个面板</span>`;
+
+    if (!hits.length) {
+      $('ctx-body').innerHTML = '<p class="no-hit">没有匹配的字段</p>';
+      return;
+    }
+    const mark = (text) => esc(text).replace(new RegExp(`(${state.query.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'ig'), '<mark>$1</mark>');
+    const groups = new Map();
+    for (const hit of hits) {
+      if (!groups.has(hit.section.panel)) groups.set(hit.section.panel, []);
+      groups.get(hit.section.panel).push(hit);
+    }
+    let html = '<div class="results">';
+    for (const [panel, list] of groups) {
+      html += `<div class="res-head">${esc(panelLabel(panel))} · ${list.length}</div>`;
+      // Cap per panel, not globally: one broad word ("车辆" hits 45 rows) used to
+      // hide every later panel's matches behind the first panel's tail.
+      const shown = list.slice(0, 20);
+      for (const { section, field } of shown) {
+        html += `<button class="res" data-panel="${panel}" data-section="${section.id}" data-path="${esc(field?.path ?? '')}">
+          <span><strong>${field ? mark(field.label) : mark(section.title)}</strong>
+          <small>${field ? mark(field.path) : esc(section.title)}</small></span>
+          <span class="where">${esc(section.title)}</span>
+        </button>`;
+      }
+      if (list.length > shown.length) {
+        html += `<p class="sec-note" style="margin:0 0 2px">还有 ${list.length - shown.length} 项，加个词缩小范围</p>`;
+      }
+    }
+    $('ctx-body').innerHTML = html + '</div>';
+    $('ctx-body').querySelectorAll('.res').forEach((node) => {
+      node.addEventListener('click', () => {
+        state.panel = node.dataset.panel;
+        state.open.add(node.dataset.section);
+        state.query = '';
+        $('search').value = '';
+        $('search-box').classList.remove('has-value');
+        renderRail();
+        renderSections();
+        const target = $('ctx-body').querySelector(`details[data-id="${node.dataset.section}"]`);
+        if (target) {
+          target.open = true;
+          target.scrollIntoView({ block: 'center' });
+          const row = node.dataset.path && target.querySelector(`[data-path="${node.dataset.path}"]`);
+          if (row) { row.classList.add('flash'); setTimeout(() => row.classList.remove('flash'), 1500); }
+        }
+        setPath(node.dataset.path || `${node.dataset.section}`);
+      });
+    });
+  }
+
+  // ---------- inspector ----------
+  const CHECKS = [
+    ['ok', '命名完整性', '需求/素材/迭代/语言/格式/设计师/需求人/步数/尾段 9 段已填', '通过'],
+    ['warn', '倒计时配置', 'warningSeconds ≤ durationSeconds 未校验', '1 项待修'],
+    ['ok', '关卡可解性', 'level26 无互锁环（SCC 单点）', '通过'],
+    ['ok', '素材齐全', '背景 / BGM / 前贴 / 贴图 全部命中', '通过'],
+    ['ok', '平台规则', 'AppLovin 静态 32/34（2 项人工）', '通过'],
+  ];
+
+  const BUDGET = [
+    ['/assets/applovin/textures/BG02_split01_winter_q60.jpg', '412 KB'],
+    ['/assets/unity/audio/christmas_bgm.mp3', '286 KB'],
+    ['/assets/applovin/progress/bus_q88.webp', '67 KB'],
+    ['/assets/unity/models/bus.vatq.bin', '54 KB'],
+  ];
+
+  function renderInspector() {
+    $('insp-tabs').querySelectorAll('button').forEach((button) => button.classList.toggle('on', button.dataset.tab === state.tab));
+    const body = $('insp-body');
+    if (state.tab === 'props') {
+      body.innerHTML = `
+        <div class="card">
+          <h4>选中对象 <span class="badge">示例</span></h4>
+          <div class="obj-head"><span class="obj-swatch"></span><div><strong>车辆 #7</strong><small>红色 · 车位 3 · 3 段路径</small></div></div>
+          <dl class="kv">
+            <dt>车号</dt><dd>7 / 共 12</dd>
+            <dt>颜色</dt><dd>Red（passengerMaterial 4）</dd>
+            <dt>车位</dt><dd>第 2 排第 3 列</dd>
+            <dt>行程</dt><dd>车位 → 轨道 → 发车</dd>
+          </dl>
+        </div>
+        <div class="card">
+          <h4>当前关卡 <span class="badge">只读</span></h4>
+          <dl class="kv">
+            <dt>关卡</dt><dd>level26</dd>
+            <dt>跑道</dt><dd>GameSceneDualQueue5</dd>
+            <dt>车辆</dt><dd>12 辆 / 6 色</dd>
+            <dt>队列</dt><dd>2 入口 · 容量 12</dd>
+          </dl>
+        </div>
+        <div class="card">
+          <h4>会话序列 <span class="badge">现状无 UI</span></h4>
+          <div class="stages">
+            ${['level4', 'level12', 'level26', 'level30'].map((name, index) => `<div class="stage-row"><b>${index + 1}</b><span>${name}</span><small>${['开场引导', '倒计时', '进度条', '选关地图'][index]}</small></div>`).join('')}
+          </div>
+          <p class="sec-note" style="margin:8px 0 0">4 个 stage 的顺序、每关的跑道/背景、以及通关后是否出选关地图，现在只能手改 <code>artifacts/playable-session.json</code>。</p>
+        </div>`;
+      return;
+    }
+    if (state.tab === 'checks') {
+      body.innerHTML = `
+        <div class="card">
+          <h4>交付前检查</h4>
+          ${CHECKS.map(([level, title, note, state]) => `
+            <div class="check ${level}"><span class="dot"></span>
+              <span><strong>${title}</strong><small>${note}</small></span>
+              <span class="state">${state}</span>
+            </div>`).join('')}
+        </div>
+        <div class="card">
+          <h4>面板内联提示</h4>
+          <p class="sec-note" style="margin:0">同一个结论也会落在出问题的字段旁：倒计时那 2 个字段标红，命名缺失的 3 段在「导出」里高亮。检视栏只做汇总。</p>
+        </div>`;
+      return;
+    }
+    body.innerHTML = `
+      <div class="card">
+        <h4>单包体积 <span class="badge">示例</span></h4>
+        <div class="budget-head"><strong>3.26</strong><span>/ 5 MiB</span><span class="free">余 1.74 MB</span></div>
+        <div class="budget-bar"><i></i></div>
+        <div class="budget-legend"><span>AppLovin 单 HTML</span><span>65%</span></div>
+        <p class="sec-note" style="margin:0 0 6px">占用最大的素材</p>
+        ${BUDGET.map(([path, size]) => `<div class="asset-line"><span>${esc(path)}</span><b>${size}</b></div>`).join('')}
+      </div>
+      <div class="card">
+        <h4>口径</h4>
+        <p class="sec-note" style="margin:0">单文件通道按成品字节数，ZIP 通道按解包后字节数（Meta / Google Ads / Mintegral）。超限直接拒绝导出并列出前 6 个素材。</p>
+      </div>`;
+  }
+
+  // ---------- compare dialog ----------
+  // Both sides are measured in the same disclosure state, all-collapsed. An
+  // earlier version compared the shipped editor's collapsed list against this
+  // prototype's opened list and "proved" the split made things 3x deeper; the
+  // split's real wins are search, the inspector column, and delivery leaving the
+  // tuning column, not a smaller scroll height.
+  function measureScreens() {
+    const body = document.getElementById('ctx-body');
+    const clientH = body.clientHeight;
+    const wrap = document.createElement('div');
+    wrap.style.cssText = 'position:absolute;left:-99999px;top:0;width:296px';
+    document.body.appendChild(wrap);
+    const CATS = [
+      ['level', /^level\./],
+      ['visual', null],
+      ['conveyor', /^(?:conveyorLayout|conveyorLayouts|spatialConveyor|queueCurves|passengerShadows)\./],
+      ['vehicle', /^(?:parkingSpots|vehiclePath|vehicleDeparturePath|vehicleArea)\./],
+      ['guide', /^(?:cta|speedToggle|countdown|installGate|gameOver|vehicleGuideHand|firstClickGuide|entryBanner|weatherEffect|freeAssets|audio|preRoll)\./],
+      ['export', /^exportNaming\./],
+    ];
+    const catOf = (section) => {
+      const path = section.fields?.[0]?.path ?? '';
+      for (const [id, pattern] of CATS) {
+        if (pattern && pattern.test(path)) return id;
+      }
+      return 'visual';
+    };
+    const visibleSections = SECTIONS.filter((s) => (!s.layout || s.layout === state.layout) && (!s.spatialOnly || state.spatial));
+    const collapsedHeight = (list) => {
+      const box = document.createElement('div');
+      box.style.cssText = 'width:296px;padding:0 13px;display:grid;gap:7px';
+      box.innerHTML = list.map((s) => `<div style="border:1px solid #e2e8ee;border-radius:8px;padding:8px 9px;font:700 11.5px sans-serif">${esc(s.title)}<span style="float:right;font-weight:600;color:#7d919f;font-size:9px">${s.fieldCount}</span></div>`).join('');
+      wrap.appendChild(box);
+      const h = box.getBoundingClientRect().height;
+      box.remove();
+      return h;
+    };
+    const before = {};
+    for (const [id] of CATS) {
+      const list = visibleSections.filter((s) => catOf(s) === id);
+      const h = collapsedHeight(list);
+      before[id] = { sections: list.length, fields: list.reduce((sum, s) => sum + s.fieldCount, 0), screens: Math.round((h / clientH) * 10) / 10 };
+    }
+    // Same measure for the nine panels: sections that this panel would list.
+    const after = {};
+    for (const panel of PANELS) {
+      const list = sectionsFor(panel.id).filter(isVisible);
+      const h = collapsedHeight(list);
+      after[panel.id] = { screens: Math.round((h / clientH) * 10) / 10, sections: list.length };
+    }
+    wrap.remove();
+    return { before, after, clientH };
+  }
+
+  function renderCompare() {
+    const { before, after } = measureScreens();
+    const CAT_LABEL = { level: '关卡', visual: '画面', conveyor: '传送带', vehicle: '车辆', guide: '引导', export: '导出' };
+    const worstBefore = Object.entries(before).sort((a, b) => b[1].screens - a[1].screens)[0];
+    const worstAfter = PANELS
+      .map((panel) => ({ label: panel.label, screens: after[panel.id].screens }))
+      .sort((a, b) => b.screens - a.screens)[0];
+    $('cmp-grid').innerHTML = `
+      <div class="cmp-col before">
+        <header>改造前 · 现有 6 个页签</header>
+        <div class="rows">
+          ${Object.entries(before).map(([id, v]) => `<div><span>${CAT_LABEL[id]}</span><b>${v.sections} 段 · ${v.fields} 字段</b></div>`).join('')}
+          <div><span>段最多的页签</span><b>${CAT_LABEL[worstBefore[0]]} ${worstBefore[1].sections} 段</b></div>
+          <div><span>找字段</span><b>页签 + 滚动 + 肉眼</b></div>
+          <div><span>导出位置</span><b>与调参共用滚动条</b></div>
+          <div><span>选中对象属性</span><b>无</b></div>
+          <div><span>素材台账</span><b>无</b></div>
+        </div>
+      </div>
+      <div class="cmp-col after">
+        <header>改造后 · 9 栏 + 检视栏</header>
+        <div class="rows">
+          ${PANELS.map((panel) => `<div><span>${panel.label}</span><b>${after[panel.id].sections} 段</b></div>`).join('')}
+          <div><span>段最多的栏</span><b>${worstAfter.label} ${after[PANELS.find((p) => p.label === worstAfter.label).id].sections} 段</b></div>
+          <div><span>找字段</span><b>跨 9 栏搜索</b></div>
+          <div><span>导出位置</span><b>顶栏常驻 + 独立面板</b></div>
+          <div><span>选中对象属性</span><b>检视栏</b></div>
+          <div><span>素材台账</span><b>素材页 + 预算卡</b></div>
+        </div>
+      </div>`;
+    $('cmp-foot').innerHTML = `总字段 <b>${INVENTORY.totals.fields}</b> 个不变，其中 <b>${INVENTORY.totals.layoutScoped}</b> 段属于跑道专属（11 条跑道 × 2 段），任何时刻只显示当前跑道那 2 段。
+      段数从「画面 14 / 引导 14」摊到九栏，最多的一栏 <b>${worstAfter.label} ${after[PANELS.find((p) => p.label === worstAfter.label).id].sections} 段</b>。
+      <b>分栏本身不减少滚动量</b>——省下的是「知道该去哪一栏」和「搜得到」，真正的增益是搜索框、检视栏和导出离开调参列。
+      这一版只动分栏与信息层级，不动 <code>setAtPath</code> / 自动存档 / 撤销栈 / 导出链路。`;
+  }
+
+  // ---------- misc wiring ----------
+  function setPath(path) {
+    $('status-path').textContent = path ? `上次修改 ${path}` : '—';
+  }
+
+  function renderStage() {
+    const belt = $('mock-belt');
+    const cars = [
+      ['#e0483f', 8, 10, 0], ['#3f7fd6', 8, 34, 0], ['#3fa06a', 30, 8, 0],
+      ['#e5a92f', 30, 34, 0], ['#8b5cc8', 62, 8, 0], ['#2b9fb5', 62, 34, 0],
+    ];
+    belt.innerHTML = cars.map(([color, x, y]) =>
+      `<span class="car" style="left:${x}%;top:${y}%;background:${color}"></span>`).join('');
+    const select = $('layout-select');
+    select.innerHTML = LAYOUTS.map((layout) => `<option value="${layout}" ${layout === state.layout ? 'selected' : ''}>${esc(LAYOUT_LABEL[layout] ?? layout)}</option>`).join('');
+    $('stage-crumb').textContent = `level${state.panel === 'level' ? '26' : '26'} · ${LAYOUT_LABEL[state.layout] ?? state.layout} · 4 车 12 人`;
+    $('status-right').textContent = `v20261111-1015 · ${INVENTORY.totals.sections} 段 / ${INVENTORY.totals.fields} 字段`;
+    $('check-count').textContent = '1';
+  }
+
+  $('rail').addEventListener('click', (event) => {
+    const button = event.target.closest('button[data-panel]');
+    if (!button) return;
+    state.panel = button.dataset.panel;
+    state.query = '';
+    $('search').value = '';
+    $('search-box').classList.remove('has-value');
+    renderRail();
+    renderSections();
+    setPath('');
+  });
+
+  $('search').addEventListener('input', (event) => {
+    state.query = event.target.value;
+    $('search-box').classList.toggle('has-value', Boolean(state.query));
+    renderSearch();
+  });
+  $('search-clear').addEventListener('click', () => {
+    state.query = '';
+    $('search').value = '';
+    $('search-box').classList.remove('has-value');
+    renderSections();
+  });
+
+  $('layout-select').addEventListener('change', (event) => applyLayout(event.target.value));
+
+  $('density-btn').addEventListener('click', () => {
+    state.density = state.density === 'compact' ? 'roomy' : 'compact';
+    document.documentElement.style.setProperty('--row', state.density === 'compact' ? '34px' : '46px');
+    $('density-btn').textContent = state.density === 'compact' ? '紧凑' : '宽松';
+    $('density-btn').classList.toggle('on', state.density === 'compact');
+  });
+
+  $('insp-tabs').addEventListener('click', (event) => {
+    const button = event.target.closest('button[data-tab]');
+    if (!button) return;
+    state.tab = button.dataset.tab;
+    renderInspector();
+  });
+
+  $('mode-seg').addEventListener('click', (event) => {
+    const button = event.target.closest('button[data-mode]');
+    if (!button) return;
+    const mode = button.dataset.mode;
+    const phone = $('phone');
+    const app = document.querySelector('.app');
+    if (mode === 'play') {
+      app.classList.add('is-play');
+      document.querySelector('.rail').style.display = 'none';
+      document.querySelector('.ctx').style.display = 'none';
+      document.querySelector('.insp').style.display = 'none';
+      document.querySelector('.work').style.gridTemplateColumns = 'minmax(0,1fr)';
+      $('stage-msg')?.remove();
+      $('phone').style.maxWidth = '420px';
+    } else {
+      app.classList.remove('is-play');
+      document.querySelector('.rail').style.removeProperty('display');
+      document.querySelector('.ctx').style.removeProperty('display');
+      document.querySelector('.insp').style.removeProperty('display');
+      document.querySelector('.work').style.removeProperty('grid-template-columns');
+      $('phone').style.maxWidth = '';
+    }
+    $('mode-seg').querySelectorAll('button').forEach((node) => node.classList.toggle('on', node === button));
+  });
+
+  $('reset-btn').addEventListener('click', () => setPath('editor-reset（恢复默认参数）'));
+  $('check-btn').addEventListener('click', () => { state.tab = 'checks'; renderInspector(); });
+  $('export-btn').addEventListener('click', () => { state.panel = 'export'; state.query = ''; $('search').value = ''; $('search-box').classList.remove('has-value'); renderRail(); renderSections(); });
+
+  $('cmp-btn').addEventListener('click', () => { renderCompare(); $('cmp-dialog').showModal(); });
+  $('cmp-close').addEventListener('click', () => $('cmp-dialog').close());
+
+  renderRail();
+  renderSections();
+  renderInspector();
+  renderStage();
+  setPath('');
+})();
+</script>
+</body>
+</html>

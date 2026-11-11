@@ -3457,3 +3457,14 @@ Full 2026-07-07 progress log was archived to:
 - v1.0.1：静态17 pass/0 warning/0 fail，Android/iOS运行时各9 pass/0 warning/0 fail；payload无阻塞，4种视口布局通过，素材86份独立载荷哈希集合未变。
 - 基线与报告：`playable-runs/20261105-bl-q201v2-applovin-v1.0.1-repo/applovin-baseline.json`、`delivery-summary.md`。资源流程为本轮用户明确例外，未构造标准RESOURCE_READY。
 - 用户最新要求先完成AL，UN/MO暂缓；Checker/官方Preview/真实容器设备待验。无commit/push或部署。
+## In Progress 2026-11-11 - 编辑器布局重构调研（分支 feature/editor-shell-layout，未合 main）
+
+- 要求：参照 `playable_idea_demo`（playable-editor-template）的三栏壳子重排 BUS 编辑器，功能要齐。
+- **先量后改**：`scripts/editor-shell-inventory.mjs` 直接从 `src/scene-editor.js` 的 `FIELD_GROUPS` 抽出真实结构，得到 **65 段 / 525 字段**（43 个基础段 + 22 个随 11 条跑道展开的段），控件 9 种：number 408、toggle 47、color 38、text 17、select 13、url 2 等。此前按记忆估的「43 段」是错的。
+- **现有 6 个页签的真实分布**（按 `editorCategoryForGroup` 口径）：画面 14 段/137 字段、引导 14 段/133、传送带 8 段/33、车辆 4 段/53、关卡 1 段/1、导出 1 段/16。最重的是「画面」和「引导」，不是以前以为的「43 段一栏」。
+- 方案：9 栏（关卡/场景/轨道/车辆/引导/界面/声音/素材/导出）+ 栏内按职能分小节（跑道·队列与影子·粒子 / 开场引导·节奏与失败·氛围图层 / 品牌·控件 …），改成按**段内字段多数投票**归属，不再按第一行路径 —— 否则 `Icon/Logo 调整`（首行是 `preview.enabled`）会被判进「场景」。
+- 原型 `artifacts/editor-shell/prototype.html`（`node scripts/editor-shell-inventory.mjs --json … --html …` 生成，无外部依赖）：可切 9 栏、切 11 条跑道、勾立体轨道、跨栏搜字段、切紧凑/宽松行高、切编辑/试玩。
+- **三个 UI 决定已在原型里验证**：① `Passenger Material` 33 个颜色槽位由「33 行滑条」改「11 色 × 实色/底色/自发光 三列表格」；② `入场横幅` 35 字段按 10 个组件子折叠；③ 引导栏从 3.7 屏降到 2.3 屏。
+- **诚实的结论**：分栏本身不减少滚动量（段数只是从「画面 14」摊到「轨道 12」）。真正增益是跨栏搜索（搜「倒计时」10 项一屏看全）、右侧检视栏（选中对象属性 / 校验 / 5 MB 预算）、导出离开调参列。对比弹窗里的数字全部由页面自身 DOM 实测，不用手填。
+- 未做：真实接线（`?shell=1` 开关、`src/` 改造、约 6 个测试文件的 `.editor-category-tabs` 断言）。分支未合 main。
+- 已知短板：`引导 → 开场引导` 组仍有 64 字段（`小手提示` 17 + `入场横幅` 35），2.3 屏是九栏里最深的。

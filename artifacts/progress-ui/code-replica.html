@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>Progress HUD — code replica</title>
+<style>
+  @font-face {
+    font-family: 'Poppins Branding';
+    src: url('/public/assets/unity/fonts/Poppins-Bold.ttf') format('truetype');
+    font-weight: 700; font-display: block;
+  }
+  html, body { margin: 0; }
+  body {
+    background: #a6d2fc;
+    font-family: 'Poppins Branding', Arial, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    padding: 260px 90px 40px;
+  }
+  .row { margin-bottom: 120px; }
+  .row h3 {
+    margin: 0 0 8px; font: 700 13px/1 Arial, sans-serif;
+    letter-spacing: .14em; text-transform: uppercase; color: #1b3a63;
+  }
+</style>
+</head>
+<body>
+<div class="row"><h3>0.10 — just started</h3><div id="a"></div></div>
+<div class="row"><h3>0.36 — reference position</h3><div id="b"></div></div>
+<div class="row"><h3>0.55 — passed the failure node</h3><div id="c"></div></div>
+
+<script type="module">
+import { mountProgressHud } from '/src/progress-hud.js';
+
+const q = new URLSearchParams(location.search);
+const width = Number(q.get('w') || 1000);
+const single = q.has('single');
+
+if (single) {
+  // one widget only, handy for screenshots and for the design review
+  document.body.innerHTML = '<div id="one"></div>';
+  document.body.style.padding = `${Math.round(width * 0.26)}px ${Math.round(width * 0.09)}px`;
+  const hud = mountProgressHud(document.getElementById('one'), {
+    width,
+    progress: Number(q.get('p') || 0.36),
+    failPercent: Number(q.get('fail') || 29),
+    // this page is not served from the Vite root, so point at the repo copy
+    assetBase: '/public/assets/applovin/progress'
+  });
+  window.__progressHud = hud;
+} else {
+  const assetBase = '/public/assets/applovin/progress';
+  const a = mountProgressHud(document.getElementById('a'), { width, progress: 0.10, assetBase });
+  mountProgressHud(document.getElementById('b'), { width, progress: 0.36, assetBase });
+  const c = mountProgressHud(document.getElementById('c'), { width, progress: 0.55, assetBase });
+  c.setPassed(true);
+  window.__progressHud = a;
+}
+</script>
+</body>
+</html>

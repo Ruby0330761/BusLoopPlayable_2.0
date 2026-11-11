@@ -1,0 +1,5859 @@
+{
+  "source": "src/scene-editor.js",
+  "generatedAt": "2026-11-11",
+  "levelOptionCount": 34,
+  "totals": {
+    "sections": 65,
+    "fields": 525,
+    "layoutScoped": 22,
+    "layouts": 11
+  },
+  "controls": {
+    "text": 17,
+    "select": 13,
+    "toggle": 47,
+    "number": 408,
+    "color": 38,
+    "url": 2
+  },
+  "sections": [
+    {
+      "id": "s00",
+      "order": 0,
+      "panel": "export",
+      "subgroup": "命名",
+      "title": "导出命名",
+      "layout": null,
+      "spatialOnly": false,
+      "defaultOpen": true,
+      "fieldCount": 16,
+      "kinds": {
+        "text": 16
+      },
+      "fields": [
+        {
+          "index": 0,
+          "label": "需求编号",
+          "path": "exportNaming.requirementCode",
+          "kind": "text",
+          "note": "命名片段"
+        },
+        {
+          "index": 1,
+          "label": "素材编号",
+          "path": "exportNaming.materialCode",
+          "kind": "text",
+          "note": "命名片段"
+        },
+        {
+          "index": 2,
+          "label": "前贴/诱导编号",
+          "path": "exportNaming.iterationCode",
+          "kind": "text",
+          "note": "命名片段"
+        },
+        {
+          "index": 3,
+          "label": "语言",
+          "path": "exportNaming.language",
+          "kind": "text",
+          "note": "命名片段"
+        },
+        {
+          "index": 4,
+          "label": "格式",
+          "path": "exportNaming.format",
+          "kind": "text",
+          "note": "命名片段"
+        },
+        {
+          "index": 5,
+          "label": "设计师",
+          "path": "exportNaming.designer",
+          "kind": "text",
+          "note": "命名片段"
+        },
+        {
+          "index": 6,
+          "label": "需求人",
+          "path": "exportNaming.requester",
+          "kind": "text",
+          "note": "命名片段"
+        },
+        {
+          "index": 7,
+          "label": "步数",
+          "path": "exportNaming.steps",
+          "kind": "text",
+          "note": "命名片段"
+        },
+        {
+          "index": 8,
+          "label": "尾段版本",
+          "path": "exportNaming.version",
+          "kind": "text",
+          "note": "命名片段"
+        },
+        {
+          "index": 9,
+          "label": "AppLovin 渠道",
+          "path": "exportNaming.channels.applovin",
+          "kind": "text",
+          "note": "命名片段"
+        },
+        {
+          "index": 10,
+          "label": "Google Ads 渠道",
+          "path": "exportNaming.channels.google-ads",
+          "kind": "text",
+          "note": "命名片段"
+        },
+        {
+          "index": 11,
+          "label": "Meta 渠道",
+          "path": "exportNaming.channels.meta",
+          "kind": "text",
+          "note": "命名片段"
+        },
+        {
+          "index": 12,
+          "label": "Mintegral 渠道",
+          "path": "exportNaming.channels.mintegral",
+          "kind": "text",
+          "note": "命名片段"
+        },
+        {
+          "index": 13,
+          "label": "Moloco 渠道",
+          "path": "exportNaming.channels.moloco",
+          "kind": "text",
+          "note": "命名片段"
+        },
+        {
+          "index": 14,
+          "label": "TikTok 渠道",
+          "path": "exportNaming.channels.tiktok",
+          "kind": "text",
+          "note": "命名片段"
+        },
+        {
+          "index": 15,
+          "label": "Unity Ads 渠道",
+          "path": "exportNaming.channels.unityads",
+          "kind": "text",
+          "note": "命名片段"
+        }
+      ]
+    },
+    {
+      "id": "s01",
+      "order": 1,
+      "panel": "level",
+      "subgroup": "全部",
+      "title": "关卡",
+      "layout": null,
+      "spatialOnly": false,
+      "defaultOpen": true,
+      "fieldCount": 1,
+      "kinds": {
+        "select": 1
+      },
+      "fields": [
+        {
+          "index": 0,
+          "label": "当前关卡",
+          "path": "level.selected",
+          "kind": "select",
+          "optionCount": 34,
+          "options": [
+            [
+              "level1",
+              "level1"
+            ],
+            [
+              "level11",
+              "level11"
+            ],
+            [
+              "level12",
+              "level12"
+            ],
+            [
+              "level14",
+              "level14"
+            ],
+            [
+              "level18",
+              "level18"
+            ],
+            [
+              "level19",
+              "level19"
+            ]
+          ],
+          "moreOptions": 28
+        }
+      ]
+    },
+    {
+      "id": "s02",
+      "order": 2,
+      "panel": "ui",
+      "subgroup": "品牌",
+      "title": "Icon/Logo调整",
+      "layout": null,
+      "spatialOnly": false,
+      "defaultOpen": false,
+      "fieldCount": 27,
+      "kinds": {
+        "toggle": 8,
+        "number": 15,
+        "select": 3,
+        "text": 1
+      },
+      "fields": [
+        {
+          "index": 0,
+          "label": "预览启用",
+          "path": "preview.enabled",
+          "kind": "toggle"
+        },
+        {
+          "index": 1,
+          "label": "模拟宽度",
+          "path": "preview.width",
+          "kind": "number",
+          "min": 320,
+          "max": 2160,
+          "step": 1
+        },
+        {
+          "index": 2,
+          "label": "模拟高度",
+          "path": "preview.height",
+          "kind": "number",
+          "min": 320,
+          "max": 4320,
+          "step": 1
+        },
+        {
+          "index": 3,
+          "label": "Icon 版本",
+          "path": "branding.icon.asset",
+          "kind": "select",
+          "optionCount": 3,
+          "options": [
+            [
+              "/assets/icon-android.jpg",
+              "BL 安卓"
+            ],
+            [
+              "/assets/icon-ios.png",
+              "BL iOS"
+            ],
+            [
+              "/assets/icon-crowd.jpg",
+              "BFT"
+            ]
+          ],
+          "moreOptions": 0
+        },
+        {
+          "index": 4,
+          "label": "Icon 显示",
+          "path": "branding.icon.enabled",
+          "kind": "toggle"
+        },
+        {
+          "index": 5,
+          "label": "Icon 锁定",
+          "path": "branding.icon.locked",
+          "kind": "toggle"
+        },
+        {
+          "index": 6,
+          "label": "Icon X",
+          "path": "branding.icon.x",
+          "kind": "number",
+          "min": 0,
+          "max": 4320,
+          "step": 1
+        },
+        {
+          "index": 7,
+          "label": "Icon Y",
+          "path": "branding.icon.y",
+          "kind": "number",
+          "min": 0,
+          "max": 4320,
+          "step": 1
+        },
+        {
+          "index": 8,
+          "label": "Icon 宽度",
+          "path": "branding.icon.width",
+          "kind": "number",
+          "min": 16,
+          "max": 2160,
+          "step": 1
+        },
+        {
+          "index": 9,
+          "label": "Icon 高度",
+          "path": "branding.icon.height",
+          "kind": "number",
+          "min": 16,
+          "max": 2160,
+          "step": 1
+        },
+        {
+          "index": 10,
+          "label": "Icon 圆角",
+          "path": "branding.icon.radius",
+          "kind": "number",
+          "min": 0,
+          "max": 120,
+          "step": 1
+        },
+        {
+          "index": 11,
+          "label": "Logo 版本",
+          "path": "branding.logo.asset",
+          "kind": "select",
+          "optionCount": 2,
+          "options": [
+            [
+              "/assets/main-loading-icon-small.png",
+              "BL"
+            ],
+            [
+              "/assets/main-loading-icon-crowd.webp",
+              "BFT"
+            ]
+          ],
+          "moreOptions": 0
+        },
+        {
+          "index": 12,
+          "label": "Logo 显示",
+          "path": "branding.logo.enabled",
+          "kind": "toggle"
+        },
+        {
+          "index": 13,
+          "label": "Logo 锁定",
+          "path": "branding.logo.locked",
+          "kind": "toggle"
+        },
+        {
+          "index": 14,
+          "label": "Logo X",
+          "path": "branding.logo.x",
+          "kind": "number",
+          "min": 0,
+          "max": 4320,
+          "step": 1
+        },
+        {
+          "index": 15,
+          "label": "Logo Y",
+          "path": "branding.logo.y",
+          "kind": "number",
+          "min": 0,
+          "max": 4320,
+          "step": 1
+        },
+        {
+          "index": 16,
+          "label": "Logo 宽度",
+          "path": "branding.logo.width",
+          "kind": "number",
+          "min": 16,
+          "max": 2160,
+          "step": 1
+        },
+        {
+          "index": 17,
+          "label": "Logo 高度",
+          "path": "branding.logo.height",
+          "kind": "number",
+          "min": 16,
+          "max": 2160,
+          "step": 1
+        },
+        {
+          "index": 18,
+          "label": "文本显示",
+          "path": "branding.text.enabled",
+          "kind": "toggle"
+        },
+        {
+          "index": 19,
+          "label": "文本锁定",
+          "path": "branding.text.locked",
+          "kind": "toggle"
+        },
+        {
+          "index": 20,
+          "label": "文本内容",
+          "path": "branding.text.content",
+          "kind": "text"
+        },
+        {
+          "index": 21,
+          "label": "文本 X",
+          "path": "branding.text.x",
+          "kind": "number",
+          "min": 0,
+          "max": 4320,
+          "step": 1
+        },
+        {
+          "index": 22,
+          "label": "文本 Y",
+          "path": "branding.text.y",
+          "kind": "number",
+          "min": 0,
+          "max": 4320,
+          "step": 1
+        },
+        {
+          "index": 23,
+          "label": "文本宽度",
+          "path": "branding.text.width",
+          "kind": "number",
+          "min": 16,
+          "max": 2160,
+          "step": 1
+        },
+        {
+          "index": 24,
+          "label": "文本高度",
+          "path": "branding.text.height",
+          "kind": "number",
+          "min": 16,
+          "max": 2160,
+          "step": 1
+        },
+        {
+          "index": 25,
+          "label": "多语言适配",
+          "path": "branding.localization.enabled",
+          "kind": "toggle"
+        },
+        {
+          "index": 26,
+          "label": "语言预览",
+          "path": "branding.localization.previewLocale",
+          "kind": "select",
+          "optionCount": 3,
+          "options": [
+            [
+              "auto",
+              "跟随浏览器"
+            ],
+            [
+              "en",
+              "English"
+            ],
+            [
+              "ja",
+              "日本語"
+            ]
+          ],
+          "moreOptions": 0
+        }
+      ]
+    },
+    {
+      "id": "s03",
+      "order": 3,
+      "panel": "scene",
+      "subgroup": "相机与灯光",
+      "title": "显示控制",
+      "layout": null,
+      "spatialOnly": false,
+      "defaultOpen": true,
+      "fieldCount": 3,
+      "kinds": {
+        "toggle": 3
+      },
+      "fields": [
+        {
+          "index": 0,
+          "label": "汽车显示",
+          "path": "visibility.vehicles",
+          "kind": "toggle"
+        },
+        {
+          "index": 1,
+          "label": "小人显示",
+          "path": "visibility.passengers",
+          "kind": "toggle"
+        },
+        {
+          "index": 2,
+          "label": "Play Now 弹窗显示",
+          "path": "cta.enabled",
+          "kind": "toggle"
+        }
+      ]
+    },
+    {
+      "id": "s04",
+      "order": 4,
+      "panel": "guide",
+      "subgroup": "节奏与失败",
+      "title": "前贴视频",
+      "layout": null,
+      "spatialOnly": false,
+      "defaultOpen": true,
+      "fieldCount": 4,
+      "kinds": {
+        "toggle": 2,
+        "select": 1,
+        "number": 1
+      },
+      "fields": [
+        {
+          "index": 0,
+          "label": "启用",
+          "path": "preRoll.enabled",
+          "kind": "toggle"
+        },
+        {
+          "index": 1,
+          "label": "视频",
+          "path": "preRoll.asset",
+          "kind": "select",
+          "optionCount": 3,
+          "options": [
+            [
+              "/assets/preroll/TP1327.mp4",
+              "TP1327 (3.0s)"
+            ],
+            [
+              "/assets/preroll/TP1333.mp4",
+              "TP1333 (4.8s)"
+            ],
+            [
+              "/assets/preroll/TP1334.mp4",
+              "TP1334 (5.0s)"
+            ]
+          ],
+          "moreOptions": 0
+        },
+        {
+          "index": 2,
+          "label": "播放声音",
+          "path": "preRoll.soundEnabled",
+          "kind": "toggle"
+        },
+        {
+          "index": 3,
+          "label": "淡出时长",
+          "path": "preRoll.fadeDurationSeconds",
+          "kind": "number",
+          "min": 0.1,
+          "max": 2,
+          "step": 0.05
+        }
+      ]
+    },
+    {
+      "id": "s05",
+      "order": 5,
+      "panel": "scene",
+      "subgroup": "相机与灯光",
+      "title": "相机",
+      "layout": null,
+      "spatialOnly": false,
+      "defaultOpen": false,
+      "fieldCount": 7,
+      "kinds": {
+        "number": 7
+      },
+      "fields": [
+        {
+          "index": 0,
+          "label": "俯角",
+          "path": "camera.elevationDegrees",
+          "kind": "number",
+          "min": 25,
+          "max": 80,
+          "step": 1
+        },
+        {
+          "index": 1,
+          "label": "透视 FOV",
+          "path": "camera.fovDegrees",
+          "kind": "number",
+          "min": 1,
+          "max": 40,
+          "step": 0.1
+        },
+        {
+          "index": 2,
+          "label": "目标 X",
+          "path": "camera.targetX",
+          "kind": "number",
+          "min": -10,
+          "max": 10,
+          "step": 0.05
+        },
+        {
+          "index": 3,
+          "label": "目标 Z",
+          "path": "camera.targetZ",
+          "kind": "number",
+          "min": -12,
+          "max": 12,
+          "step": 0.05
+        },
+        {
+          "index": 4,
+          "label": "画面宽度",
+          "path": "camera.fitWidth",
+          "kind": "number",
+          "min": 8,
+          "max": 30,
+          "step": 0.1
+        },
+        {
+          "index": 5,
+          "label": "画面高度",
+          "path": "camera.fitHeight",
+          "kind": "number",
+          "min": 8,
+          "max": 36,
+          "step": 0.1
+        },
+        {
+          "index": 6,
+          "label": "安全边距",
+          "path": "camera.padding",
+          "kind": "number",
+          "min": 0,
+          "max": 3,
+          "step": 0.05
+        }
+      ]
+    },
+    {
+      "id": "s06",
+      "order": 6,
+      "panel": "scene",
+      "subgroup": "相机与灯光",
+      "title": "方向光",
+      "layout": null,
+      "spatialOnly": false,
+      "defaultOpen": false,
+      "fieldCount": 9,
+      "kinds": {
+        "number": 8,
+        "color": 1
+      },
+      "fields": [
+        {
+          "index": 0,
+          "label": "启用",
+          "path": "lighting.directional.enabled",
+          "kind": "number",
+          "min": 0,
+          "max": 1,
+          "step": 1
+        },
+        {
+          "index": 1,
+          "label": "颜色 Hex",
+          "path": "lighting.directional.color",
+          "kind": "color",
+          "min": 0,
+          "max": 16777215,
+          "step": 1
+        },
+        {
+          "index": 2,
+          "label": "强度",
+          "path": "lighting.directional.intensity",
+          "kind": "number",
+          "min": 0,
+          "max": 5,
+          "step": 0.01
+        },
+        {
+          "index": 3,
+          "label": "X 坐标",
+          "path": "lighting.directional.position.x",
+          "kind": "number",
+          "min": -20,
+          "max": 20,
+          "step": 0.05
+        },
+        {
+          "index": 4,
+          "label": "Y 坐标",
+          "path": "lighting.directional.position.y",
+          "kind": "number",
+          "min": -2,
+          "max": 30,
+          "step": 0.05
+        },
+        {
+          "index": 5,
+          "label": "Z 坐标",
+          "path": "lighting.directional.position.z",
+          "kind": "number",
+          "min": -20,
+          "max": 20,
+          "step": 0.05
+        },
+        {
+          "index": 6,
+          "label": "X 角度",
+          "path": "lighting.directional.eulerDegrees.x",
+          "kind": "number",
+          "min": -180,
+          "max": 180,
+          "step": 0.5
+        },
+        {
+          "index": 7,
+          "label": "Y 角度",
+          "path": "lighting.directional.eulerDegrees.y",
+          "kind": "number",
+          "min": -180,
+          "max": 180,
+          "step": 0.5
+        },
+        {
+          "index": 8,
+          "label": "Z 角度",
+          "path": "lighting.directional.eulerDegrees.z",
+          "kind": "number",
+          "min": -180,
+          "max": 180,
+          "step": 0.5
+        }
+      ]
+    },
+    {
+      "id": "s07",
+      "order": 7,
+      "panel": "scene",
+      "subgroup": "画面",
+      "title": "源图裁切",
+      "layout": null,
+      "spatialOnly": false,
+      "defaultOpen": false,
+      "fieldCount": 5,
+      "kinds": {
+        "number": 5
+      },
+      "fields": [
+        {
+          "index": 0,
+          "label": "启用",
+          "path": "sourceCrop.enabled",
+          "kind": "number",
+          "min": 0,
+          "max": 1,
+          "step": 1
+        },
+        {
+          "index": 1,
+          "label": "窗口宽",
+          "path": "sourceCrop.width",
+          "kind": "number",
+          "min": 320,
+          "max": 2100,
+          "step": 1
+        },
+        {
+          "index": 2,
+          "label": "窗口高",
+          "path": "sourceCrop.height",
+          "kind": "number",
+          "min": 640,
+          "max": 3382,
+          "step": 1
+        },
+        {
+          "index": 3,
+          "label": "X 偏移",
+          "path": "sourceCrop.offsetX",
+          "kind": "number",
+          "min": -1020,
+          "max": 1020,
+          "step": 1
+        },
+        {
+          "index": 4,
+          "label": "Y 偏移",
+          "path": "sourceCrop.offsetY",
+          "kind": "number",
+          "min": -1222,
+          "max": 1222,
+          "step": 1
+        }
+      ]
+    },
+    {
+      "id": "s08",
+      "order": 8,
+      "panel": "scene",
+      "subgroup": "画面",
+      "title": "背景",
+      "layout": null,
+      "spatialOnly": false,
+      "defaultOpen": false,
+      "fieldCount": 6,
+      "kinds": {
+        "select": 1,
+        "number": 5
+      },
+      "fields": [
+        {
+          "index": 0,
+          "label": "图片",
+          "path": "background.asset",
+          "kind": "select",
+          "optionCount": 5,
+          "options": [
+            [
+              "/assets/applovin/textures/BG01_split01_q60.jpg",
+              "BG01 冬季"
+            ],
+            [
+              "/assets/applovin/textures/BG02_split01_winter_q60.jpg",
+              "BG02 冬季"
+            ],
+            [
+              "/assets/applovin/textures/BG02_split01_summer_q60.jpg",
+              "BG02 夏季"
+            ],
+            [
+              "/assets/applovin/textures/BG01_split01_Sakura_q60.jpg",
+              "BG01 樱花"
+            ],
+            [
+              "/assets/applovin/textures/BG01_split01_Grassland_q60.jpg",
+              "BG01 草地"
+            ]
+          ],
+          "moreOptions": 0
+        },
+        {
+          "index": 1,
+          "label": "缩放",
+          "path": "background.scale",
+          "kind": "number",
+          "min": 0.3,
+          "max": 3,
+          "step": 0.01
+        },
+        {
+          "index": 2,
+          "label": "X 坐标",
+          "path": "background.offsetX",
+          "kind": "number",
+          "min": -10,
+          "max": 10,
+          "step": 0.05
+        },
+        {
+          "index": 3,
+          "label": "Y 坐标",
+          "path": "background.offsetY",
+          "kind": "number",
+          "min": -10,
+          "max": 10,
+          "step": 0.05
+        },
+        {
+          "index": 4,
+          "label": "地平线校正",
+          "path": "background.horizonTrim",
+          "kind": "number",
+          "min": -6,
+          "max": 6,
+          "step": 0.02
+        },
+        {
+          "index": 5,
+          "label": "透明度",
+          "path": "background.opacity",
+          "kind": "number",
+          "min": 0,
+          "max": 1,
+          "step": 0.01
+        }
+      ]
+    },
+    {
+      "id": "s09",
+      "order": 9,
+      "panel": "cars",
+      "subgroup": "小人",
+      "title": "小人模型",
+      "layout": null,
+      "spatialOnly": false,
+      "defaultOpen": false,
+      "fieldCount": 3,
+      "kinds": {
+        "number": 3
+      },
+      "fields": [
+        {
+          "index": 0,
+          "label": "统一大小",
+          "path": "passengers.modelScale",
+          "kind": "number",
+          "min": 0.2,
+          "max": 2,
+          "step": 0.01
+        },
+        {
+          "index": 1,
+          "label": "同排间距",
+          "path": "passengers.groupSpacing",
+          "kind": "number",
+          "min": 0.03,
+          "max": 0.5,
+          "step": 0.01
+        },
+        {
+          "index": 2,
+          "label": "进车音效偏移(负=提前)",
+          "path": "passengers.aboardSoundOffset",
+          "kind": "number",
+          "min": -1,
+          "max": 1,
+          "step": 0.01
+        }
+      ]
+    },
+    {
+      "id": "s10",
+      "order": 10,
+      "panel": "ui",
+      "subgroup": "控件",
+      "title": "CTA",
+      "layout": null,
+      "spatialOnly": false,
+      "defaultOpen": false,
+      "fieldCount": 11,
+      "kinds": {
+        "number": 10,
+        "color": 1
+      },
+      "fields": [
+        {
+          "index": 0,
+          "label": "屏幕 X",
+          "path": "cta.x",
+          "kind": "number",
+          "min": 0,
+          "max": 1080,
+          "step": 1
+        },
+        {
+          "index": 1,
+          "label": "屏幕 Y",
+          "path": "cta.y",
+          "kind": "number",
+          "min": 0,
+          "max": 2160,
+          "step": 1
+        },
+        {
+          "index": 2,
+          "label": "Height",
+          "path": "cta.height",
+          "kind": "number",
+          "min": 36,
+          "max": 140,
+          "step": 1
+        },
+        {
+          "index": 3,
+          "label": "Stretch X",
+          "path": "cta.stretchX",
+          "kind": "number",
+          "min": 1,
+          "max": 5,
+          "step": 0.01
+        },
+        {
+          "index": 4,
+          "label": "Font Size",
+          "path": "cta.fontSize",
+          "kind": "number",
+          "min": 12,
+          "max": 64,
+          "step": 1
+        },
+        {
+          "index": 5,
+          "label": "Font Height",
+          "path": "cta.fontHeight",
+          "kind": "number",
+          "min": 8,
+          "max": 100,
+          "step": 1
+        },
+        {
+          "index": 6,
+          "label": "Stroke Color",
+          "path": "cta.strokeColor",
+          "kind": "color",
+          "min": 0,
+          "max": 16777215,
+          "step": 1
+        },
+        {
+          "index": 7,
+          "label": "Stroke Width",
+          "path": "cta.strokeWidth",
+          "kind": "number",
+          "min": 0,
+          "max": 8,
+          "step": 0.1
+        },
+        {
+          "index": 8,
+          "label": "Pulse Scale",
+          "path": "cta.pulseScale",
+          "kind": "number",
+          "min": 1,
+          "max": 1.35,
+          "step": 0.01
+        },
+        {
+          "index": 9,
+          "label": "Pulse Speed",
+          "path": "cta.pulseSpeed",
+          "kind": "number",
+          "min": 0.1,
+          "max": 3,
+          "step": 0.01
+        },
+        {
+          "index": 10,
+          "label": "Appear Speed",
+          "path": "cta.appearSpeed",
+          "kind": "number",
+          "min": 0.1,
+          "max": 5,
+          "step": 0.01
+        }
+      ]
+    },
+    {
+      "id": "s11",
+      "order": 11,
+      "panel": "ui",
+      "subgroup": "控件",
+      "title": "倍速按钮",
+      "layout": null,
+      "spatialOnly": false,
+      "defaultOpen": true,
+      "fieldCount": 6,
+      "kinds": {
+        "toggle": 1,
+        "number": 5
+      },
+      "fields": [
+        {
+          "index": 0,
+          "label": "启用",
+          "path": "speedToggle.enabled",
+          "kind": "toggle"
+        },
+        {
+          "index": 1,
+          "label": "屏幕 X",
+          "path": "speedToggle.x",
+          "kind": "number",
+          "min": 0,
+          "max": 1080,
+          "step": 1
+        },
+        {
+          "index": 2,
+          "label": "屏幕 Y",
+          "path": "speedToggle.y",
+          "kind": "number",
+          "min": 0,
+          "max": 2160,
+          "step": 1
+        },
+        {
+          "index": 3,
+          "label": "宽度",
+          "path": "speedToggle.width",
+          "kind": "number",
+          "min": 40,
+          "max": 640,
+          "step": 1
+        },
+        {
+          "index": 4,
+          "label": "高度",
+          "path": "speedToggle.height",
+          "kind": "number",
+          "min": 24,
+          "max": 400,
+          "step": 1
+        },
+        {
+          "index": 5,
+          "label": "倍率",
+          "path": "speedToggle.multiplier",
+          "kind": "number",
+          "min": 1,
+          "max": 6,
+          "step": 0.1
+        }
+      ]
+    },
+    {
+      "id": "s12",
+      "order": 12,
+      "panel": "ui",
+      "subgroup": "控件",
+      "title": "进度条",
+      "layout": null,
+      "spatialOnly": false,
+      "defaultOpen": true,
+      "fieldCount": 12,
+      "kinds": {
+        "toggle": 3,
+        "number": 9
+      },
+      "fields": [
+        {
+          "index": 0,
+          "label": "启用进度条",
+          "path": "progressHud.enabled",
+          "kind": "toggle"
+        },
+        {
+          "index": 1,
+          "label": "高失败率节点（%）",
+          "path": "progressHud.nodePercent",
+          "kind": "number",
+          "min": 1,
+          "max": 99,
+          "step": 1
+        },
+        {
+          "index": 2,
+          "label": "失败率文案（%）",
+          "path": "progressHud.failPercent",
+          "kind": "number",
+          "min": 0,
+          "max": 100,
+          "step": 1
+        },
+        {
+          "index": 3,
+          "label": "显示中间锚点",
+          "path": "progressHud.anchors",
+          "kind": "toggle"
+        },
+        {
+          "index": 4,
+          "label": "水平偏移 X",
+          "path": "progressHud.offsetX",
+          "kind": "number",
+          "min": -1080,
+          "max": 1080,
+          "step": 1
+        },
+        {
+          "index": 5,
+          "label": "垂直偏移 Y",
+          "path": "progressHud.offsetY",
+          "kind": "number",
+          "min": -2160,
+          "max": 2160,
+          "step": 1
+        },
+        {
+          "index": 6,
+          "label": "整体缩放",
+          "path": "progressHud.scale",
+          "kind": "number",
+          "min": 0.2,
+          "max": 3,
+          "step": 0.01
+        },
+        {
+          "index": 7,
+          "label": "显示轨道",
+          "path": "progressHud.trackVisible",
+          "kind": "toggle"
+        },
+        {
+          "index": 8,
+          "label": "起点颜色",
+          "path": "progressHud.spectrumStart",
+          "kind": "number",
+          "min": 0,
+          "max": 16777215,
+          "step": 1
+        },
+        {
+          "index": 9,
+          "label": "前段颜色",
+          "path": "progressHud.spectrumEarly",
+          "kind": "number",
+          "min": 0,
+          "max": 16777215,
+          "step": 1
+        },
+        {
+          "index": 10,
+          "label": "后段颜色",
+          "path": "progressHud.spectrumLate",
+          "kind": "number",
+          "min": 0,
+          "max": 16777215,
+          "step": 1
+        },
+        {
+          "index": 11,
+          "label": "终点颜色",
+          "path": "progressHud.spectrumEnd",
+          "kind": "number",
+          "min": 0,
+          "max": 16777215,
+          "step": 1
+        }
+      ]
+    },
+    {
+      "id": "s13",
+      "order": 13,
+      "panel": "guide",
+      "subgroup": "节奏与失败",
+      "title": "倒计时挑战",
+      "layout": null,
+      "spatialOnly": false,
+      "defaultOpen": true,
+      "fieldCount": 10,
+      "kinds": {
+        "toggle": 4,
+        "number": 6
+      },
+      "fields": [
+        {
+          "index": 0,
+          "label": "启用倒计时",
+          "path": "countdown.enabled",
+          "kind": "toggle"
+        },
+        {
+          "index": 1,
+          "label": "倒计时时长（秒）",
+          "path": "countdown.durationSeconds",
+          "kind": "number",
+          "min": 0,
+          "max": 120,
+          "step": 1,
+          "note": "受倒计时总时长约束"
+        },
+        {
+          "index": 2,
+          "label": "临近结束红光",
+          "path": "countdown.warningEnabled",
+          "kind": "toggle"
+        },
+        {
+          "index": 3,
+          "label": "红光提前时间（秒）",
+          "path": "countdown.warningSeconds",
+          "kind": "number",
+          "min": 0,
+          "max": 120,
+          "step": 1,
+          "note": "受倒计时总时长约束"
+        },
+        {
+          "index": 4,
+          "label": "救护车警笛循环",
+          "path": "countdown.sirenEnabled",
+          "kind": "toggle"
+        },
+        {
+          "index": 5,
+          "label": "警笛音量",
+          "path": "countdown.sirenVolume",
+          "kind": "number",
+          "min": 0,
+          "max": 1,
+          "step": 0.01
+        },
+        {
+          "index": 6,
+          "label": "归零跳转商店",
+          "path": "countdown.timeoutStore",
+          "kind": "toggle"
+        },
+        {
+          "index": 7,
+          "label": "水平偏移 X",
+          "path": "countdown.offsetX",
+          "kind": "number",
+          "min": -1080,
+          "max": 1080,
+          "step": 1
+        },
+        {
+          "index": 8,
+          "label": "垂直偏移 Y",
+          "path": "countdown.offsetY",
+          "kind": "number",
+          "min": -2160,
+          "max": 2160,
+          "step": 1
+        },
+        {
+          "index": 9,
+          "label": "整体缩放",
+          "path": "countdown.scale",
+          "kind": "number",
+          "min": 0.25,
+          "max": 3,
+          "step": 0.01
+        }
+      ]
+    },
+    {
+      "id": "s14",
+      "order": 14,
+      "panel": "guide",
+      "subgroup": "节奏与失败",
+      "title": "商店跳转",
+      "layout": null,
+      "spatialOnly": false,
+      "defaultOpen": false,
+      "fieldCount": 3,
+      "kinds": {
+        "number": 1,
+        "url": 2
+      },
+      "fields": [
+        {
+          "index": 0,
+          "label": "成功操作次数",
+          "path": "installGate.successfulOperationThreshold",
+          "kind": "number",
+          "min": 1,
+          "max": 200,
+          "step": 1
+        },
+        {
+          "index": 1,
+          "label": "Android 链接",
+          "path": "storeLinks.android",
+          "kind": "url"
+        },
+        {
+          "index": 2,
+          "label": "iOS 链接",
+          "path": "storeLinks.ios",
+          "kind": "url"
+        }
+      ]
+    },
+    {
+      "id": "s15",
+      "order": 15,
+      "panel": "audio",
+      "subgroup": "全部",
+      "title": "音效延迟(正值=推后)",
+      "layout": null,
+      "spatialOnly": false,
+      "defaultOpen": false,
+      "fieldCount": 4,
+      "kinds": {
+        "number": 4
+      },
+      "fields": [
+        {
+          "index": 0,
+          "label": "车辆开出",
+          "path": "audio.busFullDelay",
+          "kind": "number",
+          "min": 0,
+          "max": 2,
+          "step": 0.01
+        },
+        {
+          "index": 1,
+          "label": "撞击",
+          "path": "audio.busHitDelay",
+          "kind": "number",
+          "min": 0,
+          "max": 2,
+          "step": 0.01
+        },
+        {
+          "index": 2,
+          "label": "小人入场",
+          "path": "audio.passengerUpDelay",
+          "kind": "number",
+          "min": 0,
+          "max": 2,
+          "step": 0.01
+        },
+        {
+          "index": 3,
+          "label": "点击车辆",
+          "path": "audio.vehicleTapDelay",
+          "kind": "number",
+          "min": 0,
+          "max": 2,
+          "step": 0.01
+        }
+      ]
+    },
+    {
+      "id": "s16",
+      "order": 16,
+      "panel": "audio",
+      "subgroup": "全部",
+      "title": "音效音量(倍数)",
+      "layout": null,
+      "spatialOnly": false,
+      "defaultOpen": false,
+      "fieldCount": 1,
+      "kinds": {
+        "number": 1
+      },
+      "fields": [
+        {
+          "index": 0,
+          "label": "点击车辆",
+          "path": "audio.vehicleTapVolume",
+          "kind": "number",
+          "min": 0,
+          "max": 2,
+          "step": 0.01
+        }
+      ]
+    },
+    {
+      "id": "s17",
+      "order": 17,
+      "panel": "audio",
+      "subgroup": "全部",
+      "title": "背景音乐(BGM)",
+      "layout": null,
+      "spatialOnly": false,
+      "defaultOpen": false,
+      "fieldCount": 4,
+      "kinds": {
+        "toggle": 1,
+        "select": 1,
+        "number": 2
+      },
+      "fields": [
+        {
+          "index": 0,
+          "label": "开启",
+          "path": "audio.bgm.enabled",
+          "kind": "toggle"
+        },
+        {
+          "index": 1,
+          "label": "曲目",
+          "path": "audio.bgm.asset",
+          "kind": "select",
+          "optionCount": 1,
+          "options": [
+            [
+              "/assets/unity/audio/christmas_bgm.mp3",
+              "圣诞 BGM"
+            ]
+          ],
+          "moreOptions": 0
+        },
+        {
+          "index": 2,
+          "label": "音量",
+          "path": "audio.bgm.volume",
+          "kind": "number",
+          "min": 0,
+          "max": 1,
+          "step": 0.01
+        },
+        {
+          "index": 3,
+          "label": "淡入(秒)",
+          "path": "audio.bgm.fadeInSeconds",
+          "kind": "number",
+          "min": 0,
+          "max": 3,
+          "step": 0.1
+        }
+      ]
+    },
+    {
+      "id": "s18",
+      "order": 18,
+      "panel": "guide",
+      "subgroup": "节奏与失败",
+      "title": "Game Over",
+      "layout": null,
+      "spatialOnly": false,
+      "defaultOpen": false,
+      "fieldCount": 11,
+      "kinds": {
+        "number": 11
+      },
+      "fields": [
+        {
+          "index": 0,
+          "label": "Fail Delay",
+          "path": "gameOver.failureDelaySeconds",
+          "kind": "number",
+          "min": 0,
+          "max": 8,
+          "step": 0.1
+        },
+        {
+          "index": 1,
+          "label": "Mask Opacity",
+          "path": "gameOver.maskOpacity",
+          "kind": "number",
+          "min": 0,
+          "max": 1,
+          "step": 0.01
+        },
+        {
+          "index": 2,
+          "label": "Title Size",
+          "path": "gameOver.titleFontSize",
+          "kind": "number",
+          "min": 24,
+          "max": 180,
+          "step": 1
+        },
+        {
+          "index": 3,
+          "label": "Title Pop Speed",
+          "path": "gameOver.titlePopSpeed",
+          "kind": "number",
+          "min": 0.1,
+          "max": 5,
+          "step": 0.01
+        },
+        {
+          "index": 4,
+          "label": "Title Fade Speed",
+          "path": "gameOver.titleFadeSpeed",
+          "kind": "number",
+          "min": 0.1,
+          "max": 5,
+          "step": 0.01
+        },
+        {
+          "index": 5,
+          "label": "Logo X",
+          "path": "gameOver.logoX",
+          "kind": "number",
+          "min": 0,
+          "max": 1080,
+          "step": 1
+        },
+        {
+          "index": 6,
+          "label": "Logo Y",
+          "path": "gameOver.logoY",
+          "kind": "number",
+          "min": 0,
+          "max": 2160,
+          "step": 1
+        },
+        {
+          "index": 7,
+          "label": "Logo Width",
+          "path": "gameOver.logoWidth",
+          "kind": "number",
+          "min": 40,
+          "max": 720,
+          "step": 1
+        },
+        {
+          "index": 8,
+          "label": "Logo Height",
+          "path": "gameOver.logoHeight",
+          "kind": "number",
+          "min": 40,
+          "max": 720,
+          "step": 1
+        },
+        {
+          "index": 9,
+          "label": "Logo Radius",
+          "path": "gameOver.logoRadius",
+          "kind": "number",
+          "min": 0,
+          "max": 120,
+          "step": 1
+        },
+        {
+          "index": 10,
+          "label": "Logo Speed",
+          "path": "gameOver.logoAppearSpeed",
+          "kind": "number",
+          "min": 0.1,
+          "max": 5,
+          "step": 0.01
+        }
+      ]
+    },
+    {
+      "id": "s19",
+      "order": 19,
+      "panel": "guide",
+      "subgroup": "节奏与失败",
+      "title": "失败重试",
+      "layout": null,
+      "spatialOnly": false,
+      "defaultOpen": true,
+      "fieldCount": 7,
+      "kinds": {
+        "toggle": 1,
+        "select": 1,
+        "number": 5
+      },
+      "fields": [
+        {
+          "index": 0,
+          "label": "启用重试按钮",
+          "path": "gameOver.retryEnabled",
+          "kind": "toggle"
+        },
+        {
+          "index": 1,
+          "label": "按钮行为",
+          "path": "gameOver.retryAction",
+          "kind": "select",
+          "optionCount": 2,
+          "options": [
+            [
+              "restart",
+              "重开本局"
+            ],
+            [
+              "store",
+              "打开商店"
+            ]
+          ],
+          "moreOptions": 0
+        },
+        {
+          "index": 2,
+          "label": "重试 X",
+          "path": "gameOver.retryX",
+          "kind": "number",
+          "min": 0,
+          "max": 1080,
+          "step": 1
+        },
+        {
+          "index": 3,
+          "label": "重试 Y",
+          "path": "gameOver.retryY",
+          "kind": "number",
+          "min": 0,
+          "max": 2160,
+          "step": 1
+        },
+        {
+          "index": 4,
+          "label": "重试宽度",
+          "path": "gameOver.retryWidth",
+          "kind": "number",
+          "min": 120,
+          "max": 900,
+          "step": 1
+        },
+        {
+          "index": 5,
+          "label": "重试字号",
+          "path": "gameOver.retryFontSize",
+          "kind": "number",
+          "min": 20,
+          "max": 200,
+          "step": 1
+        },
+        {
+          "index": 6,
+          "label": "重试出现速度",
+          "path": "gameOver.retryAppearSpeed",
+          "kind": "number",
+          "min": 0.1,
+          "max": 5,
+          "step": 0.01
+        }
+      ]
+    },
+    {
+      "id": "s20",
+      "order": 20,
+      "panel": "cars",
+      "subgroup": "小人",
+      "title": "Passenger Material",
+      "layout": null,
+      "spatialOnly": false,
+      "defaultOpen": false,
+      "fieldCount": 39,
+      "kinds": {
+        "select": 1,
+        "number": 5,
+        "color": 33
+      },
+      "fields": [
+        {
+          "index": 0,
+          "label": "Mode",
+          "path": "passengerMaterial.mode",
+          "kind": "select",
+          "optionCount": 2,
+          "options": [
+            [
+              "unityTexture",
+              "Unity Texture"
+            ],
+            [
+              "solidColor",
+              "Solid Color"
+            ]
+          ],
+          "moreOptions": 0
+        },
+        {
+          "index": 1,
+          "label": "Base Strength",
+          "path": "passengerMaterial.baseColorStrength",
+          "kind": "number",
+          "min": 0,
+          "max": 2,
+          "step": 0.01
+        },
+        {
+          "index": 2,
+          "label": "Emission Strength",
+          "path": "passengerMaterial.emissionStrength",
+          "kind": "number",
+          "min": 0,
+          "max": 5,
+          "step": 0.01
+        },
+        {
+          "index": 3,
+          "label": "Brightness",
+          "path": "passengerMaterial.brightness",
+          "kind": "number",
+          "min": 0,
+          "max": 3,
+          "step": 0.01
+        },
+        {
+          "index": 4,
+          "label": "Roughness",
+          "path": "passengerMaterial.roughness",
+          "kind": "number",
+          "min": 0,
+          "max": 1,
+          "step": 0.01
+        },
+        {
+          "index": 5,
+          "label": "Metalness",
+          "path": "passengerMaterial.metalness",
+          "kind": "number",
+          "min": 0,
+          "max": 1,
+          "step": 0.01
+        },
+        {
+          "index": 6,
+          "label": "Blue Color",
+          "path": "passengerMaterial.solidColors.0",
+          "kind": "color",
+          "min": 0,
+          "max": 16777215,
+          "step": 1,
+          "colorIndex": 0
+        },
+        {
+          "index": 7,
+          "label": "Green Color",
+          "path": "passengerMaterial.solidColors.1",
+          "kind": "color",
+          "min": 0,
+          "max": 16777215,
+          "step": 1,
+          "colorIndex": 1
+        },
+        {
+          "index": 8,
+          "label": "Pink Color",
+          "path": "passengerMaterial.solidColors.2",
+          "kind": "color",
+          "min": 0,
+          "max": 16777215,
+          "step": 1,
+          "colorIndex": 2
+        },
+        {
+          "index": 9,
+          "label": "Purple Color",
+          "path": "passengerMaterial.solidColors.3",
+          "kind": "color",
+          "min": 0,
+          "max": 16777215,
+          "step": 1,
+          "colorIndex": 3
+        },
+        {
+          "index": 10,
+          "label": "Red Color",
+          "path": "passengerMaterial.solidColors.4",
+          "kind": "color",
+          "min": 0,
+          "max": 16777215,
+          "step": 1,
+          "colorIndex": 4
+        },
+        {
+          "index": 11,
+          "label": "Yellow Color",
+          "path": "passengerMaterial.solidColors.5",
+          "kind": "color",
+          "min": 0,
+          "max": 16777215,
+          "step": 1,
+          "colorIndex": 5
+        },
+        {
+          "index": 12,
+          "label": "Orange Color",
+          "path": "passengerMaterial.solidColors.6",
+          "kind": "color",
+          "min": 0,
+          "max": 16777215,
+          "step": 1,
+          "colorIndex": 6
+        },
+        {
+          "index": 13,
+          "label": "LightBlue Color",
+          "path": "passengerMaterial.solidColors.7",
+          "kind": "color",
+          "min": 0,
+          "max": 16777215,
+          "step": 1,
+          "colorIndex": 7
+        },
+        {
+          "index": 14,
+          "label": "Brown Color",
+          "path": "passengerMaterial.solidColors.8",
+          "kind": "color",
+          "min": 0,
+          "max": 16777215,
+          "step": 1,
+          "colorIndex": 8
+        },
+        {
+          "index": 15,
+          "label": "DarkGreen Color",
+          "path": "passengerMaterial.solidColors.9",
+          "kind": "color",
+          "min": 0,
+          "max": 16777215,
+          "step": 1,
+          "colorIndex": 9
+        },
+        {
+          "index": 16,
+          "label": "DarkBlue Color",
+          "path": "passengerMaterial.solidColors.10",
+          "kind": "color",
+          "min": 0,
+          "max": 16777215,
+          "step": 1,
+          "colorIndex": 10
+        },
+        {
+          "index": 17,
+          "label": "Blue Base",
+          "path": "passengerMaterial.colors.0.baseColor",
+          "kind": "color",
+          "min": 0,
+          "max": 16777215,
+          "step": 1
+        },
+        {
+          "index": 18,
+          "label": "Blue Emission",
+          "path": "passengerMaterial.colors.0.emissionColor",
+          "kind": "color",
+          "min": 0,
+          "max": 16777215,
+          "step": 1
+        },
+        {
+          "index": 19,
+          "label": "Green Base",
+          "path": "passengerMaterial.colors.1.baseColor",
+          "kind": "color",
+          "min": 0,
+          "max": 16777215,
+          "step": 1
+        },
+        {
+          "index": 20,
+          "label": "Green Emission",
+          "path": "passengerMaterial.colors.1.emissionColor",
+          "kind": "color",
+          "min": 0,
+          "max": 16777215,
+          "step": 1
+        },
+        {
+          "index": 21,
+          "label": "Pink Base",
+          "path": "passengerMaterial.colors.2.baseColor",
+          "kind": "color",
+          "min": 0,
+          "max": 16777215,
+          "step": 1
+        },
+        {
+          "index": 22,
+          "label": "Pink Emission",
+          "path": "passengerMaterial.colors.2.emissionColor",
+          "kind": "color",
+          "min": 0,
+          "max": 16777215,
+          "step": 1
+        },
+        {
+          "index": 23,
+          "label": "Purple Base",
+          "path": "passengerMaterial.colors.3.baseColor",
+          "kind": "color",
+          "min": 0,
+          "max": 16777215,
+          "step": 1
+        },
+        {
+          "index": 24,
+          "label": "Purple Emission",
+          "path": "passengerMaterial.colors.3.emissionColor",
+          "kind": "color",
+          "min": 0,
+          "max": 16777215,
+          "step": 1
+        },
+        {
+          "index": 25,
+          "label": "Red Base",
+          "path": "passengerMaterial.colors.4.baseColor",
+          "kind": "color",
+          "min": 0,
+          "max": 16777215,
+          "step": 1
+        },
+        {
+          "index": 26,
+          "label": "Red Emission",
+          "path": "passengerMaterial.colors.4.emissionColor",
+          "kind": "color",
+          "min": 0,
+          "max": 16777215,
+          "step": 1
+        },
+        {
+          "index": 27,
+          "label": "Yellow Base",
+          "path": "passengerMaterial.colors.5.baseColor",
+          "kind": "color",
+          "min": 0,
+          "max": 16777215,
+          "step": 1
+        },
+        {
+          "index": 28,
+          "label": "Yellow Emission",
+          "path": "passengerMaterial.colors.5.emissionColor",
+          "kind": "color",
+          "min": 0,
+          "max": 16777215,
+          "step": 1
+        },
+        {
+          "index": 29,
+          "label": "Orange Base",
+          "path": "passengerMaterial.colors.6.baseColor",
+          "kind": "color",
+          "min": 0,
+          "max": 16777215,
+          "step": 1
+        },
+        {
+          "index": 30,
+          "label": "Orange Emission",
+          "path": "passengerMaterial.colors.6.emissionColor",
+          "kind": "color",
+          "min": 0,
+          "max": 16777215,
+          "step": 1
+        },
+        {
+          "index": 31,
+          "label": "LightBlue Base",
+          "path": "passengerMaterial.colors.7.baseColor",
+          "kind": "color",
+          "min": 0,
+          "max": 16777215,
+          "step": 1
+        },
+        {
+          "index": 32,
+          "label": "LightBlue Emission",
+          "path": "passengerMaterial.colors.7.emissionColor",
+          "kind": "color",
+          "min": 0,
+          "max": 16777215,
+          "step": 1
+        },
+        {
+          "index": 33,
+          "label": "Brown Base",
+          "path": "passengerMaterial.colors.8.baseColor",
+          "kind": "color",
+          "min": 0,
+          "max": 16777215,
+          "step": 1
+        },
+        {
+          "index": 34,
+          "label": "Brown Emission",
+          "path": "passengerMaterial.colors.8.emissionColor",
+          "kind": "color",
+          "min": 0,
+          "max": 16777215,
+          "step": 1
+        },
+        {
+          "index": 35,
+          "label": "DarkGreen Base",
+          "path": "passengerMaterial.colors.9.baseColor",
+          "kind": "color",
+          "min": 0,
+          "max": 16777215,
+          "step": 1
+        },
+        {
+          "index": 36,
+          "label": "DarkGreen Emission",
+          "path": "passengerMaterial.colors.9.emissionColor",
+          "kind": "color",
+          "min": 0,
+          "max": 16777215,
+          "step": 1
+        },
+        {
+          "index": 37,
+          "label": "DarkBlue Base",
+          "path": "passengerMaterial.colors.10.baseColor",
+          "kind": "color",
+          "min": 0,
+          "max": 16777215,
+          "step": 1
+        },
+        {
+          "index": 38,
+          "label": "DarkBlue Emission",
+          "path": "passengerMaterial.colors.10.emissionColor",
+          "kind": "color",
+          "min": 0,
+          "max": 16777215,
+          "step": 1
+        }
+      ]
+    },
+    {
+      "id": "s21",
+      "order": 21,
+      "panel": "track",
+      "subgroup": "跑道",
+      "title": "传送带选择",
+      "layout": null,
+      "spatialOnly": false,
+      "defaultOpen": false,
+      "fieldCount": 1,
+      "kinds": {
+        "select": 1
+      },
+      "fields": [
+        {
+          "index": 0,
+          "label": "Prefab",
+          "path": "conveyorLayout.selected",
+          "kind": "select",
+          "optionCount": 11,
+          "options": [
+            [
+              "dualQueue2",
+              "GameSceneDualQueue2"
+            ],
+            [
+              "dualQueue3",
+              "GameSceneDualQueue3"
+            ],
+            [
+              "dualQueue5",
+              "GameSceneDualQueue5"
+            ],
+            [
+              "dualQueue10",
+              "GameSceneDualQueue10"
+            ],
+            [
+              "starLoop",
+              "星形跑道 StarLoop"
+            ],
+            [
+              "heartLoop",
+              "爱心跑道 HeartLoop"
+            ],
+            [
+              "catLoop",
+              "猫咪跑道 CatLoop"
+            ],
+            [
+              "moonLoop",
+              "月亮跑道 MoonLoop"
+            ],
+            [
+              "dualLoop5",
+              "双线跑道 DualLoop5"
+            ],
+            [
+              "hexLoop",
+              "六边跑道 HexLoop"
+            ],
+            [
+              "crossLoop",
+              "十字跑道 CrossLoop"
+            ]
+          ],
+          "moreOptions": 0
+        }
+      ]
+    },
+    {
+      "id": "s22",
+      "order": 22,
+      "panel": "track",
+      "subgroup": "立体轨道",
+      "title": "立体轨道位置与缩放",
+      "layout": null,
+      "spatialOnly": true,
+      "defaultOpen": false,
+      "fieldCount": 15,
+      "kinds": {
+        "number": 14,
+        "toggle": 1
+      },
+      "fields": [
+        {
+          "index": 0,
+          "label": "X 位置",
+          "path": "spatialConveyor.positionX",
+          "kind": "number",
+          "min": -6,
+          "max": 6,
+          "step": 0.05
+        },
+        {
+          "index": 1,
+          "label": "Y 位置",
+          "path": "spatialConveyor.positionY",
+          "kind": "number",
+          "min": -3,
+          "max": 4,
+          "step": 0.05
+        },
+        {
+          "index": 2,
+          "label": "Z 位置",
+          "path": "spatialConveyor.positionZ",
+          "kind": "number",
+          "min": -10,
+          "max": 4,
+          "step": 0.05
+        },
+        {
+          "index": 3,
+          "label": "出口 X 位置",
+          "path": "spatialConveyor.exitPositionX",
+          "kind": "number",
+          "min": -4,
+          "max": 4,
+          "step": 0.05
+        },
+        {
+          "index": 4,
+          "label": "出口 Y 位置",
+          "path": "spatialConveyor.exitPositionY",
+          "kind": "number",
+          "min": -4,
+          "max": 4,
+          "step": 0.05
+        },
+        {
+          "index": 5,
+          "label": "出口 Z 位置",
+          "path": "spatialConveyor.exitPositionZ",
+          "kind": "number",
+          "min": -4,
+          "max": 4,
+          "step": 0.05
+        },
+        {
+          "index": 6,
+          "label": "统一缩放",
+          "path": "spatialConveyor.scale",
+          "kind": "number",
+          "min": 0.5,
+          "max": 2.5,
+          "step": 0.05
+        },
+        {
+          "index": 7,
+          "label": "Y 轴垂直缩放",
+          "path": "spatialConveyor.scaleY",
+          "kind": "number",
+          "min": 0.25,
+          "max": 3,
+          "step": 0.05
+        },
+        {
+          "index": 8,
+          "label": "X 轴缩放",
+          "path": "spatialConveyor.scaleX",
+          "kind": "number",
+          "min": 0.25,
+          "max": 3,
+          "step": 0.05
+        },
+        {
+          "index": 9,
+          "label": "Z 轴缩放",
+          "path": "spatialConveyor.scaleZ",
+          "kind": "number",
+          "min": 0.25,
+          "max": 3,
+          "step": 0.05
+        },
+        {
+          "index": 10,
+          "label": "路面宽度",
+          "path": "spatialConveyor.roadWidth",
+          "kind": "number",
+          "min": 0.25,
+          "max": 3,
+          "step": 0.05
+        },
+        {
+          "index": 11,
+          "label": "X 轴旋转",
+          "path": "spatialConveyor.rotationXDegrees",
+          "kind": "number",
+          "min": 0,
+          "max": 360,
+          "step": 5
+        },
+        {
+          "index": 12,
+          "label": "Y 轴旋转",
+          "path": "spatialConveyor.rotationYDegrees",
+          "kind": "number",
+          "min": 0,
+          "max": 360,
+          "step": 5
+        },
+        {
+          "index": 13,
+          "label": "Z 轴旋转",
+          "path": "spatialConveyor.rotationZDegrees",
+          "kind": "number",
+          "min": 0,
+          "max": 360,
+          "step": 5
+        },
+        {
+          "index": 14,
+          "label": "Unity Z 轴镜像校正",
+          "path": "spatialConveyor.mirrorZ",
+          "kind": "toggle"
+        }
+      ]
+    },
+    {
+      "id": "s23",
+      "order": 23,
+      "panel": "track",
+      "subgroup": "立体轨道",
+      "title": "立体轨道队列",
+      "layout": null,
+      "spatialOnly": true,
+      "defaultOpen": false,
+      "fieldCount": 4,
+      "kinds": {
+        "number": 3,
+        "toggle": 1
+      },
+      "fields": [
+        {
+          "index": 0,
+          "label": "立体轨道容量",
+          "path": "spatialConveyor.capacity",
+          "kind": "number",
+          "min": 1,
+          "max": 600,
+          "step": 1
+        },
+        {
+          "index": 1,
+          "label": "初始满人",
+          "path": "spatialConveyor.startFilled",
+          "kind": "toggle"
+        },
+        {
+          "index": 2,
+          "label": "常规队列速度",
+          "path": "spatialConveyor.normalSpeedMultiplier",
+          "kind": "number",
+          "min": 0.1,
+          "max": 5,
+          "step": 0.1
+        },
+        {
+          "index": 3,
+          "label": "长按加速倍率",
+          "path": "spatialConveyor.longPressMultiplier",
+          "kind": "number",
+          "min": 1,
+          "max": 10,
+          "step": 0.1
+        }
+      ]
+    },
+    {
+      "id": "s24",
+      "order": 24,
+      "panel": "track",
+      "subgroup": "立体轨道",
+      "title": "立体轨道性能优化",
+      "layout": null,
+      "spatialOnly": true,
+      "defaultOpen": false,
+      "fieldCount": 13,
+      "kinds": {
+        "toggle": 13
+      },
+      "fields": [
+        {
+          "index": 0,
+          "label": "启用性能优化",
+          "path": "spatialConveyor.optimizations.enabled",
+          "kind": "toggle"
+        },
+        {
+          "index": 1,
+          "label": "乘客实例化",
+          "path": "spatialConveyor.optimizations.instancedPassengers",
+          "kind": "toggle"
+        },
+        {
+          "index": 2,
+          "label": "阴影实例化",
+          "path": "spatialConveyor.optimizations.instancedShadows",
+          "kind": "toggle"
+        },
+        {
+          "index": 3,
+          "label": "轨道曲线查表",
+          "path": "spatialConveyor.optimizations.curveLookup",
+          "kind": "toggle"
+        },
+        {
+          "index": 4,
+          "label": "复用渲染状态",
+          "path": "spatialConveyor.optimizations.liveRenderState",
+          "kind": "toggle"
+        },
+        {
+          "index": 5,
+          "label": "跳过普通队列对象",
+          "path": "spatialConveyor.optimizations.skipUnusedQueues",
+          "kind": "toggle"
+        },
+        {
+          "index": 6,
+          "label": "缓存静态车辆",
+          "path": "spatialConveyor.optimizations.cacheStaticVehicles",
+          "kind": "toggle"
+        },
+        {
+          "index": 7,
+          "label": "缓存阻挡关系",
+          "path": "spatialConveyor.optimizations.cacheBlockers",
+          "kind": "toggle"
+        },
+        {
+          "index": 8,
+          "label": "登车乘客对象池",
+          "path": "spatialConveyor.optimizations.poolBoardingPassengers",
+          "kind": "toggle"
+        },
+        {
+          "index": 9,
+          "label": "分段视锥裁剪",
+          "path": "spatialConveyor.optimizations.frustumCulling",
+          "kind": "toggle"
+        },
+        {
+          "index": 10,
+          "label": "跳过关闭的路径预览",
+          "path": "spatialConveyor.optimizations.skipDisabledPathPreview",
+          "kind": "toggle"
+        },
+        {
+          "index": 11,
+          "label": "合并重复登车更新",
+          "path": "spatialConveyor.optimizations.deduplicateBoardingUpdates",
+          "kind": "toggle"
+        },
+        {
+          "index": 12,
+          "label": "高性能 GPU 模式",
+          "path": "spatialConveyor.optimizations.highPerformanceRenderer",
+          "kind": "toggle"
+        }
+      ]
+    },
+    {
+      "id": "s25",
+      "order": 25,
+      "panel": "track",
+      "subgroup": "跑道",
+      "title": "GameSceneDualQueue2 - 图片",
+      "layout": "dualQueue2",
+      "spatialOnly": false,
+      "defaultOpen": false,
+      "fieldCount": 4,
+      "kinds": {
+        "number": 4
+      },
+      "fields": [
+        {
+          "index": 0,
+          "label": "X 坐标",
+          "path": "conveyorLayouts.dualQueue2.art.x",
+          "kind": "number",
+          "min": -10,
+          "max": 10,
+          "step": 0.05
+        },
+        {
+          "index": 1,
+          "label": "Z 坐标",
+          "path": "conveyorLayouts.dualQueue2.art.z",
+          "kind": "number",
+          "min": -10,
+          "max": 10,
+          "step": 0.05
+        },
+        {
+          "index": 2,
+          "label": "X 尺寸",
+          "path": "conveyorLayouts.dualQueue2.art.width",
+          "kind": "number",
+          "min": 2,
+          "max": 24,
+          "step": 0.05
+        },
+        {
+          "index": 3,
+          "label": "Z 尺寸",
+          "path": "conveyorLayouts.dualQueue2.art.depth",
+          "kind": "number",
+          "min": 2,
+          "max": 18,
+          "step": 0.05
+        }
+      ]
+    },
+    {
+      "id": "s26",
+      "order": 26,
+      "panel": "track",
+      "subgroup": "跑道",
+      "title": "GameSceneDualQueue2 - 乘客轨迹",
+      "layout": "dualQueue2",
+      "spatialOnly": false,
+      "defaultOpen": false,
+      "fieldCount": 8,
+      "kinds": {
+        "number": 8
+      },
+      "fields": [
+        {
+          "index": 0,
+          "label": "闭环 X",
+          "path": "conveyorLayouts.dualQueue2.curve.offsetX",
+          "kind": "number",
+          "min": -6,
+          "max": 6,
+          "step": 0.05
+        },
+        {
+          "index": 1,
+          "label": "闭环 Z",
+          "path": "conveyorLayouts.dualQueue2.curve.offsetZ",
+          "kind": "number",
+          "min": -6,
+          "max": 6,
+          "step": 0.05
+        },
+        {
+          "index": 2,
+          "label": "闭环 X 尺寸",
+          "path": "conveyorLayouts.dualQueue2.curve.scaleX",
+          "kind": "number",
+          "min": 0.25,
+          "max": 3,
+          "step": 0.05
+        },
+        {
+          "index": 3,
+          "label": "闭环 Z 尺寸",
+          "path": "conveyorLayouts.dualQueue2.curve.scaleZ",
+          "kind": "number",
+          "min": 0.25,
+          "max": 3,
+          "step": 0.05
+        },
+        {
+          "index": 4,
+          "label": "入口 1 X",
+          "path": "conveyorLayouts.dualQueue2.queueCurves.0.offsetX",
+          "kind": "number",
+          "min": -6,
+          "max": 6,
+          "step": 0.05
+        },
+        {
+          "index": 5,
+          "label": "入口 1 Z",
+          "path": "conveyorLayouts.dualQueue2.queueCurves.0.offsetZ",
+          "kind": "number",
+          "min": -6,
+          "max": 6,
+          "step": 0.05
+        },
+        {
+          "index": 6,
+          "label": "入口 2 X",
+          "path": "conveyorLayouts.dualQueue2.queueCurves.1.offsetX",
+          "kind": "number",
+          "min": -6,
+          "max": 6,
+          "step": 0.05
+        },
+        {
+          "index": 7,
+          "label": "入口 2 Z",
+          "path": "conveyorLayouts.dualQueue2.queueCurves.1.offsetZ",
+          "kind": "number",
+          "min": -6,
+          "max": 6,
+          "step": 0.05
+        }
+      ]
+    },
+    {
+      "id": "s27",
+      "order": 27,
+      "panel": "track",
+      "subgroup": "跑道",
+      "title": "GameSceneDualQueue3 - 图片",
+      "layout": "dualQueue3",
+      "spatialOnly": false,
+      "defaultOpen": false,
+      "fieldCount": 4,
+      "kinds": {
+        "number": 4
+      },
+      "fields": [
+        {
+          "index": 0,
+          "label": "X 坐标",
+          "path": "conveyorLayouts.dualQueue3.art.x",
+          "kind": "number",
+          "min": -10,
+          "max": 10,
+          "step": 0.05
+        },
+        {
+          "index": 1,
+          "label": "Z 坐标",
+          "path": "conveyorLayouts.dualQueue3.art.z",
+          "kind": "number",
+          "min": -10,
+          "max": 10,
+          "step": 0.05
+        },
+        {
+          "index": 2,
+          "label": "X 尺寸",
+          "path": "conveyorLayouts.dualQueue3.art.width",
+          "kind": "number",
+          "min": 2,
+          "max": 24,
+          "step": 0.05
+        },
+        {
+          "index": 3,
+          "label": "Z 尺寸",
+          "path": "conveyorLayouts.dualQueue3.art.depth",
+          "kind": "number",
+          "min": 2,
+          "max": 18,
+          "step": 0.05
+        }
+      ]
+    },
+    {
+      "id": "s28",
+      "order": 28,
+      "panel": "track",
+      "subgroup": "跑道",
+      "title": "GameSceneDualQueue3 - 乘客轨迹",
+      "layout": "dualQueue3",
+      "spatialOnly": false,
+      "defaultOpen": false,
+      "fieldCount": 8,
+      "kinds": {
+        "number": 8
+      },
+      "fields": [
+        {
+          "index": 0,
+          "label": "闭环 X",
+          "path": "conveyorLayouts.dualQueue3.curve.offsetX",
+          "kind": "number",
+          "min": -6,
+          "max": 6,
+          "step": 0.05
+        },
+        {
+          "index": 1,
+          "label": "闭环 Z",
+          "path": "conveyorLayouts.dualQueue3.curve.offsetZ",
+          "kind": "number",
+          "min": -6,
+          "max": 6,
+          "step": 0.05
+        },
+        {
+          "index": 2,
+          "label": "闭环 X 尺寸",
+          "path": "conveyorLayouts.dualQueue3.curve.scaleX",
+          "kind": "number",
+          "min": 0.25,
+          "max": 3,
+          "step": 0.05
+        },
+        {
+          "index": 3,
+          "label": "闭环 Z 尺寸",
+          "path": "conveyorLayouts.dualQueue3.curve.scaleZ",
+          "kind": "number",
+          "min": 0.25,
+          "max": 3,
+          "step": 0.05
+        },
+        {
+          "index": 4,
+          "label": "入口 1 X",
+          "path": "conveyorLayouts.dualQueue3.queueCurves.0.offsetX",
+          "kind": "number",
+          "min": -6,
+          "max": 6,
+          "step": 0.05
+        },
+        {
+          "index": 5,
+          "label": "入口 1 Z",
+          "path": "conveyorLayouts.dualQueue3.queueCurves.0.offsetZ",
+          "kind": "number",
+          "min": -6,
+          "max": 6,
+          "step": 0.05
+        },
+        {
+          "index": 6,
+          "label": "入口 2 X",
+          "path": "conveyorLayouts.dualQueue3.queueCurves.1.offsetX",
+          "kind": "number",
+          "min": -6,
+          "max": 6,
+          "step": 0.05
+        },
+        {
+          "index": 7,
+          "label": "入口 2 Z",
+          "path": "conveyorLayouts.dualQueue3.queueCurves.1.offsetZ",
+          "kind": "number",
+          "min": -6,
+          "max": 6,
+          "step": 0.05
+        }
+      ]
+    },
+    {
+      "id": "s29",
+      "order": 29,
+      "panel": "track",
+      "subgroup": "跑道",
+      "title": "GameSceneDualQueue5 - 图片",
+      "layout": "dualQueue5",
+      "spatialOnly": false,
+      "defaultOpen": false,
+      "fieldCount": 4,
+      "kinds": {
+        "number": 4
+      },
+      "fields": [
+        {
+          "index": 0,
+          "label": "X 坐标",
+          "path": "conveyorLayouts.dualQueue5.art.x",
+          "kind": "number",
+          "min": -10,
+          "max": 10,
+          "step": 0.05
+        },
+        {
+          "index": 1,
+          "label": "Z 坐标",
+          "path": "conveyorLayouts.dualQueue5.art.z",
+          "kind": "number",
+          "min": -10,
+          "max": 10,
+          "step": 0.05
+        },
+        {
+          "index": 2,
+          "label": "X 尺寸",
+          "path": "conveyorLayouts.dualQueue5.art.width",
+          "kind": "number",
+          "min": 2,
+          "max": 24,
+          "step": 0.05
+        },
+        {
+          "index": 3,
+          "label": "Z 尺寸",
+          "path": "conveyorLayouts.dualQueue5.art.depth",
+          "kind": "number",
+          "min": 2,
+          "max": 18,
+          "step": 0.05
+        }
+      ]
+    },
+    {
+      "id": "s30",
+      "order": 30,
+      "panel": "track",
+      "subgroup": "跑道",
+      "title": "GameSceneDualQueue5 - 乘客轨迹",
+      "layout": "dualQueue5",
+      "spatialOnly": false,
+      "defaultOpen": false,
+      "fieldCount": 8,
+      "kinds": {
+        "number": 8
+      },
+      "fields": [
+        {
+          "index": 0,
+          "label": "闭环 X",
+          "path": "conveyorLayouts.dualQueue5.curve.offsetX",
+          "kind": "number",
+          "min": -6,
+          "max": 6,
+          "step": 0.05
+        },
+        {
+          "index": 1,
+          "label": "闭环 Z",
+          "path": "conveyorLayouts.dualQueue5.curve.offsetZ",
+          "kind": "number",
+          "min": -6,
+          "max": 6,
+          "step": 0.05
+        },
+        {
+          "index": 2,
+          "label": "闭环 X 尺寸",
+          "path": "conveyorLayouts.dualQueue5.curve.scaleX",
+          "kind": "number",
+          "min": 0.25,
+          "max": 3,
+          "step": 0.05
+        },
+        {
+          "index": 3,
+          "label": "闭环 Z 尺寸",
+          "path": "conveyorLayouts.dualQueue5.curve.scaleZ",
+          "kind": "number",
+          "min": 0.25,
+          "max": 3,
+          "step": 0.05
+        },
+        {
+          "index": 4,
+          "label": "入口 1 X",
+          "path": "conveyorLayouts.dualQueue5.queueCurves.0.offsetX",
+          "kind": "number",
+          "min": -6,
+          "max": 6,
+          "step": 0.05
+        },
+        {
+          "index": 5,
+          "label": "入口 1 Z",
+          "path": "conveyorLayouts.dualQueue5.queueCurves.0.offsetZ",
+          "kind": "number",
+          "min": -6,
+          "max": 6,
+          "step": 0.05
+        },
+        {
+          "index": 6,
+          "label": "入口 2 X",
+          "path": "conveyorLayouts.dualQueue5.queueCurves.1.offsetX",
+          "kind": "number",
+          "min": -6,
+          "max": 6,
+          "step": 0.05
+        },
+        {
+          "index": 7,
+          "label": "入口 2 Z",
+          "path": "conveyorLayouts.dualQueue5.queueCurves.1.offsetZ",
+          "kind": "number",
+          "min": -6,
+          "max": 6,
+          "step": 0.05
+        }
+      ]
+    },
+    {
+      "id": "s31",
+      "order": 31,
+      "panel": "track",
+      "subgroup": "跑道",
+      "title": "GameSceneDualQueue10 - 图片",
+      "layout": "dualQueue10",
+      "spatialOnly": false,
+      "defaultOpen": false,
+      "fieldCount": 4,
+      "kinds": {
+        "number": 4
+      },
+      "fields": [
+        {
+          "index": 0,
+          "label": "X 坐标",
+          "path": "conveyorLayouts.dualQueue10.art.x",
+          "kind": "number",
+          "min": -10,
+          "max": 10,
+          "step": 0.05
+        },
+        {
+          "index": 1,
+          "label": "Z 坐标",
+          "path": "conveyorLayouts.dualQueue10.art.z",
+          "kind": "number",
+          "min": -10,
+          "max": 10,
+          "step": 0.05
+        },
+        {
+          "index": 2,
+          "label": "X 尺寸",
+          "path": "conveyorLayouts.dualQueue10.art.width",
+          "kind": "number",
+          "min": 2,
+          "max": 24,
+          "step": 0.05
+        },
+        {
+          "index": 3,
+          "label": "Z 尺寸",
+          "path": "conveyorLayouts.dualQueue10.art.depth",
+          "kind": "number",
+          "min": 2,
+          "max": 18,
+          "step": 0.05
+        }
+      ]
+    },
+    {
+      "id": "s32",
+      "order": 32,
+      "panel": "track",
+      "subgroup": "跑道",
+      "title": "GameSceneDualQueue10 - 乘客轨迹",
+      "layout": "dualQueue10",
+      "spatialOnly": false,
+      "defaultOpen": false,
+      "fieldCount": 8,
+      "kinds": {
+        "number": 8
+      },
+      "fields": [
+        {
+          "index": 0,
+          "label": "闭环 X",
+          "path": "conveyorLayouts.dualQueue10.curve.offsetX",
+          "kind": "number",
+          "min": -6,
+          "max": 6,
+          "step": 0.05
+        },
+        {
+          "index": 1,
+          "label": "闭环 Z",
+          "path": "conveyorLayouts.dualQueue10.curve.offsetZ",
+          "kind": "number",
+          "min": -6,
+          "max": 6,
+          "step": 0.05
+        },
+        {
+          "index": 2,
+          "label": "闭环 X 尺寸",
+          "path": "conveyorLayouts.dualQueue10.curve.scaleX",
+          "kind": "number",
+          "min": 0.25,
+          "max": 3,
+          "step": 0.05
+        },
+        {
+          "index": 3,
+          "label": "闭环 Z 尺寸",
+          "path": "conveyorLayouts.dualQueue10.curve.scaleZ",
+          "kind": "number",
+          "min": 0.25,
+          "max": 3,
+          "step": 0.05
+        },
+        {
+          "index": 4,
+          "label": "入口 1 X",
+          "path": "conveyorLayouts.dualQueue10.queueCurves.0.offsetX",
+          "kind": "number",
+          "min": -6,
+          "max": 6,
+          "step": 0.05
+        },
+        {
+          "index": 5,
+          "label": "入口 1 Z",
+          "path": "conveyorLayouts.dualQueue10.queueCurves.0.offsetZ",
+          "kind": "number",
+          "min": -6,
+          "max": 6,
+          "step": 0.05
+        },
+        {
+          "index": 6,
+          "label": "入口 2 X",
+          "path": "conveyorLayouts.dualQueue10.queueCurves.1.offsetX",
+          "kind": "number",
+          "min": -6,
+          "max": 6,
+          "step": 0.05
+        },
+        {
+          "index": 7,
+          "label": "入口 2 Z",
+          "path": "conveyorLayouts.dualQueue10.queueCurves.1.offsetZ",
+          "kind": "number",
+          "min": -6,
+          "max": 6,
+          "step": 0.05
+        }
+      ]
+    },
+    {
+      "id": "s33",
+      "order": 33,
+      "panel": "track",
+      "subgroup": "跑道",
+      "title": "星形跑道 StarLoop - 图片",
+      "layout": "starLoop",
+      "spatialOnly": false,
+      "defaultOpen": false,
+      "fieldCount": 4,
+      "kinds": {
+        "number": 4
+      },
+      "fields": [
+        {
+          "index": 0,
+          "label": "X 坐标",
+          "path": "conveyorLayouts.starLoop.art.x",
+          "kind": "number",
+          "min": -10,
+          "max": 10,
+          "step": 0.05
+        },
+        {
+          "index": 1,
+          "label": "Z 坐标",
+          "path": "conveyorLayouts.starLoop.art.z",
+          "kind": "number",
+          "min": -10,
+          "max": 10,
+          "step": 0.05
+        },
+        {
+          "index": 2,
+          "label": "X 尺寸",
+          "path": "conveyorLayouts.starLoop.art.width",
+          "kind": "number",
+          "min": 2,
+          "max": 24,
+          "step": 0.05
+        },
+        {
+          "index": 3,
+          "label": "Z 尺寸",
+          "path": "conveyorLayouts.starLoop.art.depth",
+          "kind": "number",
+          "min": 2,
+          "max": 18,
+          "step": 0.05
+        }
+      ]
+    },
+    {
+      "id": "s34",
+      "order": 34,
+      "panel": "track",
+      "subgroup": "跑道",
+      "title": "星形跑道 StarLoop - 乘客轨迹",
+      "layout": "starLoop",
+      "spatialOnly": false,
+      "defaultOpen": false,
+      "fieldCount": 8,
+      "kinds": {
+        "number": 8
+      },
+      "fields": [
+        {
+          "index": 0,
+          "label": "闭环 X",
+          "path": "conveyorLayouts.starLoop.curve.offsetX",
+          "kind": "number",
+          "min": -6,
+          "max": 6,
+          "step": 0.05
+        },
+        {
+          "index": 1,
+          "label": "闭环 Z",
+          "path": "conveyorLayouts.starLoop.curve.offsetZ",
+          "kind": "number",
+          "min": -6,
+          "max": 6,
+          "step": 0.05
+        },
+        {
+          "index": 2,
+          "label": "闭环 X 尺寸",
+          "path": "conveyorLayouts.starLoop.curve.scaleX",
+          "kind": "number",
+          "min": 0.25,
+          "max": 3,
+          "step": 0.05
+        },
+        {
+          "index": 3,
+          "label": "闭环 Z 尺寸",
+          "path": "conveyorLayouts.starLoop.curve.scaleZ",
+          "kind": "number",
+          "min": 0.25,
+          "max": 3,
+          "step": 0.05
+        },
+        {
+          "index": 4,
+          "label": "入口 1 X",
+          "path": "conveyorLayouts.starLoop.queueCurves.0.offsetX",
+          "kind": "number",
+          "min": -6,
+          "max": 6,
+          "step": 0.05
+        },
+        {
+          "index": 5,
+          "label": "入口 1 Z",
+          "path": "conveyorLayouts.starLoop.queueCurves.0.offsetZ",
+          "kind": "number",
+          "min": -6,
+          "max": 6,
+          "step": 0.05
+        },
+        {
+          "index": 6,
+          "label": "入口 2 X",
+          "path": "conveyorLayouts.starLoop.queueCurves.1.offsetX",
+          "kind": "number",
+          "min": -6,
+          "max": 6,
+          "step": 0.05
+        },
+        {
+          "index": 7,
+          "label": "入口 2 Z",
+          "path": "conveyorLayouts.starLoop.queueCurves.1.offsetZ",
+          "kind": "number",
+          "min": -6,
+          "max": 6,
+          "step": 0.05
+        }
+      ]
+    },
+    {
+      "id": "s35",
+      "order": 35,
+      "panel": "track",
+      "subgroup": "跑道",
+      "title": "爱心跑道 HeartLoop - 图片",
+      "layout": "heartLoop",
+      "spatialOnly": false,
+      "defaultOpen": false,
+      "fieldCount": 4,
+      "kinds": {
+        "number": 4
+      },
+      "fields": [
+        {
+          "index": 0,
+          "label": "X 坐标",
+          "path": "conveyorLayouts.heartLoop.art.x",
+          "kind": "number",
+          "min": -10,
+          "max": 10,
+          "step": 0.05
+        },
+        {
+          "index": 1,
+          "label": "Z 坐标",
+          "path": "conveyorLayouts.heartLoop.art.z",
+          "kind": "number",
+          "min": -10,
+          "max": 10,
+          "step": 0.05
+        },
+        {
+          "index": 2,
+          "label": "X 尺寸",
+          "path": "conveyorLayouts.heartLoop.art.width",
+          "kind": "number",
+          "min": 2,
+          "max": 24,
+          "step": 0.05
+        },
+        {
+          "index": 3,
+          "label": "Z 尺寸",
+          "path": "conveyorLayouts.heartLoop.art.depth",
+          "kind": "number",
+          "min": 2,
+          "max": 18,
+          "step": 0.05
+        }
+      ]
+    },
+    {
+      "id": "s36",
+      "order": 36,
+      "panel": "track",
+      "subgroup": "跑道",
+      "title": "爱心跑道 HeartLoop - 乘客轨迹",
+      "layout": "heartLoop",
+      "spatialOnly": false,
+      "defaultOpen": false,
+      "fieldCount": 8,
+      "kinds": {
+        "number": 8
+      },
+      "fields": [
+        {
+          "index": 0,
+          "label": "闭环 X",
+          "path": "conveyorLayouts.heartLoop.curve.offsetX",
+          "kind": "number",
+          "min": -6,
+          "max": 6,
+          "step": 0.05
+        },
+        {
+          "index": 1,
+          "label": "闭环 Z",
+          "path": "conveyorLayouts.heartLoop.curve.offsetZ",
+          "kind": "number",
+          "min": -6,
+          "max": 6,
+          "step": 0.05
+        },
+        {
+          "index": 2,
+          "label": "闭环 X 尺寸",
+          "path": "conveyorLayouts.heartLoop.curve.scaleX",
+          "kind": "number",
+          "min": 0.25,
+          "max": 3,
+          "step": 0.05
+        },
+        {
+          "index": 3,
+          "label": "闭环 Z 尺寸",
+          "path": "conveyorLayouts.heartLoop.curve.scaleZ",
+          "kind": "number",
+          "min": 0.25,
+          "max": 3,
+          "step": 0.05
+        },
+        {
+          "index": 4,
+          "label": "入口 1 X",
+          "path": "conveyorLayouts.heartLoop.queueCurves.0.offsetX",
+          "kind": "number",
+          "min": -6,
+          "max": 6,
+          "step": 0.05
+        },
+        {
+          "index": 5,
+          "label": "入口 1 Z",
+          "path": "conveyorLayouts.heartLoop.queueCurves.0.offsetZ",
+          "kind": "number",
+          "min": -6,
+          "max": 6,
+          "step": 0.05
+        },
+        {
+          "index": 6,
+          "label": "入口 2 X",
+          "path": "conveyorLayouts.heartLoop.queueCurves.1.offsetX",
+          "kind": "number",
+          "min": -6,
+          "max": 6,
+          "step": 0.05
+        },
+        {
+          "index": 7,
+          "label": "入口 2 Z",
+          "path": "conveyorLayouts.heartLoop.queueCurves.1.offsetZ",
+          "kind": "number",
+          "min": -6,
+          "max": 6,
+          "step": 0.05
+        }
+      ]
+    },
+    {
+      "id": "s37",
+      "order": 37,
+      "panel": "track",
+      "subgroup": "跑道",
+      "title": "猫咪跑道 CatLoop - 图片",
+      "layout": "catLoop",
+      "spatialOnly": false,
+      "defaultOpen": false,
+      "fieldCount": 4,
+      "kinds": {
+        "number": 4
+      },
+      "fields": [
+        {
+          "index": 0,
+          "label": "X 坐标",
+          "path": "conveyorLayouts.catLoop.art.x",
+          "kind": "number",
+          "min": -10,
+          "max": 10,
+          "step": 0.05
+        },
+        {
+          "index": 1,
+          "label": "Z 坐标",
+          "path": "conveyorLayouts.catLoop.art.z",
+          "kind": "number",
+          "min": -10,
+          "max": 10,
+          "step": 0.05
+        },
+        {
+          "index": 2,
+          "label": "X 尺寸",
+          "path": "conveyorLayouts.catLoop.art.width",
+          "kind": "number",
+          "min": 2,
+          "max": 24,
+          "step": 0.05
+        },
+        {
+          "index": 3,
+          "label": "Z 尺寸",
+          "path": "conveyorLayouts.catLoop.art.depth",
+          "kind": "number",
+          "min": 2,
+          "max": 18,
+          "step": 0.05
+        }
+      ]
+    },
+    {
+      "id": "s38",
+      "order": 38,
+      "panel": "track",
+      "subgroup": "跑道",
+      "title": "猫咪跑道 CatLoop - 乘客轨迹",
+      "layout": "catLoop",
+      "spatialOnly": false,
+      "defaultOpen": false,
+      "fieldCount": 8,
+      "kinds": {
+        "number": 8
+      },
+      "fields": [
+        {
+          "index": 0,
+          "label": "闭环 X",
+          "path": "conveyorLayouts.catLoop.curve.offsetX",
+          "kind": "number",
+          "min": -6,
+          "max": 6,
+          "step": 0.05
+        },
+        {
+          "index": 1,
+          "label": "闭环 Z",
+          "path": "conveyorLayouts.catLoop.curve.offsetZ",
+          "kind": "number",
+          "min": -6,
+          "max": 6,
+          "step": 0.05
+        },
+        {
+          "index": 2,
+          "label": "闭环 X 尺寸",
+          "path": "conveyorLayouts.catLoop.curve.scaleX",
+          "kind": "number",
+          "min": 0.25,
+          "max": 3,
+          "step": 0.05
+        },
+        {
+          "index": 3,
+          "label": "闭环 Z 尺寸",
+          "path": "conveyorLayouts.catLoop.curve.scaleZ",
+          "kind": "number",
+          "min": 0.25,
+          "max": 3,
+          "step": 0.05
+        },
+        {
+          "index": 4,
+          "label": "入口 1 X",
+          "path": "conveyorLayouts.catLoop.queueCurves.0.offsetX",
+          "kind": "number",
+          "min": -6,
+          "max": 6,
+          "step": 0.05
+        },
+        {
+          "index": 5,
+          "label": "入口 1 Z",
+          "path": "conveyorLayouts.catLoop.queueCurves.0.offsetZ",
+          "kind": "number",
+          "min": -6,
+          "max": 6,
+          "step": 0.05
+        },
+        {
+          "index": 6,
+          "label": "入口 2 X",
+          "path": "conveyorLayouts.catLoop.queueCurves.1.offsetX",
+          "kind": "number",
+          "min": -6,
+          "max": 6,
+          "step": 0.05
+        },
+        {
+          "index": 7,
+          "label": "入口 2 Z",
+          "path": "conveyorLayouts.catLoop.queueCurves.1.offsetZ",
+          "kind": "number",
+          "min": -6,
+          "max": 6,
+          "step": 0.05
+        }
+      ]
+    },
+    {
+      "id": "s39",
+      "order": 39,
+      "panel": "track",
+      "subgroup": "跑道",
+      "title": "月亮跑道 MoonLoop - 图片",
+      "layout": "moonLoop",
+      "spatialOnly": false,
+      "defaultOpen": false,
+      "fieldCount": 4,
+      "kinds": {
+        "number": 4
+      },
+      "fields": [
+        {
+          "index": 0,
+          "label": "X 坐标",
+          "path": "conveyorLayouts.moonLoop.art.x",
+          "kind": "number",
+          "min": -10,
+          "max": 10,
+          "step": 0.05
+        },
+        {
+          "index": 1,
+          "label": "Z 坐标",
+          "path": "conveyorLayouts.moonLoop.art.z",
+          "kind": "number",
+          "min": -10,
+          "max": 10,
+          "step": 0.05
+        },
+        {
+          "index": 2,
+          "label": "X 尺寸",
+          "path": "conveyorLayouts.moonLoop.art.width",
+          "kind": "number",
+          "min": 2,
+          "max": 24,
+          "step": 0.05
+        },
+        {
+          "index": 3,
+          "label": "Z 尺寸",
+          "path": "conveyorLayouts.moonLoop.art.depth",
+          "kind": "number",
+          "min": 2,
+          "max": 18,
+          "step": 0.05
+        }
+      ]
+    },
+    {
+      "id": "s40",
+      "order": 40,
+      "panel": "track",
+      "subgroup": "跑道",
+      "title": "月亮跑道 MoonLoop - 乘客轨迹",
+      "layout": "moonLoop",
+      "spatialOnly": false,
+      "defaultOpen": false,
+      "fieldCount": 8,
+      "kinds": {
+        "number": 8
+      },
+      "fields": [
+        {
+          "index": 0,
+          "label": "闭环 X",
+          "path": "conveyorLayouts.moonLoop.curve.offsetX",
+          "kind": "number",
+          "min": -6,
+          "max": 6,
+          "step": 0.05
+        },
+        {
+          "index": 1,
+          "label": "闭环 Z",
+          "path": "conveyorLayouts.moonLoop.curve.offsetZ",
+          "kind": "number",
+          "min": -6,
+          "max": 6,
+          "step": 0.05
+        },
+        {
+          "index": 2,
+          "label": "闭环 X 尺寸",
+          "path": "conveyorLayouts.moonLoop.curve.scaleX",
+          "kind": "number",
+          "min": 0.25,
+          "max": 3,
+          "step": 0.05
+        },
+        {
+          "index": 3,
+          "label": "闭环 Z 尺寸",
+          "path": "conveyorLayouts.moonLoop.curve.scaleZ",
+          "kind": "number",
+          "min": 0.25,
+          "max": 3,
+          "step": 0.05
+        },
+        {
+          "index": 4,
+          "label": "入口 1 X",
+          "path": "conveyorLayouts.moonLoop.queueCurves.0.offsetX",
+          "kind": "number",
+          "min": -6,
+          "max": 6,
+          "step": 0.05
+        },
+        {
+          "index": 5,
+          "label": "入口 1 Z",
+          "path": "conveyorLayouts.moonLoop.queueCurves.0.offsetZ",
+          "kind": "number",
+          "min": -6,
+          "max": 6,
+          "step": 0.05
+        },
+        {
+          "index": 6,
+          "label": "入口 2 X",
+          "path": "conveyorLayouts.moonLoop.queueCurves.1.offsetX",
+          "kind": "number",
+          "min": -6,
+          "max": 6,
+          "step": 0.05
+        },
+        {
+          "index": 7,
+          "label": "入口 2 Z",
+          "path": "conveyorLayouts.moonLoop.queueCurves.1.offsetZ",
+          "kind": "number",
+          "min": -6,
+          "max": 6,
+          "step": 0.05
+        }
+      ]
+    },
+    {
+      "id": "s41",
+      "order": 41,
+      "panel": "track",
+      "subgroup": "跑道",
+      "title": "双线跑道 DualLoop5 - 图片",
+      "layout": "dualLoop5",
+      "spatialOnly": false,
+      "defaultOpen": false,
+      "fieldCount": 4,
+      "kinds": {
+        "number": 4
+      },
+      "fields": [
+        {
+          "index": 0,
+          "label": "X 坐标",
+          "path": "conveyorLayouts.dualLoop5.art.x",
+          "kind": "number",
+          "min": -10,
+          "max": 10,
+          "step": 0.05
+        },
+        {
+          "index": 1,
+          "label": "Z 坐标",
+          "path": "conveyorLayouts.dualLoop5.art.z",
+          "kind": "number",
+          "min": -10,
+          "max": 10,
+          "step": 0.05
+        },
+        {
+          "index": 2,
+          "label": "X 尺寸",
+          "path": "conveyorLayouts.dualLoop5.art.width",
+          "kind": "number",
+          "min": 2,
+          "max": 24,
+          "step": 0.05
+        },
+        {
+          "index": 3,
+          "label": "Z 尺寸",
+          "path": "conveyorLayouts.dualLoop5.art.depth",
+          "kind": "number",
+          "min": 2,
+          "max": 18,
+          "step": 0.05
+        }
+      ]
+    },
+    {
+      "id": "s42",
+      "order": 42,
+      "panel": "track",
+      "subgroup": "跑道",
+      "title": "双线跑道 DualLoop5 - 乘客轨迹",
+      "layout": "dualLoop5",
+      "spatialOnly": false,
+      "defaultOpen": false,
+      "fieldCount": 8,
+      "kinds": {
+        "number": 8
+      },
+      "fields": [
+        {
+          "index": 0,
+          "label": "闭环 X",
+          "path": "conveyorLayouts.dualLoop5.curve.offsetX",
+          "kind": "number",
+          "min": -6,
+          "max": 6,
+          "step": 0.05
+        },
+        {
+          "index": 1,
+          "label": "闭环 Z",
+          "path": "conveyorLayouts.dualLoop5.curve.offsetZ",
+          "kind": "number",
+          "min": -6,
+          "max": 6,
+          "step": 0.05
+        },
+        {
+          "index": 2,
+          "label": "闭环 X 尺寸",
+          "path": "conveyorLayouts.dualLoop5.curve.scaleX",
+          "kind": "number",
+          "min": 0.25,
+          "max": 3,
+          "step": 0.05
+        },
+        {
+          "index": 3,
+          "label": "闭环 Z 尺寸",
+          "path": "conveyorLayouts.dualLoop5.curve.scaleZ",
+          "kind": "number",
+          "min": 0.25,
+          "max": 3,
+          "step": 0.05
+        },
+        {
+          "index": 4,
+          "label": "入口 1 X",
+          "path": "conveyorLayouts.dualLoop5.queueCurves.0.offsetX",
+          "kind": "number",
+          "min": -6,
+          "max": 6,
+          "step": 0.05
+        },
+        {
+          "index": 5,
+          "label": "入口 1 Z",
+          "path": "conveyorLayouts.dualLoop5.queueCurves.0.offsetZ",
+          "kind": "number",
+          "min": -6,
+          "max": 6,
+          "step": 0.05
+        },
+        {
+          "index": 6,
+          "label": "入口 2 X",
+          "path": "conveyorLayouts.dualLoop5.queueCurves.1.offsetX",
+          "kind": "number",
+          "min": -6,
+          "max": 6,
+          "step": 0.05
+        },
+        {
+          "index": 7,
+          "label": "入口 2 Z",
+          "path": "conveyorLayouts.dualLoop5.queueCurves.1.offsetZ",
+          "kind": "number",
+          "min": -6,
+          "max": 6,
+          "step": 0.05
+        }
+      ]
+    },
+    {
+      "id": "s43",
+      "order": 43,
+      "panel": "track",
+      "subgroup": "跑道",
+      "title": "六边跑道 HexLoop - 图片",
+      "layout": "hexLoop",
+      "spatialOnly": false,
+      "defaultOpen": false,
+      "fieldCount": 4,
+      "kinds": {
+        "number": 4
+      },
+      "fields": [
+        {
+          "index": 0,
+          "label": "X 坐标",
+          "path": "conveyorLayouts.hexLoop.art.x",
+          "kind": "number",
+          "min": -10,
+          "max": 10,
+          "step": 0.05
+        },
+        {
+          "index": 1,
+          "label": "Z 坐标",
+          "path": "conveyorLayouts.hexLoop.art.z",
+          "kind": "number",
+          "min": -10,
+          "max": 10,
+          "step": 0.05
+        },
+        {
+          "index": 2,
+          "label": "X 尺寸",
+          "path": "conveyorLayouts.hexLoop.art.width",
+          "kind": "number",
+          "min": 2,
+          "max": 24,
+          "step": 0.05
+        },
+        {
+          "index": 3,
+          "label": "Z 尺寸",
+          "path": "conveyorLayouts.hexLoop.art.depth",
+          "kind": "number",
+          "min": 2,
+          "max": 18,
+          "step": 0.05
+        }
+      ]
+    },
+    {
+      "id": "s44",
+      "order": 44,
+      "panel": "track",
+      "subgroup": "跑道",
+      "title": "六边跑道 HexLoop - 乘客轨迹",
+      "layout": "hexLoop",
+      "spatialOnly": false,
+      "defaultOpen": false,
+      "fieldCount": 8,
+      "kinds": {
+        "number": 8
+      },
+      "fields": [
+        {
+          "index": 0,
+          "label": "闭环 X",
+          "path": "conveyorLayouts.hexLoop.curve.offsetX",
+          "kind": "number",
+          "min": -6,
+          "max": 6,
+          "step": 0.05
+        },
+        {
+          "index": 1,
+          "label": "闭环 Z",
+          "path": "conveyorLayouts.hexLoop.curve.offsetZ",
+          "kind": "number",
+          "min": -6,
+          "max": 6,
+          "step": 0.05
+        },
+        {
+          "index": 2,
+          "label": "闭环 X 尺寸",
+          "path": "conveyorLayouts.hexLoop.curve.scaleX",
+          "kind": "number",
+          "min": 0.25,
+          "max": 3,
+          "step": 0.05
+        },
+        {
+          "index": 3,
+          "label": "闭环 Z 尺寸",
+          "path": "conveyorLayouts.hexLoop.curve.scaleZ",
+          "kind": "number",
+          "min": 0.25,
+          "max": 3,
+          "step": 0.05
+        },
+        {
+          "index": 4,
+          "label": "入口 1 X",
+          "path": "conveyorLayouts.hexLoop.queueCurves.0.offsetX",
+          "kind": "number",
+          "min": -6,
+          "max": 6,
+          "step": 0.05
+        },
+        {
+          "index": 5,
+          "label": "入口 1 Z",
+          "path": "conveyorLayouts.hexLoop.queueCurves.0.offsetZ",
+          "kind": "number",
+          "min": -6,
+          "max": 6,
+          "step": 0.05
+        },
+        {
+          "index": 6,
+          "label": "入口 2 X",
+          "path": "conveyorLayouts.hexLoop.queueCurves.1.offsetX",
+          "kind": "number",
+          "min": -6,
+          "max": 6,
+          "step": 0.05
+        },
+        {
+          "index": 7,
+          "label": "入口 2 Z",
+          "path": "conveyorLayouts.hexLoop.queueCurves.1.offsetZ",
+          "kind": "number",
+          "min": -6,
+          "max": 6,
+          "step": 0.05
+        }
+      ]
+    },
+    {
+      "id": "s45",
+      "order": 45,
+      "panel": "track",
+      "subgroup": "跑道",
+      "title": "十字跑道 CrossLoop - 图片",
+      "layout": "crossLoop",
+      "spatialOnly": false,
+      "defaultOpen": false,
+      "fieldCount": 4,
+      "kinds": {
+        "number": 4
+      },
+      "fields": [
+        {
+          "index": 0,
+          "label": "X 坐标",
+          "path": "conveyorLayouts.crossLoop.art.x",
+          "kind": "number",
+          "min": -10,
+          "max": 10,
+          "step": 0.05
+        },
+        {
+          "index": 1,
+          "label": "Z 坐标",
+          "path": "conveyorLayouts.crossLoop.art.z",
+          "kind": "number",
+          "min": -10,
+          "max": 10,
+          "step": 0.05
+        },
+        {
+          "index": 2,
+          "label": "X 尺寸",
+          "path": "conveyorLayouts.crossLoop.art.width",
+          "kind": "number",
+          "min": 2,
+          "max": 24,
+          "step": 0.05
+        },
+        {
+          "index": 3,
+          "label": "Z 尺寸",
+          "path": "conveyorLayouts.crossLoop.art.depth",
+          "kind": "number",
+          "min": 2,
+          "max": 18,
+          "step": 0.05
+        }
+      ]
+    },
+    {
+      "id": "s46",
+      "order": 46,
+      "panel": "track",
+      "subgroup": "跑道",
+      "title": "十字跑道 CrossLoop - 乘客轨迹",
+      "layout": "crossLoop",
+      "spatialOnly": false,
+      "defaultOpen": false,
+      "fieldCount": 8,
+      "kinds": {
+        "number": 8
+      },
+      "fields": [
+        {
+          "index": 0,
+          "label": "闭环 X",
+          "path": "conveyorLayouts.crossLoop.curve.offsetX",
+          "kind": "number",
+          "min": -6,
+          "max": 6,
+          "step": 0.05
+        },
+        {
+          "index": 1,
+          "label": "闭环 Z",
+          "path": "conveyorLayouts.crossLoop.curve.offsetZ",
+          "kind": "number",
+          "min": -6,
+          "max": 6,
+          "step": 0.05
+        },
+        {
+          "index": 2,
+          "label": "闭环 X 尺寸",
+          "path": "conveyorLayouts.crossLoop.curve.scaleX",
+          "kind": "number",
+          "min": 0.25,
+          "max": 3,
+          "step": 0.05
+        },
+        {
+          "index": 3,
+          "label": "闭环 Z 尺寸",
+          "path": "conveyorLayouts.crossLoop.curve.scaleZ",
+          "kind": "number",
+          "min": 0.25,
+          "max": 3,
+          "step": 0.05
+        },
+        {
+          "index": 4,
+          "label": "入口 1 X",
+          "path": "conveyorLayouts.crossLoop.queueCurves.0.offsetX",
+          "kind": "number",
+          "min": -6,
+          "max": 6,
+          "step": 0.05
+        },
+        {
+          "index": 5,
+          "label": "入口 1 Z",
+          "path": "conveyorLayouts.crossLoop.queueCurves.0.offsetZ",
+          "kind": "number",
+          "min": -6,
+          "max": 6,
+          "step": 0.05
+        },
+        {
+          "index": 6,
+          "label": "入口 2 X",
+          "path": "conveyorLayouts.crossLoop.queueCurves.1.offsetX",
+          "kind": "number",
+          "min": -6,
+          "max": 6,
+          "step": 0.05
+        },
+        {
+          "index": 7,
+          "label": "入口 2 Z",
+          "path": "conveyorLayouts.crossLoop.queueCurves.1.offsetZ",
+          "kind": "number",
+          "min": -6,
+          "max": 6,
+          "step": 0.05
+        }
+      ]
+    },
+    {
+      "id": "s47",
+      "order": 47,
+      "panel": "track",
+      "subgroup": "队列与影子",
+      "title": "中间小人影子",
+      "layout": null,
+      "spatialOnly": false,
+      "defaultOpen": false,
+      "fieldCount": 4,
+      "kinds": {
+        "number": 4
+      },
+      "fields": [
+        {
+          "index": 0,
+          "label": "X 坐标",
+          "path": "passengerShadows.conveyor.offsetX",
+          "kind": "number",
+          "min": -1.5,
+          "max": 1.5,
+          "step": 0.01
+        },
+        {
+          "index": 1,
+          "label": "Z 坐标",
+          "path": "passengerShadows.conveyor.offsetZ",
+          "kind": "number",
+          "min": -1.5,
+          "max": 1.5,
+          "step": 0.01
+        },
+        {
+          "index": 2,
+          "label": "X 尺寸",
+          "path": "passengerShadows.conveyor.scaleX",
+          "kind": "number",
+          "min": 0.2,
+          "max": 3,
+          "step": 0.01
+        },
+        {
+          "index": 3,
+          "label": "Z 尺寸",
+          "path": "passengerShadows.conveyor.scaleZ",
+          "kind": "number",
+          "min": 0.2,
+          "max": 3,
+          "step": 0.01
+        }
+      ]
+    },
+    {
+      "id": "s48",
+      "order": 48,
+      "panel": "track",
+      "subgroup": "队列与影子",
+      "title": "左侧队列曲线",
+      "layout": null,
+      "spatialOnly": false,
+      "defaultOpen": false,
+      "fieldCount": 4,
+      "kinds": {
+        "number": 4
+      },
+      "fields": [
+        {
+          "index": 0,
+          "label": "X 坐标",
+          "path": "queueCurves.0.offsetX",
+          "kind": "number",
+          "min": -6,
+          "max": 6,
+          "step": 0.05
+        },
+        {
+          "index": 1,
+          "label": "Z 坐标",
+          "path": "queueCurves.0.offsetZ",
+          "kind": "number",
+          "min": -6,
+          "max": 6,
+          "step": 0.05
+        },
+        {
+          "index": 2,
+          "label": "X 尺寸",
+          "path": "queueCurves.0.scaleX",
+          "kind": "number",
+          "min": 0.25,
+          "max": 3,
+          "step": 0.05
+        },
+        {
+          "index": 3,
+          "label": "Z 尺寸",
+          "path": "queueCurves.0.scaleZ",
+          "kind": "number",
+          "min": 0.25,
+          "max": 3,
+          "step": 0.05
+        }
+      ]
+    },
+    {
+      "id": "s49",
+      "order": 49,
+      "panel": "track",
+      "subgroup": "队列与影子",
+      "title": "左队列小人影子",
+      "layout": null,
+      "spatialOnly": false,
+      "defaultOpen": false,
+      "fieldCount": 4,
+      "kinds": {
+        "number": 4
+      },
+      "fields": [
+        {
+          "index": 0,
+          "label": "X 坐标",
+          "path": "passengerShadows.leftQueue.offsetX",
+          "kind": "number",
+          "min": -1.5,
+          "max": 1.5,
+          "step": 0.01
+        },
+        {
+          "index": 1,
+          "label": "Z 坐标",
+          "path": "passengerShadows.leftQueue.offsetZ",
+          "kind": "number",
+          "min": -1.5,
+          "max": 1.5,
+          "step": 0.01
+        },
+        {
+          "index": 2,
+          "label": "X 尺寸",
+          "path": "passengerShadows.leftQueue.scaleX",
+          "kind": "number",
+          "min": 0.2,
+          "max": 3,
+          "step": 0.01
+        },
+        {
+          "index": 3,
+          "label": "Z 尺寸",
+          "path": "passengerShadows.leftQueue.scaleZ",
+          "kind": "number",
+          "min": 0.2,
+          "max": 3,
+          "step": 0.01
+        }
+      ]
+    },
+    {
+      "id": "s50",
+      "order": 50,
+      "panel": "track",
+      "subgroup": "队列与影子",
+      "title": "右侧队列曲线",
+      "layout": null,
+      "spatialOnly": false,
+      "defaultOpen": false,
+      "fieldCount": 4,
+      "kinds": {
+        "number": 4
+      },
+      "fields": [
+        {
+          "index": 0,
+          "label": "X 坐标",
+          "path": "queueCurves.1.offsetX",
+          "kind": "number",
+          "min": -6,
+          "max": 6,
+          "step": 0.05
+        },
+        {
+          "index": 1,
+          "label": "Z 坐标",
+          "path": "queueCurves.1.offsetZ",
+          "kind": "number",
+          "min": -6,
+          "max": 6,
+          "step": 0.05
+        },
+        {
+          "index": 2,
+          "label": "X 尺寸",
+          "path": "queueCurves.1.scaleX",
+          "kind": "number",
+          "min": 0.25,
+          "max": 3,
+          "step": 0.05
+        },
+        {
+          "index": 3,
+          "label": "Z 尺寸",
+          "path": "queueCurves.1.scaleZ",
+          "kind": "number",
+          "min": 0.25,
+          "max": 3,
+          "step": 0.05
+        }
+      ]
+    },
+    {
+      "id": "s51",
+      "order": 51,
+      "panel": "track",
+      "subgroup": "队列与影子",
+      "title": "右队列小人影子",
+      "layout": null,
+      "spatialOnly": false,
+      "defaultOpen": false,
+      "fieldCount": 4,
+      "kinds": {
+        "number": 4
+      },
+      "fields": [
+        {
+          "index": 0,
+          "label": "X 坐标",
+          "path": "passengerShadows.rightQueue.offsetX",
+          "kind": "number",
+          "min": -1.5,
+          "max": 1.5,
+          "step": 0.01
+        },
+        {
+          "index": 1,
+          "label": "Z 坐标",
+          "path": "passengerShadows.rightQueue.offsetZ",
+          "kind": "number",
+          "min": -1.5,
+          "max": 1.5,
+          "step": 0.01
+        },
+        {
+          "index": 2,
+          "label": "X 尺寸",
+          "path": "passengerShadows.rightQueue.scaleX",
+          "kind": "number",
+          "min": 0.2,
+          "max": 3,
+          "step": 0.01
+        },
+        {
+          "index": 3,
+          "label": "Z 尺寸",
+          "path": "passengerShadows.rightQueue.scaleZ",
+          "kind": "number",
+          "min": 0.2,
+          "max": 3,
+          "step": 0.01
+        }
+      ]
+    },
+    {
+      "id": "s52",
+      "order": 52,
+      "panel": "cars",
+      "subgroup": "车辆与车位",
+      "title": "车位",
+      "layout": null,
+      "spatialOnly": false,
+      "defaultOpen": false,
+      "fieldCount": 13,
+      "kinds": {
+        "number": 12,
+        "toggle": 1
+      },
+      "fields": [
+        {
+          "index": 0,
+          "label": "车位数",
+          "path": "parkingSpots.count",
+          "kind": "number",
+          "min": 1,
+          "max": 8,
+          "step": 1
+        },
+        {
+          "index": 1,
+          "label": "自动居中",
+          "path": "parkingSpots.autoCenter",
+          "kind": "toggle"
+        },
+        {
+          "index": 2,
+          "label": "起点 X",
+          "path": "parkingSpots.startX",
+          "kind": "number",
+          "min": -8,
+          "max": 2,
+          "step": 0.05
+        },
+        {
+          "index": 3,
+          "label": "Z 坐标",
+          "path": "parkingSpots.z",
+          "kind": "number",
+          "min": -6,
+          "max": 6,
+          "step": 0.05
+        },
+        {
+          "index": 4,
+          "label": "车位间距",
+          "path": "parkingSpots.spacing",
+          "kind": "number",
+          "min": 0.25,
+          "max": 2.5,
+          "step": 0.05
+        },
+        {
+          "index": 5,
+          "label": "车位角度",
+          "path": "facing.parkingSpotYawDegrees",
+          "kind": "number",
+          "min": -180,
+          "max": 180,
+          "step": 1
+        },
+        {
+          "index": 6,
+          "label": "计数板 X",
+          "path": "seatCountBoard.x",
+          "kind": "number",
+          "min": -2,
+          "max": 2,
+          "step": 0.01
+        },
+        {
+          "index": 7,
+          "label": "计数板 Z",
+          "path": "seatCountBoard.z",
+          "kind": "number",
+          "min": -2,
+          "max": 2,
+          "step": 0.01
+        },
+        {
+          "index": 8,
+          "label": "计数板宽",
+          "path": "seatCountBoard.width",
+          "kind": "number",
+          "min": 0.1,
+          "max": 1.5,
+          "step": 0.01
+        },
+        {
+          "index": 9,
+          "label": "计数板高",
+          "path": "seatCountBoard.depth",
+          "kind": "number",
+          "min": 0.1,
+          "max": 1.2,
+          "step": 0.01
+        },
+        {
+          "index": 10,
+          "label": "数字大小",
+          "path": "seatCountBoard.textScale",
+          "kind": "number",
+          "min": 0.3,
+          "max": 2.5,
+          "step": 0.01
+        },
+        {
+          "index": 11,
+          "label": "X 尺寸",
+          "path": "parkingSpots.scaleX",
+          "kind": "number",
+          "min": 0.25,
+          "max": 3,
+          "step": 0.05
+        },
+        {
+          "index": 12,
+          "label": "Z 尺寸",
+          "path": "parkingSpots.scaleZ",
+          "kind": "number",
+          "min": 0.25,
+          "max": 3,
+          "step": 0.05
+        }
+      ]
+    },
+    {
+      "id": "s53",
+      "order": 53,
+      "panel": "cars",
+      "subgroup": "车辆与车位",
+      "title": "车辆行驶路径",
+      "layout": null,
+      "spatialOnly": false,
+      "defaultOpen": false,
+      "fieldCount": 12,
+      "kinds": {
+        "number": 12
+      },
+      "fields": [
+        {
+          "index": 0,
+          "label": "显示路径",
+          "path": "vehiclePath.enabled",
+          "kind": "number",
+          "min": 0,
+          "max": 1,
+          "step": 1
+        },
+        {
+          "index": 1,
+          "label": "显示被挡车",
+          "path": "vehiclePath.showBlocked",
+          "kind": "number",
+          "min": 0,
+          "max": 1,
+          "step": 1
+        },
+        {
+          "index": 2,
+          "label": "线条高度",
+          "path": "vehiclePath.y",
+          "kind": "number",
+          "min": 0.02,
+          "max": 0.5,
+          "step": 0.005
+        },
+        {
+          "index": 3,
+          "label": "线条透明度",
+          "path": "vehiclePath.opacity",
+          "kind": "number",
+          "min": 0.1,
+          "max": 1,
+          "step": 0.01
+        },
+        {
+          "index": 4,
+          "label": "线条粗细",
+          "path": "vehiclePath.lineWidth",
+          "kind": "number",
+          "min": 1,
+          "max": 12,
+          "step": 1
+        },
+        {
+          "index": 5,
+          "label": "转弯半径",
+          "path": "vehiclePath.turnRadius",
+          "kind": "number",
+          "min": 0.05,
+          "max": 1.5,
+          "step": 0.01
+        },
+        {
+          "index": 6,
+          "label": "入弯控制",
+          "path": "vehiclePath.turnInController",
+          "kind": "number",
+          "min": 0,
+          "max": 1.5,
+          "step": 0.01
+        },
+        {
+          "index": 7,
+          "label": "出弯控制",
+          "path": "vehiclePath.turnOutController",
+          "kind": "number",
+          "min": 0,
+          "max": 1.5,
+          "step": 0.01
+        },
+        {
+          "index": 8,
+          "label": "边界左 X",
+          "path": "vehiclePath.parkingBounds.minX",
+          "kind": "number",
+          "min": -6,
+          "max": 0,
+          "step": 0.01
+        },
+        {
+          "index": 9,
+          "label": "边界右 X",
+          "path": "vehiclePath.parkingBounds.maxX",
+          "kind": "number",
+          "min": 0,
+          "max": 6,
+          "step": 0.01
+        },
+        {
+          "index": 10,
+          "label": "边界下 Z",
+          "path": "vehiclePath.parkingBounds.minZ",
+          "kind": "number",
+          "min": -6,
+          "max": 0,
+          "step": 0.01
+        },
+        {
+          "index": 11,
+          "label": "边界上 Z",
+          "path": "vehiclePath.parkingBounds.maxZ",
+          "kind": "number",
+          "min": 0,
+          "max": 6,
+          "step": 0.01
+        }
+      ]
+    },
+    {
+      "id": "s54",
+      "order": 54,
+      "panel": "cars",
+      "subgroup": "车辆与车位",
+      "title": "车辆开出车位路径",
+      "layout": null,
+      "spatialOnly": false,
+      "defaultOpen": false,
+      "fieldCount": 14,
+      "kinds": {
+        "number": 14
+      },
+      "fields": [
+        {
+          "index": 0,
+          "label": "显示路径",
+          "path": "vehicleDeparturePath.enabled",
+          "kind": "number",
+          "min": 0,
+          "max": 1,
+          "step": 1
+        },
+        {
+          "index": 1,
+          "label": "满载停顿",
+          "path": "vehicleDeparturePath.fullLoadDelay",
+          "kind": "number",
+          "min": 0,
+          "max": 4,
+          "step": 0.05
+        },
+        {
+          "index": 2,
+          "label": "离场高度（线与车）",
+          "path": "vehicleDeparturePath.y",
+          "kind": "number",
+          "min": -3,
+          "max": 0.5,
+          "step": 0.005
+        },
+        {
+          "index": 3,
+          "label": "线条透明度",
+          "path": "vehicleDeparturePath.opacity",
+          "kind": "number",
+          "min": 0.1,
+          "max": 1,
+          "step": 0.01
+        },
+        {
+          "index": 4,
+          "label": "线条粗细",
+          "path": "vehicleDeparturePath.lineWidth",
+          "kind": "number",
+          "min": 1,
+          "max": 12,
+          "step": 1
+        },
+        {
+          "index": 5,
+          "label": "倒车距离",
+          "path": "vehicleDeparturePath.backDistance",
+          "kind": "number",
+          "min": 0,
+          "max": 2,
+          "step": 0.01
+        },
+        {
+          "index": 6,
+          "label": "横向拐点 X",
+          "path": "vehicleDeparturePath.exitTurnOffsetX",
+          "kind": "number",
+          "min": -2,
+          "max": 2,
+          "step": 0.01
+        },
+        {
+          "index": 7,
+          "label": "离场终点 X",
+          "path": "vehicleDeparturePath.exitTargetX",
+          "kind": "number",
+          "min": -1,
+          "max": 8,
+          "step": 0.05
+        },
+        {
+          "index": 8,
+          "label": "离场终点 Z 偏移",
+          "path": "vehicleDeparturePath.exitTargetZOffset",
+          "kind": "number",
+          "min": -3,
+          "max": 3,
+          "step": 0.05
+        },
+        {
+          "index": 9,
+          "label": "倒车速度",
+          "path": "vehicleDeparturePath.backwardSpeed",
+          "kind": "number",
+          "min": 0.5,
+          "max": 8,
+          "step": 0.05
+        },
+        {
+          "index": 10,
+          "label": "离场速度",
+          "path": "vehicleDeparturePath.forwardSpeed",
+          "kind": "number",
+          "min": 1,
+          "max": 18,
+          "step": 0.05
+        },
+        {
+          "index": 11,
+          "label": "转弯半径",
+          "path": "vehicleDeparturePath.turnRadius",
+          "kind": "number",
+          "min": 0.05,
+          "max": 1.5,
+          "step": 0.01
+        },
+        {
+          "index": 12,
+          "label": "入弯控制",
+          "path": "vehicleDeparturePath.turnInController",
+          "kind": "number",
+          "min": 0,
+          "max": 1.5,
+          "step": 0.01
+        },
+        {
+          "index": 13,
+          "label": "出弯控制",
+          "path": "vehicleDeparturePath.turnOutController",
+          "kind": "number",
+          "min": 0,
+          "max": 1.5,
+          "step": 0.01
+        }
+      ]
+    },
+    {
+      "id": "s55",
+      "order": 55,
+      "panel": "cars",
+      "subgroup": "车辆与车位",
+      "title": "车辆",
+      "layout": null,
+      "spatialOnly": false,
+      "defaultOpen": false,
+      "fieldCount": 14,
+      "kinds": {
+        "number": 12,
+        "color": 2
+      },
+      "fields": [
+        {
+          "index": 0,
+          "label": "车阵整体左右（向右为正）",
+          "path": "vehicleArea.offsetX",
+          "kind": "number",
+          "min": -3,
+          "max": 3,
+          "step": 0.05
+        },
+        {
+          "index": 1,
+          "label": "车阵整体上下（向下为正）",
+          "path": "vehicleArea.offsetZ",
+          "kind": "number",
+          "min": -3,
+          "max": 3,
+          "step": 0.05
+        },
+        {
+          "index": 2,
+          "label": "车辆整体旋转（以车阵中心为轴）",
+          "path": "vehicleArea.rotationDegrees",
+          "kind": "number",
+          "min": -180,
+          "max": 180,
+          "step": 1
+        },
+        {
+          "index": 3,
+          "label": "投影颜色",
+          "path": "vehicleShadows.color",
+          "kind": "color",
+          "min": 0,
+          "max": 16777215,
+          "step": 1
+        },
+        {
+          "index": 4,
+          "label": "Map Scale",
+          "path": "vehicleArea.positionUnitScale",
+          "kind": "number",
+          "min": 0.1,
+          "max": 2.2,
+          "step": 0.01
+        },
+        {
+          "index": 5,
+          "label": "模型大小",
+          "path": "vehicleArea.modelScale",
+          "kind": "number",
+          "min": 0.3,
+          "max": 2.5,
+          "step": 0.05
+        },
+        {
+          "index": 6,
+          "label": "上车放大倍数",
+          "path": "vehicleBoardingPulse.scale",
+          "kind": "number",
+          "min": 1,
+          "max": 2,
+          "step": 0.01
+        },
+        {
+          "index": 7,
+          "label": "上车缩放速度",
+          "path": "vehicleBoardingPulse.speed",
+          "kind": "number",
+          "min": 0,
+          "max": 20,
+          "step": 0.1
+        },
+        {
+          "index": 8,
+          "label": "箭头 X",
+          "path": "vehicleArrow.offsetX",
+          "kind": "number",
+          "min": -0.8,
+          "max": 0.8,
+          "step": 0.01
+        },
+        {
+          "index": 9,
+          "label": "箭头高度",
+          "path": "vehicleArrow.offsetY",
+          "kind": "number",
+          "min": 0,
+          "max": 0.8,
+          "step": 0.01
+        },
+        {
+          "index": 10,
+          "label": "箭头 Z",
+          "path": "vehicleArrow.offsetZ",
+          "kind": "number",
+          "min": -0.8,
+          "max": 0.8,
+          "step": 0.01
+        },
+        {
+          "index": 11,
+          "label": "箭头描边色",
+          "path": "vehicleArrow.outlineColor",
+          "kind": "color",
+          "min": 0,
+          "max": 16777215,
+          "step": 1
+        },
+        {
+          "index": 12,
+          "label": "箭头描边粗细",
+          "path": "vehicleArrow.outlineScale",
+          "kind": "number",
+          "min": 1,
+          "max": 1.8,
+          "step": 0.01
+        },
+        {
+          "index": 13,
+          "label": "箭头描边深度测试",
+          "path": "vehicleArrow.outlineDepthTest",
+          "kind": "number",
+          "min": 0,
+          "max": 1,
+          "step": 1
+        }
+      ]
+    },
+    {
+      "id": "s56",
+      "order": 56,
+      "panel": "guide",
+      "subgroup": "开场引导",
+      "title": "小手提示",
+      "layout": null,
+      "spatialOnly": false,
+      "defaultOpen": true,
+      "fieldCount": 17,
+      "kinds": {
+        "toggle": 2,
+        "number": 14,
+        "select": 1
+      },
+      "fields": [
+        {
+          "index": 0,
+          "label": "提示开启",
+          "path": "vehicleGuideHand.enabled",
+          "kind": "toggle"
+        },
+        {
+          "index": 1,
+          "label": "开场立即显示",
+          "path": "vehicleGuideHand.showAtStart",
+          "kind": "toggle"
+        },
+        {
+          "index": 2,
+          "label": "无操作等待（秒）",
+          "path": "vehicleGuideHand.idleDelaySeconds",
+          "kind": "number",
+          "min": 1,
+          "max": 30,
+          "step": 0.5
+        },
+        {
+          "index": 3,
+          "label": "引导关卡",
+          "path": "vehicleGuideHand.levelKey",
+          "kind": "select",
+          "optionCount": 34,
+          "options": [
+            [
+              "level1",
+              "level1"
+            ],
+            [
+              "level11",
+              "level11"
+            ],
+            [
+              "level12",
+              "level12"
+            ],
+            [
+              "level14",
+              "level14"
+            ],
+            [
+              "level18",
+              "level18"
+            ],
+            [
+              "level19",
+              "level19"
+            ]
+          ],
+          "moreOptions": 28
+        },
+        {
+          "index": 4,
+          "label": "引导车 ID",
+          "path": "vehicleGuideHand.vehicleId",
+          "kind": "number",
+          "min": 1,
+          "max": 200,
+          "step": 1,
+          "note": "按当前车号列出"
+        },
+        {
+          "index": 5,
+          "label": "小手 X",
+          "path": "vehicleGuideHand.offsetX",
+          "kind": "number",
+          "min": -3,
+          "max": 3,
+          "step": 0.01
+        },
+        {
+          "index": 6,
+          "label": "小手高度",
+          "path": "vehicleGuideHand.offsetY",
+          "kind": "number",
+          "min": 0,
+          "max": 3,
+          "step": 0.01
+        },
+        {
+          "index": 7,
+          "label": "小手 Z",
+          "path": "vehicleGuideHand.offsetZ",
+          "kind": "number",
+          "min": -3,
+          "max": 3,
+          "step": 0.01
+        },
+        {
+          "index": 8,
+          "label": "起点 X 偏移（正=右侧）",
+          "path": "vehicleGuideHand.approachOffsetX",
+          "kind": "number",
+          "min": -2,
+          "max": 2,
+          "step": 0.01
+        },
+        {
+          "index": 9,
+          "label": "起点 Z 偏移",
+          "path": "vehicleGuideHand.approachOffsetZ",
+          "kind": "number",
+          "min": -2,
+          "max": 2,
+          "step": 0.01
+        },
+        {
+          "index": 10,
+          "label": "小手整体大小",
+          "path": "vehicleGuideHand.size",
+          "kind": "number",
+          "min": 0.1,
+          "max": 3,
+          "step": 0.01
+        },
+        {
+          "index": 11,
+          "label": "小手宽度",
+          "path": "vehicleGuideHand.width",
+          "kind": "number",
+          "min": 0.1,
+          "max": 2,
+          "step": 0.01
+        },
+        {
+          "index": 12,
+          "label": "小手高度",
+          "path": "vehicleGuideHand.height",
+          "kind": "number",
+          "min": 0.1,
+          "max": 2,
+          "step": 0.01
+        },
+        {
+          "index": 13,
+          "label": "靠近缩放",
+          "path": "vehicleGuideHand.nearScale",
+          "kind": "number",
+          "min": 0.1,
+          "max": 2,
+          "step": 0.01
+        },
+        {
+          "index": 14,
+          "label": "远离缩放",
+          "path": "vehicleGuideHand.farScale",
+          "kind": "number",
+          "min": 0.1,
+          "max": 3,
+          "step": 0.01
+        },
+        {
+          "index": 15,
+          "label": "小手速度",
+          "path": "vehicleGuideHand.speed",
+          "kind": "number",
+          "min": 0.1,
+          "max": 6,
+          "step": 0.01
+        },
+        {
+          "index": 16,
+          "label": "小手透明度",
+          "path": "vehicleGuideHand.opacity",
+          "kind": "number",
+          "min": 0,
+          "max": 1,
+          "step": 0.01
+        }
+      ]
+    },
+    {
+      "id": "s57",
+      "order": 57,
+      "panel": "guide",
+      "subgroup": "开场引导",
+      "title": "开场引导动画",
+      "layout": null,
+      "spatialOnly": false,
+      "defaultOpen": true,
+      "fieldCount": 12,
+      "kinds": {
+        "toggle": 3,
+        "number": 9
+      },
+      "fields": [
+        {
+          "index": 0,
+          "label": "动画开启",
+          "path": "firstClickGuide.enabled",
+          "kind": "toggle"
+        },
+        {
+          "index": 1,
+          "label": "目标车 ID",
+          "path": "firstClickGuide.vehicleId",
+          "kind": "number",
+          "min": 1,
+          "max": 200,
+          "step": 1,
+          "note": "按当前车号列出"
+        },
+        {
+          "index": 2,
+          "label": "持续时间",
+          "path": "firstClickGuide.durationSeconds",
+          "kind": "number",
+          "min": 0,
+          "max": 10,
+          "step": 0.1
+        },
+        {
+          "index": 3,
+          "label": "锁定其他车辆",
+          "path": "firstClickGuide.lockInput",
+          "kind": "toggle"
+        },
+        {
+          "index": 4,
+          "label": "置灰其他车辆",
+          "path": "firstClickGuide.maskEnabled",
+          "kind": "toggle"
+        },
+        {
+          "index": 5,
+          "label": "遮罩透明度",
+          "path": "firstClickGuide.maskOpacity",
+          "kind": "number",
+          "min": 0,
+          "max": 1,
+          "step": 0.01
+        },
+        {
+          "index": 6,
+          "label": "光效边距",
+          "path": "firstClickGuide.holePadding",
+          "kind": "number",
+          "min": 0,
+          "max": 120,
+          "step": 1
+        },
+        {
+          "index": 7,
+          "label": "光效圆角",
+          "path": "firstClickGuide.holeRadius",
+          "kind": "number",
+          "min": 0,
+          "max": 120,
+          "step": 1
+        },
+        {
+          "index": 8,
+          "label": "光效 X 偏移",
+          "path": "firstClickGuide.holeOffsetX",
+          "kind": "number",
+          "min": -240,
+          "max": 240,
+          "step": 1
+        },
+        {
+          "index": 9,
+          "label": "光效 Y 偏移",
+          "path": "firstClickGuide.holeOffsetY",
+          "kind": "number",
+          "min": -240,
+          "max": 240,
+          "step": 1
+        },
+        {
+          "index": 10,
+          "label": "光效宽度",
+          "path": "firstClickGuide.holeScaleX",
+          "kind": "number",
+          "min": 0.2,
+          "max": 3,
+          "step": 0.01
+        },
+        {
+          "index": 11,
+          "label": "光效高度",
+          "path": "firstClickGuide.holeScaleY",
+          "kind": "number",
+          "min": 0.2,
+          "max": 3,
+          "step": 0.01
+        }
+      ]
+    },
+    {
+      "id": "s58",
+      "order": 58,
+      "panel": "guide",
+      "subgroup": "氛围图层",
+      "title": "特效（全屏天气）",
+      "layout": null,
+      "spatialOnly": false,
+      "defaultOpen": false,
+      "fieldCount": 8,
+      "kinds": {
+        "toggle": 1,
+        "select": 1,
+        "number": 5,
+        "color": 1
+      },
+      "fields": [
+        {
+          "index": 0,
+          "label": "启用特效",
+          "path": "weatherEffect.enabled",
+          "kind": "toggle"
+        },
+        {
+          "index": 1,
+          "label": "粒子模式",
+          "path": "weatherEffect.mode",
+          "kind": "select",
+          "optionCount": 4,
+          "options": [
+            [
+              "rain",
+              "雨"
+            ],
+            [
+              "snow",
+              "雪"
+            ],
+            [
+              "wind",
+              "风"
+            ],
+            [
+              "leaf",
+              "落叶"
+            ]
+          ],
+          "moreOptions": 0
+        },
+        {
+          "index": 2,
+          "label": "强度",
+          "path": "weatherEffect.intensity",
+          "kind": "number",
+          "min": 0,
+          "max": 4,
+          "step": 0.05
+        },
+        {
+          "index": 3,
+          "label": "速度",
+          "path": "weatherEffect.speed",
+          "kind": "number",
+          "min": 0.1,
+          "max": 5,
+          "step": 0.05
+        },
+        {
+          "index": 4,
+          "label": "粒子大小",
+          "path": "weatherEffect.size",
+          "kind": "number",
+          "min": 0.2,
+          "max": 4,
+          "step": 0.05
+        },
+        {
+          "index": 5,
+          "label": "透明度",
+          "path": "weatherEffect.opacity",
+          "kind": "number",
+          "min": 0,
+          "max": 1,
+          "step": 0.01
+        },
+        {
+          "index": 6,
+          "label": "横向飘移",
+          "path": "weatherEffect.windX",
+          "kind": "number",
+          "min": -2,
+          "max": 2,
+          "step": 0.01
+        },
+        {
+          "index": 7,
+          "label": "粒子颜色",
+          "path": "weatherEffect.color",
+          "kind": "color",
+          "min": 0,
+          "max": 16777215,
+          "step": 1
+        }
+      ]
+    },
+    {
+      "id": "s59",
+      "order": 59,
+      "panel": "guide",
+      "subgroup": "氛围图层",
+      "title": "自由素材",
+      "layout": null,
+      "spatialOnly": false,
+      "defaultOpen": true,
+      "fieldCount": 0,
+      "kinds": {},
+      "fields": []
+    },
+    {
+      "id": "s60",
+      "order": 60,
+      "panel": "guide",
+      "subgroup": "开场引导",
+      "title": "入场横幅 EntryBanner",
+      "layout": null,
+      "spatialOnly": false,
+      "defaultOpen": false,
+      "fieldCount": 35,
+      "kinds": {
+        "toggle": 2,
+        "select": 1,
+        "number": 32
+      },
+      "fields": [
+        {
+          "index": 0,
+          "label": "启用",
+          "path": "entryBanner.enabled",
+          "kind": "toggle"
+        },
+        {
+          "index": 1,
+          "label": "难度样式",
+          "path": "entryBanner.style",
+          "kind": "select",
+          "optionCount": 2,
+          "options": [
+            [
+              "hard",
+              "Hard"
+            ],
+            [
+              "superhard",
+              "SuperHard"
+            ]
+          ],
+          "moreOptions": 0
+        },
+        {
+          "index": 2,
+          "label": "X 位置",
+          "path": "entryBanner.positionX",
+          "kind": "number",
+          "min": 0,
+          "max": 2160,
+          "step": 1
+        },
+        {
+          "index": 3,
+          "label": "Y 位置",
+          "path": "entryBanner.positionY",
+          "kind": "number",
+          "min": 0,
+          "max": 4320,
+          "step": 1
+        },
+        {
+          "index": 4,
+          "label": "缩放",
+          "path": "entryBanner.scale",
+          "kind": "number",
+          "min": 0.3,
+          "max": 2,
+          "step": 0.01
+        },
+        {
+          "index": 5,
+          "label": "播放时间",
+          "path": "entryBanner.durationSeconds",
+          "kind": "number",
+          "min": 0.5,
+          "max": 8,
+          "step": 0.05
+        },
+        {
+          "index": 6,
+          "label": "显示遮罩",
+          "path": "entryBanner.maskEnabled",
+          "kind": "toggle"
+        },
+        {
+          "index": 7,
+          "label": "遮罩透明度",
+          "path": "entryBanner.maskOpacity",
+          "kind": "number",
+          "min": 0,
+          "max": 1,
+          "step": 0.01
+        },
+        {
+          "index": 8,
+          "label": "横幅主体 X 位移",
+          "path": "entryBanner.components.banner.position.x",
+          "kind": "number",
+          "min": -600,
+          "max": 600,
+          "step": 1
+        },
+        {
+          "index": 9,
+          "label": "横幅主体 Y 位移",
+          "path": "entryBanner.components.banner.position.y",
+          "kind": "number",
+          "min": -600,
+          "max": 600,
+          "step": 1
+        },
+        {
+          "index": 10,
+          "label": "横幅主体 Z 位移",
+          "path": "entryBanner.components.banner.position.z",
+          "kind": "number",
+          "min": -600,
+          "max": 600,
+          "step": 1
+        },
+        {
+          "index": 11,
+          "label": "横幅主体 X 缩放",
+          "path": "entryBanner.components.banner.scale.x",
+          "kind": "number",
+          "min": 0.1,
+          "max": 3,
+          "step": 0.01
+        },
+        {
+          "index": 12,
+          "label": "横幅主体 Y 缩放",
+          "path": "entryBanner.components.banner.scale.y",
+          "kind": "number",
+          "min": 0.1,
+          "max": 3,
+          "step": 0.01
+        },
+        {
+          "index": 13,
+          "label": "横幅主体 Z 缩放",
+          "path": "entryBanner.components.banner.scale.z",
+          "kind": "number",
+          "min": 0.1,
+          "max": 3,
+          "step": 0.01
+        },
+        {
+          "index": 14,
+          "label": "横幅主体 X 旋转",
+          "path": "entryBanner.components.banner.rotation.x",
+          "kind": "number",
+          "min": -180,
+          "max": 180,
+          "step": 1
+        },
+        {
+          "index": 15,
+          "label": "横幅主体 Y 旋转",
+          "path": "entryBanner.components.banner.rotation.y",
+          "kind": "number",
+          "min": -180,
+          "max": 180,
+          "step": 1
+        },
+        {
+          "index": 16,
+          "label": "横幅主体 Z 旋转",
+          "path": "entryBanner.components.banner.rotation.z",
+          "kind": "number",
+          "min": -180,
+          "max": 180,
+          "step": 1
+        },
+        {
+          "index": 17,
+          "label": "箭头组 X 位移",
+          "path": "entryBanner.components.arrows.position.x",
+          "kind": "number",
+          "min": -600,
+          "max": 600,
+          "step": 1
+        },
+        {
+          "index": 18,
+          "label": "箭头组 Y 位移",
+          "path": "entryBanner.components.arrows.position.y",
+          "kind": "number",
+          "min": -600,
+          "max": 600,
+          "step": 1
+        },
+        {
+          "index": 19,
+          "label": "箭头组 Z 位移",
+          "path": "entryBanner.components.arrows.position.z",
+          "kind": "number",
+          "min": -600,
+          "max": 600,
+          "step": 1
+        },
+        {
+          "index": 20,
+          "label": "箭头组 X 缩放",
+          "path": "entryBanner.components.arrows.scale.x",
+          "kind": "number",
+          "min": 0.1,
+          "max": 3,
+          "step": 0.01
+        },
+        {
+          "index": 21,
+          "label": "箭头组 Y 缩放",
+          "path": "entryBanner.components.arrows.scale.y",
+          "kind": "number",
+          "min": 0.1,
+          "max": 3,
+          "step": 0.01
+        },
+        {
+          "index": 22,
+          "label": "箭头组 Z 缩放",
+          "path": "entryBanner.components.arrows.scale.z",
+          "kind": "number",
+          "min": 0.1,
+          "max": 3,
+          "step": 0.01
+        },
+        {
+          "index": 23,
+          "label": "箭头组 X 旋转",
+          "path": "entryBanner.components.arrows.rotation.x",
+          "kind": "number",
+          "min": -180,
+          "max": 180,
+          "step": 1
+        },
+        {
+          "index": 24,
+          "label": "箭头组 Y 旋转",
+          "path": "entryBanner.components.arrows.rotation.y",
+          "kind": "number",
+          "min": -180,
+          "max": 180,
+          "step": 1
+        },
+        {
+          "index": 25,
+          "label": "箭头组 Z 旋转",
+          "path": "entryBanner.components.arrows.rotation.z",
+          "kind": "number",
+          "min": -180,
+          "max": 180,
+          "step": 1
+        },
+        {
+          "index": 26,
+          "label": "标题 X 位移",
+          "path": "entryBanner.components.label.position.x",
+          "kind": "number",
+          "min": -600,
+          "max": 600,
+          "step": 1
+        },
+        {
+          "index": 27,
+          "label": "标题 Y 位移",
+          "path": "entryBanner.components.label.position.y",
+          "kind": "number",
+          "min": -600,
+          "max": 600,
+          "step": 1
+        },
+        {
+          "index": 28,
+          "label": "标题 Z 位移",
+          "path": "entryBanner.components.label.position.z",
+          "kind": "number",
+          "min": -600,
+          "max": 600,
+          "step": 1
+        },
+        {
+          "index": 29,
+          "label": "标题 X 缩放",
+          "path": "entryBanner.components.label.scale.x",
+          "kind": "number",
+          "min": 0.1,
+          "max": 3,
+          "step": 0.01
+        },
+        {
+          "index": 30,
+          "label": "标题 Y 缩放",
+          "path": "entryBanner.components.label.scale.y",
+          "kind": "number",
+          "min": 0.1,
+          "max": 3,
+          "step": 0.01
+        },
+        {
+          "index": 31,
+          "label": "标题 Z 缩放",
+          "path": "entryBanner.components.label.scale.z",
+          "kind": "number",
+          "min": 0.1,
+          "max": 3,
+          "step": 0.01
+        },
+        {
+          "index": 32,
+          "label": "标题 X 旋转",
+          "path": "entryBanner.components.label.rotation.x",
+          "kind": "number",
+          "min": -180,
+          "max": 180,
+          "step": 1
+        },
+        {
+          "index": 33,
+          "label": "标题 Y 旋转",
+          "path": "entryBanner.components.label.rotation.y",
+          "kind": "number",
+          "min": -180,
+          "max": 180,
+          "step": 1
+        },
+        {
+          "index": 34,
+          "label": "标题 Z 旋转",
+          "path": "entryBanner.components.label.rotation.z",
+          "kind": "number",
+          "min": -180,
+          "max": 180,
+          "step": 1
+        }
+      ]
+    },
+    {
+      "id": "s61",
+      "order": 61,
+      "panel": "track",
+      "subgroup": "粒子",
+      "title": "Effect_Hit 粒子",
+      "layout": null,
+      "spatialOnly": false,
+      "defaultOpen": false,
+      "fieldCount": 5,
+      "kinds": {
+        "number": 5
+      },
+      "fields": [
+        {
+          "index": 0,
+          "label": "整体大小",
+          "path": "effects.hit.sizeScale",
+          "kind": "number",
+          "min": 0.1,
+          "max": 5,
+          "step": 0.01
+        },
+        {
+          "index": 1,
+          "label": "ParticleHit_2 大小",
+          "path": "effects.hit.particleHit2SizeScale",
+          "kind": "number",
+          "min": 0.1,
+          "max": 5,
+          "step": 0.01
+        },
+        {
+          "index": 2,
+          "label": "ParticleHit_1 大小",
+          "path": "effects.hit.particleHit1SizeScale",
+          "kind": "number",
+          "min": 0.1,
+          "max": 5,
+          "step": 0.01
+        },
+        {
+          "index": 3,
+          "label": "ParticleHit 大小",
+          "path": "effects.hit.particleHitSizeScale",
+          "kind": "number",
+          "min": 0.1,
+          "max": 5,
+          "step": 0.01
+        },
+        {
+          "index": 4,
+          "label": "撞击冲刺距离上限",
+          "path": "collision.maxBumpDistance",
+          "kind": "number",
+          "min": 0,
+          "max": 3,
+          "step": 0.01
+        }
+      ]
+    },
+    {
+      "id": "s62",
+      "order": 62,
+      "panel": "track",
+      "subgroup": "粒子",
+      "title": "离场彩带粒子",
+      "layout": null,
+      "spatialOnly": false,
+      "defaultOpen": false,
+      "fieldCount": 5,
+      "kinds": {
+        "number": 5
+      },
+      "fields": [
+        {
+          "index": 0,
+          "label": "移动范围",
+          "path": "effects.ribbon.moveRange",
+          "kind": "number",
+          "min": 0.1,
+          "max": 6,
+          "step": 0.05
+        },
+        {
+          "index": 1,
+          "label": "速度起点",
+          "path": "effects.ribbon.speedStart",
+          "kind": "number",
+          "min": 0,
+          "max": 3,
+          "step": 0.01
+        },
+        {
+          "index": 2,
+          "label": "曲线中点时间",
+          "path": "effects.ribbon.speedMidTime",
+          "kind": "number",
+          "min": 0,
+          "max": 1,
+          "step": 0.01
+        },
+        {
+          "index": 3,
+          "label": "速度中点",
+          "path": "effects.ribbon.speedMid",
+          "kind": "number",
+          "min": 0,
+          "max": 3,
+          "step": 0.01
+        },
+        {
+          "index": 4,
+          "label": "速度终点",
+          "path": "effects.ribbon.speedEnd",
+          "kind": "number",
+          "min": 0,
+          "max": 3,
+          "step": 0.01
+        }
+      ]
+    },
+    {
+      "id": "s63",
+      "order": 63,
+      "panel": "track",
+      "subgroup": "粒子",
+      "title": "离场烟雾粒子",
+      "layout": null,
+      "spatialOnly": false,
+      "defaultOpen": false,
+      "fieldCount": 5,
+      "kinds": {
+        "number": 5
+      },
+      "fields": [
+        {
+          "index": 0,
+          "label": "移动范围",
+          "path": "effects.ribbonSmoke.moveRange",
+          "kind": "number",
+          "min": 0.1,
+          "max": 6,
+          "step": 0.05
+        },
+        {
+          "index": 1,
+          "label": "速度起点",
+          "path": "effects.ribbonSmoke.speedStart",
+          "kind": "number",
+          "min": 0,
+          "max": 3,
+          "step": 0.01
+        },
+        {
+          "index": 2,
+          "label": "曲线中点时间",
+          "path": "effects.ribbonSmoke.speedMidTime",
+          "kind": "number",
+          "min": 0,
+          "max": 1,
+          "step": 0.01
+        },
+        {
+          "index": 3,
+          "label": "速度中点",
+          "path": "effects.ribbonSmoke.speedMid",
+          "kind": "number",
+          "min": 0,
+          "max": 3,
+          "step": 0.01
+        },
+        {
+          "index": 4,
+          "label": "速度终点",
+          "path": "effects.ribbonSmoke.speedEnd",
+          "kind": "number",
+          "min": 0,
+          "max": 3,
+          "step": 0.01
+        }
+      ]
+    },
+    {
+      "id": "s64",
+      "order": 64,
+      "panel": "track",
+      "subgroup": "粒子",
+      "title": "行驶尾烟 ParticleTrail",
+      "layout": null,
+      "spatialOnly": false,
+      "defaultOpen": false,
+      "fieldCount": 11,
+      "kinds": {
+        "number": 11
+      },
+      "fields": [
+        {
+          "index": 0,
+          "label": "每秒粒子数",
+          "path": "effects.smokeTrail.rateOverTime",
+          "kind": "number",
+          "min": 0,
+          "max": 120,
+          "step": 1
+        },
+        {
+          "index": 1,
+          "label": "寿命下限",
+          "path": "effects.smokeTrail.lifetimeMin",
+          "kind": "number",
+          "min": 0.05,
+          "max": 2,
+          "step": 0.01
+        },
+        {
+          "index": 2,
+          "label": "寿命上限",
+          "path": "effects.smokeTrail.lifetimeMax",
+          "kind": "number",
+          "min": 0.05,
+          "max": 2,
+          "step": 0.01
+        },
+        {
+          "index": 3,
+          "label": "初始大小下限",
+          "path": "effects.smokeTrail.sizeMin",
+          "kind": "number",
+          "min": 0.01,
+          "max": 1,
+          "step": 0.01
+        },
+        {
+          "index": 4,
+          "label": "初始大小上限",
+          "path": "effects.smokeTrail.sizeMax",
+          "kind": "number",
+          "min": 0.01,
+          "max": 1,
+          "step": 0.01
+        },
+        {
+          "index": 5,
+          "label": "漂移速度倍数",
+          "path": "effects.smokeTrail.speedScale",
+          "kind": "number",
+          "min": 0,
+          "max": 4,
+          "step": 0.05
+        },
+        {
+          "index": 6,
+          "label": "尾部 Z 偏移",
+          "path": "effects.smokeTrail.offsetZ",
+          "kind": "number",
+          "min": -1.5,
+          "max": 1.5,
+          "step": 0.01
+        },
+        {
+          "index": 7,
+          "label": "高度 Y 偏移",
+          "path": "effects.smokeTrail.offsetY",
+          "kind": "number",
+          "min": -0.5,
+          "max": 1,
+          "step": 0.01
+        },
+        {
+          "index": 8,
+          "label": "散开倍数",
+          "path": "effects.smokeTrail.spread",
+          "kind": "number",
+          "min": 0,
+          "max": 4,
+          "step": 0.05
+        },
+        {
+          "index": 9,
+          "label": "重力",
+          "path": "effects.smokeTrail.gravity",
+          "kind": "number",
+          "min": -10,
+          "max": 2,
+          "step": 0.05
+        },
+        {
+          "index": 10,
+          "label": "不透明度",
+          "path": "effects.smokeTrail.opacity",
+          "kind": "number",
+          "min": 0,
+          "max": 1,
+          "step": 0.01
+        }
+      ]
+    }
+  ]
+}
