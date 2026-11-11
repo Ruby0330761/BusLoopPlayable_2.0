@@ -1940,10 +1940,11 @@ test('blocked click uses Unity collision advance, contact hit, and return phases
   const attacker = game.getVehicle(LEVEL12_BLOCKED_ID);
   assert.equal(attacker.state, 'colliding');
   assert.equal(attacker.collision.targetId, 1);
-  // The Unity-pose cars keep a small gap (0.00842), but the bump is floored to a
-  // visible travel: at the raw gap `getCollisionMotion` schedules a 1 ms
-  // animation and the car looks like it never moved, which reads as a dead tap.
-  assert.equal(Number(attacker.collision.distance.toFixed(5)), 0.06);
+  // The bump travel is the collision gap PLUS both cars' model-vs-collision
+  // overhang: the rendered car is 1.42x longer than its 0.27x0.47 footprint, so
+  // stopping at the raw gap (0.00842) leaves a visible hole and the impact reads
+  // as "it hit nothing". Two 4-seaters contribute ~0.200.5 in total.
+  assert.equal(Number(attacker.collision.distance.toFixed(5)), 0.20884);
   assert.ok(attacker.collision.forwardDuration >= 0.01,
     `bump must stay visible, got ${attacker.collision.forwardDuration}s`);
   // The real geometric gap still travels with the animation for diagnostics.
@@ -2930,7 +2931,8 @@ test('collision bump distance is capped for animation while the real gap is pres
     assert.match(source, /const maxBumpDistance = Math\.max\(0, Number\(SCENE_TUNING\.collision\?\.maxBumpDistance\) \|\| 0\)/);
     // The travel fed to the animation is the geometric gap raised to a visible
     // floor, then capped by `maxBumpDistance`.
-    assert.match(source, /const collisionDistance = Math\.max\(MIN_VISIBLE_BUMP_DISTANCE, contact\.distance\)/);
+    assert.match(source, /const visualOverhang = collisionVisualOverhang\(contact\.candidate, vehicle, this\.level\)/);
+    assert.match(source, /const collisionDistance = Math\.max\(\s*MIN_VISIBLE_BUMP_DISTANCE,\s*contact\.distance \+ visualOverhang\s*\)/);
     assert.match(source, /const bumpDistance = maxBumpDistance > 0[\s\S]*?Math\.min\(collisionDistance, maxBumpDistance\)/);
     assert.match(source, /const motion = getCollisionMotion\(bumpDistance\)/);
     // The true obstacle gap stays available for diagnostics and future tuning.

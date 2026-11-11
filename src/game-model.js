@@ -53,6 +53,36 @@ const MIN_VISIBLE_BUMP_DISTANCE = 0.06;
 // CONVEYOR_RIGHT_VISIBILITY_SCALE = 0.93
 const CONVEYOR_RIGHT_VISIBILITY_SCALE = CONVEYOR_MECHANISM_TUNING.rightVehicleVisibilityScale;
 
+/**
+ * How much longer a rendered car is than its collision box, per side.
+ *
+ * Collision uses `level.collision.vehicleSizes` (0.27 × 0.47 for a 4-seater),
+ * while the playable draws `modelDepthBySeats × modelScale` (0.672 for the same
+ * car — 1.42x). A bump that stops at the collision gap therefore leaves half
+ * that difference as a visible hole between the two models, which the player
+ * reads as "it collided with nothing".
+ *
+ * Returns the sum of both cars' overhang along the attacker's heading, so
+ * `collisionGap + overhang` is where the rendered bodies touch.
+ */
+function collisionVisualOverhang(candidate, attacker, level) {
+  const overhangFor = (seats) => {
+    const depth = Number(SCENE_TUNING.vehicleArea?.modelDepthBySeats?.[seats]);
+    const modelScale = Number(SCENE_TUNING.vehicleArea?.modelScale);
+    const collisionLength = Number(
+      level?.collision?.vehicleSizes?.[seats]?.length
+        ?? level?.collision?.maxVehicleSize?.length
+    );
+    if (!(depth > 0) || !(modelScale > 0) || !(collisionLength > 0)) return 0;
+    return Math.max(0, (depth * modelScale - collisionLength) / 2);
+  };
+  // Containers (garage bodies, conveyor walls) keep their authored footprint:
+  // only cars carry the model-vs-collision overhang.
+  const candidateVehicle = candidate?.vehicle;
+  return overhangFor(attacker?.seats)
+    + (candidateVehicle ? overhangFor(candidateVehicle.seats) : 0);
+}
+
 function isGarageType(value) {
   return value === GARAGE_CONTAINER_TYPE
     || String(value ?? '').trim().toLowerCase() === 'garage';
@@ -1077,12 +1107,18 @@ export class BusLoopGame {
       // travel is clamped for the ANIMATION only: blocking behaviour is
       // unchanged, the car just meets the obstacle sooner.
       const maxBumpDistance = Math.max(0, Number(SCENE_TUNING.collision?.maxBumpDistance) || 0);
-      // A diagonal neighbour can already be touching the nose, so the geometric
-      // gap is zero. `getCollisionMotion` then clamps the animation to its 1 ms
-      // floor: the car never appears to move, and the player reads the tap as
-      // ignored. Give the bump a small visible floor so a blocked tap always
-      // shows the car nose forward before it rebounds.
-      const collisionDistance = Math.max(MIN_VISIBLE_BUMP_DISTANCE, contact.distance);
+      // The bump travel is measured against COLLISION boxes, but the player
+      // watches the 3D model, which is 1.4–1.6x longer (`modelDepthBySeats` ×
+      // `modelScale` vs the 0.27×0.47 footprint). Stopping at the collision gap
+      // therefore parks the car with a visible hole in front of it — the impact
+      // reads as "it hit nothing" — and a tiny floor made that worse by pushing
+      // it partway into that dead zone. Add the model's overhang on both sides
+      // so the nose stops where the two rendered bodies actually touch.
+      const visualOverhang = collisionVisualOverhang(contact.candidate, vehicle, this.level);
+      const collisionDistance = Math.max(
+        MIN_VISIBLE_BUMP_DISTANCE,
+        contact.distance + visualOverhang
+      );
       const bumpDistance = maxBumpDistance > 0
         ? Math.min(collisionDistance, maxBumpDistance)
         : collisionDistance;
