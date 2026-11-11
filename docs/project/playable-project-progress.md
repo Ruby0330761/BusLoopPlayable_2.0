@@ -1,5 +1,19 @@
 # Playable Project Progress
 
+## Completed On 2026-11-11 - 修复被挡点击看不出车在动（12151，v20261111-1214）
+
+- 反馈（附视频）：点一台箭头朝左、左边空白的紫车，只出火花、车完全不动，怀疑碰撞逻辑不对。
+- **排查过程**：先验证判定本身——遍历 19 个关卡、1133 次「被挡」判定，用「正前方 2 个车长内、横向 0.35 内是否真有车」做对照，**0 例误判**；又查 62 次特效打错目标，确认 `findCollisionContact` 内部有独立排序，不影响表现。判定是对的。
+- **根因在动画，不在判定**：斜停的邻车会贴住车头，`projectedFallbackContact` / `noseCornerContact` 算出的几何间距就是 **0**；`getCollisionMotion` 用 `distance / forwardSpeed` 求时长并把结果钳在 1ms，于是这类点击的碰撞动画只有一帧 —— 玩家看到火花、车纹丝不动。
+- **量化**：脚本把每个关卡的每台 parked 车都点一遍，共 201 次被挡点击，其中 **143 次（71%）的 `forwardDuration` 落在 1ms**。爱心关 `level15` 的 `vehicle 124`（6 座、yaw 90）正是视频那台：前方 0.55 处有斜停的 10 座车 `#201`，横向 0.364 超出车身但投影半径 0.305 使其真实重叠，因此判定阻挡正确、距离却是 0。
+- 修复两处：
+  1. `noseCornerContact` 不再写死 `distance: 0`，改用候选车在攻击车前进方向上的投影半径推算真实可走距离（斜车长轴确实更早碰到）；
+  2. `game-model.js` 新增 `MIN_VISIBLE_BUMP_DISTANCE = 0.06`（约 1/8 车长）给碰撞位移兜底，被挡时至少前顶一小段再回弹。
+- **阻挡判定零改动**：`canDriveOut` / `getCollisionCandidates` 行为完全一致，`actualDistance` 仍保留真实几何间距供诊断。
+- 验证：修复后 201 次被挡点击**最短 10.7ms，无一落在 1ms**（修复前 143 次）；线上 `level31` 与本地 `level33` 用 QA API 实测一致，版本 `v20261111-1214`。
+- 测试：`game-model.test.js` 98/98，新增「每台被挡的车都要有可见的碰撞动画」——遍历全部关卡逐台点击并断言 `forwardDuration >= 0.01`，同时校验 `actualDistance` 仍报真实间距。全量 604/604。
+- 部署：zip `http://10.0.0.6:8081/f1/f1ca3536395f251f9438cb420a4b4f48.zip`，`index-CYFqNSK2.js` sha256 本地=线上。commit `497b3c5`。
+
 ## Completed On 2026-11-11 - 「关于」按天汇总（12151，v20261111-1015）
 
 - 要求：「每天的更新放在一起，而不是每次迭代都要开一个版本」。
