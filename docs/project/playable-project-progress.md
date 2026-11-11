@@ -1,5 +1,16 @@
 # Playable Project Progress
 
+## Completed On 2026-11-11 - 「关于」按天汇总（12151，v20261111-1015）
+
+- 要求：「每天的更新放在一起，而不是每次迭代都要开一个版本」。
+- **问题**：11-10 一天有 11 次构建，`BUILD_CHANGELOG` 每条一版，面板显示 11 张近乎重复的卡片；同一功能还出现三次互相矛盾的描述（CTA 先本地化 → 改固定 → 又恢复），操作者读完不知道现在到底是哪种。
+- 结构：`BUILD_CHANGELOG` 改为**一天一条**。`version` 存当天最新构建戳，新增 `versions: []` 列出当天全部构建。`changelogVersions(entry)` 返回某天覆盖的所有构建（对没有 `versions` 的旧条目回退成自身），`findChangelogEntry(version)` 按构建戳在 `versions` 里查找 —— 所以当天中途的构建也能解析到自己那天的记录，不会出现「线上跑的是 -1815，但面板只认 -1826」。
+- 面板：`renderChangelogList` 的「当前版本」改为 `stamps.includes(currentVersion)`；当天其余构建时间以小字列在卡片底部（`.editor-about-entry-builds`，虚线分隔），方便核对线上跑的是哪一次。
+- 归并结果：16 条 → **4 条**（2026-11-11 / 11-10 / 11-09 / 11-06）。11-10 合并了本地化、5 MB 门禁、素材压缩、引导素材三件套、进度条、Moloco 修复、导出校验修复共 12 条要点。
+- 测试：`test/build-changelog.test.js` 8/8，新增「一天只有一条」「构建戳不得跨天重复」「中途构建能解析到当天」三条断言。全量 603/603。
+- 部署：zip `http://10.0.0.6:8081/b4/b4b618d454aab160960fbac1fc501402.zip`，`index-DW5w7t6p.js` 与 `scene-editor-BNJEkL__.js` sha256 本地=线上；线上实测面板 4 条、当前版本徽标落在 11-11、`v20261111-1015`。commit `e53979b`。
+- 以后的流程：bump `src/build-version.js` 后，同一天就**追加**到当天条目的 `versions` 并把 `version` 改成最新戳；跨天才新开一条。
+
 ## Completed On 2026-11-10 - 多语言严格跟随用户手机语言（12151，v20261110-1826）
 
 - 要求：「这个多语言适配要确保和用户手机一致」。
