@@ -1,5 +1,32 @@
 # Playable Project Progress
 
+## Completed On 2026-11-11 - 新功能导出素材审计 + 截图补上 HUD + 进度条读数层级（v20261111-1732）
+
+- 反馈：检查新加入的功能（尤其体力）导出时会不会缺素材或引用外部素材；另外用编辑器截图时截不到体力条。
+- **体力本身没问题**：用 10 颗心实跑一次 AppLovin 导出（3.86 MB，静态 33/35 + 2 项人工），三个 HUD 素材与 `intro-10.webp` 全部内联，未选中的 `intro-1/3` 已排除，产物里无 `/assets/applovin/stamina/` 残留、无新增外链，runtime `brokenImages` 为空。
+- **发现并修掉两处真缺失**（二者都只有调参引用，关卡文档里看不到，所以旧白名单没收集到）：
+  | 功能 | 修复前 | 根因 |
+  |---|---|---|
+  | 天气特效贴图 | 1 字节占位，粒子退回矢量绘制 | `weatherEffect.sprite` 未进 `package-applovin-single-html.mjs` 白名单 |
+  | 自由素材图层 | 同上 | `freeAssets.layers[].asset` 同类漏项 |
+  修复后实跑导出：两张素材均以 data URI 内联，`editor-effects` / `editor-free-assets` 字面量 0 残留，runtime PASS。顺带让关闭状态的特效不再请求贴图。
+- **自由素材根本无法导出**：`validateTuning` 把模板里的空 `layers: []` 当成「不允许任何图层」，第一张图上传后导出即 `tuning.freeAssets.layers[0] is not supported`。改为在 `free-asset-layers.js` 提供 `validateFreeAssetConfig`（字段白名单 + 几何范围 + 24 层上限），模板仍留空。
+- **截图漏 HUD 的根因**：截图不是 DOM 截图，而是 `captureFrame` 读 WebGL render target 后重画，再叠加 branding/CTA；体力/倒计时/倍速/自由素材/天气全是 DOM 元素，所以一张都进不去。原测试只断言这些函数存在，没覆盖「画了什么」。
+- 做法：新增 `src/screenshot-overlay.js`，按**屏幕上真实布局**回放：体力胶囊用与 CSS 一致的九宫格 border-image 重画（`border-image-slice 90 140`、`border-image-width 32.1429% / --stamina-frame-side`），心和底框按各自 `getBoundingClientRect`、`object-fit: contain` 与旋转绘制；时钟数字与倍速文字用 computed font/描边重设；canvas 类叠层（天气）直接当画面贴回。叠放顺序按 **DOM 顺序**排序，因为 `#stamina` 与 `#countdown` z-index 同为 6 且体力在后。
+- 验证（浏览器实测）：开启 5 心 + 倒计时 + 一帧自由素材（洋红图，旋转 18°）+ 叶子天气后截图 —— 体力胶囊 5 颗心、时钟 `00:30`、`x1`、洋红图层、绿色粒子全部出现在 PNG 内，且体力压在时钟之上，与舞台一致。关闭体力时顶区暖色像素 12925 → 开启后 45628，可量化确认。
+- **第二轮反馈：进度条层级不对**（截图红框：绿色实时药丸被红色 20% 药丸覆盖）。
+  - 根因：`.phud__tick--live` 与固定刻度的 `z-index` **同为 2**；`.phud__tick` 自带 `position` + `transform`，已经形成层叠上下文，药丸自己的 `z-index: 3` 只在父级内部生效。同级按 DOM 顺序判定，而红色节点 tick 在标记里更靠后，于是盖住了跟随巴士的实时读数。修复：给 `.phud__tick--live` 本身设 `z-index: 3`（仍低于轨道的 4）。
+  - 实测：两药丸 x 完全重合时，实时 tick 计算 z-index = 3、节点 tick = 2，截图中绿色读数完整压在红色药丸之上。
+- **第三轮反馈：截图仍然没有进度条**。逐层排查出三个叠加缺陷（都不是配置问题）：
+  1. `.phud__tick` 是 0×0 的定位锚点，药丸靠子元素溢出。合成器的可见性检查要求自身尺寸 > 0，于是整排药丸被判为不可见 —— 拆成 `isElementShown`（只看样式）与 `isOverlayVisible`（再加尺寸）。
+  2. `drawImage` 遇到 broken `<img>` 抛 `InvalidStateError`，异常冒出后**整趟叠层绘制中断**，排在其后的进度条全部丢失。改为逐根 try/catch + `isDrawableImage` 预检（`complete` 且有 `naturalWidth`）。
+  3. 通用递归遍历（逐元素 `getComputedStyle` + 伪元素查询 + SVG 异步解码）既慢到触发超时，又因 `loadScreenshotImage` 的 `decode()` 没有上限而卡死。改为按 HUD 已知结构定向绘制（轨道/外壳/刻度/节点/气泡/巴士），并给每张图的加载加 1200 ms 上限。
+  - 另：`.phud__track` 一开始落进「只画 img」的默认分支，渐变条根本没画；补上轨道分支后 `linear-gradient(90deg, …22 stops)` 正常解析填充。
+- 验证（浏览器实测）：截图 3.4 s 完成，无告警。轨道采样线 560/560 点为饱和色；裁剪图确认彩色渐变带、白色描边、骷髅节点、巴士标记、0%/20%/100% 药丸与绿色实时读数全部在 PNG 内。
+- 测试：`test/screenshot-overlay.test.js` 20/20（含渐变/圆角/内描边/尾巴多边形解析、broken 图跳过、零尺寸锚点、单层失败不连坐），`progress-hud.test.js` 22/22（新增「实时 tick 必须高于固定 tick 且低于轨道」），全量 **655/655**。
+- **部署**：zip `http://10.0.0.6:8081/1a/1a07c6908871a98d862ff8a24ae9f804.zip`（38 MB / 1350 条目），`--reuse-existing` 复用 12151 端口与原 artifacts 卷。线上 `index-C5GB6TBT.js` md5 `7aecba2c…` 与本地 `server-dist` 逐字节一致，页面显示 `v20261111-1754`。线上实测：实时 tick z-index=3、节点 tick=2；截图 2.7 s / 391 KB 无告警，体力 5 心 + 完整进度条均在 PNG 内；`assets/applovin/stamina/*` 与纹理在线上均返回正确 content-type 与字节数。
+- 部署细节：12142 端口现已被另一个项目（Arrow 素材看板）占用，本编辑器必须用 **12151**；打包排除项除 `node_modules/.git/dist/server-dist/artifacts/{playable-exports,applovin,backups,asset-compress-tests}` 外，还需排除 `artifacts/bl42-progress-playable.html`、`level-contact-sheet*.html`、`q24-belt-compare.png`、`bl42-progress-checks/`、`progress-ui/`（一次性分析产物，共省 7 MB）。
+
 ## Completed On 2026-11-11 - 视觉补偿改用实测比例，修正前冲穿模（12151，v20261111-1523）
 
 - 反馈：「碰撞时候前进的太远了，都穿模了」—— 上一版的补偿量算大了。

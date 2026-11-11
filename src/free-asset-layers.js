@@ -39,6 +39,69 @@ export function normalizeFreeAssetConfig(value = {}) {
   };
 }
 
+const FREE_ASSET_LAYER_KEYS = Object.freeze([
+  'id', 'asset', 'label', 'x', 'y', 'width', 'height', 'opacity', 'rotation', 'locked', 'visible'
+]);
+const FREE_ASSET_LAYER_LIMITS = Object.freeze({
+  x: [-4000, 5000],
+  y: [-4000, 5000],
+  width: [8, 4320],
+  height: [8, 4320],
+  opacity: [0, 1],
+  rotation: [-180, 180]
+});
+
+// Export-side schema for the layer list. The tuning template stores an empty
+// `layers: []`, which the generic validator reads as "no item schema", so every
+// real layer used to abort the export with "tuning.freeAssets.layers[0] is not
+// supported" — the feature was unusable from the moment an operator dropped the
+// first image. Validating explicitly keeps the template empty (the editor must
+// not inherit a phantom layer) while still rejecting unknown keys and
+// out-of-range geometry before the package is built.
+export function validateFreeAssetConfig(source) {
+  if (!source || typeof source !== 'object' || Array.isArray(source)) {
+    throw new TypeError('tuning.freeAssets must be an object.');
+  }
+  for (const key of Object.keys(source)) {
+    if (key !== 'layers') throw new TypeError(`tuning.freeAssets.${key} is not supported.`);
+  }
+  if (source.layers !== undefined && !Array.isArray(source.layers)) {
+    throw new TypeError('tuning.freeAssets.layers must be an array.');
+  }
+  const layers = source.layers ?? [];
+  if (layers.length > FREE_ASSET_LAYER_LIMIT) {
+    throw new TypeError(`tuning.freeAssets.layers must contain at most ${FREE_ASSET_LAYER_LIMIT} layers.`);
+  }
+  layers.forEach((layer, index) => {
+    const location = `tuning.freeAssets.layers[${index}]`;
+    if (!layer || typeof layer !== 'object' || Array.isArray(layer)) {
+      throw new TypeError(`${location} must be an object.`);
+    }
+    for (const key of Object.keys(layer)) {
+      if (!FREE_ASSET_LAYER_KEYS.includes(key)) throw new TypeError(`${location}.${key} is not supported.`);
+    }
+    for (const key of ['id', 'asset', 'label']) {
+      if (layer[key] === undefined) continue;
+      if (typeof layer[key] !== 'string') throw new TypeError(`${location}.${key} must be a string.`);
+      if (layer[key].length > 4096) throw new TypeError(`${location}.${key} is too long.`);
+    }
+    if (typeof layer.asset !== 'string' || !layer.asset) throw new TypeError(`${location}.asset is required.`);
+    for (const [key, [min, max]] of Object.entries(FREE_ASSET_LAYER_LIMITS)) {
+      const value = layer[key];
+      if (value === undefined) continue;
+      if (!Number.isFinite(value) || value < min || value > max) {
+        throw new TypeError(`${location}.${key} must be between ${min} and ${max}.`);
+      }
+    }
+    for (const key of ['locked', 'visible']) {
+      if (layer[key] !== undefined && layer[key] !== 0 && layer[key] !== 1) {
+        throw new TypeError(`${location}.${key} must be 0 or 1.`);
+      }
+    }
+  });
+  return normalizeFreeAssetConfig(source);
+}
+
 /**
  * Apply authored layers to `host`, creating one absolutely-positioned <img> per
  * layer. Returns a handle used by the editor (dragging, selection) and by the

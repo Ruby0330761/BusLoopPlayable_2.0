@@ -205,7 +205,10 @@ export function createWeatherEffect(host, options = {}) {
       const previousMode = config.mode;
       const previousIntensity = config.intensity;
       config = normalizeWeatherConfig(next);
-      if (config.sprite !== spriteSource) loadSprite(config.sprite);
+      // A disabled effect must not request its sprite: the packager only inlines
+      // the artwork of an enabled effect, so loading it anyway turned every
+      // turned-off overlay into a failed request inside the single-file ad.
+      if (Number(config.enabled) && config.sprite !== spriteSource) loadSprite(config.sprite);
       // A mode or density change needs fresh particles; a colour/opacity tweak
       // must not restart the whole field.
       if (config.mode !== previousMode || config.intensity !== previousIntensity) rebuild();

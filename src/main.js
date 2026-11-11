@@ -24,6 +24,7 @@ import {
 } from './progress-hud-config.js';
 import { normalizeStaminaConfig, validateStaminaConfig } from './stamina.js';
 import { createStaminaView } from './stamina-view.js';
+import { drawStageOverlays } from './screenshot-overlay.js';
 import { createGameAudioController } from './audio-controller.js';
 import { resolveLevelAudioConfig } from './level-audio-config.js';
 import { createPreRollController } from './pre-roll.js';
@@ -1397,6 +1398,11 @@ function applyCtaTuning() {
 }
 
 const screenshotImageCache = new Map();
+// A screenshot is a download, not a render: waiting on a decode that never
+// settles cannot be allowed to block it. `decode()` has no timeout of its own,
+// and one stalled image (a 404'd layer, a font still loading) used to hang the
+// whole composition until the caller gave up.
+const SCREENSHOT_IMAGE_TIMEOUT_MS = 1200;
 
 async function loadScreenshotImage(source) {
   const url = new URL(source, window.location.href).href;
@@ -1404,13 +1410,20 @@ async function loadScreenshotImage(source) {
   if (cached?.complete && cached.naturalWidth > 0) return cached;
   const image = new Image();
   image.decoding = 'async';
+  const decoded = new Promise((resolve, reject) => {
+    image.onload = () => resolve();
+    image.onerror = () => reject(new Error(`Screenshot image failed: ${url}`));
+  });
   image.src = url;
   screenshotImageCache.set(url, image);
   if (!image.complete) {
-    await image.decode().catch((error) => {
-      if (image.complete && image.naturalWidth > 0) return;
-      throw error;
-    });
+    await Promise.race([
+      decoded,
+      new Promise((_, reject) => setTimeout(
+        () => reject(new Error(`Screenshot image timed out: ${url}`)),
+        SCREENSHOT_IMAGE_TIMEOUT_MS
+      ))
+    ]);
   }
   return image;
 }
@@ -1564,6 +1577,18 @@ async function drawScreenshotCta(context, metrics, width, height) {
   context.restore();
 }
 
+async function drawScreenshotStageOverlays(context, { width, height }) {
+  if (!stage || !context) return;
+  try {
+    // Every image load inside the compositor is bounded now, so this no longer
+    // needs a whole-pass timeout that could silently drop every HUD layer.
+    await drawStageOverlays(context, { stage, width, height, loadImage: loadScreenshotImage });
+  } catch (error) {
+    // A missing overlay must never block the download.
+    console.warn('Screenshot overlays could not be composed.', error);
+  }
+}
+
 async function composeScreenshotBlob(baseBlob, { width, height }) {
   const output = document.createElement('canvas');
   output.width = width;
@@ -1574,6 +1599,10 @@ async function composeScreenshotBlob(baseBlob, { width, height }) {
   baseImage.close?.();
   const metrics = captureMetrics(width, height);
   if (document.fonts?.ready) await document.fonts.ready.catch(() => {});
+  // The canvas capture only carries the 3D scene. Stamina, countdown, speed
+  // switch, free-placed art and weather are DOM overlays, so they have to be
+  // replayed here or the PNG silently loses every HUD element.
+  await drawScreenshotStageOverlays(context, { width, height });
   await drawScreenshotBranding(context, metrics, width);
   await drawScreenshotCta(context, metrics, width, height);
   return new Promise((resolve, reject) => {

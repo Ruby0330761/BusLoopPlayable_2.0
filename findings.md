@@ -1,5 +1,41 @@
 # Findings
 
+## 2026-11-11 只有调参引用的素材必须显式进打包白名单，否则静默变成 1 字节占位图
+
+- **症状**：开启天气特效 / 上传自由素材后导出，成品里画面什么都没有，但静态检查 33/35 PASS、runtime 也 PASS，`brokenImages` 为空。
+- **根因**：单文件打包器分两路收集要内联的素材 —— ①关卡文档递归扫描 `collectAssetUrls`；②从 `SCENE_TUNING` 逐项显式 `realAssetUrls.add(...)`。`weatherEffect.sprite` 与 `freeAssets.layers[].asset` 只存在于调参里，两路都没覆盖，于是落在 `createAssetMap` 的省略分支，被替换成 `data:application/octet-stream;base64,AA==`（1 字节）。原有门禁既不比对内容也不报坏图，所以完全静默。
+- **判据**：交付前必须确认新素材出现在 `package-applovin-single-html.mjs` 的 `realAssetUrls` 里。最省事的验证是导出后用 `Buffer.includes(base64)` 逐张比对，比看截图更可靠。
+- **连带**：调参模板里的空数组会被 `validateTuning` 读成「该项不允许任何元素」。`freeAssets.layers: []` 于是让第一张图上传后导出直接报 `layers[0] is not supported`。凡是「模板默认空、运行时允许动态填充」的列表，都要像 `countdown` / `stamina` 那样给一个独立校验函数，而不是指望通用模板。
+
+**Why:** 「关卡文档扫描」只覆盖关卡自带资源；任何新增的、由调参驱动的视觉素材都走不到那条路，而它的失败形态（1 字节占位、无报错、无坏图）比直接崩溃更难发现。
+
+**How to apply:** 新增调参驱动的素材时，同时改三处：打包器白名单、`check-applovin-package.mjs` 的断言、以及一条按 base64 比对的导出测试。空数组模板项要配专属 `validate*Config`，并在 `validateTuning` 里按 location 分派。
+
+## 2026-11-11 编辑器截图是 WebGL 重画，DOM HUD 必须自己回放，且叠放要按文档序
+
+- **症状**：开启体力后点「下载截图」，PNG 里完全没有体力条；倒计时、倍速、自由素材、天气同样缺失。
+- **根因**：`captureFrame` 读的是 `THREE.WebGLRenderTarget`，只包含 3D 场景；`composeScreenshotBlob` 之后只补了 branding 与 CTA。其余 HUD 都是 `#stage` 里的 DOM/CSS 元素，从未进入 canvas。原有测试只断言 `drawScreenshotBranding` 等函数被调用，没有断言「元素被画出来」。
+- **体力条为什么最难补**：胶囊底框不是 `<img>`，而是 `.stamina::before` 的 `border-image`（`slice 90 140 fill`、`width 32.1429% var(--stamina-frame-side)`）。截图必须用同样的九宫格几何重画，否则圆头和边框厚度都会走样。横向边宽要读元素上的 `--stamina-frame-side`（随颗数变化），不能写死。
+- **叠放坑**：`#stamina` 与 `#countdown` 的 z-index 同为 6，体力在标记里靠后，所以体力压在时钟上。按「选择器列表顺序」绘制会把时钟盖到体力上，与舞台相反；必须按 `compareDocumentPosition` 的文档序绘制。
+- **验证方式**：同一机位开/关体力各截一张，统计顶部区域的暖色像素（`R > B + 20`）：12925 → 45628。这类「叠层是否真的进图」的问题只能靠像素统计，不能只看函数存在。
+
+**Why:** 「截图」在编辑器里是重绘管线，不是 DOM 截图工具；每加一个 DOM 层，就多一份需要手动补进合成器的责任，而且失效是完全静默的。
+
+**How to apply:** 新增任何 `#stage` 内的 DOM 叠层时，把它加进 `src/screenshot-overlay.js` 的 `OVERLAY_ROOT_SELECTORS`；若该层靠伪元素出图（border-image、渐变、mask），要同步给出对应的 Canvas 重画。测试断言必须落到「画了几个图元/画在哪个坐标」，并覆盖文档序叠放。
+
+## 2026-11-11 截图合成器里三个会「静默吞掉整层」的坑
+
+- **症状**：进度条一直截不到，但代码里明明注册了这个叠层；调整顺序、加超时都没用。
+- **坑 1 — 零尺寸锚点被当成不可见**：`.phud__tick` 是 `position:absolute` 的 0×0 锚点，药丸和立柱全靠子元素溢出绘制。合成器的 `isOverlayVisible` 同时检查「样式可见」和「自身 rect > 0」，于是整排刻度锚点被剪掉。修法：拆成 `isElementShown`（只看 display/visibility/opacity）和 `isOverlayVisible`（再加尺寸），需要遍历容器时用前者。
+- **坑 2 — 一张坏图中断整趟绘制**：`drawImage` 遇到 broken `<img>` 抛 `InvalidStateError`。这个异常从 `drawStageOverlays` 冒出去被外层 catch 吞掉，于是**排在它之后的所有叠层都不再绘制**。一个失效的自由素材图层就能让进度条从截图里消失。修法：`isDrawableImage` 预检（`complete === true` 且 `naturalWidth > 0`），并给每个根节点包 try/catch，单层失败只丢自己。
+- **坑 3 — 没有上限的 `image.decode()`**：`loadScreenshotImage` 里的 `decode()` 可以永远 pending。合成器等它，截图 Promise 就永远不 resolve。用整趟超时兜底只是掩盖问题（超时后后台绘制仍在跑，还会占主线程，实测把截图拖到 31 s 并丢掉所有叠层）。正解是给**每一张图**的加载加独立上限。
+- **附带**：通用递归遍历（逐元素 `getComputedStyle` + 伪元素 + SVG 异步光栅化）又慢又容易踩坑。HUD 结构是固定的，按已知部件定向绘制更快也更可预测，且颜色/坐标仍从实时 DOM 读取，调参照样生效。
+- **验收方式**：按 `getBoundingClientRect` 换算出叠层在截图里的理论坐标，直接采样那条线：轨道渐变带 560/560 点为饱和色；再配一次开/关同机位像素差分。
+
+**Why:** 这三个坑的共同点是「失败被吞掉后看起来像功能没做」，而且互相叠加：先因为零尺寸剪掉锚点，再因为坏图抛出中断，最后用超时兜底把症状变成「截不到但也不报错」。只看是否有函数被调用、或只看有没有 warn，都定位不到。
+
+**How to apply:** 重画 DOM 叠层时，容器可见性不要用尺寸判断；任何 `drawImage` 前都要确认图可画；任何 await 都要有属于它自己的上限，别用一个整趟超时去兜底。排查「某层没进图」按「锚点是否零尺寸 → 是否有异常先抛出 → 是否卡在 await」三步走。
+
 ## 2026-11-10 Checker P4「实际点击目标」只认桥接调用的第一个参数，平台托管 CTA 必然待复核
 
 - **症状**：Playable Ad Checker（`http://10.0.0.54:18291/checker.html`，逻辑版本 `2611101347`）里 AppLovin、UnityAds 两个页签 P4 正常，Moloco、Meta、TikTok、Mintegral、Google Ads 全部 `NEEDS_REVIEW`，展开是「Android/iOS：尚未验证正确跳转」+「`ExitApi.exit` · ios · 接口未提供目标地址，需在投放后台复核目标产品」。

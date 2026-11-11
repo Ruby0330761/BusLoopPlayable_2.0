@@ -181,6 +181,25 @@ test('the node art carries the ring, the skull and the whole stem in one file', 
   assert.match(stem, /display: none/);
 });
 
+test('the readout tick outranks the fixed ticks in the parent stacking order', () => {
+  // The pill's own z-index is not enough: `.phud__tick` is positioned AND
+  // transformed, so it opens a stacking context and the pill's z-index only
+  // orders it inside that parent. Two sibling ticks sharing z-index 2 then fall
+  // back to DOM order, and the fixed node tick — later in the markup — painted
+  // over the bus readout, leaving only its rim visible. The tick itself has to
+  // be lifted above the fixed ticks.
+  const baseTick = /^\.phud__tick \{[\s\S]*?\}/m.exec(PROGRESS_HUD_CSS)?.[0] ?? '';
+  const liveTick = /\.phud__tick--live \{[\s\S]*?\}/.exec(PROGRESS_HUD_CSS)?.[0] ?? '';
+  const baseZ = Number(/z-index: (\d+)/.exec(baseTick)?.[1]);
+  const liveZ = Number(/z-index: (\d+)/.exec(liveTick)?.[1]);
+  assert.ok(Number.isFinite(baseZ), 'the base tick must declare its z-index');
+  assert.ok(Number.isFinite(liveZ), 'the live tick must lift itself');
+  assert.ok(liveZ > baseZ, `live tick z-index ${liveZ} must exceed fixed tick ${baseZ}`);
+  // It still has to stay below the bar band so the pills never cut the meter.
+  const trackZ = Number(/\.phud__track \{[\s\S]*?z-index: (\d+)/.exec(PROGRESS_HUD_CSS)?.[1]);
+  assert.ok(liveZ < trackZ, 'the readout must stay under the track band');
+});
+
 test('the readout shares the fixed pills row and only ever stacks above them', () => {
   // The brief: keep it on the same baseline as 0% / 50% / 100%, and resolve any
   // overlap by drawing it on top rather than moving it away from the bus.

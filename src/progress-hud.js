@@ -266,6 +266,15 @@ export const PROGRESS_HUD_CSS = `
 
 /* The live readout rides the bus, so it is the one tick that can slide under a
    fixed mark. It is position-driven, not a scale label. */
+.phud__tick--live {
+  /* The tick owns the stacking context: the base .phud__tick is positioned and
+     transformed, so the pill's own z-index only orders it inside its parent and
+     cannot lift it above a sibling tick. Without this, two ticks sharing
+     z-index 2 fall back to DOM order and the fixed node pill — which comes later
+     in the markup — painted over the bus's readout, leaving only the rim
+     showing. The readout is the number the player is being shown, so it wins. */
+  z-index: 3;
+}
 .phud__tick--live .phud__peg { display: none; }
 .phud__tick--live .phud__pill {
   /* Same row as the 0% / 50% / 100% pills — a shared baseline, not a second

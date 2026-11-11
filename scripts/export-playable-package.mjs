@@ -13,6 +13,7 @@ import {
 import { validateStoreLink } from '../src/store-links.js';
 import { validateCountdownConfig } from '../src/countdown.js';
 import { validateStaminaConfig } from '../src/stamina.js';
+import { validateFreeAssetConfig } from '../src/free-asset-layers.js';
 import {
   PRE_ROLL_COMPRESSION_VERSION,
   compressPreRollFile
@@ -405,6 +406,10 @@ function isPlainObject(value) {
 }
 
 export function validateTuning(tuning, template, location = 'tuning') {
+  // The template keeps `freeAssets.layers` empty so the editor does not inherit
+  // a phantom layer; the layer schema therefore lives with the feature instead
+  // of in the template.
+  if (location === 'tuning.freeAssets') return validateFreeAssetConfig(tuning);
   if (Array.isArray(template)) {
     if (!Array.isArray(tuning) || tuning.length > Math.max(template.length * 4, 256)) {
       throw new TypeError(`${location} must be a bounded array.`);

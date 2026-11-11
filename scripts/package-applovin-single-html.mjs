@@ -321,6 +321,19 @@ async function main() {
   if (Number(SCENE_TUNING.audio?.bgm?.enabled) && SCENE_TUNING.audio?.bgm?.asset) {
     realAssetUrls.add(SCENE_TUNING.audio.bgm.asset);
   }
+  // Guide-stage media is addressed from tuning too: the weather sprite and one
+  // image per free-placed layer. Neither appears in a level document, so the
+  // plain URL collection above never sees them and every one of them used to
+  // ship as the 1-byte octet-stream placeholder — the overlays silently drew
+  // nothing while the static and runtime gates still passed.
+  if (Number(SCENE_TUNING.weatherEffect?.enabled) && SCENE_TUNING.weatherEffect?.sprite) {
+    realAssetUrls.add(SCENE_TUNING.weatherEffect.sprite);
+  }
+  for (const layer of SCENE_TUNING.freeAssets?.layers ?? []) {
+    // Hidden layers still assign `src`, so the browser fetches them; they have
+    // to be inlined whenever the layer exists, not only when it is visible.
+    if (layer?.asset) realAssetUrls.add(layer.asset);
+  }
   // The picker art is not part of a level document, so it needs its own pass.
   for (const option of choiceOptions) realAssetUrls.add(option.image);
   collectAssetUrls(html, realAssetUrls);

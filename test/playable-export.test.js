@@ -692,6 +692,10 @@ test('homepage editor captures borderless 9:16 screenshots', async () => {
   assert.match(main, /composeScreenshotBlob/);
   assert.match(main, /drawScreenshotBranding/);
   assert.match(main, /drawScreenshotCta/);
+  // The canvas capture cannot see DOM HUDs, so the compositor has to replay
+  // them or the PNG loses stamina / countdown / weather entirely.
+  assert.match(main, /drawScreenshotStageOverlays/);
+  assert.match(main, /drawStageOverlays\(context, \{ stage, width, height, loadImage: loadScreenshotImage \}\)/);
   assert.match(main, /downloadBlob\(filename, imageBlob\)/);
   assert.match(view, /async captureFrame\(\{ width, height \}\)/);
   assert.match(view, /new THREE\.WebGLRenderTarget\(captureWidth, captureHeight/);

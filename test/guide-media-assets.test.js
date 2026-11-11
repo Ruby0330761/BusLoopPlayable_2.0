@@ -162,3 +162,45 @@ test('the guide tab owns the sound groups, not the visual tab', () => {
   assert.match(editorSource, /inputs\.get\('audio\.bgm\.asset'\)\?\.row\.closest\('\.editor-section'\)/);
   assert.match(editorSource, /title: '\\u80cc\\u666f\\u97f3\\u4e50\(BGM\)'/);
 });
+
+test('the packager inlines the weather sprite and every free-asset layer', async () => {
+  const packager = await readFile(new URL('../scripts/package-applovin-single-html.mjs', import.meta.url), 'utf8');
+  // Both are addressed from tuning only, so they need an explicit whitelist
+  // entry; the level-document scan cannot see them.
+  assert.match(packager, /SCENE_TUNING\.weatherEffect\?\.enabled/);
+  assert.match(packager, /realAssetUrls\.add\(SCENE_TUNING\.weatherEffect\.sprite\)/);
+  assert.match(packager, /SCENE_TUNING\.freeAssets\?\.layers/);
+  assert.match(packager, /realAssetUrls\.add\(layer\.asset\)/);
+});
+
+test('a disabled weather effect does not request its sprite', () => {
+  // The packager only inlines the sprite of an enabled effect, so loading it
+  // while off would ship a request the single-file ad cannot answer.
+  assert.match(weatherSource, /if \(Number\(config\.enabled\) && config\.sprite !== spriteSource\) loadSprite/);
+});
+
+test('export accepts real free-asset layers even though the template list is empty', async () => {
+  const { validateTuning } = await import('../scripts/export-playable-package.mjs');
+  const layer = {
+    id: 'l1', asset: '/assets/editor-free-assets/a.webp', label: 'a',
+    x: 540, y: 1080, width: 300, height: 300, opacity: 1, rotation: 0, locked: 0, visible: 1
+  };
+  assert.deepEqual(
+    validateTuning({ freeAssets: { layers: [layer] } }, SCENE_TUNING).freeAssets.layers,
+    [layer]
+  );
+  // The template must stay empty so the editor never inherits a phantom layer.
+  assert.deepEqual(SCENE_TUNING.freeAssets.layers, []);
+  assert.throws(
+    () => validateTuning({ freeAssets: { layers: [{ asset: '/a.png', bogus: 1 }] } }, SCENE_TUNING),
+    /not supported/
+  );
+  assert.throws(
+    () => validateTuning({ freeAssets: { layers: [{ asset: '/a.png', width: 1 }] } }, SCENE_TUNING),
+    /width must be between/
+  );
+  assert.throws(
+    () => validateTuning({ freeAssets: { layers: [{ asset: '' }] } }, SCENE_TUNING),
+    /asset is required/
+  );
+});
