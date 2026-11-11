@@ -1193,6 +1193,14 @@ button:hover { transform: translateY(-1px); background: #fff; }
   font-size: 11.5px; line-height: 1.65;
 }
 .editor-about-entry-changes li { margin: 2px 0; }
+/* The day's other build stamps. Kept quiet: they answer "is this the build I
+   deployed?" without competing with the actual change list. */
+.editor-about-entry-builds {
+  display: block; margin: 8px 0 0; padding-top: 7px;
+  border-top: 1px dashed rgba(16,35,61,.1);
+  color: #8aa0b2; font: 700 10px/1.5 'Poppins Branding', Arial, sans-serif;
+  overflow-wrap: anywhere;
+}
 
 @media (max-width: 560px) {
   .editor-about-panel { padding: 10px; }

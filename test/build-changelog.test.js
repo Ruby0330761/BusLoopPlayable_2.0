@@ -2,13 +2,13 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { readFile } from 'node:fs/promises';
 
-import { BUILD_CHANGELOG, findChangelogEntry } from '../src/build-changelog.js';
+import { BUILD_CHANGELOG, changelogVersions, findChangelogEntry } from '../src/build-changelog.js';
 import { BUILD_VERSION } from '../src/build-version.js';
 
 const editorSource = await readFile(new URL('../src/scene-editor.js', import.meta.url), 'utf8');
 const styleSource = await readFile(new URL('../src/styles.css', import.meta.url), 'utf8');
 
-test('the changelog ships at least one documented release', () => {
+test('the changelog ships one entry per shipped day', () => {
   assert.ok(Array.isArray(BUILD_CHANGELOG));
   assert.ok(BUILD_CHANGELOG.length > 0);
   for (const entry of BUILD_CHANGELOG) {
@@ -20,22 +20,43 @@ test('the changelog ships at least one documented release', () => {
     for (const change of entry.changes) {
       assert.ok(typeof change === 'string' && change.trim().length > 0);
     }
+    // Every entry covers at least its own stamp, and `version` is the newest.
+    const stamps = changelogVersions(entry);
+    assert.ok(stamps.length > 0, `${entry.date} must cover at least one build`);
+    assert.equal(stamps[0], entry.version, `${entry.date} version must be its newest build`);
+    for (const stamp of stamps) {
+      assert.match(stamp, /^\d{8}-\d{4}$/u, `${stamp} must be a build stamp`);
+      assert.equal(stamp.slice(0, 8), entry.date.replaceAll('-', ''),
+        `${stamp} belongs to ${entry.date}, not ${stamp.slice(0, 8)}`);
+    }
   }
 });
 
-test('the changelog is newest first and has no duplicate versions', () => {
-  const versions = BUILD_CHANGELOG.map((entry) => entry.version);
-  assert.equal(new Set(versions).size, versions.length, 'versions must be unique');
-  const sorted = [...versions].sort().reverse();
-  assert.deepEqual(versions, sorted, 'entries must be listed newest first');
+test('a day is documented once, however many builds it took', () => {
+  // The point of the merge: 2026-11-10 shipped eleven builds of one work stream
+  // and used to render as eleven near-identical cards.
+  const dates = BUILD_CHANGELOG.map((entry) => entry.date);
+  assert.equal(new Set(dates).size, dates.length, 'each day gets exactly one entry');
 });
 
-test('the running build has an entry, so 关于 always explains itself', () => {
+test('the changelog is newest first and no build stamp appears twice', () => {
+  const versions = BUILD_CHANGELOG.map((entry) => entry.version);
+  assert.equal(new Set(versions).size, versions.length, 'day versions must be unique');
+  const sorted = [...versions].sort().reverse();
+  assert.deepEqual(versions, sorted, 'entries must be listed newest first');
+  const allStamps = BUILD_CHANGELOG.flatMap(changelogVersions);
+  assert.equal(new Set(allStamps).size, allStamps.length, 'a build stamp may only belong to one day');
+});
+
+test('the running build resolves to its day, so 关于 always explains itself', () => {
   // Shipping a release without notes is the failure this catches: the panel
-  // would show an older version as "current" and hide what just changed.
+  // would show an older day as "current" and hide what just changed.
   const entry = findChangelogEntry(BUILD_VERSION);
   assert.ok(entry, `no changelog entry for build ${BUILD_VERSION}`);
-  assert.equal(entry.version, BUILD_VERSION);
+  assert.ok(changelogVersions(entry).includes(BUILD_VERSION));
+  // A mid-day build still resolves through the day's `versions` list.
+  const midDay = changelogVersions(entry)[changelogVersions(entry).length - 1];
+  assert.equal(findChangelogEntry(midDay)?.date, entry.date);
 });
 
 test('findChangelogEntry tolerates unknown and malformed versions', () => {
@@ -49,13 +70,16 @@ test('findChangelogEntry tolerates unknown and malformed versions', () => {
 });
 
 test('the editor header exposes an 关于 button and a release-notes dialog', () => {
-  assert.match(editorSource, /import \{ BUILD_CHANGELOG \} from '\.\/build-changelog\.js'/);
+  assert.match(editorSource, /import \{ BUILD_CHANGELOG, changelogVersions \} from '\.\/build-changelog\.js'/);
   assert.match(editorSource, /class="editor-about"/);
   assert.match(editorSource, /class="editor-about-panel"/);
   assert.match(editorSource, /role="dialog"/);
   assert.match(editorSource, /renderChangelogList\(BUILD_VERSION\)/);
   // The current build is marked, so the operator knows these are their notes.
-  assert.match(editorSource, /entry\.version === currentVersion/);
+  assert.match(editorSource, /const stamps = changelogVersions\(entry\);/);
+  assert.match(editorSource, /const isCurrent = stamps\.includes\(currentVersion\);/);
+  // The day's other build stamps stay visible so the on-screen stamp is traceable.
+  assert.match(editorSource, /editor-about-entry-builds/);
   assert.match(editorSource, /editor-about-entry-badge/);
   // Escape, the close button and the backdrop all dismiss it.
   assert.match(editorSource, /event\.key === 'Escape'/);

@@ -11,7 +11,7 @@ import { LEVEL_1 } from './level-data.js';
 import { isValidStoreLink } from './store-links.js';
 import { detectPlayfieldHorizon, resolveBackgroundHorizon } from './background-alignment.js';
 import { BUILD_VERSION } from './build-version.js';
-import { BUILD_CHANGELOG } from './build-changelog.js';
+import { BUILD_CHANGELOG, changelogVersions } from './build-changelog.js';
 import { normalizeCountdownConfig } from './countdown.js';
 import { BRANDING_LOCALE_OPTIONS } from './branding-localization.js';
 import {
@@ -1214,10 +1214,19 @@ function renderChangelogList(currentVersion) {
     return '<p class="editor-about-empty">还没有版本记录。</p>';
   }
   return BUILD_CHANGELOG.map((entry) => {
-    const isCurrent = entry.version === currentVersion;
+    // One entry per day now, so "current" means this build belongs to that day
+    // — not that it is the day's last stamp.
+    const stamps = changelogVersions(entry);
+    const isCurrent = stamps.includes(currentVersion);
     const items = (entry.changes ?? [])
       .map((change) => `<li>${escapeChangelogText(change)}</li>`)
       .join('');
+    // The day's other builds stay visible so an operator can still match the
+    // stamp on screen to the notes for it.
+    const otherStamps = stamps.filter((stamp) => stamp !== currentVersion);
+    const stampNote = otherStamps.length > 0
+      ? `<span class="editor-about-entry-builds">当天构建：${otherStamps.map((stamp) => escapeChangelogText(stamp)).join(' · ')}</span>`
+      : '';
     return `<article class="editor-about-entry${isCurrent ? ' is-current' : ''}">`
       + `<div class="editor-about-entry-head">`
       + `<span class="editor-about-entry-version">v${escapeChangelogText(entry.version)}</span>`
@@ -1226,6 +1235,7 @@ function renderChangelogList(currentVersion) {
       + `</div>`
       + `<h4 class="editor-about-entry-title">${escapeChangelogText(entry.title)}</h4>`
       + (items ? `<ul class="editor-about-entry-changes">${items}</ul>` : '')
+      + stampNote
       + `</article>`;
   }).join('');
 }
