@@ -43,6 +43,12 @@ const getHiddenVehicleRevealDuration = () => Math.max(
 );
 const GARAGE_CONTAINER_TYPE = 2;
 const CONVEYOR_BELT_CONTAINER_TYPE = 3;
+// Smallest bump travel a blocked tap animates. `getCollisionMotion` divides the
+// distance by the configured speed, so a geometric gap of zero collapses the
+// whole bump into its 1 ms floor and the car looks frozen. 0.06 is about an
+// eighth of a car length: enough to read as "it hit something", small enough to
+// stay inside the gap a diagonal neighbour leaves.
+const MIN_VISIBLE_BUMP_DISTANCE = 0.06;
 // CONVEYOR_RIGHT_VISIBILITY_SCALE = 0.93
 const CONVEYOR_RIGHT_VISIBILITY_SCALE = CONVEYOR_MECHANISM_TUNING.rightVehicleVisibilityScale;
 
@@ -1059,9 +1065,15 @@ export class BusLoopGame {
       // travel is clamped for the ANIMATION only: blocking behaviour is
       // unchanged, the car just meets the obstacle sooner.
       const maxBumpDistance = Math.max(0, Number(SCENE_TUNING.collision?.maxBumpDistance) || 0);
+      // A diagonal neighbour can already be touching the nose, so the geometric
+      // gap is zero. `getCollisionMotion` then clamps the animation to its 1 ms
+      // floor: the car never appears to move, and the player reads the tap as
+      // ignored. Give the bump a small visible floor so a blocked tap always
+      // shows the car nose forward before it rebounds.
+      const collisionDistance = Math.max(MIN_VISIBLE_BUMP_DISTANCE, contact.distance);
       const bumpDistance = maxBumpDistance > 0
-        ? Math.min(contact.distance, maxBumpDistance)
-        : contact.distance;
+        ? Math.min(collisionDistance, maxBumpDistance)
+        : collisionDistance;
       const motion = getCollisionMotion(bumpDistance);
       Object.assign(vehicle, {
         state: 'colliding', motion: 0,

@@ -1940,8 +1940,14 @@ test('blocked click uses Unity collision advance, contact hit, and return phases
   const attacker = game.getVehicle(LEVEL12_BLOCKED_ID);
   assert.equal(attacker.state, 'colliding');
   assert.equal(attacker.collision.targetId, 1);
-  // The Unity-pose cars keep a small gap, so contact advance starts from it.
-  assert.equal(Number(attacker.collision.distance.toFixed(5)), 0.00842);
+  // The Unity-pose cars keep a small gap (0.00842), but the bump is floored to a
+  // visible travel: at the raw gap `getCollisionMotion` schedules a 1 ms
+  // animation and the car looks like it never moved, which reads as a dead tap.
+  assert.equal(Number(attacker.collision.distance.toFixed(5)), 0.06);
+  assert.ok(attacker.collision.forwardDuration >= 0.01,
+    `bump must stay visible, got ${attacker.collision.forwardDuration}s`);
+  // The real geometric gap still travels with the animation for diagnostics.
+  assert.equal(Number(attacker.collision.actualDistance.toFixed(5)), 0.00842);
   const forwardDuration = attacker.collision.forwardDuration;
   advance(game, forwardDuration + .01, .005);
   assert.ok(game.getVehicle(1).hit);
@@ -1949,6 +1955,32 @@ test('blocked click uses Unity collision advance, contact hit, and return phases
   advance(game, .5);
   assert.equal(attacker.state, 'parked');
   assert.equal(attacker.collision, null);
+});
+
+test('every blocked tap animates a visible bump, even when the gap is zero', () => {
+  // Diagonal neighbours can sit flush against the nose, so the geometric gap is
+  // 0. Without a floor the bump collapsed to `getCollisionMotion`'s 1 ms minimum
+  // and the car appeared frozen. Walk every parked car of the shipped levels and
+  // assert the scheduled forward phase is long enough to be seen.
+  let blocked = 0;
+  for (const [key, level] of Object.entries(LEVEL_CATALOG)) {
+    if (!level?.vehicles?.length) continue;
+    let game;
+    try { game = new BusLoopGame(level); } catch { continue; }
+    for (const id of game.vehicles.filter((v) => v.state === 'parked').map((v) => v.id)) {
+      const vehicle = game.getVehicle(id);
+      if (!vehicle || vehicle.state !== 'parked') continue;
+      const result = game.clickVehicle(id);
+      if (result.ok || result.reason !== 'blocked') continue;
+      blocked += 1;
+      assert.ok(
+        Number(vehicle.collision?.forwardDuration) >= 0.01,
+        `${key} vehicle ${id} bump was ${vehicle.collision?.forwardDuration}s`
+      );
+    }
+  }
+  // Guard against the loop silently finding nothing to assert.
+  assert.ok(blocked > 100, `expected many blocked taps, measured ${blocked}`);
 });
 
 test('blocked click targets the directly overlapping visual blocker', () => {
@@ -2896,7 +2928,10 @@ test('collision bump distance is capped for animation while the real gap is pres
     assert.equal(SCENE_TUNING.collision.maxBumpDistance, 0.5);
     const source = readFileSync(join('src', 'game-model.js'), 'utf8');
     assert.match(source, /const maxBumpDistance = Math\.max\(0, Number\(SCENE_TUNING\.collision\?\.maxBumpDistance\) \|\| 0\)/);
-    assert.match(source, /const bumpDistance = maxBumpDistance > 0[\s\S]*?Math\.min\(contact\.distance, maxBumpDistance\)/);
+    // The travel fed to the animation is the geometric gap raised to a visible
+    // floor, then capped by `maxBumpDistance`.
+    assert.match(source, /const collisionDistance = Math\.max\(MIN_VISIBLE_BUMP_DISTANCE, contact\.distance\)/);
+    assert.match(source, /const bumpDistance = maxBumpDistance > 0[\s\S]*?Math\.min\(collisionDistance, maxBumpDistance\)/);
     assert.match(source, /const motion = getCollisionMotion\(bumpDistance\)/);
     // The true obstacle gap stays available for diagnostics and future tuning.
     assert.match(source, /actualDistance: contact\.distance/);

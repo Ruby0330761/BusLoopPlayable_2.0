@@ -346,21 +346,35 @@ function projectedFallbackContact(attackerBox, candidateBox) {
   };
 }
 
-// Zero-distance contact on whichever front corner faces the blocker. Used when
-// the car is blocked by a volume that never reaches past its nose (a garage
-// body hugging it, or a diagonal neighbour grazing a front corner): the impact
-// still has to appear at the front of the car the player just tapped.
+// Contact on whichever front corner faces the blocker. Used when the car is
+// blocked by a volume that never reaches past its nose (a garage body hugging
+// it, or a diagonal neighbour grazing a front corner): the impact still has to
+// appear at the front of the car the player just tapped.
+//
+// The reported distance must still be the real gap the car can travel before
+// touching, not zero. A zero distance collapses the bump animation to its
+// minimum duration (`getCollisionMotion` clamps to 1 ms), so a car blocked by a
+// diagonal neighbour appeared to not move at all — the player saw the impact
+// spark and concluded the tap was ignored. A parked row of diagonal cars made
+// this the normal case, not an edge case.
 function noseCornerContact(attackerBox, candidateBox) {
   const delta = subtract(candidateBox.position, attackerBox.position);
   const halfLength = attackerBox.size.length * 0.5;
   const halfWidth = attackerBox.size.width * 0.5;
   const forward = dot(delta, attackerBox.forward);
   const lateral = dot(delta, attackerBox.right);
+  // How far forward the car can go before its front edge meets the blocker:
+  // the blocker's leading edge along the attacker's heading, minus the attacker's
+  // own half length. Clamped at zero so a neighbour already overlapping the nose
+  // still reports a forward-only bump.
+  const candidateForwardReach = forward - projectedRadius(candidateBox, attackerBox.forward);
+  const distance = Math.max(0, candidateForwardReach - halfLength);
   // Sit on the front edge, as close to the blocker as that edge allows, so a
   // diagonal blocker reports a corner instead of the centre of the bumper.
-  const contactForward = halfLength;  const contactLateral = Math.max(-halfWidth, Math.min(halfWidth, lateral));
+  const contactForward = halfLength + distance;
+  const contactLateral = Math.max(-halfWidth, Math.min(halfWidth, lateral));
   return {
-    distance: 0,
+    distance,
     position: add(
       add(attackerBox.position, scale(attackerBox.forward, contactForward)),
       scale(attackerBox.right, contactLateral)
