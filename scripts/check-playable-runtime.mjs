@@ -603,12 +603,16 @@ function readinessExpression() {
     const preRollFinished = !preRoll || preRoll.hidden || preRollStyle.display === 'none' ||
       preRollStyle.visibility === 'hidden' || Number(preRollStyle.opacity) <= 0.01 ||
       preRollRect.width < 2 || preRollRect.height < 2;
+    const staminaIntro = document.querySelector('#stamina-intro');
+    const introStyle = staminaIntro ? getComputedStyle(staminaIntro) : null;
+    const staminaIntroFinished = !staminaIntro || staminaIntro.hidden || introStyle.display === 'none' || introStyle.visibility === 'hidden';
     const progressNode = document.querySelector('#loading-progress-value');
     const progress = Number.parseFloat(progressNode && progressNode.textContent || '0');
     const canvas = document.querySelector('#game-canvas') || document.querySelector('canvas');
     const rect = canvas ? canvas.getBoundingClientRect() : null;
     const images = Array.from(document.images || [], (image) => ({
       srcAttribute: String(image.getAttribute('src') || '').slice(0, 240),
+      srcsetAttribute: String(image.getAttribute('srcset') || '').slice(0, 240),
       currentSrc: String(image.currentSrc || image.src || '').slice(0, 240),
       complete: Boolean(image.complete),
       naturalWidth: image.naturalWidth || 0,
@@ -617,7 +621,12 @@ function readinessExpression() {
       className: String(image.className || '').slice(0, 160),
       alt: String(image.alt || '').slice(0, 160)
     }));
-    const brokenImages = images.filter((image) => image.complete && image.naturalWidth === 0);
+    // Inactive HUD images intentionally have no source. They are complete
+    // without decoded pixels; only requested images can represent a failure.
+    const brokenImages = images.filter((image) => (
+      Boolean(image.srcAttribute.trim() || image.srcsetAttribute.trim())
+      && image.complete && image.naturalWidth === 0
+    ));
     let sceneChildren = null;
     try { sceneChildren = window.__busLoop && window.__busLoop.view && window.__busLoop.view.scene.children.length; } catch (_) {}
     // The scene falls back to untextured geometry when any Unity asset fails to
@@ -642,6 +651,7 @@ function readinessExpression() {
       loadingProgress: Number.isFinite(progress) ? progress : null,
       preRollPresent: !!preRoll,
       preRollFinished,
+      staminaIntroFinished,
       canvasPresent: !!canvas,
       canvasWidth: canvas ? canvas.width : 0,
       canvasHeight: canvas ? canvas.height : 0,
@@ -1211,7 +1221,7 @@ async function runBrowser({
         return null;
       });
       if (readiness?.documentReady && readiness.runtimeReady && readiness.loadingHidden
-        && readiness.preRollFinished && readiness.canvasVisible) break;
+        && readiness.preRollFinished && readiness.staminaIntroFinished && readiness.canvasVisible) break;
     }
     await delay(500);
     readiness = await evaluate(client, readinessExpression()) ?? readiness;
@@ -1303,6 +1313,7 @@ export async function capturePlayableBackupImage({
       || readiness.runtimeReady !== true
       || readiness.loadingHidden !== true
       || readiness.preRollFinished !== true
+      || readiness.staminaIntroFinished !== true
       || readiness.canvasVisible !== true
       || readiness.hostProbe?.canvasPixels?.nonBlank !== true
       || hostErrors.length > 0
@@ -1402,6 +1413,9 @@ export async function checkPlayableRuntimeArtifact({
       check('RUNTIME-PREROLL-001', '前贴视频已平滑进入试玩', readiness.preRollFinished === true, {
         preRollPresent: readiness.preRollPresent,
         preRollFinished: readiness.preRollFinished
+      }),
+      check('RUNTIME-INTRO-001', '体力开场说明已结束，输入可进入试玩', readiness.staminaIntroFinished === true, {
+        staminaIntroFinished: readiness.staminaIntroFinished
       }),
       check('RUNTIME-CANVAS-001', 'Canvas 尺寸有效且可见', readiness.canvasPresent === true
         && readiness.canvasWidth > 0 && readiness.canvasHeight > 0 && readiness.canvasVisible === true, {

@@ -13,6 +13,14 @@ export const SCENE_TUNING = {
     "spectrumLate": 16749824,
     "spectrumEnd": 15340056
   },
+  "stamina": {
+    "enabled": 0,
+    "lives": 3,
+    "introEnabled": 1,
+    "offsetX": 0,
+    "offsetY": 0,
+    "scale": 1
+  },
   "countdown": {
     "enabled": 0,
     "durationSeconds": 30,

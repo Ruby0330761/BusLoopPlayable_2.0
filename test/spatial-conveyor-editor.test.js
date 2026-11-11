@@ -183,7 +183,9 @@ test('spatial point editor is an on-demand overlay with validated explicit saves
   assert.match(editorSource, /setBoardingFromPoint/);
   assert.match(editorSource, /spatial-point-selection-box/);
   assert.match(editorSource, /method: 'PUT'/);
-  assert.match(mainSource, /if \(platformVisible && !spatialEditorActive && !preRollController\?\.isActive\(\)\) \{/);
+  // The audio gate also stops during the stamina opening, so the condition grew
+  // a term; assert the parts this test actually cares about.
+  assert.match(mainSource, /if \(platformVisible && !spatialEditorActive && !preRollController\?\.isActive\(\)/);
   assert.match(mainSource, /delta \* getTimeScale\(\)/);
   assert.match(viteSource, /validateSpatialPackageData/);
   assert.match(viteSource, /SPATIAL_BACKUP_ROOT/);

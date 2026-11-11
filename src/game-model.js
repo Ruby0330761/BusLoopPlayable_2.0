@@ -3,6 +3,7 @@ import { SCENE_TUNING } from './scene-tuning.js';
 import { getVehicleAreaPivot } from './vehicle-area.js';
 import { resolveParkingSpots, resolveParkingStartX } from './stage-scene.js';
 import { CONVEYOR_MECHANISM_TUNING } from './conveyor-mechanism-config.js';
+import { normalizeStaminaConfig } from './stamina.js';
 import {
   UNITY_CURVES,
   UNITY_VEHICLE_MOTION,
@@ -249,6 +250,9 @@ export class BusLoopGame {
     this.resetVersion += 1;
     this.time = 0;
     this.status = 'playing';
+    const stamina = normalizeStaminaConfig(SCENE_TUNING.stamina);
+    this.stamina = { enabled: Boolean(stamina.enabled), lives: stamina.lives, remaining: stamina.lives };
+    this.pendingStaminaRescue = null;
     this.speedMultiplier = 1;
     this.boardingEventId = 0;
     this.turnVehicleEventId = 0;
@@ -396,6 +400,8 @@ export class BusLoopGame {
         conveyorExitVisible: !conveyor,
         spotIndex: null,
         boardedGroups: 0,
+        rescueDispatched: false,
+        reviveFromStation: false,
         motion: 0,
         motionData: null,
         collision: null,
@@ -529,7 +535,7 @@ export class BusLoopGame {
     for (const gate of this.mechanicState?.gateQueues ?? []) {
       const ordered = gate.vehicleIds
         .map((id) => this.getVehicle(id))
-        .filter((vehicle) => vehicle && vehicle.state !== 'done' && vehicle.state !== 'moving-to-spot')
+        .filter((vehicle) => vehicle && !['done', 'moving-to-spot', 'revive-boarding', 'revive-departing'].includes(vehicle.state))
         .sort((first, second) => first.gateIndex - second.gateIndex);
       const placements = layoutGateQueue(ordered, gate.path, gate.gap, gateVehicleLength);
       for (const vehicle of ordered) {
@@ -769,6 +775,7 @@ export class BusLoopGame {
 
   snapshot() {
     return {
+      stamina: { ...this.stamina, busy: this.isStaminaBusy() },
       time: this.time,
       resetVersion: this.resetVersion,
       status: this.status,
@@ -822,6 +829,7 @@ export class BusLoopGame {
 
   renderState() {
     const state = this.renderStateCache ??= {};
+    state.stamina = { ...this.stamina, busy: this.isStaminaBusy() };
     state.time = this.time;
     state.resetVersion = this.resetVersion;
     state.status = this.status;
@@ -931,7 +939,7 @@ export class BusLoopGame {
       const exitHalfWidth = Math.max(0, (conveyor.width - conveyor.vehicleWidth) * 0.5);
       for (let index = 0; index < vehicleIds.length; index += 1) {
         const vehicle = this.getVehicle(vehicleIds[index]);
-        if (!vehicle) continue;
+        if (!vehicle || ['revive-boarding', 'revive-departing'].includes(vehicle.state)) continue;
         const slotIndex = Number.isInteger(vehicle.conveyorIndex) ? vehicle.conveyorIndex : index;
         const centeredDistance = ((slotIndex * unitLength + conveyor.phase * contentLength) % contentLength)
           - contentLength * 0.5 + unitLength * 0.5;
@@ -1036,10 +1044,11 @@ export class BusLoopGame {
 
   clickVehicle(id) {
     if (this.status !== 'playing') return { ok: false, reason: 'finished' };
+    if (this.isStaminaBusy()) return { ok: false, reason: 'stamina-rescue-in-progress' };
     const vehicle = this.getVehicle(id);
     if (!this.canMoveToStation(vehicle)) return { ok: false, reason: 'unavailable' };
     const spot = this.spots.find((candidate) => candidate.vehicleId === null);
-    if (!spot) {
+    if (!spot && !this.stamina.enabled) {
       this.lastEvent = { type: 'spots-full', vehicleId: id };
       this.checkEndState();
       this.emit();
@@ -1060,6 +1069,9 @@ export class BusLoopGame {
         return { ok: false, reason: 'blocked', blockers };
       }
       const target = contact.candidate.vehicle ?? null;
+      if (this.stamina.enabled && this.stamina.remaining > 0 && target) {
+        this.pendingStaminaRescue = { phase: 'contact', source: 'collision', targetId: target.id };
+      }
       // A distant blocker makes the car lunge across the board before the hit
       // lands, which reads as "the collision happened far away". The bump
       // travel is clamped for the ANIMATION only: blocking behaviour is
@@ -1101,6 +1113,12 @@ export class BusLoopGame {
       };
       this.emit();
       return { ok: false, reason: 'blocked', blockers };
+    }
+    if (!spot) {
+      this.lastEvent = { type: 'spots-full', vehicleId: id };
+      this.checkEndState();
+      this.emit();
+      return { ok: false, reason: 'spots-full' };
     }
     if (vehicle.isHidden && !vehicle.hiddenRevealed) {
       this.startHiddenVehicleReveal(vehicle);
@@ -1186,6 +1204,138 @@ export class BusLoopGame {
     return true;
   }
 
+  isStaminaBusy() {
+    return Boolean(this.pendingStaminaRescue);
+  }
+
+  startStaminaRescue(vehicle, source = 'collision') {
+    if (this.status !== 'playing' || !this.stamina.enabled || this.stamina.remaining <= 0 || !vehicle) return false;
+    const pending = this.pendingStaminaRescue;
+    if (pending && (pending.phase !== 'contact' || pending.targetId !== vehicle.id)) return false;
+    if (['done', 'in-garage', 'in-elevator', 'revive-boarding', 'revive-departing'].includes(vehicle.state)) return false;
+    const fromStation = Number.isInteger(vehicle.spotIndex) && this.spots[vehicle.spotIndex]?.vehicleId === vehicle.id;
+    const position = fromStation ? this.getSpotPosition(vehicle.spotIndex) : vehicle;
+    this.pendingStaminaRescue = { phase: 'boarding', source: pending?.source ?? source, targetId: vehicle.id };
+    this.stamina.remaining -= 1;
+    this.failureConditionStartedAt = null;
+    Object.assign(vehicle, {
+      state: 'revive-boarding', rescueDispatched: true, reviveFromStation: fromStation,
+      motion: 0, collision: null, hit: null, turnRotation: null,
+      hiddenRevealed: true, hiddenReveal: null, ambulanceActive: false
+    });
+    const sources = [];
+    const needed = Math.max(0, vehicle.seats - vehicle.boardedGroups);
+    for (const slot of this.slots) {
+      if (sources.length >= needed) break;
+      if (slot.colorIndex !== vehicle.colorIndex) continue;
+      sources.push({ progress: slot.progress, slotIndex: slot.index });
+      slot.colorIndex = null;
+      slot.entryIndex = null;
+      slot.entryMotion = null;
+    }
+    for (let index = 0; index < this.queues.length && sources.length < needed; index += 1) {
+      const queue = this.queues[index];
+      for (let itemIndex = 0; itemIndex < queue.length && sources.length < needed;) {
+        if (queue[itemIndex].colorIndex !== vehicle.colorIndex) { itemIndex += 1; continue; }
+        const item = queue.splice(itemIndex, 1)[0];
+        sources.push({ queueIndex: index, queueDistance: item.distanceFromHead, progress: this.entryPercents[index] ?? 0 });
+      }
+    }
+    for (let index = 0; index < this.sourceQueues.length && sources.length < needed; index += 1) {
+      const sourceQueue = this.sourceQueues[index];
+      for (let itemIndex = 0; itemIndex < sourceQueue.length && sources.length < needed;) {
+        if (sourceQueue[itemIndex] !== vehicle.colorIndex) { itemIndex += 1; continue; }
+        sourceQueue.splice(itemIndex, 1);
+        sources.push({ queueIndex: index, queueDistance: this.queueAvailableLengths[index] ?? 0, progress: this.entryPercents[index] ?? 0 });
+      }
+    }
+    for (let index = 0; index < this.queues.length; index += 1) {
+      const queue = this.queues[index];
+      const sourceQueue = this.sourceQueues[index];
+      while (queue.length < this.queueCapacities[index] && sourceQueue.length > 0) {
+        const distance = (queue.at(-1)?.distanceFromHead ?? -this.queueSpacing) + this.queueSpacing;
+        queue.push({
+          id: this.nextPassengerId++, colorIndex: sourceQueue.shift(), createdAt: this.time,
+          distanceFromHead: Math.min(distance, this.queueAvailableLengths[index] ?? distance)
+        });
+      }
+    }
+    const duration = 0.65;
+    for (const [index, sourcePosition] of sources.entries()) {
+      this.boardingEvents.push({
+        id: ++this.boardingEventId, vehicleId: vehicle.id, spotIndex: fromStation ? vehicle.spotIndex : null,
+        colorIndex: vehicle.colorIndex, ...sourcePosition, startedAt: this.time + index * 0.055,
+        duration, rescue: true, targetPosition: { x: position.x, z: position.z }
+      });
+    }
+    const eventLimit = Math.max(24, sources.length);
+    if (this.boardingEvents.length > eventLimit) this.boardingEvents.splice(0, this.boardingEvents.length - eventLimit);
+    vehicle.boardedGroups += sources.length;
+    const passengerStagger = Math.max(0, (this.level.groupSize ?? LEVEL_1.groupSize) - 1)
+      * Math.max(0, Number(SCENE_TUNING.passengers?.aboardInterval) || 0);
+    vehicle.motionData = {
+      elapsed: 0, duration: Math.max(0.75, Math.max(0, sources.length - 1) * 0.055 + duration + passengerStagger + 0.12)
+    };
+    this.recordEvent({ type: 'stamina-rescue-started', vehicleId: vehicle.id, source: this.pendingStaminaRescue.source, remaining: this.stamina.remaining });
+    return true;
+  }
+
+  updateStaminaRescue(vehicle, delta) {
+    if (this.pendingStaminaRescue?.targetId !== vehicle.id) return;
+    const data = vehicle.motionData;
+    data.elapsed += delta;
+    vehicle.motion = clamp01(data.elapsed / data.duration);
+    if (vehicle.motion < 1) return;
+    if (vehicle.state === 'revive-boarding') {
+      let departure;
+      if (vehicle.reviveFromStation) {
+        const config = SCENE_TUNING.vehicleDeparturePath ?? {};
+        const backwardPath = buildRoundedPath(buildOutStationPoints(this.getSpotPosition(vehicle.spotIndex), config), config);
+        const corner = backwardPath.segments.at(-1)?.p1 ?? this.getSpotPosition(vehicle.spotIndex);
+        const forwardPath = buildRoundedPath(buildDepartureForwardPoints(corner, config), config);
+        const backwardDuration = backwardPath.length / Math.max(0.001, config.backwardSpeed ?? 2.5);
+        const forwardDuration = forwardPath.length / Math.max(0.001, config.forwardSpeed ?? 10);
+        departure = { backwardPath, forwardPath, backwardDuration, forwardDuration, duration: Math.max(0.001, backwardDuration + forwardDuration) };
+      } else {
+        const spots = resolveParkingSpots();
+        const laneZ = spots.z + 1.65;
+        const lane = { ...visualToVehicleAreaPoint(resolveParkingStartX(spots), laneZ), yaw: visualYawToVehicleAreaYaw(90) };
+        const points = buildToStationPoints(vehicle, lane, SCENE_TUNING.vehiclePath);
+        points.push(visualToVehicleAreaPoint(8.5, laneZ));
+        const path = buildRoundedPath(points, SCENE_TUNING.vehiclePath);
+        departure = { path, duration: Math.max(0.9, path.length / 7) };
+      }
+      Object.assign(vehicle, { state: 'revive-departing', motion: 0, motionData: { ...departure, elapsed: 0 } });
+      this.pendingStaminaRescue.phase = 'departing';
+      return;
+    }
+    for (const spot of this.spots) if (spot.vehicleId === vehicle.id) spot.vehicleId = null;
+    for (const conveyor of this.mechanicState.conveyors) {
+      conveyor.vehicleIds = conveyor.vehicleIds.filter((id) => id !== vehicle.id);
+      conveyor.hidden = conveyor.vehicleIds.length === 0;
+    }
+    for (const garage of this.mechanicState.garages) {
+      garage.vehicleIds = garage.vehicleIds.filter((id) => id !== vehicle.id);
+      if (garage.exitingVehicleId === vehicle.id) garage.exitingVehicleId = null;
+    }
+    for (const container of [...(this.mechanicState.gateQueues ?? []), ...(this.mechanicState.elevators ?? [])]) {
+      container.vehicleIds = container.vehicleIds.filter((id) => id !== vehicle.id);
+    }
+    Object.assign(vehicle, {
+      state: 'done', motion: 0, motionData: null, spotIndex: null, conveyorId: null,
+      gateIndex: null, gatePath: null, elevatorActive: false
+    });
+    this.pendingStaminaRescue = null;
+    this.failureConditionStartedAt = null;
+    this.garageRefreshPending = true;
+    this.refreshGateQueues();
+    this.refreshElevators();
+    if (this.stamina.remaining === 0 && this.status === 'playing') {
+      this.status = 'lost';
+      this.recordEvent({ type: 'lose', reason: 'stamina-exhausted', vehicleId: vehicle.id });
+    } else this.recordEvent({ type: 'stamina-rescue-finished', vehicleId: vehicle.id, remaining: this.stamina.remaining });
+  }
+
   update(deltaSeconds) {
     if (this.status !== 'playing') return;
     const delta = Math.max(0, Math.min(deltaSeconds, 0.1));
@@ -1259,7 +1409,11 @@ export class BusLoopGame {
 
     let garageVehicleCompleted = false;
     for (const vehicle of this.vehicles) {
-      if (vehicle.state === 'leaving-garage') {
+      if (vehicle.state === 'revive-boarding' || vehicle.state === 'revive-departing') {
+        this.updateStaminaRescue(vehicle, delta);
+        changed = true;
+        if (this.status !== 'playing') break;
+      } else if (vehicle.state === 'leaving-garage') {
         const data = vehicle.motionData;
         data.elapsed += delta;
         const movingElapsed = Math.max(0, data.elapsed - data.delay);
@@ -1335,6 +1489,7 @@ export class BusLoopGame {
             contactPosition: collision.contactPosition ? { ...collision.contactPosition } : null,
             contactDistance: collision.distance
           });
+          if (target && this.pendingStaminaRescue?.phase === 'contact') this.startStaminaRescue(target);
           changed = true;
         }
         if (collision.elapsed >= finishTime) {
@@ -1379,6 +1534,10 @@ export class BusLoopGame {
       }
     }
 
+    if (this.status !== 'playing') {
+      this.emit();
+      return;
+    }
     if (garageVehicleCompleted) collectGarageEvents(this.refreshGarages());
 
     this.updateQueues(delta);
@@ -1666,6 +1825,7 @@ export class BusLoopGame {
   }
 
   checkEndState() {
+    if (this.status !== 'playing' || this.isStaminaBusy()) return;
     // Every car has to leave, including the ones still queued at a gate or
     // waiting on the other floor of a lift: those are authored rides, not
     // scenery, and a level is only cleared when they are gone too.
@@ -1683,6 +1843,10 @@ export class BusLoopGame {
     }
     if (this.failureConditionStartedAt === null) this.failureConditionStartedAt = this.time;
     if (this.time - this.failureConditionStartedAt >= this.getFailureDelaySeconds()) {
+      if (this.stamina.enabled && this.stamina.remaining > 0) {
+        const target = this.spots.map((spot) => this.getVehicle(spot.vehicleId)).find((vehicle) => vehicle?.state === 'at-spot');
+        if (this.startStaminaRescue(target, 'station')) return;
+      }
       this.status = 'lost';
       this.lastEvent = { type: 'lose', reason: 'exceed-parking-spot' };
     }

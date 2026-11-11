@@ -14,6 +14,7 @@ import { BUILD_VERSION } from './build-version.js';
 import { BUILD_CHANGELOG, changelogVersions } from './build-changelog.js';
 import { normalizeCountdownConfig } from './countdown.js';
 import { BRANDING_LOCALE_OPTIONS } from './branding-localization.js';
+import { normalizeStaminaConfig } from './stamina.js';
 import {
   isForeignLevelOwner,
   levelOwnerHeaders,
@@ -153,7 +154,7 @@ function editorCategoryForGroup(group) {
   if (/^(?:parkingSpots|vehiclePath|vehicleDeparturePath|vehicleArea)\./.test(path)) return 'vehicle';
   // Sound belongs with the guide stage: the BGM library, its delay/volume
   // controls and the effect groups are all part of setting up an opening beat.
-  if (/^(?:cta|speedToggle|countdown|installGate|gameOver|vehicleGuideHand|firstClickGuide|entryBanner|weatherEffect|freeAssets|audio)\./.test(path)) return 'guide';
+  if (/^(?:cta|speedToggle|countdown|stamina|installGate|gameOver|vehicleGuideHand|firstClickGuide|entryBanner|weatherEffect|freeAssets|audio)\./.test(path)) return 'guide';
   if (path.startsWith('preRoll.')) return 'guide';
   return 'visual';
 }
@@ -735,6 +736,19 @@ const FIELD_GROUPS = [
       ['水平偏移 X', 'countdown.offsetX', -1080, 1080, 1],
       ['垂直偏移 Y', 'countdown.offsetY', -2160, 2160, 1],
       ['整体缩放', 'countdown.scale', 0.25, 3, 0.01]
+    ]
+  },
+  {
+    title: '体力救援',
+    defaultOpen: true,
+    stamina: true,
+    fields: [
+      ['启用体力救援', 'stamina.enabled', 0, 1, 1, null, 'toggle'],
+      ['初始体力', 'stamina.lives', 1, 10, 1, null, 'stamina-number'],
+      ['开场体力说明', 'stamina.introEnabled', 0, 1, 1, null, 'toggle'],
+      ['水平偏移 X', 'stamina.offsetX', -1080, 1080, 1],
+      ['垂直偏移 Y', 'stamina.offsetY', -2160, 2160, 1],
+      ['整体缩放', 'stamina.scale', 0.25, 3, 0.01]
     ]
   },
   {
@@ -1412,6 +1426,18 @@ export function createSceneEditor(root, {
     return !invalid;
   }
 
+  function updateStaminaControls() {
+    const disabled = !normalizeStaminaConfig(getTuning().stamina).enabled;
+    for (const key of ['lives', 'introEnabled', 'offsetX', 'offsetY', 'scale']) {
+      const controls = inputs.get(`stamina.${key}`);
+      if (!controls) continue;
+      controls.row.classList.toggle('is-readonly', disabled);
+      for (const element of [controls.select, controls.checkbox, controls.range, controls.number]) {
+        if (element) element.disabled = disabled;
+      }
+    }
+  }
+
   const sameTuning = (left, right) => JSON.stringify(left) === JSON.stringify(right);
   function updateHistoryButtons() {
     undoButton.disabled = tuningUndoStack.length === 0;
@@ -1682,6 +1708,30 @@ export function createSceneEditor(root, {
       const checkbox = row.querySelector('.editor-checkbox');
       const textInput = row.querySelector('.editor-text');
       const urlInput = row.querySelector('.editor-url');
+      if (control === 'stamina-number') {
+        range.setAttribute('aria-label', `${group.title} ${label}滑条`);
+        const commitLives = (rawValue) => {
+          const current = normalizeStaminaConfig(getTuning().stamina);
+          const lives = rawValue.trim() === '' ? current.lives : normalizeStaminaConfig({ lives: rawValue }).lives;
+          if (lives !== current.lives) {
+            const next = structuredClone(getTuning());
+            next.stamina = { ...current, lives };
+            commitTuning(next, { path });
+          }
+          number.value = String(lives);
+          range.value = String(lives);
+        };
+        range.addEventListener('input', () => commitLives(range.value));
+        number.addEventListener('blur', () => commitLives(number.value));
+        number.addEventListener('keydown', event => {
+          if (event.key !== 'Enter') return;
+          event.preventDefault();
+          commitLives(number.value);
+        });
+        inputs.set(path, { row, range, number, step });
+        section.append(row);
+        continue;
+      }
       if (options) {
         // The built-in background set has a measured playfield boundary; keeping
         // it on the option is what lets switching artwork re-align the plane
@@ -1723,7 +1773,7 @@ export function createSceneEditor(root, {
             setAtPath(next, 'vehicleGuideHand.levelKey', getAtPath(next, 'level.selected'));
           }
           commitTuning(next, { path });
-          if (path === 'firstClickGuide.enabled' || path.startsWith('countdown.')) sync();
+          if (path === 'firstClickGuide.enabled' || path.startsWith('countdown.') || path.startsWith('stamina.')) sync();
         });
         inputs.set(path, { row, checkbox, step });
         section.append(row);
@@ -1844,7 +1894,7 @@ export function createSceneEditor(root, {
       inputs.set(path, { row, range, number, color, step });
       section.append(row);
     }
-    if (group.countdown) {
+    if (group.countdown || group.stamina) {
       const help = document.createElement('p');
       help.className = 'editor-camera-status';
       help.textContent = '偏移0，缩放1为默认对齐';
@@ -3344,7 +3394,8 @@ export function createSceneEditor(root, {
     for (const [path, controls] of inputs) {
       const value = path.startsWith('countdown.')
         ? normalizeCountdownConfig(tuning.countdown)[path.slice('countdown.'.length)]
-        : getAtPath(tuning, path);
+        : path.startsWith('stamina.') ? normalizeStaminaConfig(tuning.stamina)[path.slice('stamina.'.length)]
+          : getAtPath(tuning, path);
       if (controls.isCountdownNumber) {
         if (resetCountdownDrafts || !controls.dirty || controls.lastValue !== value) {
           controls.number.value = String(value);
@@ -3381,6 +3432,7 @@ export function createSceneEditor(root, {
     updatePassengerMaterialVisibility(tuning);
     updateConveyorLayoutVisibility(tuning);
     updateCountdownControls();
+    updateStaminaControls();
     // 起点 X is computed while auto-centring is on, so leave the row in place but
     // mark it read-only -- dragging a slider that cannot win the argument reads
     // as a broken control.

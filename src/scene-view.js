@@ -5199,7 +5199,9 @@ export class SceneView {
         && !activeHit
         && !view.userData.spatialHadActiveHit
       );
-      let vehicleScale = ['parked', 'colliding', 'leaving-garage'].includes(vehicle.state)
+      const fieldRescue = !vehicle.reviveFromStation
+        && ['revive-boarding', 'revive-departing'].includes(vehicle.state);
+      let vehicleScale = fieldRescue || ['parked', 'colliding', 'leaving-garage'].includes(vehicle.state)
         ? 1 : (UNITY_VEHICLE_MOTION.stationScaleBySeats[vehicle.seats] ?? 1);
       if (vehicle.state === 'parked') {
         if (!reuseStaticTransform) {
@@ -5228,6 +5230,17 @@ export class SceneView {
         };
         view.position.copy(mapMotionPoint(position));
         view.rotation.y = startYaw;
+      } else if (vehicle.state === 'revive-boarding') {
+        view.userData.spatialStaticParked = false;
+        view.position.copy(vehicle.reviveFromStation ? spot : start);
+        view.rotation.y = vehicle.reviveFromStation
+          ? deg(SCENE_TUNING.facing.parkingSpotYawDegrees + 180) + vehicleYawOffset
+          : startYaw;
+      } else if (vehicle.state === 'revive-departing' && !vehicle.reviveFromStation) {
+        view.userData.spatialStaticParked = false;
+        const sample = evaluatePath(vehicle.motionData.path, vehicle.motionData.path.length * ease(vehicle.motion));
+        view.position.copy(mapMotionPoint(sample.position));
+        view.rotation.y = mapMotionTangentYaw(sample.tangent);
       } else if (vehicle.state === 'moving-to-spot') {
         view.userData.spatialStaticParked = false;
         const data = vehicle.motionData;
@@ -5244,7 +5257,7 @@ export class SceneView {
         view.userData.spatialStaticParked = false;
         view.position.copy(spot);
         view.rotation.y = deg(SCENE_TUNING.facing.parkingSpotYawDegrees + 180) + vehicleYawOffset;
-      } else if (vehicle.state === 'departing') {
+      } else if (vehicle.state === 'departing' || vehicle.state === 'revive-departing') {
         view.userData.spatialStaticParked = false;
         const data = vehicle.motionData;
         const total = data.backwardDuration + data.forwardDuration;
@@ -5278,7 +5291,8 @@ export class SceneView {
       }
       view.userData.spatialHadActiveHit = activeHit;
       this.updateHiddenVehicleVisual(view, vehicle);
-      const hideArrowAtSpot = shouldHideVehicleArrow(vehicle.state);
+      const hideArrowAtSpot = shouldHideVehicleArrow(vehicle.state)
+        || (vehicle.reviveFromStation && ['revive-boarding', 'revive-departing'].includes(vehicle.state));
       if (view.userData.arrowRoot && (!vehicle.isHidden || hideArrowAtSpot)) {
         view.userData.arrowRoot.visible = !hideArrowAtSpot;
       }
@@ -5979,13 +5993,18 @@ export class SceneView {
 
   spawnBoardingGroup(event) {
     const spot = this.spotPositions[event.spotIndex];
-    if (!spot) return;
+    if (!spot && !event.targetPosition) return;
     const startCenter = new THREE.Vector3();
     const tangent = new THREE.Vector3();
-    this.sampleActiveCurve(event.progress, startCenter, tangent);
+    const queueCurve = Number.isInteger(event.queueIndex) ? this.queueCurves[event.queueIndex] : null;
+    if (queueCurve) {
+      const progress = this.getQueueProgressAtDistance(queueCurve, event.queueDistance ?? 0);
+      startCenter.copy(queueCurve.getPointAt(progress));
+      tangent.copy(queueCurve.getTangentAt(progress)).negate();
+    } else this.sampleActiveCurve(event.progress, startCenter, tangent);
     startCenter.y += SCENE_TUNING.passengers.heightAbovePath;
     const pathYaw = Math.atan2(tangent.x, tangent.z) + deg(SCENE_TUNING.facing.passengerYawDegrees);
-    const target = spot.clone();
+    const target = event.targetPosition ? mapMotionPoint(event.targetPosition) : spot.clone();
     target.y = SCENE_TUNING.path.groundY + SCENE_TUNING.passengers.heightAbovePath;
 
     for (let index = 0; index < LEVEL_1.groupSize; index += 1) {
@@ -6016,7 +6035,9 @@ export class SceneView {
         target: target.clone(),
         startedAt: event.startedAt,
         delay: index * SCENE_TUNING.passengers.aboardInterval,
-        duration: Math.max(0.25, start.distanceTo(target) / SCENE_TUNING.passengers.aboardSpeed)
+        duration: event.rescue && Number.isFinite(event.duration)
+          ? Math.max(0.25, event.duration)
+          : Math.max(0.25, start.distanceTo(target) / SCENE_TUNING.passengers.aboardSpeed)
       });
     }
   }
@@ -6036,7 +6057,7 @@ export class SceneView {
       // alone, the last group keeps walking to the now-empty spot and is drawn
       // standing where the car used to be.
       const vehicle = this.lastGame?.getVehicle?.(entry.vehicleId);
-      const vehicleGone = vehicle && ['departing', 'done'].includes(vehicle.state);
+      const vehicleGone = vehicle && (['departing', 'done'].includes(vehicle.state) || vehicle.state === 'revive-departing');
       if (vehicleGone) {
         if (!entry.soundPlayed) {
           entry.soundPlayed = true;
