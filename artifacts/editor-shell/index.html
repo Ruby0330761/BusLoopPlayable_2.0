@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>BUS 编辑器布局调研</title>
+<style>
+  * { box-sizing: border-box; }
+  html, body { margin: 0; min-height: 100%; }
+  body {
+    font: 14px/1.6 -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+    color: #17242d; background: #f2f6f9; padding: 40px 22px 60px;
+    -webkit-font-smoothing: antialiased;
+  }
+  .wrap { max-width: 780px; margin: 0 auto; }
+  .kicker { color: #51839b; font-size: 11px; font-weight: 800; letter-spacing: .18em; }
+  h1 { margin: 6px 0 8px; font-size: 25px; letter-spacing: -.01em; }
+  .lede { margin: 0 0 26px; color: #4d6272; font-size: 14px; }
+  .cta {
+    display: inline-flex; align-items: center; gap: 9px; padding: 12px 20px;
+    border-radius: 9px; background: #287fa8; color: #fff; text-decoration: none;
+    font-weight: 700; font-size: 14px; box-shadow: 0 3px 12px rgba(40,127,168,.28);
+  }
+  .cta:hover { background: #1d6f92; }
+  .cta svg { width: 16px; height: 16px; }
+  .sub { margin: 10px 0 30px; color: #83959f; font-size: 12px; }
+
+  h2 { margin: 30px 0 10px; font-size: 13px; letter-spacing: .06em; text-transform: uppercase; color: #5b7386; }
+  .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(118px, 1fr)); gap: 9px; }
+  .stat { padding: 11px 13px; border: 1px solid #dde6ec; border-radius: 8px; background: #fff; }
+  .stat b { display: block; font-size: 21px; font-weight: 800; color: #1f4356; font-variant-numeric: tabular-nums; }
+  .stat span { color: #7d919f; font-size: 11px; }
+
+  table { width: 100%; border-collapse: collapse; margin-top: 4px; font-size: 13px; }
+  th, td { padding: 7px 10px; text-align: left; border-top: 1px solid #e6edf2; }
+  th { color: #7d919f; font-size: 10.5px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; border-top: 0; }
+  td:last-child, th:last-child { text-align: right; font-variant-numeric: tabular-nums; }
+  tbody tr:first-child td { border-top: 1px solid #dde6ec; }
+  td.num { color: #274257; font-weight: 700; }
+
+  .note { margin-top: 26px; padding: 13px 15px; border-radius: 8px; background: #fdf7ea; color: #7a5c1e; font-size: 12.5px; line-height: 1.6; }
+  .note b { color: #6b4d05; }
+  .foot { margin-top: 30px; padding-top: 14px; border-top: 1px solid #e0e8ee; color: #93a3ae; font-size: 11.5px; }
+  code { padding: 1px 5px; border-radius: 4px; background: #eef3f6; font-size: 11.5px; color: #2b5f77; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="kicker">SCENE EDITOR · 布局调研</div>
+  <h1>BUS 编辑器布局重构</h1>
+  <p class="lede">把现在右侧那根单列调参面板，重排成「图标栏 + 面板 + 舞台 + 检视栏」四区。<br />
+     下面这版原型里的每一段、每一个字段都取自 <code>src/scene-editor.js</code> 的真实结构，没有占位假数据。</p>
+
+  <a class="cta" href="prototype.html">
+    打开可点击原型
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="m13 6 6 6-6 6"/></svg>
+  </a>
+  <p class="sub">可以点：切 9 个栏 · 切 11 条跑道 · 勾立体轨道 · 跨栏搜字段 · 调行高 · 切编辑/试玩 · 右下角「结构对比」</p>
+
+  <h2>真实规模</h2>
+  <div class="stats">
+    <div class="stat"><b>65</b><span>调参段</span></div>
+    <div class="stat"><b>525</b><span>字段</span></div>
+    <div class="stat"><b>9</b><span>控件类型</span></div>
+    <div class="stat"><b>11</b><span>跑道</span></div>
+  </div>
+
+  <h2>现有 6 个页签的实际分布</h2>
+  <table>
+    <thead><tr><th>页签</th><th>段</th><th>字段</th><th>深度</th></tr></thead>
+    <tbody>
+      <tr><td>画面</td><td class="num">14</td><td class="num">137</td><td class="num">最深</td></tr>
+      <tr><td>引导</td><td class="num">14</td><td class="num">133</td><td class="num">最深</td></tr>
+      <tr><td>车辆</td><td class="num">4</td><td class="num">53</td><td class="num">—</td></tr>
+      <tr><td>传送带</td><td class="num">8</td><td class="num">33</td><td class="num">—</td></tr>
+      <tr><td>导出</td><td class="num">1</td><td class="num">16</td><td class="num">—</td></tr>
+      <tr><td>关卡</td><td class="num">1</td><td class="num">1</td><td class="num">—</td></tr>
+    </tbody>
+  </table>
+  <p class="sub">另有 22 段随选中的跑道显隐（11 条跑道 × 2 段），所以 65 段 = 43 个常驻段 + 22 个跑道专属段。</p>
+
+  <h2>重排后：9 栏 + 栏内职能小节</h2>
+  <table>
+    <thead><tr><th>栏</th><th>栏内小节</th><th>段</th></tr></thead>
+    <tbody>
+      <tr><td>关卡</td><td>关卡工具（总览 / 游戏内关卡 / 布局编辑器 / 立体轨道点位 / 归属）</td><td class="num">2</td></tr>
+      <tr><td>场景</td><td>相机与灯光 · 画面</td><td class="num">5</td></tr>
+      <tr><td>轨道</td><td>跑道 · 队列与影子 · 粒子</td><td class="num">12</td></tr>
+      <tr><td>车辆与角色</td><td>车辆与车位 · 小人</td><td class="num">6</td></tr>
+      <tr><td>引导与流程</td><td>开场引导 · 节奏与失败 · 氛围图层</td><td class="num">10</td></tr>
+      <tr><td>界面与品牌</td><td>品牌 · 控件</td><td class="num">4</td></tr>
+      <tr><td>声音</td><td>音效与 BGM</td><td class="num">3</td></tr>
+      <tr><td>素材</td><td>五类素材库台账（新增）</td><td class="num">2</td></tr>
+      <tr><td>导出</td><td>命名 · 出图与交付</td><td class="num">3</td></tr>
+    </tbody>
+  </table>
+
+  <div class="note">
+    <b>分栏本身不减少滚动量。</b>段数只是从「画面 14」摊到「轨道 12」，总字段 525 个一个不少。
+    真正的收益是另外三件事：<b>跨 9 栏搜索</b>（搜「倒计时」10 项一屏看全）、<b>右侧检视栏</b>（选中对象属性 / 校验结论 / 5 MB 预算分解）、<b>导出离开调参列</b>（顶栏常驻）。
+    原型故意把这三点都做成可点的，而不是靠文档描述。
+  </div>
+
+  <p class="foot">
+    分支 <code>feature/editor-shell-layout</code> · 未合 main · 未改动任何 <code>src/</code> 运行时文件<br />
+    原型由 <code>node scripts/editor-shell-inventory.mjs --json artifacts/editor-shell/inventory.json --html artifacts/editor-shell/prototype.html</code> 生成
+  </p>
+</div>
+</body>
+</html>
