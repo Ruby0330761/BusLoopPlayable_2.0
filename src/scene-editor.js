@@ -1348,23 +1348,43 @@ function renderEditorHeader({ layoutMode = 'classic' } = {}) {
   const switchTitle = layoutMode === 'shell'
     ? '\u5207\u6362\u5230\u8001\u7248\u4fa7\u680f\u5e03\u5c40'
     : '\u5207\u6362\u5230\u56fe\u6807\u680f + \u68c0\u89c6\u680f\u7684\u65b0\u5e03\u5c40';
+  const localeField = `
+        <label class="editor-locale" title="切换后预览与截图都按该语言渲染；导出的包仍跟随玩家设备语言">
+          <span class="editor-locale-label">\u8bed\u8a00</span>
+          <select class="editor-locale-select" aria-label="预览语言">
+            ${BRANDING_LOCALE_OPTIONS.map(([value, label]) => (
+              `<option value="${value}">${label}</option>`
+            )).join('')}
+          </select>
+        </label>`;
+  const aboutButton = `
+        <button class="editor-about" type="button" aria-label="\u67e5\u770b\u7248\u672c\u66f4\u65b0\u5185\u5bb9" title="\u7248\u672c\u66f4\u65b0\u5185\u5bb9">\u5173\u4e8e</button>`;
+  const switchButton = `
+        <button class="editor-layout-switch" type="button" title="${switchTitle}">${switchLabel}</button>`;
+
+  // The shell header is a full-width top bar. It used to live in the left two
+  // columns only, which is 384px — the title was clipped by the language picker
+  // and the three controls had no room to breathe. A page-wide bar gives the
+  // controls a natural right-aligned group and stops fighting the sidebar.
+  if (layoutMode === 'shell') {
+    return `
+    <header class="editor-header">
+      <div class="shell-brand">
+        <h2>\u573a\u666f\u8c03\u8282</h2>
+        <span class="editor-kicker">SCENE EDITOR <span class="editor-version">v${BUILD_VERSION}</span></span>
+      </div>
+      <div class="editor-header-actions">${localeField}${aboutButton}${switchButton}
+      </div>
+    </header>`;
+  }
+
   return `
     <header class="editor-header">
       <div>
         <span class="editor-kicker">SCENE EDITOR <span class="editor-version">v${BUILD_VERSION}</span></span>
         <h2>\u573a\u666f\u8c03\u8282</h2>
       </div>
-      <div class="editor-header-actions">
-        <label class="editor-locale" title="切换后预览与截图都按该语言渲染；导出的包仍跟随玩家设备语言">
-          <span class="editor-locale-label">语言</span>
-          <select class="editor-locale-select" aria-label="预览语言">
-            ${BRANDING_LOCALE_OPTIONS.map(([value, label]) => (
-              `<option value="${value}">${label}</option>`
-            )).join('')}
-          </select>
-        </label>
-        <button class="editor-about" type="button" aria-label="\u67e5\u770b\u7248\u672c\u66f4\u65b0\u5185\u5bb9" title="\u7248\u672c\u66f4\u65b0\u5185\u5bb9">\u5173\u4e8e</button>
-        <button class="editor-layout-switch" type="button" title="${switchTitle}">${switchLabel}</button>
+      <div class="editor-header-actions">${localeField}${aboutButton}${switchButton}
         <button class="editor-toggle" type="button" aria-label="\u6536\u8d77\u573a\u666f\u7f16\u8f91\u5668" aria-expanded="true">\u00d7</button>
       </div>
     </header>`;

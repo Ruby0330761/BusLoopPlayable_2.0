@@ -1080,12 +1080,13 @@ button:hover { transform: translateY(-1px); background: #fff; }
 #app.layout-shell {
   display: grid;
   grid-template-columns: 62px minmax(296px, 322px) minmax(0, 1fr) minmax(280px, 306px);
-  grid-template-rows: minmax(0, 1fr);
+  /* Row 1 is the full-width editor bar; row 2 is the four working columns. */
+  grid-template-rows: 44px minmax(0, 1fr);
   background: #f6f8fa;
 }
 #app.layout-shell > #stage {
   grid-column: 3;
-  grid-row: 1;
+  grid-row: 2;
   min-width: 0;
   min-height: 0;
   background: #262d36;
@@ -1094,27 +1095,63 @@ button:hover { transform: translateY(-1px); background: #fff; }
 #app.layout-shell > .scene-editor {
   display: contents;
 }
+/* The bar spans the whole page. Living in the left two columns (384px) it had
+   to fit a title, a language picker, 关于 and the layout switch, so the title
+   was clipped and the controls were crammed. Full width lets the title sit on
+   the left and the controls form one right-aligned group. */
 #app.layout-shell .editor-header {
-  grid-column: 1 / 3;
+  grid-column: 1 / -1;
   grid-row: 1;
-  align-self: start;
   z-index: 6;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
   min-height: 0;
-  padding: 9px 10px 8px 12px;
-  border-bottom: 1px solid rgba(16,35,61,.09);
-  border-right: 1px solid rgba(16,35,61,.09);
-  background: rgba(244,250,255,.97);
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  align-items: start;
-  gap: 6px;
-  height: 58px;
+  height: 44px;
+  padding: 0 12px;
+  border-bottom: 1px solid rgba(16,35,61,.11);
+  background: rgba(246,251,255,.98);
+  backdrop-filter: blur(12px);
 }
-#app.layout-shell .editor-header h2 { margin: 1px 0 0; font-size: 13px; }
-#app.layout-shell .editor-header-actions { flex-wrap: nowrap; gap: 6px; }
+#app.layout-shell .shell-brand { display: flex; align-items: baseline; gap: 9px; min-width: 0; }
+#app.layout-shell .shell-brand h2 {
+  margin: 0;
+  font-size: 13.5px;
+  letter-spacing: .01em;
+  white-space: nowrap;
+}
+#app.layout-shell .editor-kicker {
+  font-size: 8.5px;
+  letter-spacing: .16em;
+  white-space: nowrap;
+}
+#app.layout-shell .editor-version { letter-spacing: .04em; }
+#app.layout-shell .editor-header-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: nowrap;
+  gap: 7px;
+  flex: none;
+}
 #app.layout-shell .editor-locale-label { display: none; }
-#app.layout-shell .editor-locale-select { height: 26px; padding: 0 20px 0 7px; font-size: 10px; }
-#app.layout-shell .editor-about { min-width: 0; height: 26px; padding: 0 8px; font-size: 10px; }
+/* 14 locale names + the current one need 120px; anything narrower clips the
+   selected label, which is the only part the operator reads. */
+#app.layout-shell .editor-locale-select {
+  height: 26px;
+  min-width: 118px;
+  padding: 0 20px 0 8px;
+  border-radius: 6px;
+  font-size: 10.5px;
+}
+#app.layout-shell .editor-about {
+  min-width: 0;
+  height: 26px;
+  padding: 0 9px;
+  border-radius: 6px;
+  font-size: 10.5px;
+  white-space: nowrap;
+}
 #app.layout-shell .editor-toggle { display: none; }
 /* Layout switch. Present in both headers so either shell can reach the other;
    the classic sidebar is narrow, so it gets a compact icon-sized treatment. */
@@ -1143,9 +1180,8 @@ button:hover { transform: translateY(-1px); background: #fff; }
 /* Rail -------------------------------------------------------------------- */
 #app.layout-shell .shell-rail {
   grid-column: 1;
-  grid-row: 1;
+  grid-row: 2;
   align-self: stretch;
-  margin-top: 58px;
   z-index: 5;
   display: flex;
   flex-direction: column;
@@ -1199,11 +1235,10 @@ button:hover { transform: translateY(-1px); background: #fff; }
 /* Panel column ------------------------------------------------------------ */
 #app.layout-shell .shell-panel {
   grid-column: 2;
-  grid-row: 1;
+  grid-row: 2;
   align-self: stretch;
   min-width: 0;
   min-height: 0;
-  margin-top: 58px;
   display: grid;
   grid-template-rows: auto auto minmax(0, 1fr);
   background: #fff;
@@ -1546,7 +1581,7 @@ button:hover { transform: translateY(-1px); background: #fff; }
 /* Inspector --------------------------------------------------------------- */
 #app.layout-shell .shell-inspector {
   grid-column: 4;
-  grid-row: 1;
+  grid-row: 2;
   display: grid;
   grid-template-rows: auto minmax(0, 1fr);
   min-width: 0;
@@ -1677,8 +1712,11 @@ button:hover { transform: translateY(-1px); background: #fff; }
   transform: none;
 }
 
-/* The shell pulls the stage into the middle, so the phone-preview frame has to
-   size against that column instead of the whole viewport. */
+/* The shell pulls the stage into the middle, so the phone frame has to be drawn
+   inside that column. Sizing #stage itself (the way the classic flex layout
+   does) left it shrunk to the canvas width while the grid column stayed 750px
+   wide, so the column showed ~400px of empty gutter. Keeping #stage full-size
+   and letterboxing the canvas inside it keeps the frame while the column fills. */
 #app.layout-shell.is-phone-preview {
   padding: 0;
   gap: 0;
@@ -1686,20 +1724,30 @@ button:hover { transform: translateY(-1px); background: #fff; }
   align-items: initial;
 }
 #app.layout-shell.is-phone-preview > #stage {
-  flex: 0 0 auto;
-  justify-self: center;
-  align-self: center;
-  width: min(calc(100% - 32px), calc((100vh - 72px) * var(--preview-width) / var(--preview-height)));
-  height: min(calc(100vh - 72px), calc((100% - 32px) * var(--preview-height) / var(--preview-width)));
-  max-width: calc(100% - 32px);
-  max-height: calc(100vh - 72px);
-  aspect-ratio: var(--preview-width) / var(--preview-height);
+  display: grid;
+  place-items: center;
+  width: auto;
+  height: auto;
+  max-width: none;
+  max-height: none;
+  aspect-ratio: auto;
+  border: 0;
+  border-radius: 0;
+  background: #262d36;
+  box-shadow: none;
+}
+#app.layout-shell.is-phone-preview #game-canvas {
+  /* Letterbox the frame. Width and height need bases on their own axis: the
+     width term uses the viewport height (minus the 44px bar and 24px margin)
+     and the height term uses the column height. Deriving both from the column
+     *width* squashed the canvas to 363x832 instead of 416x832. */
+  width: min(calc(100% - 24px), calc((100vh - 68px) * var(--preview-width) / var(--preview-height)));
+  height: min(calc(100% - 24px), calc((100% - 24px) * var(--preview-height) / var(--preview-width)));
   border: 10px solid #142537;
-  border-radius: 34px;
+  border-radius: 28px;
   background: #0d1c2b;
   box-shadow: 0 24px 70px rgba(9,32,50,.28), inset 0 0 0 1px rgba(255,255,255,.08);
 }
-#app.layout-shell.is-phone-preview #game-canvas { border-radius: 24px; overflow: hidden; }
 
 @media (max-width: 1180px) {
   #app.layout-shell { grid-template-columns: 58px minmax(270px, 296px) minmax(0, 1fr) 258px; }
