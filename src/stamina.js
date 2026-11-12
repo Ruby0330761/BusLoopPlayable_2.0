@@ -24,6 +24,7 @@ export function getStaminaAssetPaths(config) {
 }
 
 const DISPLAY_LIMITS = { offsetX: [-1080, 1080, 0], offsetY: [-2160, 2160, 0], scale: [0.25, 3, 1] };
+const HORIZONTAL_ALIGNMENTS = ['left', 'center', 'right'];
 
 export function normalizeStaminaConfig(source = {}) {
   source = source && typeof source === 'object' ? source : {};
@@ -31,8 +32,11 @@ export function normalizeStaminaConfig(source = {}) {
   const result = {
     enabled: Number(source.enabled) === 1 ? 1 : 0,
     lives: Number.isFinite(lives) ? Math.min(10, Math.max(1, Math.round(lives))) : 3,
+    collisionPenaltyEnabled: source.collisionPenaltyEnabled === undefined || Number(source.collisionPenaltyEnabled) === 1 ? 1 : 0,
+    parkingRescueEnabled: source.parkingRescueEnabled === undefined || Number(source.parkingRescueEnabled) === 1 ? 1 : 0,
     introEnabled: source.introEnabled === undefined || Number(source.introEnabled) === 1 ? 1 : 0
   };
+  result.horizontalAlign = HORIZONTAL_ALIGNMENTS.includes(source.horizontalAlign) ? source.horizontalAlign : 'center';
   for (const [key, [min, max, fallback]] of Object.entries(DISPLAY_LIMITS)) {
     const value = Number(source[key]);
     result[key] = Number.isFinite(value) ? Math.min(max, Math.max(min, value)) : fallback;
@@ -44,10 +48,12 @@ export function validateStaminaConfig(source) {
   if (!source || typeof source !== 'object' || Array.isArray(source)) throw new TypeError('tuning.stamina must be an object.');
   for (const key of Object.keys(source)) {
     const value = source[key];
-    if (['enabled', 'introEnabled'].includes(key)) {
+    if (['enabled', 'collisionPenaltyEnabled', 'parkingRescueEnabled', 'introEnabled'].includes(key)) {
       if (value !== 0 && value !== 1) throw new TypeError(`tuning.stamina.${key} must be 0 or 1.`);
     } else if (key === 'lives') {
       if (!STAMINA_LIFE_OPTIONS.includes(value)) throw new TypeError('tuning.stamina.lives must be an integer between 1 and 10.');
+    } else if (key === 'horizontalAlign') {
+      if (!HORIZONTAL_ALIGNMENTS.includes(value)) throw new TypeError('tuning.stamina.horizontalAlign must be left, center or right.');
     } else if (DISPLAY_LIMITS[key]) {
       const [min, max] = DISPLAY_LIMITS[key];
       if (!Number.isFinite(value) || value < min || value > max) throw new TypeError(`tuning.stamina.${key} must be between ${min} and ${max}.`);

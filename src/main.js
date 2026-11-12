@@ -1104,6 +1104,7 @@ function resolveBrandingCopy() {
     languages: previewLocale && previewLocale !== 'auto' ? [previewLocale] : readBrowserLanguages(),
     enabled: Boolean(localization.enabled ?? 1),
     text: typeof textConfig.content === 'string' ? textConfig.content : '',
+    ctaText: SCENE_TUNING.cta?.text,
     loadingTitle: typeof loadingConfig.title === 'string' ? loadingConfig.title : '',
     storefront: resolveBrandingStorefront()
   });
@@ -2798,6 +2799,21 @@ async function startRuntime() {
     if (path === 'installGate.successfulOperationThreshold') {
       setLevelInstallThresholdCustom(SCENE_TUNING.level?.selected, true);
     }
+    if (path?.startsWith('gameOver.')) {
+      deepMerge(SCENE_TUNING, next);
+      applyGameOverTuning();
+      syncResultInteraction();
+      saveTuning(SCENE_TUNING);
+      if (syncEditor) editor.sync();
+      return SCENE_TUNING;
+    }
+    if (path?.startsWith('cta.')) {
+      deepMerge(SCENE_TUNING, next);
+      applyCtaTuning();
+      saveTuning(SCENE_TUNING);
+      if (syncEditor) editor.sync();
+      return SCENE_TUNING;
+    }
     if (path?.startsWith('branding.')) {
       deepMerge(SCENE_TUNING, next);
       applyBrandingTuning(view.getBackgroundCanvasBounds());
@@ -3174,6 +3190,34 @@ async function startRuntime() {
     gameOverTimers.clear();
   }
 
+  function syncResultInteraction() {
+    if (!gameOverOverlay) return;
+    const failed = gameOverOverlay.classList.contains('is-failed');
+    const tapToStore = gameOverActive && failed && !Boolean(SCENE_TUNING.gameOver?.retryEnabled ?? 0);
+    const ready = tapToStore && !gameOverOverlay.hidden && gameOverOverlay.classList.contains('is-cta-ready');
+    gameOverOverlay.classList.toggle('is-tap-to-store', tapToStore);
+    gameOverOverlay.tabIndex = ready ? 0 : -1;
+    if (ready) {
+      gameOverOverlay.setAttribute('role', 'link');
+      gameOverOverlay.setAttribute('aria-label', resolveBrandingCopy().ctaLabel);
+    } else {
+      gameOverOverlay.removeAttribute('role');
+      gameOverOverlay.removeAttribute('aria-label');
+    }
+    if (gameOverRetryButton) gameOverRetryButton.hidden = !gameOverActive || !failed || tapToStore;
+    if (ctaButton) ctaButton.disabled = gameOverActive && failed;
+  }
+
+  function handleResultActivation(event) {
+    if (!gameOverActive || gameOverOverlay?.hidden
+      || !gameOverOverlay?.classList.contains('is-tap-to-store')
+      || !gameOverOverlay?.classList.contains('is-cta-ready')) return;
+    if (event.type === 'keydown' && event.key !== 'Enter' && event.key !== ' ') return;
+    event.preventDefault();
+    event.stopPropagation();
+    InstallFullGame();
+  }
+
   function showResultOverlay(title = 'Game Over', { failed = true } = {}) {
     if (!gameOverOverlay || gameOverActive) return;
     gameOverActive = true;
@@ -3186,29 +3230,28 @@ async function startRuntime() {
     applyCtaTuning();
     gameOverOverlay.hidden = false;
     gameOverOverlay.classList.remove('is-active', 'is-title-fading', 'is-cta-ready');
+    gameOverOverlay.classList.toggle('is-failed', failed);
+    syncResultInteraction();
     void gameOverOverlay.offsetWidth;
     gameOverOverlay.classList.add('is-active');
-    // Retry only makes sense on a loss: a won run's next step is the store
-    // button or the stage picker, and offering "play again" there would race
-    // the end-of-ad flow.
-    if (gameOverRetryButton) {
-      gameOverRetryButton.hidden = !failed || !Boolean(SCENE_TUNING.gameOver?.retryEnabled ?? 1);
-    }
-
     const gameOver = SCENE_TUNING.gameOver ?? {};
     const titlePopMs = durationFromSpeed(gameOver.titlePopSpeed, 1.35) * 1000;
     const titleFadeMs = durationFromSpeed(gameOver.titleFadeSpeed, 1.45) * 1000;
     queueGameOverTimer(() => gameOverOverlay.classList.add('is-title-fading'), titlePopMs);
-    queueGameOverTimer(() => gameOverOverlay.classList.add('is-cta-ready'), titlePopMs + titleFadeMs);
+    queueGameOverTimer(() => {
+      gameOverOverlay.classList.add('is-cta-ready');
+      syncResultInteraction();
+    }, titlePopMs + titleFadeMs);
   }
 
   function hideGameOver() {
     gameOverActive = false;
     if (progressHud) progressHud.setVisible(true);
     clearGameOverTimers();
-    gameOverOverlay?.classList.remove('is-active', 'is-title-fading', 'is-cta-ready');
+    gameOverOverlay?.classList.remove('is-active', 'is-title-fading', 'is-cta-ready', 'is-failed');
     if (gameOverOverlay) gameOverOverlay.hidden = true;
     if (gameOverRetryButton) gameOverRetryButton.hidden = true;
+    syncResultInteraction();
     applyCtaTuning();
   }
 
@@ -3268,6 +3311,8 @@ async function startRuntime() {
     event.stopPropagation();
     InstallFullGame();
   });
+  gameOverOverlay?.addEventListener('click', handleResultActivation);
+  gameOverOverlay?.addEventListener('keydown', handleResultActivation);
   speedToggleButton?.addEventListener('click', (event) => {
     // The stage click handlers start the long-press boost and log the platform
     // challenge; a speed tap is neither, it only flips the sticky multiplier.

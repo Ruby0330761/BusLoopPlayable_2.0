@@ -343,6 +343,30 @@ test('tuning validation blocks unknown and prototype keys', () => {
   assert.equal({}.admin, undefined);
 });
 
+test('custom CTA and independent stamina switches survive export validation and serialization', async () => {
+  const { SCENE_TUNING } = await import('../src/scene-tuning.js');
+  for (const collisionPenaltyEnabled of [0, 1]) for (const parkingRescueEnabled of [0, 1]) {
+    const input = {
+      cta: { text: 'Download <3 & 下载' },
+      stamina: { ...SCENE_TUNING.stamina, enabled: 1, collisionPenaltyEnabled, parkingRescueEnabled }
+    };
+    const validated = validateTuning(input, SCENE_TUNING);
+    assert.deepEqual(JSON.parse(JSON.stringify(validated)), input);
+    for (const variant of resolveBrandingSetVariants('crowd')) {
+      const tuning = createBrandingVariantTuning(validated, variant.id);
+      assert.equal(tuning.cta.text, input.cta.text);
+      assert.equal(tuning.stamina.collisionPenaltyEnabled, collisionPenaltyEnabled);
+      assert.equal(tuning.stamina.parkingRescueEnabled, parkingRescueEnabled);
+    }
+  }
+  assert.throws(() => validateTuning({ cta: { text: 123 } }, SCENE_TUNING), /string/);
+  assert.throws(() => validateTuning({ cta: { text: 'x'.repeat(4097) } }, SCENE_TUNING), /short string/);
+  for (const key of ['collisionPenaltyEnabled', 'parkingRescueEnabled']) {
+    assert.throws(() => validateTuning({ stamina: { [key]: true } }, SCENE_TUNING), /must be finite/);
+    assert.throws(() => validateTuning({ stamina: { [key]: 2 } }, SCENE_TUNING), /must be 0 or 1/);
+  }
+});
+
 test('store links accept only platform product URLs and export validation normalizes them', () => {
   assert.equal(isValidStoreLink('android', STORE_LINKS.android), true);
   assert.equal(isValidStoreLink('ios', STORE_LINKS.ios), true);

@@ -709,7 +709,7 @@ async function prepareWorkspace(projectRoot, tuning, levelDocument = null) {
   await copySelectedEditorPreRoll(projectRoot, workRoot, tuning);
   await copySelectedGuideAssets(projectRoot, workRoot, tuning);
   await applyWorkspaceBrandingIcon(workRoot, tuning);
-  await symlink(path.join(projectRoot, 'node_modules'), path.join(workRoot, 'node_modules'), 'dir');
+  await symlink(path.join(projectRoot, 'node_modules'), path.join(workRoot, 'node_modules'), process.platform === 'win32' ? 'junction' : 'dir');
   const tuningPath = path.join(workRoot, 'artifacts', 'export-tuning.json');
   await writeFile(tuningPath, `${JSON.stringify(tuning, null, 2)}\n`, 'utf8');
   await run(process.execPath, [

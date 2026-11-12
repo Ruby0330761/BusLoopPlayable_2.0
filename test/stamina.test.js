@@ -49,6 +49,12 @@ const makeStalled = (game) => {
 
 test('stamina supports integers 1–10 and defaults legacy profiles off with three hearts', () => {
   assert.equal(normalizeStaminaConfig().enabled, 0);
+  assert.equal(normalizeStaminaConfig().collisionPenaltyEnabled, 1);
+  assert.equal(normalizeStaminaConfig().parkingRescueEnabled, 1);
+  for (const key of ['collisionPenaltyEnabled', 'parkingRescueEnabled']) {
+    for (const value of [0, 1]) assert.equal(validateStaminaConfig({ [key]: value })[key], value);
+    for (const value of [-1, 2, '1', true, null]) assert.throws(() => validateStaminaConfig({ [key]: value }), /must be 0 or 1/);
+  }
   for (let lives = 1; lives <= 10; lives++) assert.equal(validateStaminaConfig({ enabled: 1, lives }).lives, lives);
   for (const lives of [0, -1, 1.5, 11, '3', NaN]) assert.throws(() => validateStaminaConfig({ lives }));
   for (const lives of [undefined, null, '', 'invalid', Infinity]) assert.equal(normalizeStaminaConfig({ lives }).lives, 3);
@@ -58,24 +64,31 @@ test('stamina supports integers 1–10 and defaults legacy profiles off with thr
   assert.equal(normalizeStaminaConfig({ lives: 15 }).lives, 10);
 });
 
-test('collision rescue spends one heart at actual contact and rescues the blocker rather than attacker', () => withConfig({}, () => {
-  const game = new BusLoopGame(makeLevel());
+test('a wrong click spends one heart at contact and keeps the ordinary bump without rescuing either car', () => withConfig({}, () => {
+  const game = new BusLoopGame(makeLevel({ passengerQueues: [[4, 4, 4, 4]] }));
+  const remainingGroups = game.getRemainingGroups();
   const result = game.clickVehicle(2);
   assert.equal(result.reason, 'blocked');
   assert.equal(game.stamina.remaining, 3);
-  assert.equal(game.isStaminaBusy(), true);
+  assert.equal(game.isStaminaBusy(), false);
   const attacker = game.getVehicle(2);
   advance(game, attacker.collision.forwardDuration / 2, 0.001);
   assert.equal(game.stamina.remaining, 3);
-  until(game, () => game.getVehicle(1).state === 'revive-boarding');
+  until(game, () => attacker.collision.contactTriggered);
   assert.equal(game.stamina.remaining, 2);
-  assert.equal(game.getVehicle(1).rescueDispatched, true);
+  assert.equal(game.getVehicle(1).state, 'parked');
+  assert.equal(game.getVehicle(1).rescueDispatched, false);
   assert.equal(attacker.rescueDispatched, false);
-  assert.equal(game.clickVehicle(3).reason, 'stamina-rescue-in-progress');
-  assert.deepEqual(game.snapshot().stamina, { enabled: true, lives: 3, remaining: 2, busy: true });
-  until(game, () => !game.isStaminaBusy());
-  assert.equal(game.getVehicle(1).state, 'done');
+  assert.equal(game.lastEvent.type, 'vehicle-collision-contact');
+  assert.ok(game.getVehicle(1).hit);
+  assert.deepEqual(game.snapshot().stamina, { enabled: true, lives: 3, remaining: 2, busy: false });
+  until(game, () => attacker.state === 'parked');
+  advance(game, 1);
+  assert.equal(game.getVehicle(1).state, 'parked');
   assert.equal(attacker.state, 'parked');
+  assert.equal(attacker.motion, 0);
+  assert.equal(game.getVehicle(1).boardedGroups, 0);
+  assert.equal(game.getRemainingGroups(), remainingGroups);
   assert.equal(game.stamina.remaining, 2);
   assert.equal(game.status, 'playing');
 }));
@@ -106,15 +119,17 @@ test('invalid clicks, a successful dispatch and a hidden reveal do not consume s
   assert.equal(game.isStaminaBusy(), false);
 }));
 
-test('an actual blocked collision remains rescuable when all parking spots are occupied', () => withConfig({}, () => {
+test('a wrong click with occupied bays still only spends stamina and returns the attacker', () => withConfig({}, () => {
   const game = new BusLoopGame(makeLevel());
   for (const spot of game.spots) spot.vehicleId = 6;
   assert.equal(game.clickVehicle(2).reason, 'blocked');
   until(game, () => game.stamina.remaining === 2);
-  assert.equal(game.getVehicle(1).state, 'revive-boarding');
+  assert.equal(game.getVehicle(1).state, 'parked');
+  assert.equal(game.isStaminaBusy(), false);
+  until(game, () => game.getVehicle(2).state === 'parked');
 }));
 
-test('contact with a container preserves its bump without starting a rescue', () => withConfig({}, () => {
+test('a blocked container contact costs one heart and preserves its bump without a rescue', () => withConfig({}, () => {
   const game = new BusLoopGame(makeLevel());
   const attacker = game.getVehicle(2);
   Object.assign(attacker, { state: 'colliding', collision: {
@@ -125,8 +140,87 @@ test('contact with a container preserves its bump without starting a rescue', ()
   } });
   game.update(0.1);
   assert.equal(game.lastEvent.type, 'vehicle-collision-contact');
-  assert.equal(game.stamina.remaining, 3);
+  assert.equal(game.stamina.remaining, 2);
   assert.equal(game.isStaminaBusy(), false);
+}));
+
+test('the two switches independently control wrong-click cost and the existing parking rescue', () => {
+  for (const collisionPenaltyEnabled of [0, 1]) for (const parkingRescueEnabled of [0, 1]) {
+    withConfig({ collisionPenaltyEnabled, parkingRescueEnabled }, () => {
+      const collision = new BusLoopGame(makeLevel());
+      collision.clickVehicle(2);
+      until(collision, () => collision.getVehicle(2).state === 'parked');
+      assert.equal(collision.stamina.remaining, 3 - collisionPenaltyEnabled);
+      assert.equal(collision.getVehicle(1).state, 'parked');
+      assert.equal(collision.isStaminaBusy(), false);
+
+      SCENE_TUNING.gameOver.failureDelaySeconds = 0.1;
+      const parking = new BusLoopGame(makeLevel());
+      makeStalled(parking);
+      advance(parking, 0.3);
+      assert.equal(parking.stamina.remaining, 3 - parkingRescueEnabled);
+      assert.equal(parking.isStaminaBusy(), Boolean(parkingRescueEnabled));
+      assert.equal(parking.status, parkingRescueEnabled ? 'playing' : 'lost');
+      if (!parkingRescueEnabled) assert.equal(parking.lastEvent.reason, 'exceed-parking-spot');
+    });
+  }
+});
+
+test('wrong clicks have the same collision motion, contact event and return with stamina off or on', () => withConfig({}, () => {
+  const enabled = new BusLoopGame(makeLevel());
+  SCENE_TUNING.stamina.enabled = 0;
+  const disabled = new BusLoopGame(makeLevel());
+  SCENE_TUNING.stamina.enabled = 1;
+  enabled.clickVehicle(2);
+  disabled.clickVehicle(2);
+  for (let frame = 0; frame < 150; frame++) {
+    enabled.update(0.02);
+    disabled.update(0.02);
+    assert.equal(enabled.getVehicle(2).state, disabled.getVehicle(2).state);
+    assert.equal(enabled.getVehicle(2).motion, disabled.getVehicle(2).motion);
+    assert.deepEqual(enabled.getVehicle(1).hit, disabled.getVehicle(1).hit);
+    assert.deepEqual(enabled.frameAudioEvents, disabled.frameAudioEvents);
+  }
+  assert.equal(enabled.stamina.remaining, 2);
+  assert.equal(disabled.stamina.remaining, 3);
+}));
+
+test('switch edits take effect without restoring spent stamina and both behaviors share the pool', () => withConfig({ collisionPenaltyEnabled: 0, parkingRescueEnabled: 0 }, () => {
+  const game = new BusLoopGame(makeLevel());
+  game.clickVehicle(2);
+  until(game, () => game.getVehicle(2).state === 'parked');
+  assert.equal(game.stamina.remaining, 3);
+  SCENE_TUNING.stamina.collisionPenaltyEnabled = 1;
+  game.clickVehicle(2);
+  until(game, () => game.getVehicle(2).state === 'parked');
+  assert.equal(game.stamina.remaining, 2);
+  SCENE_TUNING.stamina.parkingRescueEnabled = 1;
+  SCENE_TUNING.gameOver.failureDelaySeconds = 0.1;
+  makeStalled(game);
+  until(game, () => game.isStaminaBusy());
+  assert.equal(game.stamina.remaining, 1);
+  until(game, () => !game.isStaminaBusy());
+  assert.equal(game.spots[0].vehicleId, null);
+  assert.equal(game.status, 'playing');
+}));
+
+test('the last wrong click finishes its return before exhaustion and overlapping contacts never go negative', () => withConfig({ lives: 1 }, () => {
+  const game = new BusLoopGame(makeLevel());
+  game.clickVehicle(2);
+  const attacker = game.getVehicle(2);
+  Object.assign(game.getVehicle(3), { state: 'colliding', collision: structuredClone(attacker.collision) });
+  until(game, () => game.stamina.remaining === 0);
+  assert.equal(game.status, 'playing');
+  assert.equal(attacker.state, 'colliding');
+  assert.equal(game.isStaminaBusy(), false);
+  assert.equal(game.collisionContactEventId, 2);
+  until(game, () => game.status === 'lost');
+  assert.equal(attacker.state, 'parked');
+  assert.equal(game.getVehicle(3).state, 'parked');
+  assert.equal(game.lastEvent.reason, 'stamina-exhausted');
+  advance(game, 2);
+  assert.equal(game.stamina.remaining, 0);
+  assert.equal(game.lastEvent.reason, 'stamina-exhausted');
 }));
 
 test('rescue extracts real matching passengers from belt, visible queue and source in order', () => withConfig({}, () => {

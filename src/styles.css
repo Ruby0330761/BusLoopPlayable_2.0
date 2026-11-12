@@ -733,6 +733,13 @@ button:hover { transform: translateY(-1px); background: #fff; }
   transition: opacity var(--game-over-cta-appear-duration, .65s) ease;
 }
 .cta-button[hidden] { display: none; }
+.game-over-overlay.is-failed:not([hidden]) ~ .cta-button {
+  z-index: 11;
+  opacity: 1;
+  animation: none;
+  transform: translate(-50%, -50%);
+}
+.game-over-overlay.is-tap-to-store.is-cta-ready { cursor: pointer; }
 .cta-button:hover {
   background: transparent url('/assets/unity/ui/Main_Prop_GreenBtn.png') center / 100% 100% no-repeat;
 }
