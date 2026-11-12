@@ -14,6 +14,7 @@ import { validateStoreLink } from '../src/store-links.js';
 import { validateCountdownConfig } from '../src/countdown.js';
 import { validateStaminaConfig } from '../src/stamina.js';
 import { validateFreeAssetConfig } from '../src/free-asset-layers.js';
+import { migrateVehiclePathTuning } from '../src/vehicle-path-config.js';
 import {
   PRE_ROLL_COMPRESSION_VERSION,
   compressPreRollFile
@@ -1541,9 +1542,11 @@ async function exportPlatforms({ projectRoot, tuning, levelDocument = null, plat
   let safeTuning;
   let outputNames;
   try {
+    const inputTuning = structuredClone(tuning ?? template);
+    migrateVehiclePathTuning(inputTuning);
     safeTuning = validateTuning(
       applyNamingOverride(
-        applySessionExportNaming(tuning ?? template, sessionConfig, { keepMaterialCode, template }),
+        applySessionExportNaming(inputTuning, sessionConfig, { keepMaterialCode, template }),
         namingOverride
       ),
       template

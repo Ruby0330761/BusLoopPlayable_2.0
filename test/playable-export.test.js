@@ -764,8 +764,9 @@ test('applying export tuning rewrites only tuning data and leaves runtime helper
     const rewritten = await readFile(path.join(root, 'src', 'scene-tuning.js'), 'utf8');
     assert.match(rewritten, /^export const SCENE_TUNING = \{/);
     assert.doesNotMatch(rewritten, /export function /);
+    assert.match(gameModel, /from '\.\/vehicle-path-config\.js'/);
+    assert.match(sceneView, /from '\.\/vehicle-area\.js'/);
     for (const source of [gameModel, sceneView]) {
-      assert.match(source, /import \{ getVehicleAreaPivot(?:, mapVehicleAreaBasePoint)? \} from '\.\/vehicle-area\.js'/);
       assert.doesNotMatch(source, /import \{[^}]*getVehicleAreaPivot[^}]*\} from '\.\/scene-tuning\.js'/);
     }
     const rewrittenModule = await import(`${pathToFileURL(path.join(root, 'src', 'scene-tuning.js')).href}?applied=1`);

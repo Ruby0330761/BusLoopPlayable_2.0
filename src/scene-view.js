@@ -18,6 +18,7 @@ import {
   setActiveStageScene
 } from './stage-scene.js';
 import { getVehicleAreaPivot, mapVehicleAreaBasePoint } from './vehicle-area.js';
+import { createVehicleRouteTransform, resolveVehiclePathConfig } from './vehicle-path-config.js';
 import {
   SPATIAL_CONVEYOR_DISPLAY,
   buildSpatialConveyorExitGeometry,
@@ -520,15 +521,28 @@ function getVehicleModelScale() {
   return SCENE_TUNING.vehicleArea.modelScale;
 }
 
-function mapMotionPoint(value, y = SCENE_TUNING.vehicleArea.y) {
+const vehicleRouteTransforms = new WeakMap();
+function routeTransform(config) {
+  if (!vehicleRouteTransforms.has(config)) {
+    vehicleRouteTransforms.set(config, createVehicleRouteTransform(null, config.vehicleArea, config.transformOffset));
+  }
+  return vehicleRouteTransforms.get(config);
+}
+
+function mapMotionPoint(value, y = SCENE_TUNING.vehicleArea.y, config = null) {
+  if (config) {
+    const mapped = routeTransform(config).point(value.x, value.z);
+    return new THREE.Vector3(mapped.x, y, mapped.z);
+  }
   const mapped = mapVehicleAreaPoint(value);
   return new THREE.Vector3(mapped.x, y, mapped.y);
 }
 
-function mapMotionTangentYaw(tangent, reverse = false) {
+function mapMotionTangentYaw(tangent, reverse = false, config = null) {
   const direction = reverse ? { x: -tangent.x, z: -tangent.z } : tangent;
   const sourceYaw = Math.atan2(direction.x, direction.z) * 180 / Math.PI;
-  return mapVehicleAreaYaw(sourceYaw) + deg(SCENE_TUNING.facing.vehicleYawOffsetDegrees);
+  const yaw = config ? deg(routeTransform(config).yaw(sourceYaw)) : mapVehicleAreaYaw(sourceYaw);
+  return yaw + deg(SCENE_TUNING.facing.vehicleYawOffsetDegrees);
 }
 
 function mapVehicleAreaYaw(yawDegrees) {
@@ -3066,7 +3080,7 @@ export class SceneView {
   }
 
   updateVehiclePathPreview(snapshot = this.lastSnapshot, game = this.lastGame) {
-    const tuning = SCENE_TUNING.vehiclePath;
+    const tuning = game?.getVehiclePathConfig().station ?? SCENE_TUNING.vehiclePath;
     const departureTuning = SCENE_TUNING.vehicleDeparturePath;
     if (
       this.isSpatialOptimizationEnabled('skipDisabledPathPreview')
@@ -3110,7 +3124,7 @@ export class SceneView {
   }
 
   updateVehicleDeparturePathPreview(snapshot = this.lastSnapshot, game = this.lastGame) {
-    const tuning = SCENE_TUNING.vehicleDeparturePath;
+    const tuning = game?.getVehiclePathConfig().departure ?? SCENE_TUNING.vehicleDeparturePath;
     if (!tuning?.enabled || !snapshot || !game || !Boolean(SCENE_TUNING.visibility?.vehicles ?? 1)) return;
     const baseMaterial = new THREE.LineBasicMaterial({
       color: tuning.color ?? 0xffc857,
@@ -4889,7 +4903,8 @@ export class SceneView {
       this.loopPlane.material.opacity = conveyor.opacity;
     }
 
-    const spots = resolveParkingSpots();
+    const routeConfig = resolveVehiclePathConfig(LEVEL_1, SCENE_TUNING, resolveParkingSpots());
+    const spots = routeConfig.parkingSpots;
     // A spot's x is derived, never authored, when auto-centring is on: changing
     // the count used to shove the whole row off to one side because startX was a
     // fixed number tuned for the old count.
@@ -4905,13 +4920,13 @@ export class SceneView {
       const position = this.spotPositions[i];
       position.set(startX + spots.spacing * i, spots.y, spots.z);
       this.spotRoots[i].position.copy(position);
-      this.spotRoots[i].rotation.y = deg(SCENE_TUNING.facing.parkingSpotYawDegrees);
+      this.spotRoots[i].rotation.y = deg(routeConfig.visualYaw);
       this.spotRoots[i].scale.set(spots.scaleX, 1, spots.scaleZ);
       const board = this.seatCountBoards[i];
       if (board) {
         const boardTuning = SCENE_TUNING.seatCountBoard;
         board.position.set(boardTuning.x, 0.03, boardTuning.z);
-        board.rotation.y = -deg(SCENE_TUNING.facing.parkingSpotYawDegrees);
+        board.rotation.y = -deg(routeConfig.visualYaw);
         board.scale.set(1 / Math.max(spots.scaleX, 0.0001), 1, 1 / Math.max(spots.scaleZ, 0.0001));
         // The card geometry spans the full card box, so its depth is the card's
         // share of the atlas height. depth alone is the whole 256-tall sheet the
@@ -5239,15 +5254,16 @@ export class SceneView {
       } else if (vehicle.state === 'revive-departing' && !vehicle.reviveFromStation) {
         view.userData.spatialStaticParked = false;
         const sample = evaluatePath(vehicle.motionData.path, vehicle.motionData.path.length * ease(vehicle.motion));
-        view.position.copy(mapMotionPoint(sample.position));
-        view.rotation.y = mapMotionTangentYaw(sample.tangent);
+        const config = vehicle.motionData.routeConfig;
+        view.position.copy(mapMotionPoint(sample.position, config?.vehicleArea.y, config));
+        view.rotation.y = mapMotionTangentYaw(sample.tangent, false, config);
       } else if (vehicle.state === 'moving-to-spot') {
         view.userData.spatialStaticParked = false;
         const data = vehicle.motionData;
         const curveValue = evaluateUnityCurve(data.curve, vehicle.motion);
         const sample = evaluatePath(data.path, data.path.length * curveValue);
-        view.position.copy(mapMotionPoint(sample.position));
-        view.rotation.y = mapMotionTangentYaw(sample.tangent);
+        view.position.copy(mapMotionPoint(sample.position, data.routeConfig?.vehicleArea.y, data.routeConfig));
+        view.rotation.y = mapMotionTangentYaw(sample.tangent, false, data.routeConfig);
         vehicleScale = THREE.MathUtils.lerp(
           1,
           UNITY_VEHICLE_MOTION.stationScaleBySeats[vehicle.seats] ?? 1,
@@ -5266,20 +5282,20 @@ export class SceneView {
         // route: the preview line sits lower on screen than the parking row,
         // on the road lane. The car must ride that same height, otherwise it
         // visibly leaves the line. Do not substitute the vehicle layer here.
-        const departureY = SCENE_TUNING.vehicleDeparturePath?.y ?? SCENE_TUNING.vehicleArea.y;
+        const departureY = data.routeConfig?.departure.y ?? SCENE_TUNING.vehicleDeparturePath?.y ?? SCENE_TUNING.vehicleArea.y;
         if (elapsed < data.backwardDuration) {
           const t = evaluateUnityCurve(UNITY_CURVES.outBackward, elapsed / data.backwardDuration);
           const sample = evaluatePath(data.backwardPath, data.backwardPath.length * t);
-          view.position.copy(mapMotionPoint(sample.position, departureY));
-          view.rotation.y = mapMotionTangentYaw(sample.tangent, true);
+          view.position.copy(mapMotionPoint(sample.position, departureY, data.routeConfig));
+          view.rotation.y = mapMotionTangentYaw(sample.tangent, true, data.routeConfig);
         } else {
           const t = evaluateUnityCurve(
             UNITY_CURVES.outForward,
             (elapsed - data.backwardDuration) / data.forwardDuration
           );
           const sample = evaluatePath(data.forwardPath, data.forwardPath.length * t);
-          view.position.copy(mapMotionPoint(sample.position, departureY));
-          view.rotation.y = mapMotionTangentYaw(sample.tangent);
+          view.position.copy(mapMotionPoint(sample.position, departureY, data.routeConfig));
+          view.rotation.y = mapMotionTangentYaw(sample.tangent, false, data.routeConfig);
         }
       }
       const boardingPulseScale = this.getVehicleBoardingPulseScale(vehicle.id, snapshot.time);

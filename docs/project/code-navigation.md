@@ -49,6 +49,7 @@ Use this file before code changes. Pick the closest change area, then read only 
 | Editor 关于 panel / per-DAY changelog shown in the header | `src/build-changelog.js` (`BUILD_CHANGELOG`, `changelogVersions`, `findChangelogEntry`) | `src/build-version.js`, `src/scene-editor.js` (`renderChangelogList`), `src/styles.css`, `test/build-changelog.test.js` |
 | Responsive layout math, curve transforms, camera fit helpers | `src/scene-layout.js` | `test/scene-layout.test.js` |
 | Vehicle routes, click-to-station paths, station departure, collision distance, hit clips | `src/vehicle-motion.js` | `src/game-model.js`, `test/game-model.test.js` |
+| Resolved vehicle route snapshots, automatic perimeter, source/world transform and legacy manual bounds | `src/vehicle-path-config.js` | `src/game-model.js`, `src/scene-view.js`, `src/scene-editor.js`, `src/main.js`, `scripts/generate-active-level.mjs`, `scripts/export-playable-package.mjs`, `test/vehicle-path-config.test.js` |
 | Vehicle departure ribbons/smoke, boarding smoke, particle motion | `src/vehicle-effects.js` | `test/vehicle-effects.test.js`, `src/scene-tuning.js`, `src/scene-view.js` |
 | Page structure, canvas mount, branding image/text overlay, pre-roll video overlay, end panel, editor mount | `index.html` | `src/main.js`, `src/styles.css`, `src/pre-roll.js` |
 | Visual CSS, HUD, branding overlay, editor panel, phone preview, responsive behavior | `src/styles.css` | `index.html`, `src/scene-editor.js` |

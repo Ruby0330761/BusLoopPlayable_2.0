@@ -738,6 +738,8 @@ export const SCENE_TUNING = {
     "textScale": 1
   },
   "vehiclePath": {
+    "autoBounds": 1,
+    "boundsPadding": 0.1,
     "enabled": 0,
     "showBlocked": 1,
     "y": 0.145,

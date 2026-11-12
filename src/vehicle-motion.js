@@ -260,6 +260,11 @@ function bakeCubic(p0, c1, c2, p1, sampleRate) {
 }
 
 export function evaluatePath(path, distance) {
+  if (distance >= path.length && path.segments.length) {
+    const last = path.segments.at(-1);
+    return { position: { ...last.p1 }, tangent: last.type === 'line'
+      ? normalize(sub(last.p1, last.p0)) : last.samples.at(-1).tangent };
+  }
   let remaining = Math.max(0, Math.min(path.length, distance));
   let segment = path.segments.at(-1);
   for (const candidate of path.segments) {

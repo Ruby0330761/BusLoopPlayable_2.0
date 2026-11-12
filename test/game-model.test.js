@@ -1420,9 +1420,11 @@ test('vehicle area rotation uses the transformed vehicle-region center', () => {
   assert.ok(Math.abs(pivot.x - (bounds.minX + bounds.maxX) / 2) < 1e-9);
   assert.ok(Math.abs(pivot.z - (bounds.minZ + bounds.maxZ) / 2) < 1e-9);
   assert.match(sceneViewSource, /getVehicleAreaPivot\(area\)/);
-  assert.match(gameModelSource, /getVehicleAreaPivot\(area\)/);
+  assert.match(gameModelSource, /resolveVehiclePathConfig\(this\.level, SCENE_TUNING, spots\)/);
   assert.match(sceneViewSource, /function mapVehicleAreaYaw\(yawDegrees\) \{[\s\S]*?return mirroredYaw - deg\(SCENE_TUNING\.vehicleArea\.rotationDegrees\);\r?\n\}/);
-  assert.match(gameModelSource, /function visualYawToVehicleAreaYaw\(yawDegrees\) \{[\s\S]*?return area\.mirrorZ \? 180 - yawDegrees : yawDegrees;/);
+  // Full inverse-heading and cluster-pivot behaviour is covered numerically
+  // across rotations/mirrors in vehicle-path-config.test.js.
+  assert.match(gameModelSource, /createVehicleRouteTransform/);
 });
 
 test('editor sizing, source background ratio, and passenger shadow anchor stay wired', () => {
@@ -2073,8 +2075,8 @@ test('vehicle path preview and shape controls are wired to scene tuning', () => 
   // `vehicleDeparturePath.y` is the authored height of the departure route: the
   // line sits lower on screen (on the road lane), so the departing car must
   // ride that same height to stay on the line. It is not just a preview value.
-  assert.match(viewSource, /const departureY = SCENE_TUNING\.vehicleDeparturePath\?\.y \?\? SCENE_TUNING\.vehicleArea\.y;/);
-  assert.match(viewSource, /mapMotionPoint\(sample\.position, departureY\)/);
+  assert.match(viewSource, /const departureY = data\.routeConfig\?\.departure\.y \?\? SCENE_TUNING\.vehicleDeparturePath\?\.y \?\? SCENE_TUNING\.vehicleArea\.y;/);
+  assert.match(viewSource, /mapMotionPoint\(sample\.position, departureY, data\.routeConfig\)/);
 });
 
 test('departing cars ride the authored departure line height, not the vehicle layer', () => {
