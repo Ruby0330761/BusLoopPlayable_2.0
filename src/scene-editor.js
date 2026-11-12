@@ -1270,21 +1270,29 @@ function downloadFilename(response, platform) {
   return `bus-loop-${platform}.${format.toLowerCase()}`;
 }
 
-export function createSceneEditor(root, {
-  getTuning,
-  defaultTuning = getTuning(),
-  setTuning,
-  getPlayableExportPayload = () => ({ tuning: getTuning() }),
-  clearSavedTuning = () => {},
-  saveImportedLevelTuning = () => false,
-  captureScreenshot = async () => { throw new Error('\u622a\u56fe\u529f\u80fd\u4e0d\u53ef\u7528'); },
-  previewPreRoll = async () => {},
-  openSpatialPointEditor = async () => {},
-  openLevelLayoutEditor = async () => {},
-  getCameraPreset = () => null
-}) {
-  const defaults = structuredClone(defaultTuning);
-  root.innerHTML = `
+// ---------------------------------------------------------------------------
+// Editor templates
+//
+// Two shells share one control tree. The classic shell is the shipped 320px
+// sidebar: header, screenshot block, category tabs, export block, 66 tuning
+// sections, history actions, all in one scroll column. The shell layout is the
+// study prototype: a rail of nine panels, a search field, and an inspector
+// column, with the 3D stage pulled into the middle of the page.
+//
+// Only the *markup* differs. Every block below emits the same class hooks the
+// wiring in createSceneEditor queries, so the field builders, undo stack,
+// autosave, export path and async option refreshers run unchanged in either
+// layout. Nothing here forks behaviour.
+// ---------------------------------------------------------------------------
+
+function renderEditorHeader({ layoutMode = 'classic' } = {}) {
+  // Both headers carry the switch so either shell can reach the other. The
+  // label names the destination, not the current state.
+  const switchLabel = layoutMode === 'shell' ? '\u7ecf\u5178\u5e03\u5c40' : '\u65b0\u5e03\u5c40';
+  const switchTitle = layoutMode === 'shell'
+    ? '\u5207\u6362\u5230\u8001\u7248\u4fa7\u680f\u5e03\u5c40'
+    : '\u5207\u6362\u5230\u56fe\u6807\u680f + \u68c0\u89c6\u680f\u7684\u65b0\u5e03\u5c40';
+  return `
     <header class="editor-header">
       <div>
         <span class="editor-kicker">SCENE EDITOR <span class="editor-version">v${BUILD_VERSION}</span></span>
@@ -1300,9 +1308,14 @@ export function createSceneEditor(root, {
           </select>
         </label>
         <button class="editor-about" type="button" aria-label="\u67e5\u770b\u7248\u672c\u66f4\u65b0\u5185\u5bb9" title="\u7248\u672c\u66f4\u65b0\u5185\u5bb9">\u5173\u4e8e</button>
+        <button class="editor-layout-switch" type="button" title="${switchTitle}">${switchLabel}</button>
         <button class="editor-toggle" type="button" aria-label="\u6536\u8d77\u573a\u666f\u7f16\u8f91\u5668" aria-expanded="true">\u00d7</button>
       </div>
-    </header>
+    </header>`;
+}
+
+function renderEditorAboutPanel() {
+  return `
     <div class="editor-about-panel" role="dialog" aria-modal="true" aria-labelledby="editor-about-title" hidden>
       <div class="editor-about-dialog">
         <header class="editor-about-head">
@@ -1315,9 +1328,11 @@ export function createSceneEditor(root, {
         </header>
         <div class="editor-about-list">${renderChangelogList(BUILD_VERSION)}</div>
       </div>
-    </div>
-    <div class="editor-body">
-      <p class="editor-help">\u56fe\u7247\u4e0e\u884c\u8d70\u66f2\u7ebf\u53ef\u5206\u522b\u8c03\u8282\u3002\u53c2\u6570\u6309\u5f53\u524d\u5173\u5361\u5355\u72ec\u4fdd\u5b58\uff0c\u6bcf\u6b21\u8c03\u6574\u4f1a\u81ea\u52a8\u4fdd\u5b58\u3002</p>
+    </div>`;
+}
+
+function renderScreenshotSection() {
+  return `
       <details class="editor-section editor-screenshot" open>
         <summary class="editor-section-summary"><h3>\u622a\u56fe\u51fa\u56fe</h3></summary>
         <label class="editor-screenshot-size">
@@ -1330,12 +1345,20 @@ export function createSceneEditor(root, {
         </label>
         <button class="editor-screenshot-button" type="button">\u4e0b\u8f7d\u622a\u56fe</button>
         <p class="editor-screenshot-status" role="status" aria-live="polite" aria-atomic="true">\u4e0d\u5305\u542b\u624b\u673a\u8fb9\u6846</p>
-      </details>
+      </details>`;
+}
+
+function renderCategoryTabs() {
+  return `
       <nav class="editor-category-tabs" role="tablist" aria-label="\u7f16\u8f91\u5668\u529f\u80fd\u5206\u7c7b">
         ${EDITOR_CATEGORIES.map(([id, label], index) => (
           `<button type="button" role="tab" data-editor-category-tab="${id}" aria-selected="${index === 0}" tabindex="${index === 0 ? 0 : -1}">${label}</button>`
         )).join('')}
-      </nav>
+      </nav>`;
+}
+
+function renderExportSection() {
+  return `
       <details class="editor-section editor-playable-export" data-editor-category="export" open>
         <summary class="editor-section-summary"><h3>\u5bfc\u51fa\u8bd5\u73a9</h3></summary>
         <label class="editor-export-set">
@@ -1362,15 +1385,147 @@ export function createSceneEditor(root, {
         <p class="editor-export-limit" role="note">\u6240\u6709\u6e20\u9053\u4e0a\u9650 5 MB\uff1a\u8d85\u8fc7\u7684\u5305\u4e0d\u4f1a\u4e0b\u8f7d\uff0c\u5bfc\u51fa\u4f1a\u76f4\u63a5\u62a5\u9519\u5e76\u5217\u51fa\u5360\u7528\u6700\u5927\u7684\u7d20\u6750\u3002</p>
         <p class="editor-export-status" role="status" aria-live="polite" aria-atomic="true">\u5c31\u7eea</p>
         <p class="editor-export-events" role="status" aria-live="polite" aria-atomic="true">\u5bfc\u51fa\u5305\u81ea\u5e26 AppLovin 12 \u4e2a\u6807\u51c6\u4e8b\u4ef6</p>
-      </details>
-      <div class="editor-fields"></div>
+      </details>`;
+}
+
+function renderHistoryActions() {
+  return `
       <div class="editor-history-actions">
         <button class="editor-history-button editor-undo" type="button" aria-label="\u64a4\u56de\u4e0a\u4e00\u6b65" title="\u64a4\u56de\u4e0a\u4e00\u6b65">&#8630;</button>
         <button class="editor-history-button editor-redo" type="button" aria-label="\u91cd\u505a\u4e0a\u4e00\u6b65" title="\u91cd\u505a\u4e0a\u4e00\u6b65">&#8631;</button>
         <button class="editor-reset" type="button">\u6062\u590d\u9ed8\u8ba4\u53c2\u6570</button>
-      </div>
+      </div>`;
+}
+
+function renderClassicEditorTemplate() {
+  return `${renderEditorHeader({ layoutMode: 'classic' })}
+    ${renderEditorAboutPanel()}
+    <div class="editor-body">
+      <p class="editor-help">\u56fe\u7247\u4e0e\u884c\u8d70\u66f2\u7ebf\u53ef\u5206\u522b\u8c03\u8282\u3002\u53c2\u6570\u6309\u5f53\u524d\u5173\u5361\u5355\u72ec\u4fdd\u5b58\uff0c\u6bcf\u6b21\u8c03\u6574\u4f1a\u81ea\u52a8\u4fdd\u5b58\u3002</p>
+      ${renderScreenshotSection()}
+      ${renderCategoryTabs()}
+      ${renderExportSection()}
+      <div class="editor-fields"></div>
+      ${renderHistoryActions()}
     </div>
   `;
+}
+
+// Rail panels. `id` matches the CSS hook; `match` decides a section's panel by
+// majority vote over its own field paths (row 1 is not representative: the
+// Icon/Logo section opens with the phone-preview size rows but is branding).
+const SHELL_PANELS = [
+  { id: 'level', label: '\u5173\u5361', icon: 'M5 21V4M5 5h9l-1.2 2.6L14 10H5M5 14h7l-1 2.2L12 18H5', match: /^level\./ },
+  { id: 'scene', label: '\u573a\u666f', icon: 'M12 3v2M12 19v2M3 12h2M19 12h2M5.6 5.6 7 7M17 17l1.4 1.4M18.4 5.6 17 7M7 17l-1.4 1.4', match: /^(?:camera|lighting|sourceCrop|background|visibility|preview)\./ },
+  { id: 'track', label: '\u8f68\u9053', icon: 'M4 6h16v12H4zM8 6v12M16 6v12', match: /^(?:conveyorLayout|conveyorLayouts|spatialConveyor|queueCurves|passengerShadows|effects)\./ },
+  { id: 'cars', label: '\u8f66\u8f86', icon: 'M4 15v-2.5l1.8-3.2A2 2 0 0 1 7.5 8h9a2 2 0 0 1 1.7 1.3L20 12.5V15M4 15h16v2.5H4z', match: /^(?:parkingSpots|vehiclePath|vehicleDeparturePath|vehicleArea|passengerMaterial|passengers)\./ },
+  { id: 'guide', label: '\u5f15\u5bfc', icon: 'M9 11V5.5a1.5 1.5 0 0 1 3 0V10M12 10V7.5a1.5 1.5 0 0 1 3 0V12M15 12v-1a1.5 1.5 0 0 1 3 0v4.5A5.5 5.5 0 0 1 12.5 21h-1A5.5 5.5 0 0 1 6 15.5V13a1.5 1.5 0 0 1 3 0v1', match: /^(?:vehicleGuideHand|firstClickGuide|entryBanner|countdown|weatherEffect|freeAssets|preRoll|gameOver|installGate|stamina)\./ },
+  { id: 'ui', label: '\u754c\u9762', icon: 'M4 5h16v14H4zM4 9h16M9 9v10', match: /^(?:branding|cta|speedToggle|progressHud)\./ },
+  { id: 'audio', label: '\u58f0\u97f3', icon: 'M5 9.5h3L12.5 6v12L8 14.5H5zM16 9a4.2 4.2 0 0 1 0 6', match: /^audio\./ },
+  { id: 'assets', label: '\u7d20\u6750', icon: 'M4 5h16v14H4zM8.6 9.8a1.5 1.5 0 1 0 0-.1M4.5 17l4.6-4.3 3 2.6 3-3.2 4.4 4.9', match: /^(?:guideAssets|editorAssets)\./ },
+  { id: 'export', label: '\u5bfc\u51fa', icon: 'M12 16V4M7.5 8.5 12 4l4.5 4.5M4 16v3h16v-3', match: /^exportNaming\./ },
+];
+
+// Sections are grouped by job inside a panel; the guide panel alone covers
+// "catch the eye", "deadline and failure" and "atmosphere".
+const SHELL_SUBGROUPS = {
+  track: [
+    ['\u8dd1\u9053', /^conveyorLayout(?:s)?\./],
+    ['\u7acb\u4f53\u8f68\u9053', /^spatialConveyor\./],
+    ['\u961f\u5217\u4e0e\u5f71\u5b50', /^(?:queueCurves|passengerShadows)\./],
+    ['\u7c92\u5b50', /^effects\./],
+  ],
+  cars: [
+    ['\u8f66\u8f86\u4e0e\u8f66\u4f4d', /^(?:parkingSpots|vehiclePath|vehicleDeparturePath|vehicleArea)\./],
+    ['\u5c0f\u4eba', /^(?:passengers|passengerMaterial)\./],
+  ],
+  guide: [
+    ['\u5f00\u573a\u5f15\u5bfc', /^(?:vehicleGuideHand|firstClickGuide|entryBanner)\./],
+    ['\u8282\u594f\u4e0e\u5931\u8d25', /^(?:countdown|gameOver|installGate|preRoll|stamina)\./],
+    ['\u6c1b\u56f4\u56fe\u5c42', /^(?:weatherEffect|freeAssets)\./],
+  ],
+  scene: [
+    ['\u76f8\u673a\u4e0e\u706f\u5149', /^(?:camera|lighting|visibility)\./],
+    ['\u753b\u9762', /^(?:background|sourceCrop|preview)\./],
+  ],
+  ui: [
+    ['\u54c1\u724c', /^branding\./],
+    ['\u63a7\u4ef6', /^(?:cta|speedToggle|progressHud)\./],
+  ],
+  export: [['\u547d\u540d', /^exportNaming\./]],
+};
+
+const SHELL_PANEL_TITLES = {
+  level: ['\u5173\u5361', '\u9009\u5173\u3001\u5173\u5361\u5e93\u3001\u5e03\u5c40\u7f16\u8f91\u5668\u5165\u53e3'],
+  scene: ['\u573a\u666f', '\u76f8\u673a\u3001\u706f\u5149\u3001\u80cc\u666f\u3001\u6e90\u56fe\u88c1\u5207\u3001\u663e\u793a\u63a7\u5236'],
+  track: ['\u8f68\u9053', '\u8dd1\u9053\u9009\u62e9\u3001\u7acb\u4f53\u8f68\u9053\u3001\u961f\u5217\u66f2\u7ebf\u3001\u5f71\u5b50\u3001\u7c92\u5b50'],
+  cars: ['\u8f66\u8f86\u4e0e\u89d2\u8272', '\u8f66\u4f4d\u3001\u8f66\u8f86\u3001\u884c\u9a76\u8def\u5f84\u3001\u5c0f\u4eba\u6a21\u578b\u4e0e\u6750\u8d28'],
+  guide: ['\u5f15\u5bfc\u4e0e\u6d41\u7a0b', '\u624b\u6307\u63d0\u793a\u3001\u5f00\u573a\u5f15\u5bfc\u3001\u6a2a\u5e45\u3001\u5012\u8ba1\u65f6\u3001\u5929\u6c14\u3001\u524d\u8d34\u3001\u7ed3\u7b97'],
+  ui: ['\u754c\u9762\u4e0e\u54c1\u724c', 'Icon/Logo/\u6587\u672c\u3001CTA\u3001\u500d\u901f\u6309\u94ae\u3001\u8fdb\u5ea6\u6761'],
+  audio: ['\u58f0\u97f3', '\u97f3\u6548\u5ef6\u8fdf\u3001\u97f3\u91cf\u3001BGM \u5e93'],
+  assets: ['\u7d20\u6750', '\u4e94\u7c7b\u7d20\u6750\u5e93\u7684\u53f0\u8d26'],
+  export: ['\u5bfc\u51fa', '\u547d\u540d\u3001\u622a\u56fe\u3001\u5957\u7cfb\u3001\u4e03\u5e73\u53f0\u4ea4\u4ed8'],
+};
+
+function renderShellEditorTemplate() {
+  return `${renderEditorHeader({ layoutMode: 'shell' })}
+    ${renderEditorAboutPanel()}
+    <nav class="shell-rail" aria-label="\u7f16\u8f91\u5668\u9762\u677f">
+      ${SHELL_PANELS.map((panel) => (
+        `<button type="button" data-shell-panel="${panel.id}" title="${panel.label}">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="${panel.icon}"/></svg>
+          <span>${panel.label}</span>
+          <em></em>
+        </button>`
+      )).join('')}
+    </nav>
+    <section class="shell-panel">
+      <div class="shell-panel-head">
+        <h2 class="shell-panel-title">\u8f68\u9053</h2>
+        <p class="shell-panel-note"></p>
+        <div class="shell-panel-tally"></div>
+      </div>
+      <div class="shell-search" role="search">
+        <input class="editor-search-input" type="search" placeholder="\u641c\u7d22\u5b57\u6bb5\uff08\u8df3\u8fc7\u9762\u677f\u5206\u7c7b\uff09" aria-label="\u641c\u7d22\u5b57\u6bb5" autocomplete="off" spellcheck="false" />
+        <button class="editor-search-clear" type="button" aria-label="\u6e05\u9664\u641c\u7d22" hidden>\u00d7</button>
+      </div>
+      <div class="editor-body">
+        <div class="editor-fields"></div>
+        ${renderScreenshotSection()}
+        ${renderExportSection()}
+        ${renderHistoryActions()}
+      </div>
+    </section>
+    <aside class="shell-inspector" aria-label="\u68c0\u89c6\u5668">
+      <div class="shell-inspector-tabs" role="tablist">
+        <button type="button" data-shell-tab="facts" aria-selected="true">\u6982\u89c8</button>
+        <button type="button" data-shell-tab="checks" aria-selected="false">\u6821\u9a8c</button>
+        <button type="button" data-shell-tab="deal" aria-selected="false">\u4ea4\u4ed8</button>
+      </div>
+      <div class="shell-inspector-body"></div>
+    </aside>
+  `;
+}
+
+export function createSceneEditor(root, {
+  getTuning,
+  defaultTuning = getTuning(),
+  setTuning,
+  getPlayableExportPayload = () => ({ tuning: getTuning() }),
+  clearSavedTuning = () => {},
+  saveImportedLevelTuning = () => false,
+  captureScreenshot = async () => { throw new Error('\u622a\u56fe\u529f\u80fd\u4e0d\u53ef\u7528'); },
+  previewPreRoll = async () => {},
+  openSpatialPointEditor = async () => {},
+  openLevelLayoutEditor = async () => {},
+  getCameraPreset = () => null,
+  layoutMode = 'classic'
+}) {
+  const defaults = structuredClone(defaultTuning);
+  // `shell` is the split layout study; anything else keeps the shipped sidebar
+  // byte for byte so a bad shell build can never take the old editor down.
+  const shellLayout = layoutMode === 'shell';
+  root.innerHTML = shellLayout ? renderShellEditorTemplate() : renderClassicEditorTemplate();
 
   const fieldsRoot = root.querySelector('.editor-fields');
   const inputs = new Map();
@@ -3450,16 +3605,485 @@ export function createSceneEditor(root, {
       const previewLocale = String(tuning.branding?.localization?.previewLocale ?? 'auto');
       if (localeSelect.value !== previewLocale) localeSelect.value = previewLocale;
     }
+    shellRefresh?.();
   }
 
+  // -------------------------------------------------------------------------
+  // Shell layout
+  //
+  // The sections above were built exactly as in the classic editor. This block
+  // only *re-parents* those finished nodes into rail panels and adds navigation.
+  // Nothing is rebuilt, so every listener bound during construction (sliders,
+  // selects, uploads, export, level tooling, the async option refreshers) keeps
+  // working untouched. The classic layout never reaches this code.
+  // -------------------------------------------------------------------------
+  let shellRefresh = null;
+
+  function installShellLayout() {
+    // The classic editor opens on the 关卡 tab, which leaves every other
+    // section carrying `is-category-hidden`. The shell owns visibility instead,
+    // so drop that state before laying anything out.
+    root.dataset.editorCategory = '';
+    for (const hidden of root.querySelectorAll('.editor-section.is-category-hidden')) {
+      hidden.classList.remove('is-category-hidden');
+    }
+
+    const allSections = [...root.querySelectorAll('.editor-section')];
+    const railButtons = [...root.querySelectorAll('[data-shell-panel]')];
+    const panelHost = fieldsRoot;
+    const panelTitle = root.querySelector('.shell-panel-title');
+    const panelNote = root.querySelector('.shell-panel-note');
+    const panelTally = root.querySelector('.shell-panel-tally');
+    const searchInput = root.querySelector('.editor-search-input');
+    const searchClear = root.querySelector('.editor-search-clear');
+    const searchResults = document.createElement('div');
+    searchResults.className = 'shell-search-results';
+    searchResults.hidden = true;
+    fieldsRoot.parentElement.insertBefore(searchResults, fieldsRoot);
+
+    const fieldPaths = (section) => [...section.querySelectorAll('[data-path]')]
+      .map((node) => node.dataset.path)
+      .filter(Boolean);
+
+    // Row 1 is not representative of a section: Icon/Logo opens with the phone
+    // preview size rows but is 24 branding rows. Vote with every row instead.
+    function panelFor(section) {
+      if (section.classList.contains('editor-screenshot')) return 'export';
+      if (section.classList.contains('editor-playable-export')) return 'export';
+      if (section.dataset.conveyorLayout || section.dataset.spatialOnly) return 'track';
+      // The free-asset layers section is built by a custom panel and owns no
+      // tuning rows at all, so it cannot vote.
+      if (section.querySelector('.editor-free-asset-panel')) return 'guide';
+      const votes = new Map();
+      for (const path of fieldPaths(section)) {
+        for (const panel of SHELL_PANELS) {
+          if (panel.match.test(path)) {
+            votes.set(panel.id, (votes.get(panel.id) ?? 0) + 1);
+            break;
+          }
+        }
+      }
+      let best = null;
+      let bestVotes = 0;
+      for (const panel of SHELL_PANELS) {
+        const count = votes.get(panel.id) ?? 0;
+        if (count > bestVotes) {
+          best = panel.id;
+          bestVotes = count;
+        }
+      }
+      return best ?? 'scene';
+    }
+
+    function subgroupFor(section, panel) {
+      const rules = SHELL_SUBGROUPS[panel] ?? [];
+      for (const path of fieldPaths(section)) {
+        for (const [name, pattern] of rules) {
+          if (pattern.test(path)) return name;
+        }
+      }
+      return rules[0]?.[0] ?? '';
+    }
+
+    // A few rows are plain divs, not <details>: the level tool buttons are
+    // inserted beside the level section rather than inside it. Without an owner
+    // they would sit outside every panel host and stay visible in all nine.
+    const ORPHAN_PANELS = new Map([
+      ['editor-level-tools', 'level'],
+      ['editor-spatial-conveyor', 'track'],
+    ]);
+    function panelForNode(node) {
+      if (node.classList.contains('editor-section')) return panelFor(node);
+      for (const [cls, panel] of ORPHAN_PANELS) {
+        if (node.classList.contains(cls)) return panel;
+      }
+      return null;
+    }
+
+    // The five asset libraries are tool rows inside their own sections (背景 /
+    // 前贴视频 / 特效 / BGM / 自由素材), so there is no section to file under
+    // 素材. The panel is therefore a real index into those rows: every entry
+    // below resolves to a live control that already exists.
+    const ASSET_LIBRARIES = [
+      { label: '\u80cc\u666f\u56fe', path: 'background.asset', selector: '.editor-background-import' },
+      { label: 'BGM', path: 'audio.bgm.asset', selector: '.editor-guide-asset-import' },
+      { label: '\u524d\u8d34\u89c6\u9891', path: 'preRoll.asset', selector: '.editor-pre-roll-import' },
+      { label: '\u7279\u6548\u8d34\u56fe', path: 'weatherEffect.mode', selector: '.editor-guide-asset-import' },
+      { label: '\u81ea\u7531\u7d20\u6750', path: 'freeAssets', selector: '.editor-free-asset-import' },
+    ];
+
+    // Group every section once; the rail only toggles which groups are shown.
+    // The screenshot block and the export block are siblings of the field list
+    // in the shell template, not children of it. Move them into the list first
+    // so a single pass over .editor-fields sees every section; appending here
+    // also puts them last inside the 导出 panel, which is the order they run in.
+    for (const selector of ['.editor-screenshot', '.editor-playable-export']) {
+      const node = root.querySelector(selector);
+      if (node && node.parentElement !== fieldsRoot) fieldsRoot.appendChild(node);
+    }
+    const placements = new Map();
+    const ownerOf = new Map();
+    // Snapshot: panel hosts are appended to fieldsRoot before this loop, and
+    // moving a node into one mutates the live HTMLCollection we would otherwise
+    // be iterating.
+    for (const node of [...fieldsRoot.children]) {
+      const panel = panelForNode(node);
+      if (!panel) continue;
+      ownerOf.set(node, panel);
+      const subgroup = node.classList.contains('editor-section') ? subgroupFor(node, panel) : '';
+      if (!placements.has(panel)) placements.set(panel, { order: [], buckets: new Map() });
+      const entry = placements.get(panel);
+      if (!entry.buckets.has(subgroup)) {
+        entry.buckets.set(subgroup, []);
+        entry.order.push(subgroup);
+      }
+      entry.buckets.get(subgroup).push(node);
+    }
+
+    // One host per panel. Sections keep their original relative order.
+    const panelHosts = new Map();
+    for (const panel of SHELL_PANELS) {
+      const host = document.createElement('div');
+      host.className = 'shell-panel-body';
+      host.dataset.shellPanelBody = panel.id;
+      host.hidden = true;
+      panelHost.appendChild(host);
+      panelHosts.set(panel.id, host);
+      const entry = placements.get(panel.id);
+      if (!entry) continue;
+      for (const subgroup of entry.order) {
+        const list = entry.buckets.get(subgroup);
+        if (entry.order.length > 1 && subgroup) {
+          const heading = document.createElement('div');
+          heading.className = 'shell-group-head';
+          const fieldCount = list.reduce(
+            (sum, section) => sum + section.querySelectorAll('[data-path]').length, 0,
+          );
+          heading.innerHTML = `<span>${subgroup}</span><em>${list.length} 段${fieldCount ? ` · ${fieldCount} 字段` : ''}</em>`;
+          host.appendChild(heading);
+        }
+        for (const section of list) host.appendChild(section);
+      }
+    }
+
+    const sectionPanel = new Map();
+    for (const [panel, host] of panelHosts) {
+      for (const section of host.querySelectorAll('.editor-section')) sectionPanel.set(section, panel);
+    }
+
+    // 素材 gets a generated index instead of sections. Each entry points at a
+    // real upload/select row that already exists in another panel, so clicking
+    // it lands on the live control rather than describing it.
+    const assetPanelHost = panelHosts.get('assets');
+    if (assetPanelHost) {
+      const index = document.createElement('div');
+      index.className = 'shell-asset-index';
+      assetPanelHost.appendChild(index);
+      const seenSections = new Set();
+      const entries = [];
+      for (const lib of ASSET_LIBRARIES) {
+        // The weather and BGM libraries share the same import button class, so
+        // resolve by section title instead of taking the first match.
+        const section = allSections.find((candidate) => {
+          if (seenSections.has(candidate)) return false;
+          const title = candidate.querySelector('h3')?.textContent ?? '';
+          if (lib.label === 'BGM') return title.includes('BGM');
+          if (lib.label === '\u7279\u6548\u8d34\u56fe') return title.includes('\u5929\u6c14');
+          return Boolean(candidate.querySelector(lib.selector));
+        }) || allSections.find((candidate) => candidate.querySelector(lib.selector));
+        if (!section) continue;
+        seenSections.add(section);
+        const select = section.querySelector(`[data-path="${lib.path}"] .editor-select`);
+        const options = select ? select.options.length : 0;
+        entries.push({ label: lib.label, section, options, kind: select ? 'select' : 'upload' });
+      }
+      index.innerHTML = entries.map((entry, offset) => (
+        `<button type="button" class="shell-asset-entry" data-asset-entry="${offset}">
+          <strong>${entry.label}</strong>
+          <small>${entry.options ? `内置 ${entry.options} 项 · 可上传替换` : '\u4e0a\u4f20 / \u66ff\u6362'}</small>
+          <em>${entry.section.querySelector('h3')?.textContent ?? ''}</em>
+        </button>`
+      )).join('') + '<p class="shell-insp-note">\u7d20\u6750\u5e93\u7684\u4e0a\u4f20\u3001\u4e0b\u8f7d\u3001\u5220\u9664\u6309\u94ae\u5c31\u5728\u5bf9\u5e94\u6bb5\u91cc\uff0c\u70b9\u4e0a\u9762\u4e00\u9879\u76f4\u63a5\u8df3\u8fc7\u53bb\u3002</p>';
+      index.querySelectorAll('[data-asset-entry]').forEach((button) => {
+        button.addEventListener('click', () => {
+          const entry = entries[Number(button.dataset.assetEntry)];
+          setActivePanel(sectionPanel.get(entry.section) ?? 'scene');
+          entry.section.open = true;
+          entry.section.scrollIntoView({ block: 'center' });
+        });
+      });
+    }
+
+    let activePanel = 'track';
+    let activeTab = 'facts';
+
+    function countPanel(panelId) {
+      const host = panelHosts.get(panelId);
+      if (!host) return { sections: 0, fields: 0 };
+      // `hidden` is owned by the conveyor filter; `display` by the shell. A
+      // section only counts when both let it through.
+      const sections = [...host.querySelectorAll('.editor-section')]
+        .filter((section) => !section.hidden);
+      return {
+        sections: sections.length,
+        fields: sections.reduce((sum, section) => sum + section.querySelectorAll('[data-path]').length, 0),
+      };
+    }
+
+    function setActivePanel(panelId, { focus = false } = {}) {
+      activePanel = panelId;
+      for (const button of railButtons) {
+        const on = button.dataset.shellPanel === panelId;
+        button.classList.toggle('is-active', on);
+        button.setAttribute('aria-pressed', String(on));
+        if (on && focus) button.focus();
+      }
+      for (const [id, host] of panelHosts) host.hidden = id !== panelId;
+      const [title, note] = SHELL_PANEL_TITLES[panelId] ?? ['', ''];
+      panelTitle.textContent = title;
+      panelNote.textContent = note;
+      const stats = countPanel(panelId);
+      // The asset panel indexes rows that live elsewhere, so counting its own
+      // sections would always read "0 段" and look broken.
+      const assetEntries = panelId === 'assets'
+        ? panelHosts.get('assets')?.querySelectorAll('[data-asset-entry]').length ?? 0
+        : 0;
+      const parts = panelId === 'assets' ? [`${assetEntries} 个素材库`] : [`${stats.sections} 段`];
+      if (panelId !== 'assets' && stats.fields) parts.push(`${stats.fields} 字段`);
+      panelTally.textContent = parts.join(' · ');
+    }
+
+    function refreshRail() {
+      for (const button of railButtons) {
+        const id = button.dataset.shellPanel;
+        const stats = countPanel(id);
+        const badge = button.querySelector('em');
+        if (badge) badge.textContent = stats.sections ? String(stats.sections) : '';
+        button.classList.toggle('is-empty', stats.sections === 0);
+      }
+      if (activePanel) setActivePanel(activePanel);
+    }
+
+    for (const button of railButtons) {
+      button.addEventListener('click', () => {
+        setActivePanel(button.dataset.shellPanel);
+        // Picking a panel is a statement that search is over; leaving stale
+        // results on screen next to a different panel reads as a bug.
+        if (!searchResults.hidden) closeSearch();
+      });
+    }
+
+    // ---- search ------------------------------------------------------------
+    function rowLabel(row) {
+      return row.querySelector('span')?.textContent ?? '';
+    }
+
+    function closeSearch() {
+      searchInput.value = '';
+      searchClear.hidden = true;
+      searchResults.hidden = true;
+      searchResults.replaceChildren();
+      for (const host of panelHosts.values()) host.classList.remove('is-search-filtered');
+      fieldsRoot.hidden = false;
+      refreshRail();
+    }
+
+    function runSearch(rawQuery) {
+      const query = rawQuery.trim().toLowerCase();
+      searchClear.hidden = query.length === 0;
+      if (!query) {
+        closeSearch();
+        return;
+      }
+      const hits = [];
+      for (const section of allSections) {
+        const sectionTitle = section.querySelector('h3')?.textContent ?? '';
+        for (const row of section.querySelectorAll('.editor-field[data-path]')) {
+          const label = rowLabel(row);
+          const path = row.dataset.path ?? '';
+          if (`${label} ${path} ${sectionTitle}`.toLowerCase().includes(query)) {
+            hits.push({ section, row, label, path, sectionTitle });
+          }
+        }
+      }
+      searchResults.replaceChildren();
+      searchResults.hidden = false;
+      fieldsRoot.hidden = true;
+      for (const host of panelHosts.values()) host.classList.add('is-search-filtered');
+      if (!hits.length) {
+        searchResults.innerHTML = '<p class="shell-search-empty">没有匹配的字段</p>';
+        return;
+      }
+      const head = document.createElement('div');
+      head.className = 'shell-search-count';
+      head.textContent = `${hits.length} 项`;
+      searchResults.appendChild(head);
+      for (const hit of hits.slice(0, 60)) {
+        const item = document.createElement('button');
+        item.type = 'button';
+        item.className = 'shell-search-hit';
+        item.innerHTML = `<strong></strong><small></small><em></em>`;
+        item.querySelector('strong').textContent = hit.label;
+        item.querySelector('small').textContent = hit.path;
+        item.querySelector('em').textContent = hit.sectionTitle;
+        item.addEventListener('click', () => {
+          const panel = sectionPanel.get(hit.section) ?? 'track';
+          searchResults.hidden = true;
+          searchClear.hidden = true;
+          searchInput.value = '';
+          for (const host of panelHosts.values()) host.classList.remove('is-search-filtered');
+          fieldsRoot.hidden = false;
+          setActivePanel(panel);
+          hit.section.open = true;
+          hit.section.scrollIntoView({ block: 'center' });
+          hit.row.classList.add('is-shell-flash');
+          setTimeout(() => hit.row.classList.remove('is-shell-flash'), 1500);
+          refreshRail();
+        });
+        searchResults.appendChild(item);
+      }
+      if (hits.length > 60) {
+        const more = document.createElement('p');
+        more.className = 'shell-search-empty';
+        more.textContent = `还有 ${hits.length - 60} 项，加个词缩小范围`;
+        searchResults.appendChild(more);
+      }
+    }
+
+    searchInput.addEventListener('input', () => runSearch(searchInput.value));
+    searchClear.addEventListener('click', closeSearch);
+
+    // ---- inspector ---------------------------------------------------------
+    const inspectorBody = root.querySelector('.shell-inspector-body');
+    const inspectorTabs = [...root.querySelectorAll('[data-shell-tab]')];
+
+    function formatName(path) {
+      return path.replace(/^exportNaming\./, '').replace(/^channels\./, '渠道 ');
+    }
+
+    function collectChecks() {
+      let badNames = 0;
+      let badUrls = 0;
+      let badCountdown = 0;
+      for (const [path, controls] of inputs) {
+        if (controls.isFilename && controls.updateValidity && !controls.updateValidity()) badNames += 1;
+        if (controls.urlInput && controls.urlInput.getAttribute('aria-invalid') === 'true') badUrls += 1;
+        if (path.startsWith('countdown.') && controls.updateValidity && !controls.updateValidity()) badCountdown += 1;
+      }
+      return [
+        {
+          state: badNames ? 'bad' : 'ok',
+          title: '导出命名',
+          note: badNames ? `${badNames} 个片段含非法字符` : '所有命名片段合法（可留空）',
+        },
+        {
+          state: badCountdown ? 'warn' : 'ok',
+          title: '倒计时配置',
+          note: badCountdown ? `${badCountdown} 项时间配置冲突` : '时间配置有效',
+        },
+        {
+          state: badUrls ? 'bad' : 'ok',
+          title: '商店链接',
+          note: badUrls ? `${badUrls} 个链接格式无效` : '链接格式有效',
+        },
+        {
+          // Honest about the boundary: the 5 MB gate runs on the packaged
+          // artifact server-side, so there is nothing to assert here.
+          state: 'skip',
+          title: '单包体积',
+          note: '导出时由服务端 5 MB 门禁判定',
+        },
+      ];
+    }
+
+    function renderInspector() {
+      for (const tab of inspectorTabs) {
+        const on = tab.dataset.shellTab === activeTab;
+        tab.classList.toggle('is-active', on);
+        tab.setAttribute('aria-selected', String(on));
+      }
+      const tuning = getTuning();
+      if (activeTab === 'facts') {
+        const conveyor = String(tuning.conveyorLayout?.selected ?? '—');
+        const spatial = conveyor.startsWith('spatial:');
+        inspectorBody.innerHTML = `
+          <div class="shell-insp-kv">
+            <span>当前关卡</span><b>${String(tuning.level?.selected ?? '—')}</b>
+            <span>跑道</span><b>${conveyor.replace(/^spatial:/, '立体 ')}</b>
+            <span>跑道类型</span><b>${spatial ? '立体轨道' : '预制跑道'}</b>
+            <span>车位</span><b>${Number(tuning.parkingSpots?.count ?? 0)} 个</b>
+            <span>车辆显示</span><b>${Number(tuning.visibility?.vehicles) ? '开' : '关'}</b>
+            <span>小人显示</span><b>${Number(tuning.visibility?.passengers) ? '开' : '关'}</b>
+            <span>预览语言</span><b>${String(tuning.branding?.localization?.previewLocale ?? 'auto')}</b>
+            <span>版本</span><b>v${BUILD_VERSION}</b>
+          </div>
+          <p class="shell-insp-note">这些值随调参实时更新。要改就切到左侧对应面板，这里只读。</p>`;
+        return;
+      }
+      if (activeTab === 'checks') {
+        const checks = collectChecks();
+        inspectorBody.innerHTML = `<div class="shell-insp-checks">${checks.map((check) => (
+          `<div class="shell-insp-check ${check.state}"><i></i><div><strong>${check.title}</strong><small>${check.note}</small></div></div>`
+        )).join('')}</div>
+          <p class="shell-insp-note">同一结论也会落在出问题的字段旁：命名片段标红，倒计时时间冲突时导出按钮禁用。</p>`;
+        return;
+      }
+      const namingRows = [...inputs.entries()]
+        .filter(([path]) => path.startsWith('exportNaming.'))
+        .map(([path, controls]) => {
+          const value = String(controls.textInput?.value ?? '').trim();
+          return `<div class="shell-insp-kv-row"><span>${formatName(path)}</span><b class="${value ? '' : 'is-empty'}">${value || '未填'}</b></div>`;
+        })
+        .join('');
+      inspectorBody.innerHTML = `
+        <div class="shell-insp-kv-row-head"><span>命名片段</span><b>${namingRows.split('is-empty').length - 1} 项未填</b></div>
+        ${namingRows}
+        <div class="shell-insp-actions">
+          <button type="button" class="shell-insp-jump" data-shell-jump="export">前往导出面板</button>
+        </div>`;
+      inspectorBody.querySelector('[data-shell-jump]')?.addEventListener('click', () => {
+        setActivePanel('export');
+        const exportSection = root.querySelector('.editor-playable-export');
+        if (exportSection) {
+          exportSection.open = true;
+          exportSection.scrollIntoView({ block: 'center' });
+        }
+      });
+    }
+
+    for (const tab of inspectorTabs) {
+      tab.addEventListener('click', () => {
+        activeTab = tab.dataset.shellTab;
+        renderInspector();
+      });
+    }
+
+    // ---- shared refresh ---------------------------------------------------
+    // sync() runs on every tuning change; the rail badges and the inspector both
+    // read tuning-dependent numbers, so they follow it.
+    shellRefresh = () => {
+      refreshRail();
+      renderInspector();
+    };
+
+    setActivePanel('track');
+    refreshRail();
+    renderInspector();
+  }
+
+
+  // Collapse is classic-sidebar chrome. The shell layout hides the button with
+  // CSS but still renders it, so this stays a real element in both modes; a
+  // missing node here used to crash the whole editor mount.
   const toggle = root.querySelector('.editor-toggle');
   const setCollapsed = (collapsed) => {
+    if (!toggle) return;
     root.classList.toggle('is-collapsed', collapsed);
     toggle.textContent = collapsed ? '\u8c03\u8282' : '\u00d7';
     toggle.setAttribute('aria-expanded', String(!collapsed));
     toggle.setAttribute('aria-label', collapsed ? '\u5c55\u5f00\u573a\u666f\u7f16\u8f91\u5668' : '\u6536\u8d77\u573a\u666f\u7f16\u8f91\u5668');
   };
-  toggle.addEventListener('click', () => setCollapsed(!root.classList.contains('is-collapsed')));
+  toggle?.addEventListener('click', () => setCollapsed(!root.classList.contains('is-collapsed')));
 
   // Header language picker. It writes the same `branding.localization.previewLocale`
   // the 引导 field row edits, so switching here and switching there stay in sync;
@@ -3498,6 +4122,16 @@ export function createSceneEditor(root, {
     if (event.key === 'Escape' && !aboutPanel.hidden) setAboutOpen(false);
   });
 
+  // The layout switch is shell-only chrome. The choice is remembered, so an
+  // operator who prefers either shell does not have to carry a URL around.
+  root.querySelector('.editor-layout-switch')?.addEventListener('click', () => {
+    const next = shellLayout ? 'classic' : 'shell';
+    try { localStorage.setItem('bus-loop-editor-layout-v1', next); } catch { /* private mode */ }
+    const url = new URL(location.href);
+    url.searchParams.set('layout', next);
+    location.href = url.toString();
+  });
+
   root.querySelector('.editor-reset').addEventListener('click', () => {
     const selectedLevel = getTuning().level?.selected;
     clearSavedTuning();
@@ -3508,7 +4142,9 @@ export function createSceneEditor(root, {
     sync({ resetCountdownDrafts: true });
   });
 
-  if (matchMedia('(max-width: 760px)').matches) setCollapsed(true);
+  // The classic sidebar collapses to a 76px strip on a narrow window. The shell
+  // layout owns the whole page, so collapsing it there would hide the rail.
+  if (!shellLayout && matchMedia('(max-width: 760px)').matches) setCollapsed(true);
   const savedOpeningGuideVehicleId = getAtPath(getTuning(), 'firstClickGuide.vehicleId');
   const normalizedOpeningGuideVehicleId = normalizeVehicleIdSelection(savedOpeningGuideVehicleId);
   if (
@@ -3520,6 +4156,19 @@ export function createSceneEditor(root, {
     setTuning(next, { path: 'firstClickGuide.vehicleId' });
   }
   setEditorCategory('level');
+  // Runs after every section and its tool row exists, so the shell can move
+  // finished nodes instead of rebuilding them. A failure here must not take the
+  // editor down: the sections are still in .editor-fields in their original
+  // order, so the worst case is an ungrouped column rather than a blank page.
+  if (shellLayout) {
+    try {
+      installShellLayout();
+    } catch (error) {
+      console.error('Shell editor layout failed; falling back to a flat column.', error);
+      root.dataset.shellError = error instanceof Error ? error.message : String(error);
+      root.classList.add('shell-layout-failed');
+    }
+  }
   sync();
   updateHistoryButtons();
   refreshSpatialConveyorOptions().catch((error) => {

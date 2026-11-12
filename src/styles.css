@@ -1070,6 +1070,501 @@ button:hover { transform: translateY(-1px); background: #fff; }
   .editor-body { padding-top: 8px; }
 }
 
+/* ==========================================================================
+   Shell editor layout (opt-in: ?layout=shell)
+   The sidebar is dissolved into two page columns — rail + panel on the left,
+   inspector on the right — and the canvas stage keeps the middle. Everything
+   here is scoped behind #app.layout-shell so the shipped sidebar layout is
+   untouched when the flag is off.
+   ========================================================================== */
+#app.layout-shell {
+  display: grid;
+  grid-template-columns: 62px minmax(296px, 322px) minmax(0, 1fr) minmax(280px, 306px);
+  grid-template-rows: minmax(0, 1fr);
+  background: #f6f8fa;
+}
+#app.layout-shell > #stage {
+  grid-column: 3;
+  grid-row: 1;
+  min-width: 0;
+  min-height: 0;
+  background: #262d36;
+}
+/* Dissolve the sidebar wrapper so its children become page columns. */
+#app.layout-shell > .scene-editor {
+  display: contents;
+}
+#app.layout-shell .editor-header {
+  grid-column: 1 / 3;
+  grid-row: 1;
+  align-self: start;
+  z-index: 6;
+  min-height: 0;
+  padding: 9px 10px 8px 12px;
+  border-bottom: 1px solid rgba(16,35,61,.09);
+  border-right: 1px solid rgba(16,35,61,.09);
+  background: rgba(244,250,255,.97);
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 6px;
+  height: 58px;
+}
+#app.layout-shell .editor-header h2 { margin: 1px 0 0; font-size: 13px; }
+#app.layout-shell .editor-header-actions { flex-wrap: nowrap; gap: 6px; }
+#app.layout-shell .editor-locale-label { display: none; }
+#app.layout-shell .editor-locale-select { height: 26px; padding: 0 20px 0 7px; font-size: 10px; }
+#app.layout-shell .editor-about { min-width: 0; height: 26px; padding: 0 8px; font-size: 10px; }
+#app.layout-shell .editor-toggle { display: none; }
+/* Layout switch. Present in both headers so either shell can reach the other;
+   the classic sidebar is narrow, so it gets a compact icon-sized treatment. */
+.scene-editor .editor-layout-switch {
+  min-width: 0;
+  height: 34px;
+  padding: 0 9px;
+  border: 1px solid rgba(22,131,162,.4);
+  border-radius: 8px;
+  background: #f2fbfd;
+  color: #11667c;
+  font-size: 11px;
+  font-weight: 700;
+  box-shadow: none;
+  transform: none;
+  white-space: nowrap;
+}
+.scene-editor .editor-layout-switch:hover { border-color: #1683a2; background: #e3f6fb; }
+#app.layout-shell .editor-layout-switch {
+  height: 26px;
+  padding: 0 8px;
+  border-radius: 6px;
+  font-size: 10px;
+}
+
+/* Rail -------------------------------------------------------------------- */
+#app.layout-shell .shell-rail {
+  grid-column: 1;
+  grid-row: 1;
+  align-self: stretch;
+  margin-top: 58px;
+  z-index: 5;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 7px 0;
+  overflow-y: auto;
+  background: #1e242c;
+  scrollbar-width: none;
+}
+#app.layout-shell .shell-rail::-webkit-scrollbar { display: none; }
+#app.layout-shell .shell-rail button {
+  position: relative;
+  display: grid;
+  place-items: center;
+  gap: 2px;
+  width: 50px;
+  height: 45px;
+  padding: 0;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: #9fb0bd;
+  box-shadow: none;
+  transform: none;
+}
+#app.layout-shell .shell-rail button:hover { background: #2f3844; color: #e6eef4; transform: none; }
+#app.layout-shell .shell-rail button.is-active { background: #287fa8; color: #fff; }
+#app.layout-shell .shell-rail button.is-empty { opacity: .38; }
+#app.layout-shell .shell-rail svg { width: 17px; height: 17px; }
+#app.layout-shell .shell-rail span { font-size: 9.5px; font-weight: 600; letter-spacing: .02em; white-space: nowrap; }
+#app.layout-shell .shell-rail em {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  min-width: 14px;
+  height: 14px;
+  padding: 0 3px;
+  display: grid;
+  place-items: center;
+  border-radius: 7px;
+  background: #46525f;
+  color: #dfe8ef;
+  font-size: 8px;
+  font-style: normal;
+  font-weight: 700;
+}
+#app.layout-shell .shell-rail em:empty { display: none; }
+#app.layout-shell .shell-rail button.is-active em { background: rgba(0,0,0,.24); }
+
+/* Panel column ------------------------------------------------------------ */
+#app.layout-shell .shell-panel {
+  grid-column: 2;
+  grid-row: 1;
+  align-self: stretch;
+  min-width: 0;
+  min-height: 0;
+  margin-top: 58px;
+  display: grid;
+  grid-template-rows: auto auto minmax(0, 1fr);
+  background: #fff;
+  border-right: 1px solid rgba(16,35,61,.12);
+  z-index: 4;
+}
+#app.layout-shell .shell-panel-head {
+  padding: 10px 13px 9px;
+  border-bottom: 1px solid rgba(16,35,61,.08);
+}
+#app.layout-shell .shell-panel-title {
+  margin: 0;
+  font-size: 13.5px;
+  color: #10233d;
+}
+#app.layout-shell .shell-panel-note {
+  margin: 2px 0 0;
+  color: #7d919f;
+  font-size: 10px;
+  line-height: 1.4;
+}
+#app.layout-shell .shell-panel-tally {
+  margin-top: 6px;
+  color: #2b5f77;
+  font-size: 9.5px;
+  font-weight: 700;
+}
+#app.layout-shell .shell-search {
+  position: relative;
+  padding: 8px 13px;
+  border-bottom: 1px solid rgba(16,35,61,.08);
+}
+#app.layout-shell .editor-search-input {
+  width: 100%;
+  height: 29px;
+  padding: 0 24px 0 8px;
+  border: 1px solid rgba(16,35,61,.16);
+  border-radius: 7px;
+  background: #fafcfd;
+  font-size: 11px;
+}
+#app.layout-shell .editor-search-input:focus {
+  outline: 2px solid rgba(40,127,168,.32);
+  outline-offset: -1px;
+  background: #fff;
+}
+#app.layout-shell .editor-search-clear {
+  position: absolute;
+  right: 17px;
+  top: 50%;
+  width: 19px;
+  height: 19px;
+  padding: 0;
+  transform: translateY(-50%);
+  border: 0;
+  border-radius: 5px;
+  background: #eaeff2;
+  color: #4d6272;
+  font-size: 12px;
+  line-height: 1;
+  box-shadow: none;
+}
+#app.layout-shell .editor-body {
+  min-height: 0;
+  padding: 10px 13px 26px;
+  overflow-y: auto;
+}
+#app.layout-shell .editor-help { display: none; }
+#app.layout-shell .shell-panel-body[hidden] { display: none; }
+#app.layout-shell .shell-panel-body.is-search-filtered { display: none; }
+#app.layout-shell .shell-group-head {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin: 11px 0 6px;
+  color: #5b7386;
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+#app.layout-shell .shell-group-head:first-child { margin-top: 0; }
+#app.layout-shell .shell-group-head::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: #e6edf2;
+}
+#app.layout-shell .shell-group-head em {
+  order: 3;
+  color: #9caab5;
+  font-size: 9px;
+  font-style: normal;
+  font-weight: 600;
+  letter-spacing: 0;
+}
+#app.layout-shell .editor-field.is-shell-flash {
+  animation: shell-field-flash 1.4s ease-out;
+}
+/* 素材 panel is an index into upload rows that live in other panels, so its
+   entries need to read as navigation rather than as settings. */
+#app.layout-shell .shell-asset-index { display: grid; gap: 5px; }
+#app.layout-shell .shell-asset-entry {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 3px 8px;
+  width: 100%;
+  padding: 7px 9px;
+  border: 1px solid rgba(16,35,61,.1);
+  border-radius: 7px;
+  background: #fff;
+  text-align: left;
+  box-shadow: none;
+  transform: none;
+}
+#app.layout-shell .shell-asset-entry:hover { border-color: #bcd4e2; background: #f7fcfe; transform: none; }
+#app.layout-shell .shell-asset-entry strong { color: #23455c; font-size: 11px; font-weight: 700; }
+#app.layout-shell .shell-asset-entry small { grid-column: 1; color: #7d919f; font-size: 9.5px; }
+#app.layout-shell .shell-asset-entry em {
+  grid-column: 2;
+  grid-row: 1 / span 2;
+  color: #9caab5;
+  font-size: 9px;
+  font-style: normal;
+  text-align: right;
+  max-width: 96px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+@keyframes shell-field-flash {
+  0% { background: #fff4cf; box-shadow: inset 0 0 0 2px #e8bf4a; }
+  100% { background: transparent; box-shadow: none; }
+}
+
+/* Search results ---------------------------------------------------------- */
+#app.layout-shell .shell-search-results {
+  min-height: 0;
+  padding: 8px 13px 26px;
+  overflow-y: auto;
+}
+#app.layout-shell .shell-search-results[hidden] { display: none; }
+#app.layout-shell .shell-search-count {
+  margin-bottom: 6px;
+  color: #7d919f;
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: .05em;
+  text-transform: uppercase;
+}
+#app.layout-shell .shell-search-hit {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  margin-bottom: 5px;
+  padding: 6px 8px;
+  border: 1px solid rgba(16,35,61,.1);
+  border-radius: 6px;
+  background: #fff;
+  text-align: left;
+  box-shadow: none;
+  transform: none;
+}
+#app.layout-shell .shell-search-hit:hover { border-color: #bcd4e2; background: #f7fcfe; transform: none; }
+#app.layout-shell .shell-search-hit strong {
+  display: block;
+  color: #23455c;
+  font-size: 11px;
+  font-weight: 700;
+}
+#app.layout-shell .shell-search-hit small {
+  display: block;
+  color: #93a3ae;
+  font-size: 9px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+#app.layout-shell .shell-search-hit em {
+  color: #9caab5;
+  font-size: 9px;
+  font-style: normal;
+  white-space: nowrap;
+}
+#app.layout-shell .shell-search-empty {
+  margin: 14px 0;
+  color: #93a3ae;
+  font-size: 11px;
+  text-align: center;
+}
+
+/* Inspector --------------------------------------------------------------- */
+#app.layout-shell .shell-inspector {
+  grid-column: 4;
+  grid-row: 1;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  min-width: 0;
+  min-height: 0;
+  background: #fff;
+  border-left: 1px solid rgba(16,35,61,.12);
+  z-index: 4;
+}
+#app.layout-shell .shell-inspector-tabs {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 3px;
+  padding: 10px 11px;
+  border-bottom: 1px solid rgba(16,35,61,.08);
+}
+#app.layout-shell .shell-inspector-tabs button {
+  height: 26px;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  background: #eff2f5;
+  color: #4d6272;
+  font-size: 10.5px;
+  font-weight: 700;
+  box-shadow: none;
+  transform: none;
+}
+#app.layout-shell .shell-inspector-tabs button:hover { background: #e6ecf1; transform: none; }
+#app.layout-shell .shell-inspector-tabs button.is-active {
+  background: #eaf4f9;
+  color: #16637f;
+  box-shadow: inset 0 0 0 1px #a8cbdd;
+}
+#app.layout-shell .shell-inspector-body {
+  min-height: 0;
+  padding: 11px 12px 26px;
+  overflow-y: auto;
+  font-size: 10.5px;
+}
+#app.layout-shell .shell-insp-kv {
+  display: grid;
+  grid-template-columns: 62px minmax(0, 1fr);
+  gap: 5px 8px;
+}
+#app.layout-shell .shell-insp-kv span { color: #7d919f; }
+#app.layout-shell .shell-insp-kv b {
+  color: #274257;
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+#app.layout-shell .shell-insp-kv-row,
+#app.layout-shell .shell-insp-kv-row-head {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  padding: 4px 0;
+  border-top: 1px dashed #eef2f5;
+}
+#app.layout-shell .shell-insp-kv-row span,
+#app.layout-shell .shell-insp-kv-row-head span { color: #5b7183; }
+#app.layout-shell .shell-insp-kv-row b {
+  color: #274257;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+#app.layout-shell .shell-insp-kv-row b.is-empty { color: #b6c3cc; font-weight: 600; }
+#app.layout-shell .shell-insp-kv-row-head {
+  border-top: 0;
+  border-bottom: 1px solid #eef2f5;
+  margin-bottom: 2px;
+  color: #7d919f;
+  font-size: 9px;
+  letter-spacing: .05em;
+  text-transform: uppercase;
+}
+#app.layout-shell .shell-insp-kv-row-head b { font-size: 9px; color: #8a6115; }
+#app.layout-shell .shell-insp-checks { display: grid; gap: 2px; }
+#app.layout-shell .shell-insp-check {
+  display: grid;
+  grid-template-columns: 12px minmax(0, 1fr);
+  gap: 7px;
+  align-items: start;
+  padding: 6px 0;
+  border-top: 1px dashed #eef2f5;
+}
+#app.layout-shell .shell-insp-check:first-child { border-top: 0; }
+#app.layout-shell .shell-insp-check i {
+  width: 8px;
+  height: 8px;
+  margin-top: 3px;
+  border-radius: 50%;
+  background: #2f7d59;
+}
+#app.layout-shell .shell-insp-check.warn i { background: #a9701a; }
+#app.layout-shell .shell-insp-check.bad i { background: #ad3b38; }
+#app.layout-shell .shell-insp-check.skip i { background: #b6c3cc; }
+#app.layout-shell .shell-insp-check strong {
+  display: block;
+  color: #274257;
+  font-weight: 700;
+}
+#app.layout-shell .shell-insp-check small {
+  display: block;
+  color: #7d919f;
+  font-size: 9.5px;
+  line-height: 1.4;
+}
+#app.layout-shell .shell-insp-note {
+  margin: 10px 0 0;
+  padding: 7px 9px;
+  border-radius: 6px;
+  background: #f6fafc;
+  color: #5b7386;
+  font-size: 9.5px;
+  line-height: 1.5;
+}
+#app.layout-shell .shell-insp-actions { margin-top: 10px; }
+#app.layout-shell .shell-insp-jump {
+  width: 100%;
+  min-height: 28px;
+  border: 1px solid #1d6f92;
+  border-radius: 6px;
+  background: #287fa8;
+  color: #fff;
+  font-size: 10.5px;
+  font-weight: 700;
+  box-shadow: none;
+  transform: none;
+}
+
+/* The shell pulls the stage into the middle, so the phone-preview frame has to
+   size against that column instead of the whole viewport. */
+#app.layout-shell.is-phone-preview {
+  padding: 0;
+  gap: 0;
+  justify-content: initial;
+  align-items: initial;
+}
+#app.layout-shell.is-phone-preview > #stage {
+  flex: 0 0 auto;
+  justify-self: center;
+  align-self: center;
+  width: min(calc(100% - 32px), calc((100vh - 72px) * var(--preview-width) / var(--preview-height)));
+  height: min(calc(100vh - 72px), calc((100% - 32px) * var(--preview-height) / var(--preview-width)));
+  max-width: calc(100% - 32px);
+  max-height: calc(100vh - 72px);
+  aspect-ratio: var(--preview-width) / var(--preview-height);
+  border: 10px solid #142537;
+  border-radius: 34px;
+  background: #0d1c2b;
+  box-shadow: 0 24px 70px rgba(9,32,50,.28), inset 0 0 0 1px rgba(255,255,255,.08);
+}
+#app.layout-shell.is-phone-preview #game-canvas { border-radius: 24px; overflow: hidden; }
+
+@media (max-width: 1180px) {
+  #app.layout-shell { grid-template-columns: 58px minmax(270px, 296px) minmax(0, 1fr) 258px; }
+}
+@media (max-width: 900px) {
+  #app.layout-shell { grid-template-columns: 58px minmax(240px, 280px) minmax(0, 1fr); }
+  #app.layout-shell .shell-inspector { display: none; }
+}
+
 #app.is-phone-preview {
   justify-content: center;
   align-items: center;

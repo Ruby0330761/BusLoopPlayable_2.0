@@ -733,6 +733,27 @@ function applyPreviewFrame() {
   }
 }
 
+// Two editor shells live side by side. `classic` is the shipped 320px sidebar
+// and stays the default so an unfinished shell build can never break the
+// editor people rely on; `?layout=shell` opts into the split layout.
+const EDITOR_LAYOUT_STORAGE_KEY = 'bus-loop-editor-layout-v1';
+const EDITOR_LAYOUT_MODES = new Set(['classic', 'shell']);
+
+function resolveEditorLayoutMode() {
+  const params = new URLSearchParams(location.search);
+  const requested = params.get('layout');
+  if (requested && EDITOR_LAYOUT_MODES.has(requested)) {
+    try { localStorage.setItem(EDITOR_LAYOUT_STORAGE_KEY, requested); } catch { /* private mode */ }
+    return requested;
+  }
+  try {
+    const saved = localStorage.getItem(EDITOR_LAYOUT_STORAGE_KEY);
+    if (saved && EDITOR_LAYOUT_MODES.has(saved)) return saved;
+  } catch { /* private mode */ }
+  return 'classic';
+}
+
+
 function refreshDefaultStoreLinks() {
   // Keep the fallback snapshot aligned with the links embedded in the exported tuning.
   for (const platform of ['android', 'ios']) {
@@ -2894,6 +2915,10 @@ async function startRuntime() {
   }
 
   if (EDITOR_ENABLED && sceneEditorRoot) {
+    const editorLayoutMode = resolveEditorLayoutMode();
+    // The shell layout owns the whole page, so the flag lives on #app rather
+    // than on the sidebar element that layout dissolves.
+    app?.classList.toggle('layout-shell', editorLayoutMode === 'shell');
     // The build stamp belongs to exported packages only, where it identifies a
     // file that gets handed around. The editor is a live page with its own
     // version label in the header, so the corner stays empty there.
@@ -2909,10 +2934,24 @@ async function startRuntime() {
         previewPreRoll: () => preRollController?.play(SCENE_TUNING.preRoll),
         openSpatialPointEditor,
         openLevelLayoutEditor,
-        getCameraPreset
+        getCameraPreset,
+        layoutMode: resolveEditorLayoutMode()
       });
     }).catch((error) => {
-      console.warn('Scene editor could not be loaded.', error);
+      // A failed editor mount used to leave a blank sidebar with only a console
+      // warning, which read as "the editor is broken" with nothing to act on.
+      // Surface it on the element so it is visible and inspectable.
+      console.error('Scene editor could not be loaded.', error);
+      if (sceneEditorRoot) {
+        sceneEditorRoot.dataset.editorMountError = error instanceof Error
+          ? `${error.name}: ${error.message}`
+          : String(error);
+        // Same font stack as the rest of the page: a bare platform font here
+        // trips the "bundled Poppins only" guard, and this fallback is inside
+        // the shipped page, not a dev-only panel.
+        sceneEditorRoot.innerHTML = `<p style="margin:12px;padding:10px 12px;border-radius:8px;background:#fdeceb;color:#9c3a35;font:600 12px/1.5 'Poppins Branding',Arial,sans-serif">
+          编辑器加载失败：${(error instanceof Error ? error.message : String(error))}</p>`;
+      }
     });
   } else {
     sceneEditorRoot?.remove();
