@@ -214,7 +214,9 @@ test('opening guide animation has an editor toggle that restarts its preview', a
   assert.match(viewSource, /this\.updateEntryBannerTuning\(\);\n    const banner = this\.entryBanner/);
   assert.match(editorSource, /document\.createElement\('details'\)/);
   assert.match(editorSource, /editor-section-summary/);
-  assert.match(editorSource, /section\.open = Boolean\(group\.defaultOpen\)/);
+  // The classic sidebar still honours each group's defaultOpen; the shell layout
+  // forces everything shut and opens only each sub-group's first section.
+  assert.match(editorSource, /section\.open = shellLayout \? false : Boolean\(group\.defaultOpen\)/);
   assert.match(stylesSource, /\.editor-section\[open\] > \.editor-section-summary/);
 });
 

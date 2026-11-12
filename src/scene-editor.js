@@ -40,7 +40,62 @@ const CONVEYOR_LAYOUT_OPTIONS = [
   ['dualLoop5', '双线跑道 DualLoop5'],
   ['hexLoop', '六边跑道 HexLoop'],
   ['crossLoop', '十字跑道 CrossLoop'],
+  ['footage8', '立体轨道 Footage8（双入口）'],
+  ['footage9', '立体轨道 Footage9（双入口）'],
+  ['footage10', '立体轨道 Footage10（双入口）'],
+  ['footage11', 'Q37 平面轨道 Footage11（单入口）'],
 ];
+
+// Tracks imported from shipped playables are tuned through a flat per-track
+// block rather than the art/curve/queueCurves shape the Unity prefab loops use,
+// so they get their own field groups instead of makeConveyorLayoutGroups.
+const PLAYABLE_TRACK_DEFINITIONS = [
+  ['footage8', '立体轨道 Footage8', { roadJoin: true }],
+  ['footage9', '立体轨道 Footage9', { roadJoin: true }],
+  ['footage10', '立体轨道 Footage10', { roadJoin: false }],
+  ['footage11', 'Q37 平面轨道 Footage11', { roadJoin: false, leftQueue: true }]
+];
+
+function makePlayableTrackGroups(layoutId, label, { roadJoin, leftQueue }) {
+  const root = `playableTracks.${layoutId}`;
+  const groups = [
+    { title: `${label} - 摆放`, fields: [
+      ['X 位移', `${root}.positionX`, -8, 8, 0.05],
+      ['Y 位移', `${root}.positionY`, -2, 3, 0.005],
+      ['Z 位移', `${root}.positionZ`, -12, 8, 0.05],
+      ['缩放', `${root}.scale`, 0.25, 5, 0.05],
+      ['Y 旋转', `${root}.rotationYDegrees`, -180, 180, 1]
+    ] },
+    { title: `${label} - 载客节奏`, fields: [
+      ['行距', `${root}.rowSpacing`, 0.12, 0.8, 0.01],
+      ['运行速度', `${root}.speed`, 0.1, 3, 0.05],
+      ['初始填充倍速', `${root}.initialFillSpeedMultiplier`, 1, 8, 0.5],
+      ['上车位置 %', `${root}.boardingPositionPercent`, 0, 100, 0.25],
+      ['上车宽度 %', `${root}.boardingWidthPercent`, 1, 40, 0.5],
+      ['贴地间隙', `${root}.footClearance`, 0, 0.1, 0.002]
+    ] },
+    { title: `${label} - 显示`, fields: [
+      ['显示上车区', `${root}.showBoardingZone`, 0, 1, 1, null, 'toggle']
+    ] }
+  ];
+  if (leftQueue) {
+    groups.at(-1).fields.push(['显示左队列', `${root}.showLeftQueue`, 0, 1, 1, null, 'toggle']);
+  }
+  if (roadJoin) {
+    groups.push({ title: `${label} - 道路接驳`, fields: [
+      ['启用接驳', `${root}.roadJoinEnabled`, 0, 1, 1, null, 'toggle'],
+      ['接驳长度', `${root}.roadJoinExtension`, -1, 1, 0.01],
+      ['接驳落点', `${root}.roadJoinLanding`, 0, 1, 0.01],
+      ['接驳段数', `${root}.roadJoinSteps`, 1, 8, 1],
+      ['乘客尺寸倍率', `${root}.passengerSizeMultiplier`, 0.5, 2, 0.05]
+    ] });
+  }
+  return groups.map((group) => ({ ...group, conveyorLayout: layoutId }));
+}
+
+const PLAYABLE_TRACK_FIELD_GROUPS = PLAYABLE_TRACK_DEFINITIONS.flatMap(
+  ([layoutId, label, flags]) => makePlayableTrackGroups(layoutId, label, flags)
+);
 
 const BACKGROUND_OPTIONS = [
   ['/assets/applovin/textures/BG01_split01_q60.jpg', 'BG01 \u51ac\u5b63'],
@@ -148,7 +203,7 @@ function editorCategoryForGroup(group) {
   const path = group.fields?.[0]?.[1] ?? '';
   if (path.startsWith('exportNaming.')) return 'export';
   if (path.startsWith('level.')) return 'level';
-  if (/^(?:conveyorLayout|conveyorLayouts|spatialConveyor|queueCurves|passengerShadows)\./.test(path)) {
+  if (/^(?:conveyorLayout|conveyorLayouts|playableTracks|spatialConveyor|queueCurves|passengerShadows)\./.test(path)) {
     return 'conveyor';
   }
   if (/^(?:parkingSpots|vehiclePath|vehicleDeparturePath|vehicleArea)\./.test(path)) return 'vehicle';
@@ -934,6 +989,7 @@ const FIELD_GROUPS = [
     ]
   },
   ...CONVEYOR_LAYOUT_FIELD_GROUPS,
+  ...PLAYABLE_TRACK_FIELD_GROUPS,
   {
     title: '\u4e2d\u95f4\u5c0f\u4eba\u5f71\u5b50',
     fields: [
@@ -1422,7 +1478,6 @@ const SHELL_PANELS = [
   { id: 'guide', label: '\u5f15\u5bfc', icon: 'M9 11V5.5a1.5 1.5 0 0 1 3 0V10M12 10V7.5a1.5 1.5 0 0 1 3 0V12M15 12v-1a1.5 1.5 0 0 1 3 0v4.5A5.5 5.5 0 0 1 12.5 21h-1A5.5 5.5 0 0 1 6 15.5V13a1.5 1.5 0 0 1 3 0v1', match: /^(?:vehicleGuideHand|firstClickGuide|entryBanner|countdown|weatherEffect|freeAssets|preRoll|gameOver|installGate|stamina)\./ },
   { id: 'ui', label: '\u754c\u9762', icon: 'M4 5h16v14H4zM4 9h16M9 9v10', match: /^(?:branding|cta|speedToggle|progressHud)\./ },
   { id: 'audio', label: '\u58f0\u97f3', icon: 'M5 9.5h3L12.5 6v12L8 14.5H5zM16 9a4.2 4.2 0 0 1 0 6', match: /^audio\./ },
-  { id: 'assets', label: '\u7d20\u6750', icon: 'M4 5h16v14H4zM8.6 9.8a1.5 1.5 0 1 0 0-.1M4.5 17l4.6-4.3 3 2.6 3-3.2 4.4 4.9', match: /^(?:guideAssets|editorAssets)\./ },
   { id: 'export', label: '\u5bfc\u51fa', icon: 'M12 16V4M7.5 8.5 12 4l4.5 4.5M4 16v3h16v-3', match: /^exportNaming\./ },
 ];
 
@@ -1463,7 +1518,6 @@ const SHELL_PANEL_TITLES = {
   guide: ['\u5f15\u5bfc\u4e0e\u6d41\u7a0b', '\u624b\u6307\u63d0\u793a\u3001\u5f00\u573a\u5f15\u5bfc\u3001\u6a2a\u5e45\u3001\u5012\u8ba1\u65f6\u3001\u5929\u6c14\u3001\u524d\u8d34\u3001\u7ed3\u7b97'],
   ui: ['\u754c\u9762\u4e0e\u54c1\u724c', 'Icon/Logo/\u6587\u672c\u3001CTA\u3001\u500d\u901f\u6309\u94ae\u3001\u8fdb\u5ea6\u6761'],
   audio: ['\u58f0\u97f3', '\u97f3\u6548\u5ef6\u8fdf\u3001\u97f3\u91cf\u3001BGM \u5e93'],
-  assets: ['\u7d20\u6750', '\u4e94\u7c7b\u7d20\u6750\u5e93\u7684\u53f0\u8d26'],
   export: ['\u5bfc\u51fa', '\u547d\u540d\u3001\u622a\u56fe\u3001\u5957\u7cfb\u3001\u4e03\u5e73\u53f0\u4ea4\u4ed8'],
 };
 
@@ -1816,7 +1870,12 @@ export function createSceneEditor(root, {
     const section = document.createElement('details');
     section.className = 'editor-section';
     section.dataset.editorCategory = editorCategoryForGroup(group);
-    section.open = Boolean(group.defaultOpen);
+    // The classic sidebar opens a handful of groups by default because it shows
+    // one panel at a time. The shell already splits the sections across nine
+    // panels, so opening every flagged group as well left the guide panel at
+    // four screens of scrolling; it collapses them and opens only the first
+    // section of each sub-group after the split is known.
+    section.open = shellLayout ? false : Boolean(group.defaultOpen);
     if (group.conveyorLayout) section.dataset.conveyorLayout = group.conveyorLayout;
     if (group.spatialOnly) section.dataset.spatialOnly = 'true';
     if (group.spatialImportAnchor) section.dataset.spatialImportAnchor = 'true';
@@ -3704,13 +3763,6 @@ export function createSceneEditor(root, {
     // 前贴视频 / 特效 / BGM / 自由素材), so there is no section to file under
     // 素材. The panel is therefore a real index into those rows: every entry
     // below resolves to a live control that already exists.
-    const ASSET_LIBRARIES = [
-      { label: '\u80cc\u666f\u56fe', path: 'background.asset', selector: '.editor-background-import' },
-      { label: 'BGM', path: 'audio.bgm.asset', selector: '.editor-guide-asset-import' },
-      { label: '\u524d\u8d34\u89c6\u9891', path: 'preRoll.asset', selector: '.editor-pre-roll-import' },
-      { label: '\u7279\u6548\u8d34\u56fe', path: 'weatherEffect.mode', selector: '.editor-guide-asset-import' },
-      { label: '\u81ea\u7531\u7d20\u6750', path: 'freeAssets', selector: '.editor-free-asset-import' },
-    ];
 
     // Group every section once; the rail only toggles which groups are shown.
     // The screenshot block and the export block are siblings of the field list
@@ -3762,7 +3814,13 @@ export function createSceneEditor(root, {
           heading.innerHTML = `<span>${subgroup}</span><em>${list.length} 段${fieldCount ? ` · ${fieldCount} 字段` : ''}</em>`;
           host.appendChild(heading);
         }
-        for (const section of list) host.appendChild(section);
+        for (const [offset, section] of list.entries()) {
+          host.appendChild(section);
+          // Open the first section of each sub-group so a panel never lands
+          // completely collapsed (which reads as "the fields are gone"), but
+          // leave the rest shut: the operator opens what they are working on.
+          if (offset === 0 && list.length > 1) section.open = true;
+        }
       }
     }
 
@@ -3771,47 +3829,18 @@ export function createSceneEditor(root, {
       for (const section of host.querySelectorAll('.editor-section')) sectionPanel.set(section, panel);
     }
 
-    // 素材 gets a generated index instead of sections. Each entry points at a
-    // real upload/select row that already exists in another panel, so clicking
-    // it lands on the live control rather than describing it.
-    const assetPanelHost = panelHosts.get('assets');
-    if (assetPanelHost) {
-      const index = document.createElement('div');
-      index.className = 'shell-asset-index';
-      assetPanelHost.appendChild(index);
-      const seenSections = new Set();
-      const entries = [];
-      for (const lib of ASSET_LIBRARIES) {
-        // The weather and BGM libraries share the same import button class, so
-        // resolve by section title instead of taking the first match.
-        const section = allSections.find((candidate) => {
-          if (seenSections.has(candidate)) return false;
-          const title = candidate.querySelector('h3')?.textContent ?? '';
-          if (lib.label === 'BGM') return title.includes('BGM');
-          if (lib.label === '\u7279\u6548\u8d34\u56fe') return title.includes('\u5929\u6c14');
-          return Boolean(candidate.querySelector(lib.selector));
-        }) || allSections.find((candidate) => candidate.querySelector(lib.selector));
-        if (!section) continue;
-        seenSections.add(section);
-        const select = section.querySelector(`[data-path="${lib.path}"] .editor-select`);
-        const options = select ? select.options.length : 0;
-        entries.push({ label: lib.label, section, options, kind: select ? 'select' : 'upload' });
-      }
-      index.innerHTML = entries.map((entry, offset) => (
-        `<button type="button" class="shell-asset-entry" data-asset-entry="${offset}">
-          <strong>${entry.label}</strong>
-          <small>${entry.options ? `内置 ${entry.options} 项 · 可上传替换` : '\u4e0a\u4f20 / \u66ff\u6362'}</small>
-          <em>${entry.section.querySelector('h3')?.textContent ?? ''}</em>
-        </button>`
-      )).join('') + '<p class="shell-insp-note">\u7d20\u6750\u5e93\u7684\u4e0a\u4f20\u3001\u4e0b\u8f7d\u3001\u5220\u9664\u6309\u94ae\u5c31\u5728\u5bf9\u5e94\u6bb5\u91cc\uff0c\u70b9\u4e0a\u9762\u4e00\u9879\u76f4\u63a5\u8df3\u8fc7\u53bb\u3002</p>';
-      index.querySelectorAll('[data-asset-entry]').forEach((button) => {
-        button.addEventListener('click', () => {
-          const entry = entries[Number(button.dataset.assetEntry)];
-          setActivePanel(sectionPanel.get(entry.section) ?? 'scene');
-          entry.section.open = true;
-          entry.section.scrollIntoView({ block: 'center' });
-        });
-      });
+    // The naming block is 16 short codes, one per row. Wrap its rows in a grid
+    // container so the shell CSS can pack them into two columns. The wrapper
+    // goes inside the <details>; putting display:grid on the details element
+    // itself would break its own collapse behaviour.
+    const namingSection = [...allSections].find(
+      (section) => section.querySelector('.editor-field[data-path="exportNaming.requirementCode"]'),
+    );
+    if (namingSection && !namingSection.querySelector('.shell-naming-grid')) {
+      const grid = document.createElement('div');
+      grid.className = 'shell-naming-grid';
+      for (const row of [...namingSection.querySelectorAll('.editor-field')]) grid.appendChild(row);
+      namingSection.appendChild(grid);
     }
 
     let activePanel = 'track';
@@ -3843,13 +3872,8 @@ export function createSceneEditor(root, {
       panelTitle.textContent = title;
       panelNote.textContent = note;
       const stats = countPanel(panelId);
-      // The asset panel indexes rows that live elsewhere, so counting its own
-      // sections would always read "0 段" and look broken.
-      const assetEntries = panelId === 'assets'
-        ? panelHosts.get('assets')?.querySelectorAll('[data-asset-entry]').length ?? 0
-        : 0;
-      const parts = panelId === 'assets' ? [`${assetEntries} 个素材库`] : [`${stats.sections} 段`];
-      if (panelId !== 'assets' && stats.fields) parts.push(`${stats.fields} 字段`);
+      const parts = [`${stats.sections} 段`];
+      if (stats.fields) parts.push(`${stats.fields} 字段`);
       panelTally.textContent = parts.join(' · ');
     }
 

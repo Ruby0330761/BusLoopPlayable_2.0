@@ -1304,38 +1304,182 @@ button:hover { transform: translateY(-1px); background: #fff; }
 #app.layout-shell .editor-field.is-shell-flash {
   animation: shell-field-flash 1.4s ease-out;
 }
-/* 素材 panel is an index into upload rows that live in other panels, so its
-   entries need to read as navigation rather than as settings. */
-#app.layout-shell .shell-asset-index { display: grid; gap: 5px; }
-#app.layout-shell .shell-asset-entry {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  align-items: center;
-  gap: 3px 8px;
-  width: 100%;
-  padding: 7px 9px;
-  border: 1px solid rgba(16,35,61,.1);
-  border-radius: 7px;
-  background: #fff;
-  text-align: left;
-  box-shadow: none;
-  transform: none;
+
+/* --- Compressed panel body ------------------------------------------------
+   The shell panel is a working surface squeezed between the rail and the
+   stage, so density wins over comfort here. The classic sidebar keeps its
+   34px rows.
+
+   Two changes carry most of the savings:
+   1. label and control share one line (74px label + input) instead of a
+      3-column grid that reserved a fixed 58px number box on every row;
+   2. the per-row card border is gone — sections read as one continuous list
+      with hairline separators, which is legible at 26px where 34px cards
+      forced a scroll for every 6 fields.
+   -------------------------------------------------------------------------- */
+#app.layout-shell .editor-body { padding: 6px 10px 18px; }
+#app.layout-shell .editor-section {
+  margin: 0 0 6px;
+  padding: 6px 8px 7px;
+  border-radius: 6px;
 }
-#app.layout-shell .shell-asset-entry:hover { border-color: #bcd4e2; background: #f7fcfe; transform: none; }
-#app.layout-shell .shell-asset-entry strong { color: #23455c; font-size: 11px; font-weight: 700; }
-#app.layout-shell .shell-asset-entry small { grid-column: 1; color: #7d919f; font-size: 9.5px; }
-#app.layout-shell .shell-asset-entry em {
-  grid-column: 2;
-  grid-row: 1 / span 2;
-  color: #9caab5;
+#app.layout-shell .editor-section-summary { padding: 2px 0; }
+#app.layout-shell .editor-section-summary h3 { font-size: 11px; }
+#app.layout-shell .editor-section[open] > .editor-section-summary { margin-bottom: 3px; }
+#app.layout-shell .editor-section-summary::before { margin-right: 3px; }
+
+#app.layout-shell .editor-field {
+  grid-template-columns: 84px minmax(0, 1fr) 46px;
+  gap: 5px;
+  min-height: 26px;
+  padding: 1px 0;
+}
+/* Labels used to be 68px wide and ellipsized, which cut 47 of them mid-word
+   ("Base Strength" → "Base Streng…", "倒计时时长（秒）" → "倒计时时长（"). A
+   two-line allowance at 84px fits every label in the inventory without pushing
+   rows past the 26px target: the tallest label is 2 lines at 10px/1.2 = 24px. */
+#app.layout-shell .editor-field > span:first-child {
+  font-size: 10px;
+  line-height: 1.2;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+#app.layout-shell .editor-field-color,
+#app.layout-shell .editor-field-select,
+#app.layout-shell .editor-field-text,
+#app.layout-shell .editor-field-url,
+#app.layout-shell .editor-field-toggle { grid-template-columns: 84px minmax(0, 1fr); }
+#app.layout-shell .editor-field-toggle { grid-template-columns: minmax(0, 1fr) auto; }
+
+#app.layout-shell .editor-number,
+#app.layout-shell .editor-select,
+#app.layout-shell .editor-text,
+#app.layout-shell .editor-url {
+  height: 22px;
+  padding: 0 5px;
+  border-radius: 5px;
+  font-size: 10px;
+  line-height: 1;
+}
+#app.layout-shell .editor-select { padding-right: 16px; }
+#app.layout-shell .editor-range { height: 14px; }
+#app.layout-shell .editor-checkbox { width: 30px; height: 17px; }
+#app.layout-shell .editor-color { width: 26px; height: 20px; padding: 1px; border-radius: 5px; }
+
+/* Standalone tool rows (level tools, asset imports) also get the tight rhythm;
+   they are buttons, not fields, so they need their own size rules. */
+#app.layout-shell .editor-level-actions button,
+#app.layout-shell .editor-spatial-actions button,
+#app.layout-shell .editor-camera-actions button,
+#app.layout-shell .editor-pre-roll-actions button,
+#app.layout-shell .editor-background-actions button,
+#app.layout-shell .editor-free-asset-panel button {
+  min-height: 24px;
+  padding: 3px 6px;
+  font-size: 10px;
+}
+#app.layout-shell .editor-level-owner { margin-bottom: 4px; }
+#app.layout-shell .editor-level-owner input { height: 22px; padding: 0 6px; font-size: 10px; }
+#app.layout-shell .editor-level-tools,
+#app.layout-shell .editor-spatial-conveyor,
+#app.layout-shell .editor-camera-tools,
+#app.layout-shell .editor-pre-roll-tools,
+#app.layout-shell .editor-background-tools { margin-top: 4px; }
+#app.layout-shell .editor-screenshot-button,
+#app.layout-shell .editor-pre-roll-preview,
+#app.layout-shell .editor-export-button,
+#app.layout-shell .editor-export-all-button { min-height: 26px; padding: 5px 6px; font-size: 10px; }
+#app.layout-shell .editor-export-actions { margin-top: 5px; gap: 5px; }
+/* These three are label-above-control blocks in the classic sidebar (54px each
+   because the caption takes its own line). Side by side they fit in one 26px
+   row and read the same. */
+#app.layout-shell .editor-export-set,
+#app.layout-shell .editor-export-platform,
+#app.layout-shell .editor-screenshot-size {
+  display: grid;
+  grid-template-columns: 52px minmax(0, 1fr);
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 4px;
+}
+#app.layout-shell .editor-export-set > span,
+#app.layout-shell .editor-export-platform > span,
+#app.layout-shell .editor-screenshot-size > span {
+  color: #5b7183;
+  font-size: 10px;
+  white-space: nowrap;
+}
+#app.layout-shell .editor-export-set-select,
+#app.layout-shell .editor-export-select,
+#app.layout-shell .editor-screenshot-select {
+  height: 24px;
+  padding: 0 20px 0 6px;
+  border-radius: 5px;
+  font-size: 10px;
+}
+#app.layout-shell .editor-export-set-note,
+#app.layout-shell .editor-export-limit { margin: 4px 0 0; font-size: 9px; line-height: 1.35; }
+#app.layout-shell .editor-export-status,
+#app.layout-shell .editor-export-events,
+#app.layout-shell .editor-screenshot-status,
+#app.layout-shell .editor-camera-status,
+#app.layout-shell .editor-pre-roll-status,
+#app.layout-shell .editor-background-status,
+#app.layout-shell .editor-level-status,
+#app.layout-shell .editor-spatial-status { margin: 4px 0 0; min-height: 0; font-size: 9px; }
+#app.layout-shell .editor-history-actions { grid-template-columns: 30px 30px minmax(0, 1fr); gap: 5px; margin-top: 4px; }
+#app.layout-shell .editor-history-button { font-size: 17px; }
+#app.layout-shell .editor-reset { min-height: 26px; font-size: 10px; }
+
+/* Panel chrome: the heading block alone was 77px, which is 13% of a 580px
+   viewport before a single field is drawn. */
+#app.layout-shell .shell-panel-head { padding: 6px 10px 5px; }
+#app.layout-shell .shell-panel-title { font-size: 12px; }
+#app.layout-shell .shell-panel-note {
+  margin-top: 1px;
   font-size: 9px;
-  font-style: normal;
-  text-align: right;
-  max-width: 96px;
+  line-height: 1.3;
+  /* One line; the rail tooltip carries the full text. */
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+#app.layout-shell .shell-panel-tally { margin-top: 3px; font-size: 9px; }
+#app.layout-shell .shell-search { padding: 5px 10px; }
+#app.layout-shell .editor-search-input { height: 25px; font-size: 10px; }
+#app.layout-shell .editor-search-clear { right: 14px; width: 17px; height: 17px; font-size: 11px; }
+
+#app.layout-shell .shell-group-head { margin: 7px 0 4px; font-size: 8.5px; }
+
+/* Naming rows are 16 short codes (BL / Q1V1 / EN / AL…). One per line wastes
+   half the panel width on whitespace, so this section alone packs them into two
+   columns. The grid must live on a wrapper *inside* <details>: setting
+   display:grid on the details element itself breaks its own collapse. */
+#app.layout-shell .shell-naming-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1px 8px;
+  align-items: start;
+}
+/* Two columns of ~130px cannot hold "Google Ads 渠道" beside an input, so the
+   label moves above the field inside the grid. */
+#app.layout-shell .shell-naming-grid .editor-field {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 1px;
+  min-height: 0;
+  padding: 2px 0;
+}
+#app.layout-shell .shell-naming-grid .editor-field > span:first-child {
+  font-size: 9px;
+  color: #7d919f;
+}
+#app.layout-shell .shell-search-results { padding: 6px 10px 18px; }
+#app.layout-shell .shell-search-hit { margin-bottom: 4px; padding: 4px 7px; }
+#app.layout-shell .shell-search-hit strong { font-size: 10px; }
+#app.layout-shell .shell-search-hit small { font-size: 8.5px; }
+#app.layout-shell .shell-search-count { margin-bottom: 4px; font-size: 8.5px; }
+
 @keyframes shell-field-flash {
   0% { background: #fff4cf; box-shadow: inset 0 0 0 2px #e8bf4a; }
   100% { background: transparent; box-shadow: none; }

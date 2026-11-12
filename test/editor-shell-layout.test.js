@@ -72,7 +72,6 @@ test('the shell shell adds its own hooks and reaches the stage column', async ()
     'editor-search-input',
     'shell-inspector',
     'data-shell-tab',
-    'shell-asset-entry',
   ]) {
     assert.ok(editorSource.includes(hook), `shell template is missing ${hook}`);
   }
@@ -89,6 +88,26 @@ test('the shell shell adds its own hooks and reaches the stage column', async ()
   assert.match(stylesSource, /#app\.layout-shell\.is-phone-preview > #stage/);
 });
 
+test('the shell panel is denser than the classic sidebar', async () => {
+  const stylesSource = await read('src/styles.css');
+  const shellBlock = stylesSource.slice(stylesSource.indexOf('Shell editor layout'));
+  const shellRow = shellBlock.match(/#app\.layout-shell \.editor-field \{[^}]*min-height: (\d+)px/);
+
+  assert.ok(shellRow, 'shell field row rule is missing');
+  // The classic row is 34px. The shell label ellipsizes instead of wrapping and
+  // shares a line with the control, so anything above 28px means the density
+  // work regressed.
+  assert.ok(Number(shellRow[1]) <= 28, `shell row is ${shellRow[1]}px, expected <= 28`);
+  // Fields must not keep the classic fixed number-box column: the shell groups
+  // every non-number control onto the same two-column label/control template.
+  const collapsed = shellBlock.match(/\.editor-field-text[\s\S]{0,400}?grid-template-columns: 84px minmax\(0, 1fr\);/);
+  assert.ok(collapsed, 'shell fields did not collapse to a two-column label/control row');
+  // Labels are allowed two lines rather than being ellipsized: truncation cut 47
+  // labels mid-word and reads as broken, not dense.
+  assert.match(shellBlock, /#app\.layout-shell \.editor-field > span:first-child \{[^}]*white-space: normal/);
+  assert.doesNotMatch(shellBlock, /#app\.layout-shell \.editor-field > span:first-child \{[^}]*text-overflow: ellipsis/);
+});
+
 test('every field group has a rail panel and no section is left unowned', async () => {
   const editorSource = await read('src/scene-editor.js');
 
@@ -99,7 +118,7 @@ test('every field group has a rail panel and no section is left unowned', async 
   );
   const panelIds = [...panelBlock.matchAll(/\{ id: '([a-z]+)'/g)].map((match) => match[1]);
   assert.deepEqual(panelIds, [
-    'level', 'scene', 'track', 'cars', 'guide', 'ui', 'audio', 'assets', 'export',
+    'level', 'scene', 'track', 'cars', 'guide', 'ui', 'audio', 'export',
   ]);
 
   // Rows that are plain divs rather than <details> need an explicit owner;
