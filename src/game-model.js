@@ -1104,9 +1104,6 @@ export class BusLoopGame {
         return { ok: false, reason: 'blocked', blockers };
       }
       const target = contact.candidate.vehicle ?? null;
-      if (this.stamina.enabled && this.stamina.remaining > 0 && target) {
-        this.pendingStaminaRescue = { phase: 'contact', source: 'collision', targetId: target.id };
-      }
       // The bump has to end where the two RENDERED bodies touch, not where the
       // collision boxes touch: the 3D model is 1.4–1.6x longer than the
       // footprint (`modelDepthBySeats` × `modelScale`), so a bump measured
@@ -1524,7 +1521,10 @@ export class BusLoopGame {
             contactPosition: collision.contactPosition ? { ...collision.contactPosition } : null,
             contactDistance: collision.distance
           });
-          if (target && this.pendingStaminaRescue?.phase === 'contact') this.startStaminaRescue(target);
+          if (this.stamina.enabled && this.stamina.remaining > 0
+            && normalizeStaminaConfig(SCENE_TUNING.stamina).collisionPenaltyEnabled) {
+            this.stamina.remaining -= 1;
+          }
           changed = true;
         }
         if (collision.elapsed >= finishTime) {
@@ -1861,6 +1861,13 @@ export class BusLoopGame {
 
   checkEndState() {
     if (this.status !== 'playing' || this.isStaminaBusy()) return;
+    if (this.stamina.enabled && this.stamina.remaining === 0) {
+      // Finish the ordinary bump/return before showing the exhaustion result.
+      if (this.vehicles.some((vehicle) => vehicle.state === 'colliding')) return;
+      this.status = 'lost';
+      this.recordEvent({ type: 'lose', reason: 'stamina-exhausted' });
+      return;
+    }
     // Every car has to leave, including the ones still queued at a gate or
     // waiting on the other floor of a lift: those are authored rides, not
     // scenery, and a level is only cleared when they are gone too.
@@ -1878,7 +1885,8 @@ export class BusLoopGame {
     }
     if (this.failureConditionStartedAt === null) this.failureConditionStartedAt = this.time;
     if (this.time - this.failureConditionStartedAt >= this.getFailureDelaySeconds()) {
-      if (this.stamina.enabled && this.stamina.remaining > 0) {
+      if (this.stamina.enabled && this.stamina.remaining > 0
+        && normalizeStaminaConfig(SCENE_TUNING.stamina).parkingRescueEnabled) {
         const target = this.spots.map((spot) => this.getVehicle(spot.vehicleId)).find((vehicle) => vehicle?.state === 'at-spot');
         if (this.startStaminaRescue(target, 'station')) return;
       }

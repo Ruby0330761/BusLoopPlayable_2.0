@@ -671,6 +671,7 @@ const FIELD_GROUPS = [
   {
     title: 'CTA',
     fields: [
+      ['按钮文字', 'cta.text', 0, 0, 1, null, 'text'],
       ['\u5c4f\u5e55 X', 'cta.x', 0, 1080, 1],
       ['\u5c4f\u5e55 Y', 'cta.y', 0, 2160, 1],
       ['Height', 'cta.height', 36, 140, 1],
@@ -739,13 +740,16 @@ const FIELD_GROUPS = [
     ]
   },
   {
-    title: '体力救援',
+    title: '体力设置',
     defaultOpen: true,
     stamina: true,
     fields: [
-      ['启用体力救援', 'stamina.enabled', 0, 1, 1, null, 'toggle'],
+      ['启用体力条', 'stamina.enabled', 0, 1, 1, null, 'toggle'],
       ['初始体力', 'stamina.lives', 1, 10, 1, null, 'stamina-number'],
+      ['点错扣体力', 'stamina.collisionPenaltyEnabled', 0, 1, 1, null, 'toggle'],
+      ['满车位救援', 'stamina.parkingRescueEnabled', 0, 1, 1, null, 'toggle'],
       ['开场体力说明', 'stamina.introEnabled', 0, 1, 1, null, 'toggle'],
+      ['水平对齐', 'stamina.horizontalAlign', 0, 0, 1, [['left', '居左'], ['center', '居中'], ['right', '居右']]],
       ['水平偏移 X', 'stamina.offsetX', -1080, 1080, 1],
       ['垂直偏移 Y', 'stamina.offsetY', -2160, 2160, 1],
       ['整体缩放', 'stamina.scale', 0.25, 3, 0.01]
@@ -813,8 +817,7 @@ const FIELD_GROUPS = [
     title: '\u5931\u8d25\u91cd\u8bd5',
     defaultOpen: true,
     fields: [
-      // A failed run offers a second attempt. It never appears on a win, so the
-      // store button keeps owning the successful ending.
+      // Off uses the full failure end card as the store link after its icon appears.
       ['\u542f\u7528\u91cd\u8bd5\u6309\u94ae', 'gameOver.retryEnabled', 0, 1, 1, null, 'toggle'],
       // Per-delivery: either rebuild the round or use the red pill as a second
       // store button.
@@ -1427,7 +1430,7 @@ export function createSceneEditor(root, {
 
   function updateStaminaControls() {
     const disabled = !normalizeStaminaConfig(getTuning().stamina).enabled;
-    for (const key of ['lives', 'introEnabled', 'offsetX', 'offsetY', 'scale']) {
+    for (const key of ['lives', 'collisionPenaltyEnabled', 'parkingRescueEnabled', 'introEnabled', 'horizontalAlign', 'offsetX', 'offsetY', 'scale']) {
       const controls = inputs.get(`stamina.${key}`);
       if (!controls) continue;
       controls.row.classList.toggle('is-readonly', disabled);
@@ -1706,6 +1709,10 @@ export function createSceneEditor(root, {
       const color = row.querySelector('.editor-color');
       const checkbox = row.querySelector('.editor-checkbox');
       const textInput = row.querySelector('.editor-text');
+      if (path === 'cta.text') {
+        textInput.placeholder = '留空时跟随设备语言';
+        textInput.maxLength = 4096;
+      }
       const urlInput = row.querySelector('.editor-url');
       if (control === 'stamina-number') {
         range.setAttribute('aria-label', `${group.title} ${label}滑条`);
@@ -1748,6 +1755,7 @@ export function createSceneEditor(root, {
           if (value === null) return;
           const next = structuredClone(getTuning());
           setAtPath(next, path, value);
+          if (path === 'stamina.horizontalAlign') next.stamina.offsetX = 0;
           // Picking a guide car is a statement about THIS level. Without this the
           // levelKey keeps pointing at whichever level it was authored on, and the
           // hand silently refuses to appear on the level being edited.
@@ -1896,7 +1904,15 @@ export function createSceneEditor(root, {
     if (group.countdown || group.stamina) {
       const help = document.createElement('p');
       help.className = 'editor-camera-status';
-      help.textContent = '偏移0，缩放1为默认对齐';
+      help.textContent = group.stamina
+        ? '点错与满车位救援共用体力。水平偏移0为所选对齐位置，正数向右、负数向左；切换对齐时水平偏移归零。缩放1为默认大小。'
+        : '偏移0，缩放1为默认对齐';
+      section.append(help);
+    }
+    if (group.fields.some(([, path]) => path === 'gameOver.retryEnabled')) {
+      const help = document.createElement('p');
+      help.className = 'editor-camera-status';
+      help.textContent = '关闭重试按钮后，icon落版出现即可点击试玩画面任意位置跳转商店。';
       section.append(help);
     }
     fieldsRoot.append(section);
