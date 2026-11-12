@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite --host 127.0.0.1 --port 5176 --strictPort",
+    "dev:lan": "vite --host 0.0.0.0 --port 5176 --strictPort",
     "prebuild": "node scripts/generate-active-level.mjs && node scripts/generate-active-spatial-conveyor.mjs",
     "build": "vite build",
     "levels:extract": "node scripts/extract-unity-levels.mjs",
