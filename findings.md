@@ -1,5 +1,13 @@
 # Findings
 
+## 2026-11-12 批量导出：字段、运行配置与母关必须一致
+
+- `src/export-variants.js` 是命名列表解析、双向同步、首值预览和独立配置展开的共同契约。只有体力1～10、成功操作次数1～200可进入包名；关闭为N；显式空值不能被初始化迁移自动补成有效版本。数字框只在真实输入/滑动后收敛列表，不能在普通blur时清除多值。
+- `installGate.enabled` 控制自动按次跳转，旧配置缺字段仍开启；`customThresholdEnabled` 保留显式阈值，不能依赖被生产出包剥离的 exportNaming。关闭跳转时仍用真实车辆数记录进度，session计数阈值传Infinity，避免丢失统计或进入installReady。
+- 实包画面发现仓库默认 `bl42-progress` 会把编辑器level24导成level15。编辑器入口使用 `useSelectedLevel`，仅在临时workspace写 `editor-current-level` 会话并传入生成子进程；CLI默认false，原生产会话不改。镜像编辑器level9→7旧链路；其余当前关单独导出。缓存包含模式、调参、草稿与关卡文件状态。
+- 每个体力/步数组合完整生成自己的资源和配置，汇总时按各workspace的sourcePath收集；各版本报告标签也要带版本防止相互覆盖。Windows显式Python可用`PLAYABLE_EXPORT_PYTHON`，不修改全局PATH；项目内导出HTML/临时workspace必须从Vite watcher排除，否则生成文件会刷新编辑器并取消自己的下载。
+- 246项回归、构建、实际14份跨渠道和4份AL组合验证通过。两个最终验证JSON强制每个包只含当前level24，核对名字、运行数值、渠道原生格式、目录、SHA-256及时间；手机3/5心与对应开场图已实际渲染。证据集中在 `artifacts/playable-exports/xzx-export-variants-20261112/`。
+
 ## 2026-11-12 失败落版：暗 CTA、无 Retry、icon 出现后任意点击商店
 
 - 原 CTA 层级13，高于失败遮罩12，且持续 `cta-pulse`，所以失败后像被单独高亮。现在 `.is-failed` 遮罩可见时将 CTA 放到11并停动画，由同一遮罩压暗；同时禁用其独立按钮输入，防止键盘绕过落版时机。

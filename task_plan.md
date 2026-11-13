@@ -1,5 +1,14 @@
 ﻿# Task Plan
 
+## xzx — 命名字段批量导出（2026-11-12）
+
+- **Confirmed**：用户确认当前对话方案及双向同步细节。尾段/步数支持 `/` 多值；关闭为 N，开启必填；预览首值，导出独立快照；引导手改数字收敛为单值；两栏多值生成全部组合。沿用现有单渠道/全部导出格式与目录。
+- 范围：`src/{export-variants,scene-editor,scene-tuning,main,build-version,build-changelog}.js`、`src/styles.css`（沿用原错误色标记输入）、`scripts/export-playable-package.mjs`、`vite.config.js`、配对测试与当前项目文档。Level 1 / D1 私有纯函数抽取；标准质量；Web DOM + Node/Vite 出包；无第三方变化。
+- 技能：团队 `confirmed-plan-implementation`。仅本地实现和验证；本轮未授权推送、合并或更新共享服务。
+- 验证：解析/同步/快照/旧配置回归，构建，真实编辑器禁用/必填/双向同步/撤销/刷新，实际多渠道批量ZIP的结构、命名和内嵌配置。
+- 当前：方案、实现、自测、独立审查和本地客观验收完成；246测试及构建通过；14渠道包和4组合包按实际level24/命名/配置验证。手机3/5心、必填草稿刷新、真实编辑才收敛、Undo与预览保留均通过。证据在 `artifacts/playable-exports/xzx-export-variants-20261112/`；下一步由 xzx 在本机体验。真实平台验收/推送/共享部署不在本轮范围。
+- 审查：无可复用自定义角色配置，临时只读审查子 agent 继承主设置；3项P2均闭环。额外实包发现默认session覆盖母关，已在既定导出范围修复并复核；私有workspace镜像当前预览，CLI旧路径和level9→7保留。
+
 ## Current Hand Hint Phases
 
 1. **Complete:** Removed the Level 36 dimming mask while preserving an immediate opening hand hint.
