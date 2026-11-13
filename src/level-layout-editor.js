@@ -9,7 +9,6 @@ import {
   getVehicleColorOption,
   getVehicleDisplayColor,
   getVehiclePaintColor,
-  getRenderedPaintColor,
   isSpecialVehicle,
   createLevelDocument,
   exportLevelCsv,
@@ -287,33 +286,32 @@ function invertHexColor(color) {
 }
 
 function vehicleDisplayColor(vehicle) {
-  // An override is a *paint* value in the atlas's space, but the canvas paints
-  // what the player sees, so it goes through the same paint→rendered mapping the
-  // shipped slots use. Drawing the paint raw made an overridden car read one
-  // lighting step darker than the same car in the playable — the mirror of the
-  // bug that made overrides render too bright in game.
+  // An override is a *paint* value in the atlas's space. The canvas draws it as
+  // entered so the board shows exactly what the panel says — "fill #9fc2d5, see
+  // #9fc2d5". Running it through the paint→rendered gain instead brightened every
+  // hand-typed colour (BL-2611096's #9fc2d5 came out #bfe8ff, Δ42/255) and made
+  // the board disagree with the fields the operator was editing.
+  //
+  // A car with no override still shows the slot's measured render, because that
+  // is what the playable draws for that atlas and the board has to match the game.
   const paint = vehicle?.colorOverrides?.body;
-  if (paint) {
-    return getRenderedPaintColor(paint, getVehicleDisplayColor(vehicle?.colorIndex));
-  }
+  if (paint) return paint.toLowerCase();
   return getVehicleDisplayColor(vehicle?.colorIndex);
 }
 
-// Region overrides as the canvas should draw them (rendered space). Only fields
-// the operator actually set are returned, so a region without an override keeps
-// its derived shading and untouched levels look exactly as before.
+// Region overrides as the canvas should draw them: the authored paint, unchanged.
+// Only fields the operator actually set are returned, so a region without an
+// override keeps its derived shading and untouched levels look exactly as before.
 function vehicleRenderedRegions(vehicle) {
   const overrides = vehicle?.colorOverrides ?? {};
   const regions = {};
-  const fallback = getVehicleDisplayColor(vehicle?.colorIndex);
   for (const region of ['body', 'highlight', 'shadow', 'window', 'detail']) {
     const paint = overrides[region];
     if (!paint) continue;
-    const rendered = getRenderedPaintColor(paint, null);
-    if (rendered) regions[region] = rendered;
+    regions[region] = String(paint).toLowerCase();
   }
   if (!Object.keys(regions).length) return null;
-  return { ...regions, fallback };
+  return { ...regions, fallback: getVehicleDisplayColor(vehicle?.colorIndex) };
 }
 
 function passengerColor(colorIndex, document = null) {

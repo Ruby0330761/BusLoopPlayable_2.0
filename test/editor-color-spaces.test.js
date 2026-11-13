@@ -125,13 +125,27 @@ test('the canvas draws region overrides instead of only the body', () => {
   assert.match(source, /const glass = windowColor \?\?/);
 });
 
-test('region overrides are drawn in rendered space, not raw paint', () => {
+test('the canvas draws overrides as the authored paint, not a brightened version', () => {
   const source = readFileSync('src/level-layout-editor.js', 'utf8');
-  const start = source.indexOf('function vehicleRenderedRegions');
-  assert.ok(start > -1, 'the region helper must exist');
-  const regionHelper = source.slice(start, source.indexOf('\n}', start) + 2);
-  assert.match(regionHelper, /getRenderedPaintColor\(paint, null\)/,
-    'region overrides must be converted out of paint space before drawing');
+
+  // A body override must be drawn exactly as entered. BL-2611096 fills #9fc2d5
+  // and the canvas used to draw #bfe8ff (Δ42/255) because it pushed the paint
+  // through the lighting gain, so the board disagreed with the field.
+  const bodyStart = source.indexOf('function vehicleDisplayColor');
+  assert.ok(bodyStart > -1, 'the body colour helper must exist');
+  const bodyHelper = source.slice(bodyStart, source.indexOf('\n}', bodyStart) + 2);
+  assert.match(bodyHelper, /if \(paint\) return paint\.toLowerCase\(\);/,
+    'an override must be drawn as authored');
+  assert.match(bodyHelper, /getVehicleDisplayColor\(vehicle\?\.colorIndex\)/,
+    'a car with no override still shows the slot measured render');
+  assert.doesNotMatch(bodyHelper, /getRenderedPaintColor/,
+    'the body override must not go through the lighting gain');
+
+  const regionStart = source.indexOf('function vehicleRenderedRegions');
+  assert.ok(regionStart > -1, 'the region helper must exist');
+  const regionHelper = source.slice(regionStart, source.indexOf('\n}', regionStart) + 2);
+  assert.match(regionHelper, /regions\[region\] = String\(paint\)\.toLowerCase\(\)/,
+    'region overrides must also be drawn as authored');
   // A region with no override stays absent so untouched levels keep their shading.
   assert.match(regionHelper, /if \(!paint\) continue;/);
   assert.match(regionHelper, /return null;/);
