@@ -67,18 +67,45 @@ test('editing only the window field leaves the body colour alone', () => {
   assert.equal(getRenderedPaintColor(vehicle.colorOverrides.body), getVehicleDisplayColor(colorIndex).toLowerCase());
 });
 
-test('an unknown paint still returns a drawable colour instead of throwing', () => {
-  // A hand-typed paint has no measured entry; it must blend inside the measured
-  // palette rather than invent a lighting model or return undefined.
+test('a custom paint stays monotone and hue-true instead of drifting toward a nearby slot', () => {
+  // Blending a custom paint from its two nearest measured slots was tried and is
+  // wrong: the measured table encodes each atlas's own baked artwork, so pure
+  // black landed between the dark-red and brown slots and painted a black car
+  // brown (#000000 came out #573a35). The lighting-gain fallback keeps ordering
+  // and hue, which is what an operator checks after typing a colour.
   for (const paint of ['#6f9e4a', '#3a6ecb', '#c04a2c', '#808080', '#2b2b2b']) {
     const rendered = getRenderedPaintColor(paint);
     assert.match(rendered, HEX, `${paint} needs a drawable rendered colour`);
     assert.notEqual(rendered, paint, `${paint} should be converted out of paint space`);
   }
+  // The extremes must survive: black stays black, white stays white, and pure
+  // primaries stay on their own hue.
+  assert.equal(getRenderedPaintColor('#000000'), '#000000');
+  assert.equal(getRenderedPaintColor('#ffffff'), '#ffffff');
+  assert.equal(getRenderedPaintColor('#ff0000'), '#ff0000');
+  assert.equal(getRenderedPaintColor('#00ff00'), '#00ff00');
+  assert.equal(getRenderedPaintColor('#0000ff'), '#0000ff');
   assert.equal(getRenderedPaintColor('red'), null);
   assert.equal(getRenderedPaintColor(null), null);
   assert.equal(getRenderedPaintColor('#12345'), null);
   assert.equal(getRenderedPaintColor('red', '#123456'), '#123456');
+});
+
+test('a grey ramp renders monotonically brighter', () => {
+  // Ordering is the property the board depends on: a darker paint must never
+  // come out brighter than a lighter one, or two shades read as swapped.
+  const luma = (hex) => {
+    const [r, g, b] = [1, 3, 5].map((offset) => Number.parseInt(hex.slice(offset, offset + 2), 16));
+    return r * 0.2126 + g * 0.7152 + b * 0.0722;
+  };
+  const steps = ['#000000', '#1a1a1a', '#404040', '#808080', '#b0b0b0', '#ffffff'];
+  const rendered = steps.map((paint) => luma(getRenderedPaintColor(paint)));
+  for (let index = 1; index < rendered.length; index += 1) {
+    assert.ok(
+      rendered[index] >= rendered[index - 1],
+      `${steps[index]} must not render darker than ${steps[index - 1]}`
+    );
+  }
 });
 
 test('the canvas draws region overrides instead of only the body', () => {

@@ -96,11 +96,9 @@ const hexChannels = (hex) => {
   return match ? [0, 2, 4].map((offset) => Number.parseInt(match[1].slice(offset, offset + 2), 16)) : null;
 };
 
-// Slot paint → slot rendered, in linear RGB, for the slots that have a measured
-// entry. Slots 11-16 are special vehicles whose swatch is a placeholder, so
-// feeding them into the interpolation would pull custom paints toward a colour
-// the playable never renders.
-const MEASURED_PAINT_PAIRS = Object.freeze(VEHICLE_COLOR_OPTIONS
+// Slot paint → slot rendered, for the slots that have a measured entry. Slots
+// 11-16 are special vehicles whose swatch is a placeholder, so they are excluded.
+const MEASURED_PAINT_BY_LINEAR = Object.freeze(VEHICLE_COLOR_OPTIONS
   .filter((color) => color.id <= 10 || color.id >= 17)
   .map((color) => ({ paint: color.css.toLowerCase(), rendered: renderedVehicleColor(color.id) }))
   .filter((entry) => /^#[0-9a-f]{6}$/i.test(entry.rendered))
@@ -110,45 +108,44 @@ const MEASURED_PAINT_PAIRS = Object.freeze(VEHICLE_COLOR_OPTIONS
     paintLinear: hexChannels(entry.paint).map(srgbToLinear)
   })));
 
+// Effective lighting gain in linear light, least-squares over the measured slot
+// pairs (channels with a zero input or a clipped output are excluded from the
+// fit). This is the *lighting-only* transfer: a diffuse surface of this albedo
+// under the scene's hemisphere + directional lights comes out this much
+// brighter. It deliberately does not try to reproduce the measured table, which
+// is a per-atlas property — the teal slot's artwork is dominated by baked cyan
+// highlights and reads 13x brighter than its base, while a grey slot reads 1.2x.
+const RENDERED_PAINT_GAIN = 1.502;
+
 /**
  * The colour a paint value shows on screen.
  *
  * The per-vehicle tuning fields store *paint* (the same space as the atlas body
- * base), but the canvas has to draw what the player sees — an override drawn as
- * raw paint reads one lighting step darker than the same car in the playable,
- * which is the mirror image of the bug that made overrides render too bright.
+ * base), but the canvas has to draw what the player sees.
  *
- * A paint that matches a shipped slot returns that slot's measured colour
- * exactly, so picking from the swatch list is pixel-consistent with the game.
- * Any other paint is blended from its two nearest slots; there is no ground
- * truth for hand-typed colours, so staying inside the measured palette keeps the
- * result plausible instead of inventing a lighting model that would drift on the
- * next atlas change.
+ * Two different things are being asked for, so there are two rules:
+ *
+ *  - A paint that matches a shipped slot returns that slot's **measured** colour
+ *    exactly, so picking from the swatch list is pixel-consistent with the game.
+ *  - Any other paint (a hand-typed value, or a body override like `#000000`)
+ *    goes through the lighting gain only. Blending it from the nearest measured
+ *    slots was tried and is wrong: the table encodes each atlas's own artwork, so
+ *    a pure black landed between the dark-red and brown slots and painted a
+ *    black car brown (`#000000` -> `#573a35`). The gain model keeps the paint
+ *    monotone and hue-true instead — black stays black, red stays red, white
+ *    stays white — which is what an operator checks when they type a colour.
  */
 export function getRenderedPaintColor(paintCss, fallbackCss = null) {
   const channels = hexChannels(String(paintCss ?? '').toLowerCase());
   if (!channels) return fallbackCss;
   const paintLinear = channels.map(srgbToLinear);
-  const measured = MEASURED_PAINT_PAIRS.find((entry) => (
+  const measured = MEASURED_PAINT_BY_LINEAR.find((entry) => (
     entry.paintLinear.every((value, channel) => Math.abs(value - paintLinear[channel]) < 0.002)
   ));
   if (measured) return measured.renderedHex;
-  const scored = MEASURED_PAINT_PAIRS
-    .map((entry) => ({
-      entry,
-      distance: Math.hypot(...entry.paintLinear.map((value, channel) => value - paintLinear[channel]))
-    }))
-    .sort((left, right) => left.distance - right.distance)
-    .slice(0, 2);
-  const weighted = scored.map(({ entry, distance }) => ({
-    renderedLinear: hexChannels(entry.renderedHex).map(srgbToLinear),
-    weight: 1 / (distance ** 2 + 1e-6)
-  }));
-  const total = weighted.reduce((sum, item) => sum + item.weight, 0);
-  return `#${[0, 1, 2].map((channel) => {
-    const blended = weighted.reduce((sum, item) => sum + item.renderedLinear[channel] * item.weight, 0) / total;
-    return linearToSrgb(blended).toString(16).padStart(2, '0');
-  }).join('')}`;
+  return `#${paintLinear
+    .map((value) => linearToSrgb(value * RENDERED_PAINT_GAIN).toString(16).padStart(2, '0'))
+    .join('')}`;
 }
 
 const VEHICLE_COLOR_BY_ID = new Map(VEHICLE_COLOR_OPTIONS.map((color) => [color.id, color]));

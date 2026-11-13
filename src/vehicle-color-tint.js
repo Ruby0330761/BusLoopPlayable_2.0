@@ -89,6 +89,15 @@ function hueDistance(left, right) {
   return distance > 180 ? 360 - distance : distance;
 }
 
+export function hsvToRgb({ hue, saturation, value }) {
+  const chroma = value * saturation;
+  const sector = (hue / 60) % 6;
+  const x = chroma * (1 - Math.abs((sector % 2) - 1));
+  const match = value - chroma;
+  const [r, g, b] = [[chroma, x, 0], [x, chroma, 0], [0, chroma, x], [0, x, chroma], [x, 0, chroma], [chroma, 0, x]][Math.floor(sector) % 6];
+  return [r, g, b].map((channel) => clampChannel((channel + match) * 255));
+}
+
 /**
  * Normalizes an override object down to the region keys this module repaints.
  * Values that are not 6-digit hex are dropped, matching what the editor stores.
@@ -115,13 +124,61 @@ export function resolveTintReference(atlasBaseRgb, measuredBodyRgb = null) {
   return Array.isArray(atlasBaseRgb) && atlasBaseRgb.length === 3 ? atlasBaseRgb : [0, 0, 0];
 }
 
-/** Maps one atlas pixel onto the new paint, preserving its shading offset. */
+/**
+ * Maps one atlas pixel onto the new paint, preserving its shading offset.
+ *
+ * The scale is a **single scalar** taken from the luminance ratio, not a
+ * per-channel ratio. Scaling each channel by its own ratio looked natural but
+ * breaks wherever a reference channel is near zero: the blue atlas body is
+ * `#0061e8`, so its red channel is 0 and has no ratio to compute. That channel
+ * then kept the pixel's full value while green and blue were crushed to a
+ * quarter — an atlas highlight of `#4190ff` came out `#410c06`, and once the
+ * scene lit it the car read brown instead of black. One scalar moves every
+ * channel together, so the shading darkens without changing hue.
+ */
 export function shadePixelToPaint(pixel, reference, anchor, maxScale = MAX_SHADING_SCALE) {
-  return [0, 1, 2].map((channel) => {
-    const ratio = reference[channel] > 2 ? anchor[channel] / reference[channel] : 1;
-    const scale = Math.max(1 / maxScale, Math.min(maxScale, ratio));
-    return clampChannel(anchor[channel] + (pixel[channel] - reference[channel]) * scale);
-  });
+  const referenceLuma = lumaOf(reference);
+  const anchorLuma = lumaOf(anchor);
+  const scale = Math.max(1 / maxScale, Math.min(maxScale, anchorLuma / Math.max(referenceLuma, 0.02)));
+  return [0, 1, 2].map((channel) => (
+    clampChannel(anchor[channel] + (pixel[channel] - reference[channel]) * scale)
+  ));
+}
+
+/**
+ * True when the paint carries no usable hue (black, grey, white). Such a paint
+ * has no chromatic highlight to preserve, so its shading is drawn as neutral
+ * grey steps instead of inheriting the source atlas's tinted highlights.
+ */
+function isNeutralPaint(rgb) {
+  return rgbToHsv(rgb).saturation < NEUTRAL_SATURATION;
+}
+
+/**
+ * Shading for a near-neutral target paint, keeping the target's own tint.
+ *
+ * Only the pixel's brightness relative to the atlas body is carried over; its
+ * chroma comes from the target. A black target gets neutral grey steps instead of
+ * the blue atlas's navy-and-orange highlights (which is what made a black car
+ * read brown once lit), while a warm off-white target such as `#fff9ef` keeps its
+ * warmth instead of being flattened to pure grey.
+ */
+export function shadeToNeutral(pixel, reference, anchor, maxScale = MAX_SHADING_SCALE) {
+  const referenceLuma = lumaOf(reference);
+  const anchorLuma = lumaOf(anchor);
+  const pixelLuma = lumaOf(pixel);
+  const scale = Math.max(1 / maxScale, Math.min(maxScale, anchorLuma / Math.max(referenceLuma, 0.02)));
+  const shaded = Math.max(0, Math.min(1, anchorLuma + (pixelLuma - referenceLuma) * scale));
+
+  const anchorHsv = rgbToHsv(anchor);
+  // A target with no chroma at all (true black/grey) has no hue to apply, so it
+  // is written as a grey step. Otherwise keep the target's hue and saturation and
+  // let only the value follow the shading.
+  if (anchorHsv.saturation < 0.02) {
+    const channel = clampChannel(shaded * 255);
+    return [channel, channel, channel];
+  }
+  return hsvToRgb({ hue: anchorHsv.hue, saturation: anchorHsv.saturation, value: shaded });
 }
 
 /**
@@ -143,6 +200,14 @@ export function tintAtlasPixels(data, { reference, overrides }) {
   const referenceHsv = rgbToHsv(reference);
   const referenceLuma = lumaOf(reference);
   const neutralAtlas = referenceHsv.saturation < NEUTRAL_SATURATION;
+  // A neutral target paint (black, grey, white) has no hue of its own, so it
+  // must not inherit the source atlas's tinted highlight bands — that is what
+  // turned a black car's highlights warm and made the whole car read brown.
+  //
+  // Only when the source atlas is itself coloured: a neutral atlas (the shipped
+  // black/white/grey slots) already stores neutral shading, and greyscaling it
+  // would both change those pixels and break the self-repaint invariant.
+  const neutralTarget = isNeutralPaint(body) && !neutralAtlas;
 
   for (let offset = 0; offset < data.length; offset += 4) {
     if (data[offset + 3] < 8) continue;
@@ -166,7 +231,9 @@ export function tintAtlasPixels(data, { reference, overrides }) {
         : ratio < 0.7 && shadow
           ? shadow
           : body;
-      replacement = shadePixelToPaint(current, reference, anchor);
+      replacement = neutralTarget
+        ? shadeToNeutral(current, reference, anchor)
+        : shadePixelToPaint(current, reference, anchor);
     } else if (windowPixel && window) {
       replacement = window;
     } else if (!bodyPixel && !windowPixel && detail && pixelHsv.saturation > 0.1) {

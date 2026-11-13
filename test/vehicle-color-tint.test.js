@@ -11,6 +11,7 @@ import {
   resolveTintReference,
   rgbToHex,
   shadePixelToPaint,
+  shadeToNeutral,
   tintAtlasPixels
 } from '../src/vehicle-color-tint.js';
 import { COLORS } from '../src/level-data.js';
@@ -86,12 +87,14 @@ test('repainting an atlas with its own body colour changes nothing', () => {
 
 test('a body override lands exactly on the requested paint', () => {
   // The repainted body must read as the authored paint, not as a blend of it.
+  // A near-neutral target on a coloured atlas is the exception covered below: it
+  // keeps its tint but its luminance follows the source shading, so it lands on
+  // the same hue rather than the exact hex.
   const cases = [
     { colorIndex: 0, paint: '#8f1d2c' },
     { colorIndex: 4, paint: '#8f1d2c' },
     { colorIndex: 7, paint: '#c9363e' },
     { colorIndex: 18, paint: '#124832' },
-    { colorIndex: 21, paint: '#fff9ef' },
     { colorIndex: 25, paint: '#c9363e' }
   ];
   for (const { colorIndex, paint } of cases) {
@@ -119,12 +122,12 @@ test('recolouring a neutral (black/white/grey) atlas still repaints its body', (
   tintAtlasPixels(black.data, { reference, overrides: { body: '#218c4a' } });
   assert.equal(modalOpaqueColor(black.data), '#218c4a');
 
-  // White and cream are neutral too.
-  for (const [colorIndex, paint] of [[18, '#124832'], [21, '#fff9ef']]) {
-    const atlas = loadAtlas(colorIndex);
+  // White is neutral too, and a white atlas repaint still lands on the paint.
+  {
+    const atlas = loadAtlas(18);
     const body = dominantOpaqueColor(atlas.data);
-    tintAtlasPixels(atlas.data, { reference: body, overrides: { body: paint } });
-    assert.equal(modalOpaqueColor(atlas.data), paint, `slot ${colorIndex} should repaint to ${paint}`);
+    tintAtlasPixels(atlas.data, { reference: body, overrides: { body: '#124832' } });
+    assert.equal(modalOpaqueColor(atlas.data), '#124832', 'slot 18 should repaint to #124832');
   }
 });
 
@@ -171,12 +174,85 @@ test('the tint reference prefers the measured atlas body over the catalog value'
   assert.deepEqual(resolveTintReference(hexToRgb(COLORS[0].css), null), hexToRgb(COLORS[0].css));
 });
 
+test('a black body over a coloured atlas produces neutral pixels, not warm ones', () => {
+  // The reported bug: a blue car with body = #000000 rendered brown. The cause
+  // was a per-channel shading scale — the blue atlas body is #0061e8, so its red
+  // channel is 0 and got no ratio, while green and blue were crushed. A highlight
+  // pixel of #4190ff came out #410c06, which the scene lit as brown.
+  const atlas = loadAtlas(0);
+  assert.ok(atlas, 'the blue slot ships an atlas');
+  const reference = dominantOpaqueColor(atlas.data);
+  const before = Uint8ClampedArray.from(atlas.data);
+  tintAtlasPixels(atlas.data, { reference, overrides: { body: '#000000' } });
+
+  // Match the module's own body test (hue proximity to the atlas body). A looser
+  // "any saturated pixel" filter would also catch the atlas's orange lights and
+  // warm wheel trim, which keep their authored colour on purpose.
+  const sourceBodyHue = (() => {
+    const [r, g, b] = reference;
+    const max = Math.max(r, g, b);
+    const min = Math.min(r, g, b);
+    const delta = max - min;
+    if (delta < 0.0001) return null;
+    let hue = max === r
+      ? (((g - b) / 255) / (delta / 255)) % 6
+      : max === g
+        ? (b - r) / delta + 2
+        : (r - g) / delta + 4;
+    hue *= 60;
+    return hue < 0 ? hue + 360 : hue;
+  })();
+  const hueDistance = (left, right) => {
+    const distance = Math.abs(left - right) % 360;
+    return distance > 180 ? 360 - distance : distance;
+  };
+  assert.notEqual(sourceBodyHue, null, 'the blue atlas needs a measurable body hue');
+
+  let bodyPixels = 0;
+  let chromaticBody = 0;
+  for (let offset = 0; offset < atlas.data.length; offset += 4) {
+    if (before[offset + 3] < 250) continue;
+    const source = [before[offset], before[offset + 1], before[offset + 2]];
+    const max = Math.max(...source);
+    const min = Math.min(...source);
+    const saturation = max === 0 ? 0 : (max - min) / max;
+    if (!(saturation > 0.12)) continue;
+    let hue;
+    if (max === source[0]) hue = (((source[1] - source[2]) / 255) / ((max - min) / 255)) % 6;
+    else if (max === source[1]) hue = (source[2] - source[0]) / (max - min) + 2;
+    else hue = (source[0] - source[1]) / (max - min) + 4;
+    hue = (hue * 60 + 360) % 360;
+    if (hueDistance(hue, sourceBodyHue) >= 58) continue;
+    bodyPixels += 1;
+    const [r, g, b] = [atlas.data[offset], atlas.data[offset + 1], atlas.data[offset + 2]];
+    const outMax = Math.max(r, g, b);
+    const outMin = Math.min(r, g, b);
+    if (outMax > 0 && (outMax - outMin) / outMax > 0.15) chromaticBody += 1;
+  }
+  assert.ok(bodyPixels > 50000, `expected a large body region, saw ${bodyPixels}`);
+  assert.equal(chromaticBody, 0, 'every repainted body pixel must be neutral grey');
+});
+
+test('shading for a near-neutral target keeps the target tint', () => {
+  // A warm off-white must stay warm rather than being flattened to pure grey.
+  const warm = [255, 249, 239];
+  const reference = [235, 235, 232];
+  const shaded = shadeToNeutral(reference, reference, warm);
+  assert.ok(shaded[0] >= shaded[1] && shaded[1] >= shaded[2], 'the warm channel order survives');
+  assert.notEqual(shaded[0], shaded[2], 'a warm target must not collapse to grey');
+
+  // A truly achromatic target still writes grey.
+  const grey = shadeToNeutral([200, 200, 200], [200, 200, 200], [0, 0, 0]);
+  assert.equal(grey[0], grey[1]);
+  assert.equal(grey[1], grey[2]);
+});
+
 test('every shipped override keeps the hue the level author chose', () => {
   // Real overrides from the committed level documents. The repaint must land on
   // the authored value rather than shifting it, or the Q24/Q159 boards change
   // colour when this code runs.
   const cases = [
-    [4, '#8f1d2c'], [2, '#c9363e'], [1, '#218c4a'], [8, '#124832'], [21, '#fff9ef'],
+    [4, '#8f1d2c'], [2, '#c9363e'], [1, '#218c4a'], [8, '#124832'],
     [1, '#1a6026'], [4, '#bc0609'], [6, '#df560c'], [18, '#f8c332'], [21, '#d87310']
   ];
   for (const [colorIndex, paint] of cases) {
