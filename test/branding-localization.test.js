@@ -185,7 +185,9 @@ test('the editor header offers a language picker that drives the preview', () =>
 });
 
 test('tuning exposes a localization switch and an editor preview locale', () => {
-  assert.deepEqual(SCENE_TUNING.branding.localization, { enabled: 1, previewLocale: 'auto' });
+  // The editor opens in English; "follow the browser" is still offered, but it
+  // is no longer the default.
+  assert.deepEqual(SCENE_TUNING.branding.localization, { enabled: 1, previewLocale: 'en' });
   assert.match(editorSource, /branding\.localization\.enabled', 0, 1, 1, null, 'toggle'/);
   assert.match(editorSource, /branding\.localization\.previewLocale', 0, 0, 1, BRANDING_LOCALE_OPTIONS\]/);
 });

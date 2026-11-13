@@ -254,7 +254,7 @@ test('vehicle tap audio fires once per dispatched vehicle', () => {
 });
 
 test('vehicle tap volume scales the authored level instead of replacing it', async () => {
-  const gains = [];
+  const clipGains = [];
   const makeAudio = (scale) => new GameAudioController(
     { vehicle_tap: { clips: ['tap'], volume: 0.4 } },
     { getVolumeScale: (name) => (name === 'vehicle_tap' ? scale : 1) }
@@ -262,17 +262,28 @@ test('vehicle tap volume scales the authored level instead of replacing it', asy
   for (const scale of [1, 0.5, 2]) {
     const audio = makeAudio(scale);
     audio.unlocked = true;
+    const destination = {};
     audio.context = {
       state: 'running',
-      destination: {},
+      destination,
       createGain: () => {
         // Mimic WebAudio: the node exposes settings on a nested `gain` param.
-        const gain = { gain: { value: 0 }, connect: () => ({}) };
-        gains.push(gain.gain);
-        return gain;
+        // The gain wired straight to the destination is the master bus; every
+        // other one carries a single clip, which is what this test measures.
+        const node = {
+          gain: { value: 0 },
+          connect(target) {
+            if (target === destination) this.isMaster = true;
+            else clipGains.push(this.gain);
+            return target;
+          }
+        };
+        return node;
       },
       createBufferSource: () => {
-        const source = { connect: () => source, start: () => {}, stop: () => {} };
+        // WebAudio's connect() returns the destination, which is how the
+        // source -> clip gain -> master chain reads in the controller.
+        const source = { connect: (target) => target, start: () => {}, stop: () => {} };
         return source;
       }
     };
@@ -282,7 +293,7 @@ test('vehicle tap volume scales the authored level instead of replacing it', asy
     // only visible after the microtask chain drains.
     await new Promise((resolve) => setTimeout(resolve, 0));
   }
-  assert.deepEqual(gains.map((gain) => Number(gain.value.toFixed(3))), [0.4, 0.2, 0.8]);
+  assert.deepEqual(clipGains.map((gain) => Number(gain.value.toFixed(3))), [0.4, 0.2, 0.8]);
 });
 
 test('bus full audio plays each distinct event once without dropping pending events', async () => {
@@ -387,6 +398,83 @@ test('audio unlocking and source reuse stay disabled before a gesture', () => {
   const audio = new GameAudioController({});
   assert.equal(audio.playLoop('countdown_siren', { asset: 'siren.mp3' }), false);
   assert.equal(audio.isLoopPlaying('countdown_siren'), false);
+});
+
+test('every audible route passes one master gain that the device volume drives', async () => {
+  // AppLovin audits mute the device (audioVolumeChange 0) and require the
+  // creative to produce no Web Audio output. Sources routed straight to the
+  // destination can only be silenced by suspending the context, which the host
+  // can undo, so everything must pass through one master bus.
+  const master = { value: 1, written: [], connect: (target) => target };
+  master.gain = {
+    set value(next) { this._value = next; },
+    get value() { return this._value ?? 1; },
+    cancelScheduledValues() {},
+    setValueAtTime: (value) => { master.value = value; master.written.push(value); },
+    linearRampToValueAtTime: (value) => { master.value = value; master.written.push(value); }
+  };
+  const destination = {};
+  const audio = new GameAudioController({ vehicle_tap: { clips: ['tap'], volume: 0.5 } });
+  audio.unlocked = true;
+  audio.context = {
+    state: 'running',
+    currentTime: 1,
+    destination,
+    createGain: () => master,
+    createBufferSource: () => ({ connect: (target) => target, start() {}, stop() {}, disconnect() {} })
+  };
+  audio.loadClip = () => Promise.resolve({});
+  audio.play('vehicle_tap');
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  assert.equal(audio.master, master, 'the clip must connect through the master bus');
+  assert.equal(master.value, 1);
+
+  // Device muted: the bus is written to zero in the same call, not ramped.
+  audio.setDeviceVolume(0);
+  assert.equal(master.value, 0);
+  // Restoring the device volume brings the ad back at full level.
+  audio.setDeviceVolume(1);
+  assert.equal(master.value, 1);
+  // A malformed host value must not be read as "mute".
+  audio.setDeviceVolume(Number.NaN);
+  assert.equal(master.value, 1);
+});
+
+test('hiding the ad writes silence even before the context suspends', async () => {
+  let suspended = 0;
+  const master = { value: 1, connect: (target) => target };
+  master.gain = {
+    set value(next) { this._value = next; },
+    get value() { return this._value ?? 1; },
+    cancelScheduledValues() {},
+    setValueAtTime: (value) => { master.value = value; },
+    linearRampToValueAtTime: (value) => { master.value = value; }
+  };
+  const audio = new GameAudioController({});
+  audio.unlocked = true;
+  audio.context = {
+    state: 'running',
+    currentTime: 0,
+    destination: {},
+    suspend() { suspended += 1; return Promise.resolve(); },
+    createGain: () => master,
+    createBufferSource: () => ({ connect: (target) => target, start() {}, stop() {} })
+  };
+  // Force the master bus to exist, as it would after the first clip.
+  audio.getMasterGain(audio.context);
+  audio.setDeviceVolume(0.8);
+  assert.equal(master.value, 0.8);
+
+  audio.setVisible(false);
+  assert.equal(master.value, 0, 'the gain must drop immediately, not asymptotically');
+  assert.equal(suspended, 1);
+
+  // A resume from the host while still hidden must not make noise: the bus is
+  // restored only when the ad is visible again.
+  audio.setDeviceVolume(1);
+  assert.equal(master.value, 0);
+  audio.setVisible(true);
+  assert.equal(master.value, 1);
 });
 
 test('audio preload contains individual decode failures without rejecting', async () => {
@@ -581,15 +669,20 @@ test('level12 initializes Unity-authored layout and counts', () => {
 });
 
 test('Unity conveyor layout catalog includes all requested prefab shapes and assets', () => {
+  // This pins the Unity-prefab-derived catalog. The imported playable tracks
+  // (footage8/9/10/11) join the same registry from
+  // src/playable-track-layouts.js, so compare the prefab subset explicitly
+  // rather than the whole key list.
+  const prefabLayoutIds = CONVEYOR_LAYOUT_IDS.filter((id) => !id.startsWith('footage'));
   assert.deepEqual(
-    CONVEYOR_LAYOUT_IDS,
+    prefabLayoutIds,
     ['dualQueue2', 'dualQueue3', 'dualQueue5', 'dualQueue10', 'starLoop', 'heartLoop', 'catLoop', 'moonLoop',
       'dualLoop5', 'hexLoop', 'crossLoop']
   );
   assert.equal(MAX_CONVEYOR_CAPACITY, 60);
   assert.equal(MAX_QUEUE_CAPACITY, 60);
   assert.deepEqual(
-    Object.fromEntries(CONVEYOR_LAYOUT_IDS.map((id) => [id, {
+    Object.fromEntries(prefabLayoutIds.map((id) => [id, {
       conveyor: CONVEYOR_LAYOUTS[id].conveyorCapacity,
       queues: CONVEYOR_LAYOUTS[id].queueCapacities
     }])),
@@ -613,7 +706,13 @@ test('Unity conveyor layout catalog includes all requested prefab shapes and ass
   // StarLoop and the Footage2/3/4 heart/cat/moon belts come from other Unity
   // prefab variants, so their array sizes differ from the DualQueue family:
   // only the engine minimums are asserted for them.
+  //
+  // The imported playable tracks are deliberately skipped here: they are not
+  // Unity prefab loops, they carry a 3D authored curve plus a mesh (or a sprite
+  // matte) instead of a loopScene texture, and their own suite
+  // (test/playable-track-import.test.js) asserts their geometry and assets.
   for (const [id, layout] of Object.entries(CONVEYOR_LAYOUTS)) {
+    if (id.startsWith('footage')) continue;
     assert.equal(layout.splineType, 'bSpline');
     if (id === 'starLoop') {
       assert.equal(layout.splinePoints.length, 20);
@@ -644,7 +743,14 @@ test('Unity conveyor layout catalog includes all requested prefab shapes and ass
   // The initial fill only ends once every belt slot has been filled, so a
   // layout whose queue capacities cannot cover its own belt deadlocks on the
   // first frame and never lets a passenger reach the exit.
+  //
+  // This is a per-layout authored invariant, so it applies to the Unity prefab
+  // loops only. The imported tracks compute both numbers at runtime:
+  // resolvePlayableTrackBoarding caps the belt at the level's passenger supply
+  // and the model also ends the fill when the source queues run dry, so their
+  // static prefab queue sizes are not the operative numbers.
   for (const [id, layout] of Object.entries(CONVEYOR_LAYOUTS)) {
+    if (id.startsWith('footage')) continue;
     const queueTotal = layout.queueCapacities.reduce((sum, capacity) => sum + capacity, 0);
     assert.ok(
       queueTotal >= layout.conveyorCapacity,
@@ -1518,7 +1624,8 @@ test('editor sizing, source background ratio, and passenger shadow anchor stay w
   });
   assert.deepEqual(LEVEL_1.passengerQueue, { spacing: 0.4, screenEdgeOffsetSpacing: 4 });
   assert.equal(LEVEL_1.conveyorPathLength, 4.591284809513923);
-  assert.deepEqual(SCENE_TUNING.vehicleBoardingPulse, { scale: 1.09, speed: 11.7 });
+  assert.equal('vehicleBoardingPulse' in SCENE_TUNING, false);
+  assert.equal(SCENE_TUNING.vehicleArea.sizeMultiplier, 1);
   assert.equal(SCENE_TUNING.vehicleGuideHand.enabled, 1);
   assert.equal(SCENE_TUNING.vehicleGuideHand.levelKey, 'level36');
   assert.equal(SCENE_TUNING.vehicleGuideHand.vehicleId, 1);
@@ -1659,8 +1766,8 @@ test('editor sizing, source background ratio, and passenger shadow anchor stay w
   assert.match(editorSource, /\\u8f66\\u8f86\\u6574\\u4f53\\u65cb\\u8f6c/);
   assert.match(editorSource, /vehicleArea\.positionUnitScale/);
   assert.match(editorSource, /Map Scale/);
-  assert.match(editorSource, /vehicleBoardingPulse\.scale/);
-  assert.match(editorSource, /vehicleBoardingPulse\.speed/);
+  assert.match(editorSource, /vehicleArea\.sizeMultiplier/);
+  assert.match(editorSource, /vehiclePath\.parkingBounds\.minX', -12, 0/);
   assert.match(editorSource, /vehicleGuideHand\.enabled/);
   assert.match(editorSource, /vehicleGuideHand\.vehicleId/);
   assert.match(editorSource, /vehicleGuideHand\.offsetX/);
@@ -1746,8 +1853,10 @@ test('editor sizing, source background ratio, and passenger shadow anchor stay w
   assert.match(viewSource, /view\.userData\.pickMeshes = vehicle\.isHidden \? hiddenBodyMeshes : bodyMeshes/);
   assert.match(viewSource, /hitRoot\.add\(normalRoot, hiddenRevealRoot\)/);
   assert.match(viewSource, /intersectObjects\(pickMeshes, true\)/);
-  assert.match(viewSource, /triggerVehicleBoardingPulse/);
-  assert.match(viewSource, /getVehicleBoardingPulseScale/);
+  // The parked-to-route resize must go through the shared helper, so the live
+  // scene and the authoring views agree on which cars carry the multiplier.
+  assert.match(viewSource, /parkedVehicleSizeMultiplier\(vehicle, SCENE_TUNING\.vehicleArea\)/);
+  assert.match(viewSource, /getVehicleSizeMultiplier\(vehicle\)/);
   assert.match(viewSource, /GUIDE_HAND_TEXTURE_URL/);
   assert.match(viewSource, /new THREE\.SpriteMaterial/);
   assert.match(viewSource, /buildGuideHand/);
@@ -1774,8 +1883,15 @@ test('editor sizing, source background ratio, and passenger shadow anchor stay w
   assert.doesNotMatch(viewSource, /getVisibleQueueCapacity/);
   assert.doesNotMatch(viewSource, /visibleCapacity/);
   assert.match(viewSource, /this\.camera\.updateMatrixWorld\(true\)/);
-  assert.match(viewSource, /queueProgress = \(fromQueueDistance - state\.distance\) \/ queueLength/);
-  assert.match(viewSource, /conveyorProgress = \(entryPercent \+ \(state\.distance - fromQueueDistance\) \/ conveyorLength\) % 1/);
+  // The queue-to-belt walk is a fixed-duration blend that samples the belt curve,
+  // so the passenger hugs the track instead of cutting across it. It used to
+  // advance a private `distance` toward a moving target, which only converged
+  // while the belt was slower than a walking passenger; at the 4x initial fill
+  // the target outran the walk and every entering passenger shivered in place.
+  assert.match(viewSource, /queueProgress = THREE\.MathUtils\.clamp\(/);
+  assert.match(viewSource, /walkedPercent = \(entryPercent \+ span \* blend \+ 1\) % 1/);
+  assert.match(viewSource, /elapsed \/ walkSeconds/);
+  assert.doesNotMatch(viewSource, /state\.distance \+ stepDistance/);
   assert.doesNotMatch(viewSource, /slot\.entryMotion\.initialFill\) \{/);
   assert.doesNotMatch(viewSource, /view\.visible = !snapshot\.initialFillActive/);
   assert.doesNotMatch(viewSource, /view\.visible = .*hasActiveInitialEntryVisual/);

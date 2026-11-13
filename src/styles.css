@@ -1689,6 +1689,25 @@ button:hover { transform: translateY(-1px); background: #fff; }
   font-size: 9.5px;
   line-height: 1.4;
 }
+/* A failing check names the field that fixes it, so the whole row is the
+   affordance: a separate pill next to a red dot reads as decoration. */
+#app.layout-shell .shell-insp-check.has-jump { cursor: pointer; border-radius: 6px; }
+#app.layout-shell .shell-insp-check.has-jump:hover { background: #f4f9fc; }
+#app.layout-shell .shell-insp-check.has-jump:hover small { color: #4d6272; }
+#app.layout-shell .shell-insp-check.has-jump:focus-visible {
+  outline: 2px solid #287fa8;
+  outline-offset: -1px;
+}
+#app.layout-shell .shell-insp-jump-field {
+  display: inline-block;
+  margin-top: 3px;
+  color: #16637f;
+  font-size: 9px;
+  font-style: normal;
+  font-weight: 700;
+  letter-spacing: .02em;
+}
+#app.layout-shell .shell-insp-jump-field::after { content: ' →'; }
 #app.layout-shell .shell-insp-note {
   margin: 10px 0 0;
   padding: 7px 9px;
@@ -1713,41 +1732,41 @@ button:hover { transform: translateY(-1px); background: #fff; }
 }
 
 /* The shell pulls the stage into the middle, so the phone frame has to be drawn
-   inside that column. Sizing #stage itself (the way the classic flex layout
-   does) left it shrunk to the canvas width while the grid column stayed 750px
-   wide, so the column showed ~400px of empty gutter. Keeping #stage full-size
-   and letterboxing the canvas inside it keeps the frame while the column fills. */
+   inside that column. */
 #app.layout-shell.is-phone-preview {
   padding: 0;
   gap: 0;
   justify-content: initial;
   align-items: initial;
 }
+/* #stage IS the phone. Every HUD layer — progress bar, countdown, branding
+   logo/text, CTA, speed toggle — is an absolutely positioned child of #stage,
+   so the frame has to live on #stage itself. (An earlier version moved the
+   bezel onto #game-canvas and let #stage fill the whole column; the canvas
+   stayed 9:16 but the logo/CTA/branding anchored to the 750px column and
+   landed outside the phone.) The gutter a narrow phone leaves in a wide column
+   is the normal letterbox, not a bug. */
 #app.layout-shell.is-phone-preview > #stage {
-  display: grid;
-  place-items: center;
-  width: auto;
-  height: auto;
-  max-width: none;
-  max-height: none;
-  aspect-ratio: auto;
-  border: 0;
-  border-radius: 0;
-  background: #262d36;
-  box-shadow: none;
-}
-#app.layout-shell.is-phone-preview #game-canvas {
-  /* Letterbox the frame. Width and height need bases on their own axis: the
-     width term uses the viewport height (minus the 44px bar and 24px margin)
-     and the height term uses the column height. Deriving both from the column
-     *width* squashed the canvas to 363x832 instead of 416x832. */
-  width: min(calc(100% - 24px), calc((100vh - 68px) * var(--preview-width) / var(--preview-height)));
-  height: min(calc(100% - 24px), calc((100% - 24px) * var(--preview-height) / var(--preview-width)));
+  display: block;
+  justify-self: center;
+  align-self: center;
+  /* Neutralise the classic flex rules that also match this element (it carries
+     both id="stage" and class="stage"). */
+  flex: none;
+  /* Fit within the column AND keep 9:16. Both terms are computed from their own
+     axis so the min() picks the real limiting side: height from the column
+     height, width from the column width. A single base for both would either
+     squash the phone or overflow the column. */
+  width: min(calc(100% - 32px), calc((100vh - 44px - 32px) * var(--preview-width) / var(--preview-height)));
+  height: min(calc(100% - 32px), calc((100% - 32px) * var(--preview-height) / var(--preview-width)));
+  max-width: calc(100% - 32px);
+  max-height: calc(100% - 32px);
   border: 10px solid #142537;
-  border-radius: 28px;
+  border-radius: 34px;
   background: #0d1c2b;
   box-shadow: 0 24px 70px rgba(9,32,50,.28), inset 0 0 0 1px rgba(255,255,255,.08);
 }
+#app.layout-shell.is-phone-preview #game-canvas { border-radius: 24px; overflow: hidden; }
 
 @media (max-width: 1180px) {
   #app.layout-shell { grid-template-columns: 58px minmax(270px, 296px) minmax(0, 1fr) 258px; }

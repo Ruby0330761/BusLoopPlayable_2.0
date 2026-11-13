@@ -134,7 +134,32 @@
       "repairHint": "在官方 Preview 和 App 中跑完整一局并核对事件、CTA、音频和前后台。",
       "autoRepair": false,
       "manualGate": "使用 AppLovin 官方 Preview/真机验证容器行为。"
+    },
+    {
+      "id": "APL-AUD-001",
+      "title": "响应设备静音（MRAID audioVolumeChange / getAudioVolume）",
+      "severity": "blocker",
+      "check": {
+        "type": "all_regex_present",
+        "target": "combined",
+        "patterns": [
+          "audioVolumeChange",
+          "getAudioVolume"
+        ]
+      }
+    },
+    {
+      "id": "APL-AUD-002",
+      "title": "不可见时音频必须停播并静音",
+      "severity": "blocker",
+      "check": {
+        "type": "all_regex_present",
+        "target": "combined",
+        "patterns": [
+          "viewableChange",
+          "visibilitychange"
+        ]
+      }
     }
   ]
 }
-

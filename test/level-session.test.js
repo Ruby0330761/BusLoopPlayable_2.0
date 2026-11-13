@@ -188,7 +188,9 @@ test('runtime keeps the conveyor fixed and moves only Level7 vehicles in from be
   // A final-session win reports the solved challenge before the overlay, and the
   // overlay must not fall back to the failure branch of the challenge funnel.
   assert.match(mainSource, /platformBridge\?\.challengeSolved\?\.\(\);[\s\S]*?showResultOverlay\('You Win!', \{ failed: false \}\);/);
-  assert.match(viewSource, /this\.layoutRoot\.add\(this\.loopPlane, this\.spatialConveyorRoot\)/);
+  // The 3D track root joined this call: imported tracks render their own mesh
+  // instead of the flat loop plane, so both roots must be mounted.
+  assert.match(viewSource, /this\.layoutRoot\.add\(\s*this\.loopPlane,\s*this\.spatialConveyorRoot,\s*this\.threeDimensionalTrackRoot\s*\)/);
   assert.match(viewSource, /this\.layoutRoot\.add\(this\.vehicleRoot\)/);
   assert.match(viewSource, /this\.vehicleRoot\.add\(view\)/);
   assert.match(viewSource, /startVehicleEntrance\(/);

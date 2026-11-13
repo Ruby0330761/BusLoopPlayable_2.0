@@ -4,9 +4,9 @@ set -eu
 PORT="${1:-5173}"
 PROJECT_NAME="bus-loop-playable-editor-wxj"
 IMAGE_NAME="bus-loop-playable-editor-wxj"
-# Keep the data directory on the original path so a rollback still sees the
-# live authored levels instead of seeding an empty volume.
-DATA_ROOT="/data/bus-loop-playable-editor"
+# Must match start.sh: the platform only permits volumes under the project
+# directory, and start.sh migrates the legacy data here on first deploy.
+DATA_ROOT="/data/bus-loop-playable-editor-wxj"
 
 if ! docker image inspect "${IMAGE_NAME}:rollback" >/dev/null 2>&1; then
   echo "No rollback image is available."

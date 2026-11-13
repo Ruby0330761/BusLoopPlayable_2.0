@@ -70,6 +70,12 @@ export class GameAudioController {
     this.context = null;
     this.unlocked = false;
     this.visible = true;
+    // Device volume reported by the ad host (0..1). Ad checkers mute the device
+    // and expect the Web Audio graph to go silent; a suspended context is not
+    // enough there because the host may restore it, so every route goes through
+    // one master gain that this value drives.
+    this.deviceVolume = 1;
+    this.master = null;
     this.buffers = new Map();
     this.playedGameEventKeys = new Set();
     this.queuedPlays = [];
@@ -151,14 +157,77 @@ export class GameAudioController {
     this.startPlayback(name, clip, data, context, delay);
   }
 
+  // Every source in this controller connects here instead of straight to the
+  // destination. One node is what makes "silent" a hard guarantee: a checker
+  // that mutes the device (or an audit that hides the ad) can be answered by
+  // zeroing this gain even before the context finishes suspending, and no
+  // individually scheduled clip can route around it.
+  getMasterGain(context) {
+    if (this.master) return this.master;
+    const master = context.createGain();
+    // Built after the ad was already hidden, the bus must start silent; a
+    // context created later never sees the earlier setVisible(false).
+    master.gain.value = this.visible ? this.deviceVolume : 0;
+    master.connect(context.destination);
+    this.master = master;
+    return master;
+  }
+
+  /**
+   * The ad host's device volume, 0..1.
+   *
+   * AppLovin (MRAID) reports 0-100 through `audioVolumeChange` and
+   * `getAudioVolume()`; the bridge converts that to a ratio before calling here.
+   * Anything non-numeric keeps the previous level rather than muting the ad,
+   * because a malformed host event must not look like a deliberate mute.
+   */
+  setDeviceVolume(level) {
+    const parsed = Number(level);
+    this.deviceVolume = Number.isFinite(parsed)
+      ? Math.max(0, Math.min(1, parsed))
+      : 1;
+    if (this.visible) this.applyMasterVolume(this.deviceVolume, { immediate: this.deviceVolume === 0 });
+  }
+
+  // One writer for the master gain, so the device volume and the visibility
+  // mute cannot fight each other (a restore to 1 while hidden must stay silent).
+  //
+  // Muting is a hard cut, not a ramp: an audit samples the output while it
+  // claims to be silent, and `setTargetAtTime` only approaches zero
+  // asymptotically (it still reports a non-zero peak several samples later).
+  // Un-muting ramps back so the player does not hear a click.
+  applyMasterVolume(level, { immediate = false } = {}) {
+    const master = this.master;
+    if (!master) return;
+    const target = Math.max(0, Math.min(1, Number(level) || 0));
+    const now = master.context?.currentTime ?? 0;
+    try {
+      master.gain.cancelScheduledValues(now);
+      if (immediate || target === 0) {
+        master.gain.setValueAtTime(target, now);
+      } else {
+        master.gain.setValueAtTime(Number(master.gain.value) || 0, now);
+        master.gain.linearRampToValueAtTime(target, now + 0.03);
+      }
+    } catch {
+      master.gain.value = target;
+    }
+  }
+
   setVisible(visible) {
     this.visible = Boolean(visible);
     const context = this.context;
     if (!context) return;
     if (!this.visible) {
+      // Suspend alone is not a hard guarantee: a host can resume the context
+      // itself, and the audit samples an analyser rather than the context state.
+      // Zeroing the master gain first makes the graph silent in the same tick,
+      // and suspend then stops the clock so nothing is consumed while hidden.
+      this.applyMasterVolume(0, { immediate: true });
       if (context.state === 'running') void context.suspend?.();
       return;
     }
+    this.applyMasterVolume(this.deviceVolume);
     if (this.unlocked && context.state === 'suspended') {
       void context.resume().then(() => this.flushQueuedPlays());
     }
@@ -182,7 +251,7 @@ export class GameAudioController {
         const scale = Number(this.getVolumeScale?.(name));
         const baseVolume = Number(data.volume ?? 1);
         gain.gain.value = Math.max(0, baseVolume * (Number.isFinite(scale) ? scale : 1));
-        source.connect(gain).connect(context.destination);
+        source.connect(gain).connect(this.getMasterGain(context));
         this.activeSources.add(source);
         source.onended = () => this.activeSources.delete(source);
         // A positive delay schedules the start slightly ahead on the audio
@@ -238,7 +307,7 @@ export class GameAudioController {
     const target = Math.max(0, Math.min(1, Number(volume) || 0));
     const fade = Math.max(0, Number(fadeInSeconds) || 0);
     gain.gain.value = fade > 0 ? 0 : target;
-    gain.connect(context.destination);
+    gain.connect(this.getMasterGain(context));
     const source = context.createBufferSource();
     source.loop = true;
     const entry = { asset, source, gain, volume: target };
@@ -307,7 +376,7 @@ export class GameAudioController {
     const target = Math.max(0, Math.min(1, Number(volume) || 0));
     const fade = Math.max(0, Number(fadeInSeconds) || 0);
     gain.gain.value = fade > 0 ? 0 : target;
-    gain.connect(context.destination);
+    gain.connect(this.getMasterGain(context));
     const source = context.createBufferSource();
     source.loop = true;
     const entry = { asset, source, gain, volume: target };

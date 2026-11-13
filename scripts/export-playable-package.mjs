@@ -105,14 +105,17 @@ export const PLAYABLE_BRANDING_SETS = Object.freeze({
       // operator exported. This set must not invent `BFT`/`ZZN`, or a delivery
       // is renamed into a different requirement than the one being worked on.
       // Only replaces the untouched Bus default; a custom line is left alone.
-      textContent: 'Bus Crowd',
-      defaultTextContent: 'Bus Fever Party!',
+      // The caption and the loader title use the full store name, which is what
+      // the delivery was reviewed against — the short `Bus Crowd` only survives
+      // as a value an operator may have typed before this shipped.
+      textContent: 'Bus Crowd - Traffic Jam',
+      defaultTextContent: ['Bus Fever Party!', 'Bus Crowd'],
       // The Crowd wordmark under the CTA has to sit dead centre. The editor
       // stores a draggable x, and a saved session can leave it a few pixels off
       // (a 534 instead of 540 shipped once), so the Crowd set pins the text to
       // the design centre instead of trusting whatever the tuning carries.
       centerText: true,
-      loadingTitle: 'Bus Crowd'
+      loadingTitle: 'Bus Crowd - Traffic Jam'
     })
   ])
 });
@@ -287,6 +290,15 @@ function buildPlayableArtifactNames(tuning, platforms, suffix = '', options) {
   return names;
 }
 
+// A saved level keeps whatever caption it last exported with, so every wording
+// a set has ever shipped counts as "untouched". Without that, re-exporting a
+// session authored against the old short name would pin it forever while a
+// fresh session got the new one.
+function isVariantDefaultText(current, variant) {
+  const defaults = [variant.defaultTextContent ?? []].flat();
+  return defaults.some((value) => value && current === value);
+}
+
 export function createBrandingVariantTuning(tuning, variantId) {
   const variant = Object.values(PLAYABLE_BRANDING_SETS)
     .flat()
@@ -314,7 +326,7 @@ export function createBrandingVariantTuning(tuning, variantId) {
   if (variant.textContent) {
     output.branding.text ??= {};
     const current = String(output.branding.text.content ?? '').trim();
-    if (!current || current === variant.defaultTextContent) {
+    if (!current || isVariantDefaultText(current, variant)) {
       output.branding.text.content = variant.textContent;
     }
   }
@@ -335,6 +347,76 @@ export function createBrandingVariantTuning(tuning, variantId) {
     Object.assign(output.exportNaming, variant.exportNaming);
   }
   return output;
+}
+
+// The HTML shell carries one brand's placeholder copy: the document title, the
+// canvas label, the image alt text, and the initial loader/caption strings. The
+// runtime overwrites the visible ones, but the file still ships the wrong brand
+// in the tab, in every accessible name, and on screen for as long as the 3.5 MB
+// bundle takes to boot — or indefinitely if it fails. Retargeting the shell
+// keeps a Crowd package from advertising Bus Fever in any of those slots.
+//
+// The tables map a slot to the attribute or text it owns. Both `alt` naming
+// schemes are listed because the icon/logo alts name the *caption* brand while
+// the loader alt names the *loader* brand, and a slot that no longer matches is
+// an error rather than a silent pass — a missing node would otherwise ship the
+// template's brand forever.
+const BRANDING_SHELL_SLOTS = Object.freeze({
+  caption: [
+    ['branding-text', 'text'],
+    ['game-canvas', 'aria-label'],
+    ['branding-icon', 'alt', ' icon'],
+    ['branding-logo', 'alt', ' logo'],
+    ['game-over-logo', 'alt', ' logo']
+  ],
+  loading: [
+    ['loading-title', 'text'],
+    ['loading-icon', 'alt', ' icon']
+  ]
+});
+const BRANDING_SHELL_TITLE = ['title', 'text'];
+
+function escapeHtmlText(value) {
+  return String(value).replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;');
+}
+
+function escapeHtmlAttribute(value) {
+  return escapeHtmlText(value).replaceAll('"', '&quot;');
+}
+
+function brandingSlotPattern(elementId, attribute) {
+  const id = elementId === 'title' ? 'title' : `\\bid=["']${elementId}["']`;
+  if (elementId === 'title') return /(<title>)[^<]*(<\/title>)/iu;
+  if (attribute === 'text') {
+    return new RegExp(`(<[a-z][a-z0-9]*\\b(?=[^>]*${id})[^>]*>)[^<]*(</[a-z][a-z0-9]*>)`, 'iu');
+  }
+  return new RegExp(`(<[a-z][a-z0-9]*\\b(?=[^>]*${id})[^>]*\\b${attribute}=["'])[^"']*(["'])`, 'iu');
+}
+
+// Only the shipped defaults are replaced: a shell that already holds the
+// target brand is left untouched, so re-running an export is idempotent.
+export function rewriteBrandingShellHtml(sourceHtml, { text = '', loadingTitle = '' } = {}) {
+  if (typeof sourceHtml !== 'string' || !sourceHtml) throw new TypeError('Source playable HTML is required.');
+  const caption = String(text ?? '').trim();
+  const loader = String(loadingTitle ?? '').trim() || caption;
+  if (!caption && !loader) return sourceHtml;
+  const slots = [];
+  if (loader) {
+    slots.push([BRANDING_SHELL_TITLE, loader, escapeHtmlText]);
+    for (const slot of BRANDING_SHELL_SLOTS.loading) slots.push([slot, loader, escapeHtmlAttribute]);
+  }
+  if (caption) {
+    for (const slot of BRANDING_SHELL_SLOTS.caption) slots.push([slot, caption, escapeHtmlAttribute]);
+  }
+  let html = sourceHtml;
+  for (const [slot, value, escape] of slots) {
+    const [elementId, attribute, suffix = ''] = slot;
+    const pattern = brandingSlotPattern(elementId, attribute);
+    if (!pattern.test(html)) throw new Error(`Playable HTML is missing the ${elementId} branding slot.`);
+    const written = escape(`${value}${suffix}`);
+    html = html.replace(pattern, (_match, open, close) => `${open}${written}${close}`);
+  }
+  return html;
 }
 
 function getVariantStoreLinks(tuning, label) {
@@ -396,6 +478,14 @@ export function retargetBrandingVariantHtml(sourceHtml, sourceTuning, targetTuni
     }
   }
   assertEmbeddedStoreLinks(html, targetTuning);
+  // "Export all" builds the first variant and derives the rest from its HTML, so
+  // this is the only point where a reused shell can be retargeted. Without it
+  // the Crowd artifact would keep the Bus template's title, alt text and
+  // pre-boot caption even though its tuning says otherwise.
+  html = rewriteBrandingShellHtml(html, {
+    text: targetTuning?.branding?.text?.content,
+    loadingTitle: targetTuning?.branding?.loading?.title
+  });
   return html;
 }
 
@@ -652,7 +742,12 @@ async function loadBrandingIconDataUri(projectRoot, tuning) {
   return `data:${mime};base64,${bytes.toString('base64')}`;
 }
 
-async function applyWorkspaceBrandingIcon(workRoot, tuning) {
+// The workspace shell is the Bus template copied into every variant, so both
+// the icon/logo files and the placeholder copy have to be retargeted before the
+// build runs. The runtime overwrites the visible caption, but the shipped file
+// still carries the template's brand in `<title>`, the accessible names and the
+// pre-boot paint otherwise.
+async function applyWorkspaceBranding(workRoot, tuning) {
   const indexPath = path.join(workRoot, 'index.html');
   let source = await readFile(indexPath, 'utf8');
   for (const [elementId, asset] of [
@@ -669,6 +764,10 @@ async function applyWorkspaceBrandingIcon(workRoot, tuning) {
     if (!pattern.test(source)) throw new Error(`Playable HTML is missing the ${elementId} element.`);
     source = source.replace(pattern, `$1${asset}`);
   }
+  source = rewriteBrandingShellHtml(source, {
+    text: tuning?.branding?.text?.content,
+    loadingTitle: tuning?.branding?.loading?.title
+  });
   await writeFile(indexPath, source, 'utf8');
 }
 
@@ -708,7 +807,7 @@ async function prepareWorkspace(projectRoot, tuning, levelDocument = null) {
   await copySelectedEditorBackground(projectRoot, workRoot, tuning);
   await copySelectedEditorPreRoll(projectRoot, workRoot, tuning);
   await copySelectedGuideAssets(projectRoot, workRoot, tuning);
-  await applyWorkspaceBrandingIcon(workRoot, tuning);
+  await applyWorkspaceBranding(workRoot, tuning);
   await symlink(path.join(projectRoot, 'node_modules'), path.join(workRoot, 'node_modules'), 'dir');
   const tuningPath = path.join(workRoot, 'artifacts', 'export-tuning.json');
   await writeFile(tuningPath, `${JSON.stringify(tuning, null, 2)}\n`, 'utf8');
@@ -726,7 +825,7 @@ async function prepareWorkspace(projectRoot, tuning, levelDocument = null) {
 async function applyWorkspaceTuning(workRoot, tuning) {
   const tuningPath = path.join(workRoot, 'artifacts', 'export-tuning.json');
   await writeFile(tuningPath, `${JSON.stringify(tuning, null, 2)}\n`, 'utf8');
-  await applyWorkspaceBrandingIcon(workRoot, tuning);
+  await applyWorkspaceBranding(workRoot, tuning);
   await run(process.execPath, [
     'scripts/apply-scene-tuning.mjs',
     '--input', tuningPath,
@@ -1097,6 +1196,10 @@ async function checkArtifact({
           outputPath: runtimeReportPath,
           checkBatchId,
           device: runtimeDevices[0] ?? null,
+          // A real delivery must prove the audio lifecycle rules; the smoke
+          // fixtures used by the test suite are minimal pages without the
+          // playable's QA hook, so they opt out.
+          requireAudioLifecycle: true,
           signal
         }),
     ...(skipRuntime || cachedRuntimeReport || runtimeDevices.length < 2
@@ -1107,6 +1210,7 @@ async function checkArtifact({
           outputPath: `${runtimeReportPath}.${runtimeDevices[1]}`,
           checkBatchId,
           device: runtimeDevices[1],
+          requireAudioLifecycle: true,
           signal
         })])
   ]);

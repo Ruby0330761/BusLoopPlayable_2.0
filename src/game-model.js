@@ -1,6 +1,7 @@
 import { LEVEL_1 } from './level-data.js';
 import { SCENE_TUNING } from './scene-tuning.js';
 import { getVehicleAreaPivot } from './vehicle-area.js';
+import { parkedVehicleSizeMultiplier } from './vehicle-area-transform.js';
 import { resolveParkingSpots, resolveParkingStartX } from './stage-scene.js';
 import { CONVEYOR_MECHANISM_TUNING } from './conveyor-mechanism-config.js';
 import { normalizeStaminaConfig } from './stamina.js';
@@ -37,6 +38,51 @@ const wrap01 = (value) => ((value % 1) + 1) % 1;
 const clampNumber = (value, min, max) => Math.max(min, Math.min(max, value));
 const INITIAL_ENTRY_OFFSET_PERCENT = 0.0001;
 const PASSENGER_READY_DISTANCE_THRESHOLD = 0.02;
+// A "tail queue" track (Q37 / footage11) moves its passengers as one column
+// instead of parking them in belt slots: the column creeps toward the pit while
+// the run is calm, and the row spacing compresses when nobody boards. When the
+// head reaches the pit the run fails, which is the whole point of that track.
+const TAIL_QUEUE_DEFAULTS = Object.freeze({
+  rowSpacing: 0.2,
+  speed: 0.25,
+  retreatSpeed: 0.9,
+  initialHeadPercent: 0.42,
+  warningPercent: 0.522,
+  // The head reaching the hole is the failure, so danger saturates at 1.
+  failurePercent: 1
+});
+
+function clampPercent(value, fallback, min = 0, max = 1) {
+  const number = Number(value);
+  if (!Number.isFinite(number)) return fallback;
+  return Math.min(max, Math.max(min, number));
+}
+
+// Percent inputs arrive in either unit depending on the author (42 vs 0.42).
+// Convert first, clamp second: clamping before the divide turned a 52.2 value
+// into 1/100 and the pit could never be reached.
+function readPercent(value, fallback) {
+  const number = Number(value);
+  if (!Number.isFinite(number)) return fallback;
+  const fraction = number > 1 ? number / 100 : number;
+  return Math.min(1, Math.max(0, fraction));
+}
+
+// Returns null when the track is an ordinary belt, so callers can branch on it.
+function normalizeTailQueueConfig(config) {
+  if (!config || !Number(config.enabled ?? 1)) return null;
+  return {
+    rowSpacing: clampPercent(config.rowSpacing ?? TAIL_QUEUE_DEFAULTS.rowSpacing, 0.2, 0.12, 0.8),
+    speed: clampPercent(config.passengerSpeed ?? config.speed ?? TAIL_QUEUE_DEFAULTS.speed, 0.25, 0.01, 3),
+    retreatSpeed: clampPercent(config.retreatSpeed ?? TAIL_QUEUE_DEFAULTS.retreatSpeed, 0.9, 0.01, 6),
+    initialHeadPercent: readPercent(config.initialHeadPercent, TAIL_QUEUE_DEFAULTS.initialHeadPercent),
+    warningPercent: readPercent(
+      config.warningPercent ?? config.warningStartPercent,
+      TAIL_QUEUE_DEFAULTS.warningPercent
+    ),
+    failurePercent: clampPercent(config.failurePercent ?? TAIL_QUEUE_DEFAULTS.failurePercent, 1, 0.01, 1)
+  };
+}
 const HIDDEN_VEHICLE_REVEAL_DURATION = 1;
 const getHiddenVehicleRevealDuration = () => Math.max(
   0.1,
@@ -73,19 +119,26 @@ const CONVEYOR_RIGHT_VISIBILITY_SCALE = CONVEYOR_MECHANISM_TUNING.rightVehicleVi
 const RENDERED_OVER_COLLISION_RATIO = 1.141;
 
 function collisionVisualOverhang(candidate, attacker, level) {
-  const overhangFor = (seats) => {
+  const overhangFor = (vehicle) => {
+    const seats = vehicle?.seats;
     const collisionLength = Number(
       level?.collision?.vehicleSizes?.[seats]?.length
         ?? level?.collision?.maxVehicleSize?.length
     );
     if (!(collisionLength > 0)) return 0;
-    return Math.max(0, (collisionLength * RENDERED_OVER_COLLISION_RATIO - collisionLength) / 2);
+    // `vehicleArea.sizeMultiplier` grows the car the same way on both sides of
+    // the ratio, so the overhang it adds has to be multiplied with it. Without
+    // this an enlarged board stops with a whole car-width of air between the
+    // bumpers.
+    const sizeMultiplier = parkedVehicleSizeMultiplier(vehicle, SCENE_TUNING.vehicleArea);
+    const renderedLength = collisionLength * RENDERED_OVER_COLLISION_RATIO * sizeMultiplier;
+    return Math.max(0, (renderedLength - collisionLength) / 2);
   };
   // Containers (garage bodies, conveyor walls) keep their authored footprint:
   // only cars carry the model-vs-collision overhang.
   const candidateVehicle = candidate?.vehicle;
-  return overhangFor(attacker?.seats)
-    + (candidateVehicle ? overhangFor(candidateVehicle.seats) : 0);
+  return overhangFor(attacker)
+    + (candidateVehicle ? overhangFor(candidateVehicle) : 0);
 }
 
 function isGarageType(value) {
@@ -736,6 +789,19 @@ export class BusLoopGame {
     this.entryPercents = [...(conveyorConfig.entryPercents ?? this.entryPercents)];
     this.exitStart = conveyorConfig.exitStart ?? this.exitStart;
     this.exitEnd = conveyorConfig.exitEnd ?? this.exitEnd;
+    // The belt fills faster than it runs until every slot is occupied, which is
+    // what makes a long track look full the moment play starts. Without it a
+    // 79-slot track spends its whole opening minute trickling passengers in.
+    this.initialFillSpeedMultiplier = Math.max(
+      1,
+      Number(conveyorConfig.initialFillSpeedMultiplier) || 1
+    );
+    // A tail-queue track pushes its whole column along instead of parking fixed
+    // slots on a belt. That is what makes the pit lethal: nobody boards from a
+    // slot ring, the column just advances until its head reaches the hole.
+    this.tailQueue = normalizeTailQueueConfig(conveyorConfig.tailQueue);
+    this.tailHeadProgress = this.tailQueue ? this.tailQueue.initialHeadPercent : 0;
+    this.q37Danger = 0;
     this.queueSpacing = Math.max(0.01, queueSpacing ?? this.level.passengerQueue?.spacing ?? 0.4);
     this.conveyorPathLength = Math.max(0.0001, conveyorPathLength ?? this.conveyorPathLength ?? 1);
     this.queueAvailableLengths = authoredQueues.map((_, index) => Math.max(
@@ -816,6 +882,9 @@ export class BusLoopGame {
       status: this.status,
       speedMultiplier: this.speedMultiplier,
       initialFillActive: this.initialFillActive,
+      // How close the tail-queue head is to the pit (0 calm, 1 failed). The
+      // renderer drives the warning beacons from this.
+      danger: this.q37Danger ?? 0,
       sourceRemaining: this.sourceQueues.reduce((sum, queue) => sum + queue.length, 0),
       queues: this.queues.map((queue) => queue.map((item) => item.colorIndex)),
       queueItems: this.queues.map((queue) => queue.map((item) => ({ ...item }))),
@@ -870,6 +939,7 @@ export class BusLoopGame {
     state.status = this.status;
     state.speedMultiplier = this.speedMultiplier;
     state.initialFillActive = this.initialFillActive;
+    state.danger = this.q37Danger ?? 0;
     state.queueItems = this.queues;
     state.queues = this.queues;
     state.vehicles = this.vehicles;
@@ -1580,8 +1650,17 @@ export class BusLoopGame {
     const entryMotion = this.level.passengerEntryMotion ?? {};
     const activeConveyorSpeed = this.initialFillActive
       ? (entryMotion.passengerSpeed ?? this.level.conveyorSpeed)
+        * Math.max(1, Number(this.initialFillSpeedMultiplier) || 1)
       : this.level.conveyorSpeed;
-    const progressDelta = delta * activeConveyorSpeed / this.conveyorPathLength * this.speedMultiplier;
+    const progressDelta0 = delta * activeConveyorSpeed / this.conveyorPathLength * this.speedMultiplier;
+    // The belt is a rigid loop: all slots keep their spacing, so it can only stop
+    // or start as one piece. When an empty slot is about to reach an entrance
+    // that has nobody ready to board, the loop must stop just short of it --
+    // otherwise the slot slides past and cannot be fed until it comes all the way
+    // round, which is what left the track looking bare. Limiting the advance up
+    // front is what makes that a pause; moving first and reversing afterwards
+    // made the whole belt rock back and forth every frame.
+    const progressDelta = this.limitAdvanceToWaitingEntrance(progressDelta0);
     let initialFillClamp = 0;
     let initialFillHoldSlot = null;
     let initialFillHoldProgress = 0;
@@ -1613,6 +1692,18 @@ export class BusLoopGame {
       }
     }
 
+    // A tail-queue track re-lays the occupied slots as one column after boarding
+    // has placed them. Boarding itself still runs above, so passengers reach the
+    // matte normally; only the spacing and creep differ, and the head is what
+    // eventually drops into the pit.
+    if (this.tailQueue) this.updateTailQueue(delta);
+
+    // The belt is a rigid loop: its slots keep their spacing, so a slot that
+    // reached an entrance without a passenger stops the whole loop just short of
+    // that entrance rather than sliding past it empty. Letting individual slots
+    // flow on (an earlier attempt) left the track visibly bare, because a slot
+    // that passes an entrance unfilled cannot pick anyone up until it comes all
+    // the way round again.
     if (this.initialFillActive && initialFillClamp > 0) {
       for (const slot of this.slots) {
         slot.progress = wrap01(slot.progress - initialFillClamp);
@@ -1621,9 +1712,16 @@ export class BusLoopGame {
       if (initialFillHoldSlot) initialFillHoldSlot.progress = initialFillHoldProgress;
     }
 
+    // The initial fill used to end only once every belt slot had been filled.
+    // A level whose authored queues are smaller than the belt then locked up
+    // forever: the belt could never fill, so nobody was ever allowed to reach
+    // the exit. The shipped playables treat an exhausted source as "the fill is
+    // as done as it will get", which is also what a short 3D track needs.
+    const sourcesExhausted = !this.queues.some((queue) => queue.length)
+      && !this.sourceQueues.some((queue) => queue.length);
     if (
       this.initialFillActive
-      && this.initialFilledSlotIndices.size >= this.conveyorCapacity
+      && (this.initialFilledSlotIndices.size >= this.conveyorCapacity || sourcesExhausted)
       && !this.hasEnteringSlots()
     ) {
       this.initialFillActive = false;
@@ -1680,9 +1778,70 @@ export class BusLoopGame {
     if (changed || this.status !== previousStatus) this.emit();
   }
 
+  // Q37 / footage11 motion. The passengers are one column on a matte: the column
+  // creeps toward the pit at `speed`, and whenever a row is taken the gap behind
+  // it closes at `retreatSpeed` so the column keeps its spacing. `q37Danger` is
+  // how far the head is into the pit approach, which is what checkEndState reads.
+  updateTailQueue(delta) {
+    const config = this.tailQueue;
+    if (!config || this.slots.length === 0) return;
+    const occupied = this.slots
+      .filter((slot) => slot.colorIndex !== null)
+      .sort((a, b) => a.progress - b.progress);
+    if (occupied.length === 0) {
+      this.q37Danger = 0;
+      return;
+    }
+    const seconds = Math.max(0, delta) / Math.max(1, this.speedMultiplier);
+    // The head creeps forward at `passengerSpeed`, while a row that was just taken
+    // lets the column behind it close up at `retreatSpeed`. Progress is measured
+    // on the belt curve, so world units convert through the path length.
+    const forward = (config.speed / Math.max(0.0001, this.conveyorPathLength)) * seconds;
+    const retreat = (config.retreatSpeed / Math.max(0.0001, this.conveyorPathLength)) * seconds;
+    const rowStep = config.rowSpacing / Math.max(0.0001, this.conveyorPathLength);
+    const previousHead = occupied[0].progress;
+    // The column only moves forward while it is unblocked; the head is what enters
+    // the pit, so it is tracked separately from the slots' own placement.
+    const head = Math.max(previousHead, this.tailHeadProgress ?? config.initialHeadPercent) + forward;
+    this.tailHeadProgress = head;
+    occupied.forEach((slot, index) => {
+      slot.previousProgress = slot.progress;
+      const target = Math.min(1, head + index * rowStep);
+      slot.progress = slot.progress > target ? Math.max(target, slot.progress - retreat) : target;
+    });
+    this.q37Danger = Math.min(1, Math.max(0,
+      (head - config.warningPercent) / Math.max(0.0001, 1 - config.warningPercent)
+    ));
+  }
+
   crossedPoint(previous, current, point) {
     if (previous <= current) return point > previous && point <= current;
     return point > previous || point <= current;
+  }
+
+  // Caps this frame's belt advance so no empty slot crosses an entrance that has
+  // nobody ready to board. The belt is rigid, so the cap applies to every slot
+  // at once: the loop simply pauses short of the entrance instead of stepping
+  // past it and being yanked back.
+  limitAdvanceToWaitingEntrance(progressDelta) {
+    if (!this.initialFillActive || progressDelta <= 0) return progressDelta;
+    let limit = progressDelta;
+    for (const slot of this.slots) {
+      if (slot.colorIndex !== null) continue;
+      const target = wrap01(slot.progress + progressDelta);
+      const entry = this.getFirstPassedEntry(slot.progress, target);
+      if (!entry) continue;
+      // Is there anyone to board at that entrance this frame?
+      const queue = this.queues[entry.index];
+      const ready = Boolean(queue?.length)
+        && !(queue[0].distanceFromHead > PASSENGER_READY_DISTANCE_THRESHOLD);
+      if (ready) continue;
+      // Stop this slot just before the entrance. That distance is the cap for
+      // the whole rigid loop.
+      const allowed = wrap01(entry.percent - INITIAL_ENTRY_OFFSET_PERCENT - slot.progress);
+      limit = Math.min(limit, allowed);
+    }
+    return Math.max(0, limit);
   }
 
   getFirstPassedEntry(previous, current) {
@@ -1867,6 +2026,15 @@ export class BusLoopGame {
     if (this.vehicles.every((vehicle) => vehicle.state === 'done') && this.getRemainingGroups() === 0) {
       this.status = 'won';
       this.lastEvent = { type: 'win' };
+      return;
+    }
+    // A tail-queue track (Q37) fails by its own rule: the passengers are pushed
+    // along the matte as one column, and when the head of that column reaches the
+    // pit the run is over. It is not the generic "everything is stuck" check --
+    // that one would never fire here, because the column is always moving.
+    if (this.tailQueue && this.q37Danger >= this.tailQueue.failurePercent) {
+      this.status = 'lost';
+      this.lastEvent = { type: 'lose', reason: 'q37-pit' };
       return;
     }
     const spotsFullAndSettled = this.areParkingSpotsFullAndSettled();

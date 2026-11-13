@@ -65,6 +65,7 @@ async function assetDataUri(asset) {
 async function main() {
   const [{ PLAYABLE_STAGE_CHOICES, PLAYABLE_ALL_LEVELS, ACTIVE_PLAYABLE_SESSION }, {
     MECHANISM_RESOURCE_MANIFEST,
+    PLAYABLE_TRACK_RESOURCES,
     PRE_ROLL_ASSET_PATHS,
     getMechanismResourcePaths,
     getMechanismTypesForLevels
@@ -107,8 +108,12 @@ async function main() {
       ))
     )
   });
-  const selectedMechanismUrls = getMechanismResourcePaths(mechanismTypes);
-  const allMechanismUrls = getMechanismResourcePaths(Object.keys(MECHANISM_RESOURCE_MANIFEST));
+  const selectedMechanismUrls = getMechanismResourcePaths(mechanismTypes, {
+    conveyorLayouts: [selectedConveyor].filter(Boolean)
+  });
+  const allMechanismUrls = getMechanismResourcePaths(Object.keys(MECHANISM_RESOURCE_MANIFEST), {
+    conveyorLayouts: Object.keys(PLAYABLE_TRACK_RESOURCES)
+  });
   const selectedMechanismDataUris = await Promise.all(
     selectedMechanismUrls.map((asset) => assetDataUri(asset))
   );

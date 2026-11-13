@@ -24,6 +24,7 @@ import {
   SUPPORTED_PLATFORMS,
   prepareMolocoHtml,
   retargetBrandingVariantHtml,
+  rewriteBrandingShellHtml,
   splitSingleHtml,
   validateExportNamingPart,
   validateTuning
@@ -188,14 +189,17 @@ test('one Bus package serves both stores and carries both icons', () => {
   );
 });
 
-test('branding variants reuse platform builds by retargeting only the embedded icon', () => {
+test('branding variants reuse platform builds by retargeting the icon, links, and shell copy', () => {
   const android = createBrandingVariantTuning({ storeLinks: STORE_LINKS }, 'bus');
   const ios = createBrandingVariantTuning({ storeLinks: STORE_LINKS }, 'crowd');
   const androidIcon = 'data:image/jpeg;base64,YW5kcm9pZA==';
   const iosIcon = 'data:image/png;base64,aW9z';
-  const source = `<html><img id="branding-icon" src="${androidIcon}"><script>`
-    + `const links={android:${JSON.stringify(STORE_LINKS.android)},ios:${JSON.stringify(STORE_LINKS.ios)}};`
-    + '</script></html>';
+  // A reused build is derived from the first variant's HTML, so the shell has to
+  // be shaped like the real one or the retarget would silently keep Bus copy.
+  const source = readFileSync(new URL('../index.html', import.meta.url), 'utf8')
+    .replace('/assets/icon-android.jpg', androidIcon)
+    .replace('</head>', `<script>const links={android:${JSON.stringify(STORE_LINKS.android)},`
+      + `ios:${JSON.stringify(STORE_LINKS.ios)}};</script></head>`);
   const result = retargetBrandingVariantHtml(source, android, ios, iosIcon);
   assert.doesNotMatch(result, /YW5kcm9pZA/);
   assert.equal(result.split(iosIcon).length - 1, 1);
@@ -204,6 +208,42 @@ test('branding variants reuse platform builds by retargeting only the embedded i
   assert.equal(result.split(STORE_LINKS.ios).length - 1, 0);
   assert.equal(result.split(CROWD_STORE_LINKS.android).length - 1, 1);
   assert.equal(result.split(CROWD_STORE_LINKS.ios).length - 1, 1);
+  // Reusing a build must not carry the Bus template's brand into the artifact.
+  assert.doesNotMatch(result, /Bus Fever Party/);
+  assert.match(result, /<title>Bus Crowd - Traffic Jam<\/title>/);
+  assert.match(result, /id="branding-text"[^>]*>Bus Crowd - Traffic Jam<\/div>/);
+  assert.match(result, /id="game-canvas"[^>]*aria-label="Bus Crowd - Traffic Jam"/);
+});
+
+test('the HTML shell is retargeted to the exported brand, not left on the Bus template', async () => {
+  const shell = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
+  const rewritten = rewriteBrandingShellHtml(shell, {
+    text: 'Bus Crowd - Traffic Jam',
+    loadingTitle: 'Bus Crowd - Traffic Jam'
+  });
+  // Every place the template names the other product has to follow the brand.
+  assert.doesNotMatch(rewritten, /Bus Fever Party/);
+  assert.match(rewritten, /<title>Bus Crowd - Traffic Jam<\/title>/);
+  assert.match(rewritten, /<h1 id="loading-title">Bus Crowd - Traffic Jam<\/h1>/);
+  assert.match(rewritten, /id="branding-text"[^>]*>Bus Crowd - Traffic Jam<\/div>/);
+  assert.match(rewritten, /id="game-canvas"[^>]*aria-label="Bus Crowd - Traffic Jam"/);
+  assert.match(rewritten, /id="branding-icon"[^>]*alt="Bus Crowd - Traffic Jam icon"/);
+  assert.match(rewritten, /id="branding-logo"[^>]*alt="Bus Crowd - Traffic Jam logo"/);
+  assert.match(rewritten, /id="loading-icon"[^>]*alt="Bus Crowd - Traffic Jam icon"/);
+  assert.match(rewritten, /id="game-over-logo"[^>]*alt="Bus Crowd - Traffic Jam logo"/);
+  // Idempotent: a second pass over its own output changes nothing.
+  assert.equal(
+    rewriteBrandingShellHtml(rewritten, { text: 'Bus Crowd - Traffic Jam', loadingTitle: 'Bus Crowd - Traffic Jam' }),
+    rewritten
+  );
+  // The Bus set keeps the shipped shell byte for byte.
+  assert.equal(
+    rewriteBrandingShellHtml(shell, { text: 'Bus Fever Party!', loadingTitle: 'Bus Fever Party!' }),
+    shell
+  );
+  // Copy with markup characters must not be able to break out of the attribute.
+  const escaped = rewriteBrandingShellHtml(shell, { text: 'A "B" & <C>' });
+  assert.match(escaped, /aria-label="A &quot;B&quot; &amp; &lt;C&gt;"/);
 });
 
 test('all-platform export builds both branding variants and records them in the manifest', async () => {
@@ -214,7 +254,7 @@ test('all-platform export builds both branding variants and records them in the 
   assert.match(exporter, /assertEmbeddedStoreLinks\(sourceHtml, variantTuning\)/);
   assert.match(exporter, /brandingDeviceProfiles\(devices\)/);
   assert.match(exporter, /device: runtimeDevices\[1\]/);
-  assert.match(exporter, /applyWorkspaceBrandingIcon\(workRoot, tuning\)/);
+  assert.match(exporter, /applyWorkspaceBranding\(workRoot, tuning\)/);
   assert.match(exporter, /brandingVariant:\s*brandingVariant \?\? null/);
   assert.match(exporter, /skipRuntime: process\.env\.PLAYABLE_EXPORT_SKIP_RUNTIME === '1'/);
   assert.doesNotMatch(exporter, /skipRuntime: process\.env\.PLAYABLE_EXPORT_REMOTE_FAST === '1'/);
@@ -242,9 +282,16 @@ test('Crowd exports one shared Android/iOS package with its own icon and logo', 
   assert.equal(crowd.branding.icon.asset, '/assets/icon-crowd.jpg');
   assert.equal(crowd.branding.logo.asset, '/assets/main-loading-icon-crowd.webp');
   // An untouched Bus default text must not survive into a Crowd package.
-  assert.equal(crowd.branding.text.content, 'Bus Crowd');
-  assert.equal(crowd.branding.loading.title, 'Bus Crowd');
+  assert.equal(crowd.branding.text.content, 'Bus Crowd - Traffic Jam');
+  assert.equal(crowd.branding.loading.title, 'Bus Crowd - Traffic Jam');
   assert.equal(crowd.branding.loading.icon, '');
+  // A session saved while the short name shipped must keep migrating forward
+  // instead of pinning the old wording forever.
+  const legacyShortName = createBrandingVariantTuning(
+    { branding: { text: { content: 'Bus Crowd' } } },
+    'crowd'
+  );
+  assert.equal(legacyShortName.branding.text.content, 'Bus Crowd - Traffic Jam');
   // The Crowd wordmark must sit centred even when a saved editor session left
   // the draggable x a few pixels off (a 534 shipped once and looked off-centre).
   const dragged = createBrandingVariantTuning(
@@ -252,7 +299,13 @@ test('Crowd exports one shared Android/iOS package with its own icon and logo', 
     'crowd'
   );
   assert.equal(dragged.branding.text.x, 540);
-  assert.equal(dragged.branding.text.content, 'Bus Crowd');
+  assert.equal(dragged.branding.text.content, 'Bus Crowd - Traffic Jam');
+  // An operator's own line is still product copy and must not be rewritten.
+  const authored = createBrandingVariantTuning(
+    { branding: { text: { content: 'Jam the Buses' } } },
+    'crowd'
+  );
+  assert.equal(authored.branding.text.content, 'Jam the Buses');
   // A different authoring canvas centres on that canvas instead of assuming 1080.
   const wideCanvas = createBrandingVariantTuning(
     { preview: { width: 900, height: 1600 }, branding: { text: { x: 120 } } },
@@ -485,10 +538,11 @@ test('inliner reuses the initial branding image instead of embedding it again in
 });
 
 test('packaging and checks include EntryBanner resources only when the tuning or a stage enables it', async () => {
-  const [inliner, checker, sceneView] = await Promise.all([
+  const [inliner, checker, sceneView, inlineAssets] = await Promise.all([
     readFile(new URL('../scripts/package-applovin-single-html.mjs', import.meta.url), 'utf8'),
     readFile(new URL('../scripts/check-applovin-package.mjs', import.meta.url), 'utf8'),
-    readFile(new URL('../src/scene-view.js', import.meta.url), 'utf8')
+    readFile(new URL('../src/scene-view.js', import.meta.url), 'utf8'),
+    readFile(new URL('../src/playable-inline-assets.js', import.meta.url), 'utf8')
   ]);
   // A later stage can enable the banner while the global toggle stays off. Both
   // consumers must consider every request source: the fixed stage sequence, the
@@ -501,23 +555,30 @@ test('packaging and checks include EntryBanner resources only when the tuning or
   // would ship with placeholder bytes.
   assert.match(inliner, /PLAYABLE_STAGE_CHOICES, PLAYABLE_ALL_LEVELS/);
   assert.match(checker, /PLAYABLE_STAGE_CHOICES, PLAYABLE_ALL_LEVELS/);
-  assert.match(inliner, /for \(const option of choiceOptions\) realAssetUrls\.add\(option\.image\)/);
+  // The inline URL set lives in one shared module so the editor's size
+  // preflight measures exactly what this packager builds.
+  assert.match(inliner, /collectPlayableInlineAssetUrls\(\{/);
+  assert.match(inlineAssets, /for \(const image of choiceOptionImages\)/);
+  assert.match(inlineAssets, /entryBannerEnabled/);
   assert.match(sceneView, /this\.entryBanner = SCENE_TUNING\.entryBanner\?\.enabled \? this\.createEntryBanner\(\) : null/);
 });
 
 test('packaging embeds only the selected configured pre-roll MP4', async () => {
-  const [inliner, checker, resources] = await Promise.all([
+  const [inliner, checker, resources, inlineAssets] = await Promise.all([
     readFile(new URL('../scripts/package-applovin-single-html.mjs', import.meta.url), 'utf8'),
     readFile(new URL('../scripts/check-applovin-package.mjs', import.meta.url), 'utf8'),
-    readFile(new URL('../src/mechanism-resources.js', import.meta.url), 'utf8')
+    readFile(new URL('../src/mechanism-resources.js', import.meta.url), 'utf8'),
+    readFile(new URL('../src/playable-inline-assets.js', import.meta.url), 'utf8')
   ]);
   assert.match(inliner, /\['\.mp4', 'video\/mp4'\]/);
   // The packager and the checker must resolve the pre-roll the same way the
-  // runtime does, session opt-out included.
-  assert.match(inliner, /const selectedPreRollAsset = resolvePreRollAsset\(\s*SCENE_TUNING\.preRoll,\s*ACTIVE_PLAYABLE_SESSION\s*\)/u);
+  // runtime does, session opt-out included. That rule now lives in the shared
+  // inline-asset module, which both the packager and the editor preflight call.
+  assert.match(inlineAssets, /const selectedPreRollAsset = resolvePreRollAsset\(tuning\.preRoll, activeSession\)/u);
+  assert.match(inlineAssets, /PRE_ROLL_ASSET_PATHS\.includes\(selectedPreRollAsset\)/u);
+  assert.match(inlineAssets, /isPreRollAssetPath\(selectedPreRollAsset\)/u);
+  assert.match(inliner, /collectPlayableInlineAssetUrls\(\{[\s\S]*?activeSession: ACTIVE_PLAYABLE_SESSION/u);
   assert.match(checker, /const selectedPreRollAsset = resolvePreRollAsset\(SCENE_TUNING\.preRoll, ACTIVE_PLAYABLE_SESSION\)/u);
-  assert.match(inliner, /PRE_ROLL_ASSET_PATHS\.includes\(selectedPreRollAsset\)/u);
-  assert.match(inliner, /isPreRollAssetPath\(selectedPreRollAsset\)/u);
   assert.match(checker, /configured pre-roll video inlined/);
   for (const name of ['TP1327.mp4', 'TP1333.mp4', 'TP1334.mp4']) {
     assert.match(resources, new RegExp(name.replace('.', '\\.')));

@@ -164,13 +164,18 @@ test('the guide tab owns the sound groups, not the visual tab', () => {
 });
 
 test('the packager inlines the weather sprite and every free-asset layer', async () => {
-  const packager = await readFile(new URL('../scripts/package-applovin-single-html.mjs', import.meta.url), 'utf8');
+  const [packager, inlineAssets] = await Promise.all([
+    readFile(new URL('../scripts/package-applovin-single-html.mjs', import.meta.url), 'utf8'),
+    readFile(new URL('../src/playable-inline-assets.js', import.meta.url), 'utf8')
+  ]);
   // Both are addressed from tuning only, so they need an explicit whitelist
-  // entry; the level-document scan cannot see them.
-  assert.match(packager, /SCENE_TUNING\.weatherEffect\?\.enabled/);
-  assert.match(packager, /realAssetUrls\.add\(SCENE_TUNING\.weatherEffect\.sprite\)/);
-  assert.match(packager, /SCENE_TUNING\.freeAssets\?\.layers/);
-  assert.match(packager, /realAssetUrls\.add\(layer\.asset\)/);
+  // entry; the level-document scan cannot see them. The whitelist lives in the
+  // shared inline-asset module so the editor's size preflight sees them too.
+  assert.match(inlineAssets, /tuning\.weatherEffect\?\.enabled/);
+  assert.match(inlineAssets, /urls\.add\(tuning\.weatherEffect\.sprite\)/);
+  assert.match(inlineAssets, /tuning\.freeAssets\?\.layers/);
+  assert.match(inlineAssets, /urls\.add\(layer\.asset\)/);
+  assert.match(packager, /collectPlayableInlineAssetUrls\(\{[\s\S]*?tuning: SCENE_TUNING/u);
 });
 
 test('a disabled weather effect does not request its sprite', () => {

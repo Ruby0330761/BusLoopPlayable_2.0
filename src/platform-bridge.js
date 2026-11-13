@@ -67,7 +67,11 @@ function openBrowserPreview(url) {
   return true;
 }
 
-export function createPlatformBridge({ onStart, onVisibilityChange = () => {} } = {}) {
+export function createPlatformBridge({
+  onStart,
+  onVisibilityChange = () => {},
+  onAudioVolumeChange = () => {}
+} = {}) {
   if (typeof onStart !== 'function') throw new TypeError('createPlatformBridge requires onStart.');
   let started = false;
   let ready = false;
@@ -99,12 +103,35 @@ export function createPlatformBridge({ onStart, onVisibilityChange = () => {} } 
   const handleViewableChange = (value) => {
     viewable = Boolean(value);
     onVisibilityChange(viewable);
+    // The device volume can change while the ad is hidden, and a hidden host
+    // usually defers the event. Re-reading on restore keeps the level honest
+    // instead of resuming at whatever was last reported.
+    if (viewable) readAudioVolume();
     start();
+  };
+  // MRAID reports the device volume as 0-100 and also fires it whenever the
+  // player uses the hardware buttons. Advertising platforms expect the creative
+  // to go silent at 0 and come back at the previous level — the Web Audio graph
+  // does not follow system volume on its own in a WebView.
+  const handleAudioVolumeChange = (value) => {
+    const parsed = Number(value);
+    if (!Number.isFinite(parsed)) return;
+    onAudioVolumeChange(Math.max(0, Math.min(1, parsed / 100)));
+  };
+  const readAudioVolume = () => {
+    if (typeof window.mraid?.getAudioVolume !== 'function') return;
+    try {
+      handleAudioVolumeChange(window.mraid.getAudioVolume());
+    } catch {
+      // A host that throws on a synchronous getter has no value to offer; the
+      // event listener above still covers every later change.
+    }
   };
   const handleReady = () => {
     ready = true;
     viewable = Boolean(window.mraid.isViewable());
     onVisibilityChange(viewable);
+    readAudioVolume();
     start();
   };
 
@@ -120,6 +147,7 @@ export function createPlatformBridge({ onStart, onVisibilityChange = () => {} } 
         return;
       }
       window.mraid.addEventListener('viewableChange', handleViewableChange);
+      window.mraid.addEventListener('audioVolumeChange', handleAudioVolumeChange);
       if (window.mraid.getState() === 'loading') window.mraid.addEventListener('ready', handleReady);
       else handleReady();
     },

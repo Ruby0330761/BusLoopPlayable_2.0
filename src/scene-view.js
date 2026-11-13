@@ -18,6 +18,7 @@ import {
   setActiveStageScene
 } from './stage-scene.js';
 import { getVehicleAreaPivot, mapVehicleAreaBasePoint } from './vehicle-area.js';
+import { parkedVehicleSizeMultiplier } from './vehicle-area-transform.js';
 import {
   SPATIAL_CONVEYOR_DISPLAY,
   buildSpatialConveyorExitGeometry,
@@ -28,9 +29,26 @@ import {
   sampleSpatialCurveLookup
 } from './spatial-conveyor-runtime.js';
 import { CONVEYOR_MECHANISM_TUNING } from './conveyor-mechanism-config.js';
+import {
+  buildSpriteTrackQuad,
+  createPlayableTrackMatrix,
+  createPlayableTrackSurface,
+  decodePlayableTrackContainer,
+  isThreeDimensionalTrackLayout,
+  mapPlayableTrackPoints,
+  resolvePlayableTrackBoarding,
+  usesAuthoredTrackTransform
+} from './playable-track-runtime.js';
 import { MECHANISM_ASSETS } from './mechanism-resources.js';
 import { GARAGE_SIZE_MULTIPLIER } from './vehicle-collision.js';
 import { VehicleEffects } from './vehicle-effects.js';
+import {
+  dominantOpaqueColor,
+  hexToRgb,
+  normalizeTintOverrides,
+  resolveTintReference,
+  tintAtlasPixels
+} from './vehicle-color-tint.js';
 import {
   calculateDesignCoverHalfHeight,
   calculateOrthographicHalfHeight,
@@ -170,6 +188,11 @@ const CONVEYOR_RIGHT_DOOR_OUTWARD_SCALE = CONVEYOR_MECHANISM_TUNING.rightDoorOut
 const CONVEYOR_BUILD_SIDE_SIZE = Object.freeze({ width: 0.34, depth: 0.38 });
 const DEFAULT_CONVEYOR_LAYOUT_ID = 'dualQueue2';
 const SPATIAL_PASSENGER_CHUNK_COUNT = 4;
+// Progress buckets for the 3D track surface height cache. A track with a real
+// climb (footage8 spans 0.55 world units in Y) steps visibly if the bucket is
+// coarse, so this is fine enough that one bucket spans well under a pixel of
+// movement: 1024 buckets over an ~18 unit belt is about 0.018 units each.
+const TRACK_SURFACE_CACHE_BUCKETS = 1024;
 const POLICE_COLOR_INDEX = 11;
 const FIRETRUCK_COLOR_INDEX = 12;
 const AMBULANCE_COLOR_INDEX = 13;
@@ -520,6 +543,15 @@ function getVehicleModelScale() {
   return SCENE_TUNING.vehicleArea.modelScale;
 }
 
+// `vehicleArea.sizeMultiplier` only resizes cars that are standing in the
+// parking field. The moment a car starts following a route — or rides a
+// mechanism whose slot spacing was authored for its original body — it switches
+// back to the authored model size, so an oversized field can never push cars
+// out of their lane, belt, gate queue or lift.
+function getVehicleSizeMultiplier(vehicle) {
+  return parkedVehicleSizeMultiplier(vehicle, SCENE_TUNING.vehicleArea);
+}
+
 function mapMotionPoint(value, y = SCENE_TUNING.vehicleArea.y) {
   const mapped = mapVehicleAreaPoint(value);
   return new THREE.Vector3(mapped.x, y, mapped.y);
@@ -597,6 +629,10 @@ function getSpatialRuntimeCapacity(packageData) {
 }
 
 function getSelectedConveyorTuning(layoutId = getSelectedConveyorLayout().id) {
+  // Tracks imported from shipped playables keep a flat per-track tuning block;
+  // the art/curve/queueCurves shape only describes the Unity prefab loops.
+  const playableTrack = SCENE_TUNING.playableTracks?.[layoutId];
+  if (playableTrack) return playableTrack;
   return SCENE_TUNING.conveyorLayouts?.[layoutId] ?? {
     art: SCENE_TUNING.conveyorArt,
     curve: SCENE_TUNING.conveyorCurve,
@@ -663,32 +699,10 @@ function configureColorTexture(texture) {
 
 const vehicleOverrideTextureCache = new Map();
 
-function hexRgb(value) {
-  const hex = String(value ?? '').replace('#', '');
-  if (!/^[0-9a-f]{6}$/i.test(hex)) return null;
-  return [Number.parseInt(hex.slice(0, 2), 16), Number.parseInt(hex.slice(2, 4), 16), Number.parseInt(hex.slice(4, 6), 16)];
-}
-
-function rgbHue([r, g, b]) {
-  const max = Math.max(r, g, b) / 255;
-  const min = Math.min(r, g, b) / 255;
-  const delta = max - min;
-  if (delta < 0.0001) return { hue: 0, saturation: 0, value: max };
-  let hue = max === r / 255 ? ((g - b) / 255) / delta % 6 : max === g / 255 ? (b - r) / 255 / delta + 2 : (r - g) / 255 / delta + 4;
-  hue *= 60;
-  if (hue < 0) hue += 360;
-  return { hue, saturation: delta / Math.max(max, 0.0001), value: max };
-}
-
-function hueDistance(left, right) {
-  const distance = Math.abs(left - right) % 360;
-  return distance > 180 ? 360 - distance : distance;
-}
-
 function tintVehicleTexture(map, colorIndex, overrides) {
-  const entries = Object.entries(overrides ?? {}).filter(([, value]) => /^#[0-9a-f]{6}$/i.test(value));
-  if (!entries.length || !map?.image || typeof document === 'undefined') return map;
-  const key = `${map.uuid}:${colorIndex}:${entries.sort().map(([name, value]) => `${name}=${value.toLowerCase()}`).join(';')}`;
+  const entries = normalizeTintOverrides(overrides);
+  if (!Object.keys(entries).length || !map?.image || typeof document === 'undefined') return map;
+  const key = `${map.uuid}:${colorIndex}:${Object.entries(entries).sort().map(([name, value]) => `${name}=${value.toLowerCase()}`).join(';')}`;
   if (vehicleOverrideTextureCache.has(key)) return vehicleOverrideTextureCache.get(key);
   try {
     const image = map.image;
@@ -699,54 +713,16 @@ function tintVehicleTexture(map, colorIndex, overrides) {
     const context = canvas.getContext('2d', { willReadFrequently: true });
     context.drawImage(image, 0, 0, canvas.width, canvas.height);
     const pixels = context.getImageData(0, 0, canvas.width, canvas.height);
-    const source = hexRgb(COLORS[colorIndex]?.css) ?? [97, 232, 255];
-    const sourceHsv = rgbHue(source);
-    const body = hexRgb(overrides.body);
-    const highlight = hexRgb(overrides.highlight);
-    const shadow = hexRgb(overrides.shadow);
-    const window = hexRgb(overrides.window);
-    const detail = hexRgb(overrides.detail);
-    const toHsv = (value) => value ? rgbHue(value) : null;
-    const bodyHsv = toHsv(body);
-    const highlightHsv = toHsv(highlight);
-    const shadowHsv = toHsv(shadow);
-    const detailHsv = toHsv(detail);
-    const mix = (from, to, amount) => Math.round(from + (to - from) * amount);
-    for (let offset = 0; offset < pixels.data.length; offset += 4) {
-      if (pixels.data[offset + 3] < 8) continue;
-      const current = [pixels.data[offset], pixels.data[offset + 1], pixels.data[offset + 2]];
-      const hsv = rgbHue(current);
-      const luma = (current[0] * 0.2126 + current[1] * 0.7152 + current[2] * 0.0722) / 255;
-      const sourceLuma = (source[0] * 0.2126 + source[1] * 0.7152 + source[2] * 0.0722) / 255;
-      const neutralPaint = sourceHsv.saturation < 0.18;
-      const bodyPixel = neutralPaint
-        ? hsv.saturation < 0.2 && luma > 0.16
-        : hsv.saturation > 0.12 && hueDistance(hsv.hue, sourceHsv.hue) < 58;
-      const windowPixel = hsv.saturation < 0.2 && luma < 0.32;
-      let replacement = null;
-      if (bodyPixel) {
-        const ratio = luma / Math.max(sourceLuma, 0.08);
-        const target = ratio > 1.12 && highlight ? highlightHsv : ratio < 0.7 && shadow ? shadowHsv : bodyHsv;
-        if (target) {
-          const value = Math.max(0.05, Math.min(1, target.value * (ratio > 1.12 ? 1.05 : ratio < 0.7 ? 0.9 : 1)));
-          const saturation = target.saturation;
-          const c = value * saturation;
-          const x = c * (1 - Math.abs((target.hue / 60) % 2 - 1));
-          const m = value - c;
-          const segment = Math.floor(target.hue / 60) % 6;
-          const rgb = [[c, x, 0], [x, c, 0], [0, c, x], [0, x, c], [x, 0, c], [c, 0, x]][segment].map((channel) => Math.round((channel + m) * 255));
-          replacement = rgb;
-        }
-      } else if (windowPixel && window) replacement = window;
-      else if (!bodyPixel && !windowPixel && detail) {
-        const target = detailHsv;
-        if (target && hsv.saturation > 0.1) replacement = detail;
-      }
-      if (!replacement) continue;
-      pixels.data[offset] = mix(current[0], replacement[0], 0.92);
-      pixels.data[offset + 1] = mix(current[1], replacement[1], 0.92);
-      pixels.data[offset + 2] = mix(current[2], replacement[2], 0.92);
-    }
+    // Anchor the shading map on the colour the atlas actually stores. The level
+    // catalog's COLORS[slot] is not reliable: the black slot ships a #101010
+    // body while the catalog records #2d2d30, and anchoring on the catalog value
+    // made the real body pixels fall through to the window branch instead of
+    // being repainted.
+    const reference = resolveTintReference(
+      hexToRgb(COLORS[colorIndex]?.css) ?? [97, 232, 255],
+      dominantOpaqueColor(pixels.data)
+    );
+    tintAtlasPixels(pixels.data, { reference, overrides: entries });
     context.putImageData(pixels, 0, 0);
     const texture = new THREE.CanvasTexture(canvas);
     texture.colorSpace = THREE.SRGBColorSpace;
@@ -1663,9 +1639,10 @@ export class SceneView {
     this.vatTimeUniform = { value: 0 };
     this.boardingViews = [];
     this.pendingBoardingSounds = [];
-    this.vehicleBoardingPulses = new Map();
     this.initialEntryPathStates = new Map();
     this.queueEntryPathStates = new Map();
+    this.trackSurfaceOffsetCache = new Map();
+    this.trackSurfaceScratch = new THREE.Vector3();
     this.boardingVisualPool = [];
     this.staticVehicleTransforms = new Map();
     this.blockerCache = new Map();
@@ -2280,9 +2257,12 @@ export class SceneView {
     );
     this.spatialConveyorRoot = new THREE.Group();
     this.spatialConveyorRoot.name = 'Spatial Conveyor Root';
+    this.threeDimensionalTrackRoot = new THREE.Group();
+    this.threeDimensionalTrackRoot.name = '3D Track Root';
+    this.threeDimensionalTrackRoot.visible = false;
     this.camera.add(this.backgroundPlane);
     this.scene.add(this.camera);
-    this.layoutRoot.add(this.loopPlane, this.spatialConveyorRoot);
+    this.layoutRoot.add(this.loopPlane, this.spatialConveyorRoot, this.threeDimensionalTrackRoot);
     this.buildPathCurves();
     this.buildSpots();
     this.buildGuideHand();
@@ -2417,6 +2397,10 @@ export class SceneView {
 
     const layout = getSelectedConveyorLayout();
     const tuning = getSelectedConveyorTuning(layout.id);
+    if (usesAuthoredTrackTransform(layout)) {
+      this.buildImportedTrackCurves(layout, tuning);
+      return;
+    }
     const curveTuning = tuneConveyorCurve(tuning.curve);
     this.activeSpatialConveyor = null;
     this.spatialCurveLookup = null;
@@ -2432,6 +2416,52 @@ export class SceneView {
         'entry'
       ))
     ));
+    this.entryPercents = this.calculateConveyorEntryPercents();
+    this.updateQueueCurvesForCamera();
+    this.ensureQueuePassengerViewCapacity(LEVEL_1.queueCount, MAX_QUEUE_CAPACITY);
+  }
+
+  // The imported tracks (footage8/9/10/11) all author their points in the
+  // prefab's local space and reach world space through one display matrix, so
+  // they share this curve builder. A sprite track's points are flat (every y
+  // equal), which the same code handles — the curve just happens to be planar.
+  buildImportedTrackCurves(layout, tuning) {
+    this.activeSpatialConveyor = null;
+    this.spatialCurveLookup = null;
+    const matrix = createPlayableTrackMatrix(THREE, tuning ?? {}, layout);
+    const beltPoints = mapPlayableTrackPoints(THREE, layout.points3D ?? layout.splinePoints, matrix);
+    this.curve = makeClosedConveyorCurve(beltPoints, layout.splineType);
+    // The level, not the spline, sets how many slots are useful: see
+    // resolvePlayableTrackBoarding's note on the unfillable-belt trap.
+    const passengerTotal = (LEVEL_1.passengerQueues ?? [LEVEL_1.passengerSequence ?? []])
+      .reduce((sum, queue) => sum + (queue?.length ?? 0), 0);
+    const boarding = resolvePlayableTrackBoarding(
+      this.curve.getLength(),
+      tuning ?? {},
+      layout,
+      { passengerTotal }
+    );
+    this.activeConveyorLayout = {
+      ...layout,
+      conveyorCapacity: boarding.capacity,
+      continuousSpeed: boarding.continuousSpeed,
+      initialFillSpeedMultiplier: boarding.initialFillSpeedMultiplier,
+      exitStart: boarding.exitStart,
+      exitEnd: boarding.exitEnd
+    };
+    // A track may declare one of its two entrance lanes not drawn (footage10's
+    // left lane). Dropping the lane here, rather than hiding it at draw time,
+    // keeps the model and the renderer in agreement: entryPercents and
+    // queueCapacities both shrink to the visible lanes, so the model never
+    // routes a passenger into a lane nobody can see and no one pops in or out of
+    // existence mid-belt.
+    const laneVisible = (index) => this.isQueueLaneVisible(index, tuning);
+    const visibleQueuePaths = (layout.queuePoints3D ?? []).filter((_, index) => laneVisible(index));
+    this.fullQueueCurves = visibleQueuePaths.map((path) => (
+      makeOpenCurve(mapPlayableTrackPoints(THREE, path, matrix))
+    ));
+    this.activeConveyorLayout.queueCapacities = (layout.queueCapacities ?? [])
+      .filter((_, index) => laneVisible(index));
     this.entryPercents = this.calculateConveyorEntryPercents();
     this.updateQueueCurvesForCamera();
     this.ensureQueuePassengerViewCapacity(LEVEL_1.queueCount, MAX_QUEUE_CAPACITY);
@@ -2742,7 +2772,7 @@ export class SceneView {
     for (const slot of snapshot.slots) {
       if (slot.colorIndex == null) continue;
       this.sampleActiveCurve(slot.progress, scratch.point, scratch.tangent);
-      scratch.point.y += passengerHeight;
+      scratch.point.y += this.resolveTrackSurfaceOffset(scratch.point, slot.progress) + passengerHeight;
       const yaw = Math.atan2(scratch.tangent.x, scratch.tangent.z) + passengerYaw;
       scratch.quaternion.setFromAxisAngle(scratch.upAxis, yaw);
       scratch.scale.setScalar(groupScale);
@@ -2809,6 +2839,268 @@ export class SceneView {
     this.spatialConveyorMesh = null;
     this.spatialConveyorExitMesh = null;
     this.activeSpatialConveyorVisualId = null;
+  }
+
+  // 3D tracks render as the shipped mesh itself (road + side walls) with a
+  // projected shadow decal, so the whole group is rebuilt when the layout or
+  // its tuning changes rather than patched in place.
+  clearThreeDimensionalTrackVisual() {
+    if (!this.threeDimensionalTrackRoot) return;
+    for (const child of [...this.threeDimensionalTrackRoot.children]) {
+      this.threeDimensionalTrackRoot.remove(child);
+      child.geometry?.dispose();
+      child.material?.map?.dispose();
+      child.material?.dispose();
+    }
+    this.threeDimensionalTrackSurface = null;
+    this.threeDimensionalTrackMatrix = null;
+    this.threeDimensionalTrackInverse = null;
+    // A different track (or a moved one) invalidates every cached height.
+    this.trackSurfaceOffsetCache.clear();
+    this.spriteTrackPit = null;
+    this.spriteTrackWarningLamps = null;
+    this.activeThreeDimensionalTrackId = null;
+  }
+
+  // applyConveyorVisualTuning runs on every tuning change (each slider tick) and
+  // again on every setTuning call, so re-issuing the load each time stacked
+  // duplicate meshes in the track root. A pending load for the same layout and
+  // transform is reused instead.
+  loadThreeDimensionalTrackVisualOnce(layout, tuning) {
+    const matrix = createPlayableTrackMatrix(THREE, tuning ?? {}, layout);
+    const signature = `${layout.id}:${matrix.elements.join(',')}`;
+    if (this.pendingTrackVisualSignature === signature && this.pendingTrackVisualPromise) {
+      return this.pendingTrackVisualPromise;
+    }
+    this.pendingTrackVisualSignature = signature;
+    const loader = isThreeDimensionalTrackLayout(layout)
+      ? this.loadThreeDimensionalTrackVisual.bind(this)
+      : this.loadSpriteTrackVisual.bind(this);
+    this.pendingTrackVisualPromise = loader(layout, tuning).finally(() => {
+      if (this.pendingTrackVisualSignature === signature) {
+        this.pendingTrackVisualSignature = null;
+        this.pendingTrackVisualPromise = null;
+      }
+    });
+    return this.pendingTrackVisualPromise;
+  }
+
+  async loadThreeDimensionalTrackVisual(layout, tuning) {
+    this.clearThreeDimensionalTrackVisual();
+    this.activeThreeDimensionalTrackId = layout.id;
+    const matrix = createPlayableTrackMatrix(THREE, tuning, layout);
+    this.threeDimensionalTrackMatrix = matrix;
+    this.threeDimensionalTrackRoot.matrix.copy(matrix);
+    this.threeDimensionalTrackRoot.matrixAutoUpdate = false;
+    this.threeDimensionalTrackRoot.matrixWorldNeedsUpdate = true;
+
+    const response = await fetch(layout.assets.model);
+    if (!response.ok) throw new Error(`${layout.id} track request failed: ${response.status}`);
+    const meshes = decodePlayableTrackContainer(decodeOptionalGzip(await response.arrayBuffer()));
+    const textureUrls = { road: layout.assets.surface, shadow: layout.assets.shadow };
+    const [roadTexture, shadowTexture] = await Promise.all([
+      this.loadTrackTexture(textureUrls.road),
+      this.loadTrackTexture(textureUrls.shadow)
+    ]);
+    if (this.activeThreeDimensionalTrackId !== layout.id) return;
+
+    for (const mesh of meshes) {
+      const geometry = new THREE.BufferGeometry();
+      geometry.setAttribute('position', new THREE.BufferAttribute(mesh.position, 3));
+      geometry.setAttribute('normal', new THREE.BufferAttribute(mesh.normal, 3));
+      geometry.setAttribute('uv', new THREE.BufferAttribute(mesh.uv, 2));
+      geometry.setIndex(new THREE.BufferAttribute(mesh.index, 1));
+      // Unity's track meshes wind the opposite way from three.js' default.
+      geometry.setAttribute('normal', geometry.getAttribute('normal'));
+      const material = mesh.shadow
+        ? new THREE.MeshBasicMaterial({
+          map: shadowTexture,
+          transparent: true,
+          opacity: 0.419,
+          depthWrite: false,
+          polygonOffset: true,
+          polygonOffsetFactor: -1,
+          side: THREE.DoubleSide
+        })
+        : new THREE.MeshStandardMaterial({ map: roadTexture, roughness: 1, metalness: 0, side: THREE.DoubleSide });
+      const view = new THREE.Mesh(geometry, material);
+      view.name = mesh.name;
+      view.renderOrder = mesh.shadow ? -1 : 0;
+      this.threeDimensionalTrackRoot.add(view);
+      if (!mesh.shadow) {
+        this.threeDimensionalTrackSurface = createPlayableTrackSurface(mesh, { cellSize: 0.15 });
+      }
+    }
+  }
+
+  // Sprite tracks ship one pre-shaded matte plus a gameplay detail texture
+  // (Q37's centre pit) and two animated warning beacons. The matte carries the
+  // track's own lighting, so it renders unlit and tone-mapping-free.
+  async loadSpriteTrackVisual(layout, tuning) {
+    this.clearThreeDimensionalTrackVisual();
+    this.activeThreeDimensionalTrackId = layout.id;
+    const matrix = createPlayableTrackMatrix(THREE, tuning, layout);
+    this.threeDimensionalTrackMatrix = matrix;
+    this.threeDimensionalTrackRoot.matrix.copy(matrix);
+    this.threeDimensionalTrackRoot.matrixAutoUpdate = false;
+    this.threeDimensionalTrackRoot.matrixWorldNeedsUpdate = true;
+
+    const [loopTexture, pitTexture] = await Promise.all([
+      this.loadTrackTexture(layout.assets.loopScene),
+      layout.assets.pit ? this.loadTrackTexture(layout.assets.pit) : Promise.resolve(null)
+    ]);
+    if (this.activeThreeDimensionalTrackId !== layout.id) return;
+
+    const art = new THREE.Mesh(
+      buildSpriteTrackQuad(THREE, layout.assets.sprite),
+      new THREE.MeshBasicMaterial({
+        map: loopTexture,
+        transparent: true,
+        depthWrite: false,
+        side: THREE.DoubleSide,
+        toneMapped: false
+      })
+    );
+    art.name = `${layout.id} sprite`;
+    art.renderOrder = -5;
+    this.threeDimensionalTrackRoot.add(art);
+
+    if (pitTexture) {
+      // The supplied matte already paints the pit's rocky rim and its interior
+      // shading, so it is drawn as-is. Building a cone under it (an earlier
+      // attempt) covered the artwork's rim and filled the loop's hollow with a
+      // black disc.
+      const pit = new THREE.Mesh(
+        new THREE.PlaneGeometry(1.52, 1.18),
+        // The track root applies a Z mirror, which flips a plane's winding, so
+        // the pit has to be double-sided or it is culled as a back face.
+        new THREE.MeshBasicMaterial({
+          map: pitTexture,
+          transparent: true,
+          depthWrite: false,
+          side: THREE.DoubleSide,
+          toneMapped: false
+        })
+      );
+      pit.name = 'Q37 centre deep pit';
+      // Measured on the shipped sprite: the pit sits in the loop's inner hollow.
+      pit.position.set(1.03, -0.238, 1.69);
+      pit.rotation.x = Math.PI / 2;
+      pit.renderOrder = -4;
+      this.threeDimensionalTrackRoot.add(pit);
+      this.spriteTrackPit = pit;
+    }
+
+    this.spriteTrackWarningLamps = [];
+    for (const [x, z] of [[0.3, 2.12], [1.75, 1.32]]) {
+      const lamp = new THREE.Group();
+      lamp.name = 'Q37 red warning beacon';
+      lamp.position.set(x, -0.23, z);
+      const base = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.065, 0.075, 0.035, 8),
+        new THREE.MeshStandardMaterial({ color: 0x42410a })
+      );
+      base.position.y = 0.018;
+      const post = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.018, 0.018, 0.17, 8),
+        new THREE.MeshStandardMaterial({ color: 0x787c3c })
+      );
+      post.position.y = 0.1;
+      const lens = new THREE.Mesh(
+        new THREE.SphereGeometry(0.047, 12, 8),
+        new THREE.MeshBasicMaterial({ color: 0x640810, toneMapped: false })
+      );
+      lens.scale.y = 1.35;
+      lens.position.y = 0.22;
+      const halo = new THREE.Mesh(
+        new THREE.SphereGeometry(0.078, 12, 8),
+        new THREE.MeshBasicMaterial({
+          color: 0xff1808,
+          transparent: true,
+          opacity: 0,
+          depthWrite: false,
+          toneMapped: false
+        })
+      );
+      halo.position.y = 0.22;
+      lamp.add(base, post, lens, halo);
+      this.threeDimensionalTrackRoot.add(lamp);
+      this.spriteTrackWarningLamps.push({ light: lens, halo });
+    }
+  }
+
+  // Risk feedback: the beacons pulse harder as the queue backs up. `danger` is
+  // the model's own 0-1 pressure reading, so the cue never disagrees with play.
+  updateSpriteTrackDanger(danger, time) {
+    const lamps = this.spriteTrackWarningLamps;
+    if (!lamps?.length) return;
+    const pressure = THREE.MathUtils.clamp(Number(danger) || 0, 0, 1);
+    const pulse = pressure > 0 ? 0.25 + 0.75 * Math.sin(time * (6 + pressure * 4)) ** 2 : 0;
+    for (const { light, halo } of lamps) {
+      light.material.color.setHex(pressure > 0 ? 0x00ff01 : 0x640810);
+      halo.material.opacity = pulse * 0.42;
+      halo.visible = pressure > 0;
+    }
+  }
+
+  // A 3D track's passengers ride the mesh, not a flat plane: the curve already
+  // carries the authored climb, but the supplied mesh is what the art actually
+  // shows, so its road surface wins where the two disagree. Everything else
+  // (2D loop tracks, sprite tracks, and a not-yet-loaded 3D mesh) returns 0 and
+  // keeps the existing flat-track behaviour untouched.
+  // Vertical correction that puts a passenger's feet on the track surface.
+  //
+  // The result depends only on the curve position, and a belt slot's position is
+  // a pure function of its progress, so it is cached per progress bucket. Every
+  // passenger used to re-run a matrix inverse plus a grid walk over the mesh each
+  // frame, which is wasted work for a value that only changes when the belt
+  // moves by one bucket -- and during the opening fill that is exactly when the
+  // frame budget is tightest.
+  resolveTrackSurfaceOffset(point, progress = null) {
+    const surface = this.threeDimensionalTrackSurface;
+    const matrix = this.threeDimensionalTrackMatrix;
+    if (!surface || !matrix) return 0;
+    const cache = this.trackSurfaceOffsetCache;
+    let key = null;
+    if (progress != null && Number.isFinite(progress)) {
+      key = Math.floor(((progress % 1) + 1) % 1 * TRACK_SURFACE_CACHE_BUCKETS);
+      const cached = cache.get(key);
+      if (cached !== undefined) return cached;
+    }
+    const inverse = this.threeDimensionalTrackInverse ??= matrix.clone().invert();
+    const local = this.trackSurfaceScratch.copy(point).applyMatrix4(inverse);
+    // Pass the curve's own height: a stacked track (the spiral's three turns)
+    // has several triangles over one XZ cell, and resolving to the layer nearest
+    // y=0 made inner-turn passengers snap onto an outer turn and clip through.
+    const height = surface.heightAt(local.x, local.z, { referenceY: local.y });
+    if (height == null) {
+      if (key !== null) cache.set(key, 0);
+      return 0;
+    }
+    const footClearance = Number(this.activeConveyorLayout?.defaults?.footClearance) || 0.008;
+    local.y = height;
+    const offset = local.applyMatrix4(matrix).y + footClearance - point.y;
+    if (key !== null) cache.set(key, offset);
+    return offset;
+  }
+
+  loadTrackTexture(url) {
+    const cached = this.artworkTextureCache.get(url);
+    if (cached) return Promise.resolve(cached);
+    return new Promise((resolve, reject) => {
+      this.textureLoader.load(
+        url,
+        (texture) => {
+          texture.colorSpace = THREE.SRGBColorSpace;
+          texture.anisotropy = Math.min(8, this.renderer.capabilities.getMaxAnisotropy());
+          texture.needsUpdate = true;
+          this.artworkTextureCache.set(url, texture);
+          resolve(texture);
+        },
+        undefined,
+        () => reject(new Error(`track texture failed: ${url}`))
+      );
+    });
   }
 
   updateSpatialConveyorVisual(packageData) {
@@ -4878,15 +5170,33 @@ export class SceneView {
     } else {
       const layout = getSelectedConveyorLayout();
       const layoutTuning = getSelectedConveyorTuning(layout.id);
-      const conveyor = layoutTuning.art;
       this.clearSpatialConveyorVisual();
       this.spatialConveyorRoot.visible = false;
-      this.loopPlane.visible = true;
-      this.setArtworkPlaneTexture(this.loopPlane, layout.assets.loopScene, layout.assets.loopSpriteRect);
-      this.loopPlane.position.set(conveyor.x, conveyor.y, conveyor.z);
-      this.loopPlane.rotation.set(-Math.PI / 2, 0, 0);
-      this.loopPlane.scale.set(conveyor.width, conveyor.depth, 1);
-      this.loopPlane.material.opacity = conveyor.opacity;
+      if (isThreeDimensionalTrackLayout(layout)) {
+        // The shipped mesh *is* the artwork, so the flat plane steps aside and
+        // the mesh group loads in its place.
+        this.loopPlane.visible = false;
+        this.threeDimensionalTrackRoot.visible = true;
+        this.loadThreeDimensionalTrackVisualOnce(layout, layoutTuning).catch((error) => {
+          console.error(`${layout.id} track failed to load:`, error);
+        });
+      } else if (layout.kind === 'sprite') {
+        this.loopPlane.visible = false;
+        this.threeDimensionalTrackRoot.visible = true;
+        this.loadThreeDimensionalTrackVisualOnce(layout, layoutTuning).catch((error) => {
+          console.error(`${layout.id} track failed to load:`, error);
+        });
+      } else {
+        this.clearThreeDimensionalTrackVisual();
+        this.threeDimensionalTrackRoot.visible = false;
+        const conveyor = layoutTuning.art;
+        this.loopPlane.visible = true;
+        this.setArtworkPlaneTexture(this.loopPlane, layout.assets.loopScene, layout.assets.loopSpriteRect);
+        this.loopPlane.position.set(conveyor.x, conveyor.y, conveyor.z);
+        this.loopPlane.rotation.set(-Math.PI / 2, 0, 0);
+        this.loopPlane.scale.set(conveyor.width, conveyor.depth, 1);
+        this.loopPlane.material.opacity = conveyor.opacity;
+      }
     }
 
     const spots = resolveParkingSpots();
@@ -5034,9 +5344,15 @@ export class SceneView {
 
     if (includeVehicles) {
       const area = SCENE_TUNING.vehicleArea ?? {};
+      // Parked cars can be enlarged by `sizeMultiplier`; the camera fit has to
+      // reserve that much room or an enlarged board's edge cars get cropped.
+      const parkedSizeMultiplier = parkedVehicleSizeMultiplier(
+        { state: 'parked', containerType: 1 },
+        area
+      );
       const vehiclePadding = Math.max(
         0.3,
-        Number(area.modelScale) || 0,
+        (Number(area.modelScale) || 0) * parkedSizeMultiplier,
         ...((LEVEL_1.vehicles ?? []).map((vehicle) => {
           const size = vehicle.collisionSize ?? {};
           return Math.max(Number(size.width) || 0, Number(size.length) || 0) * 0.5;
@@ -5066,6 +5382,16 @@ export class SceneView {
           addPoint({ x: spatialBounds.max.x, z: spatialBounds.max.z });
           return bounds;
         }
+      }
+      // An imported track has no art plane: its own curve is the whole shape, so
+      // fitting the camera to art.width/depth (absent = 0) cropped the outer
+      // loop off screen. Fit the curve and its queue lanes instead.
+      if (usesAuthoredTrackTransform(getSelectedConveyorLayout())) {
+        for (const curve of [this.curve, ...(this.fullQueueCurves ?? [])]) {
+          if (!curve?.getPoints) continue;
+          for (const point of curve.getPoints(128)) addPoint(point, 0.2);
+        }
+        return bounds;
       }
       const layout = getSelectedConveyorLayout();
       const layoutTuning = getSelectedConveyorTuning(layout.id);
@@ -5160,6 +5486,7 @@ export class SceneView {
     this.prepareSpatialBlockerCache(snapshot);
     this.updateGarageViews(snapshot);
     this.updateConveyorViews(snapshot);
+    this.updateSpriteTrackDanger(snapshot.danger ?? 0, snapshot.time);
     for (const board of this.seatCountBoards) {
       board.visible = false;
     }
@@ -5282,9 +5609,9 @@ export class SceneView {
           view.rotation.y = mapMotionTangentYaw(sample.tangent);
         }
       }
-      const boardingPulseScale = this.getVehicleBoardingPulseScale(vehicle.id, snapshot.time);
-      if (!reuseStaticTransform || boardingPulseScale !== 1) {
-        view.scale.setScalar(vehicleScale * getVehicleModelScale() * boardingPulseScale);
+      const sizeMultiplier = getVehicleSizeMultiplier(vehicle);
+      if (!reuseStaticTransform) {
+        view.scale.setScalar(vehicleScale * getVehicleModelScale() * sizeMultiplier);
       }
       if (!reuseStaticTransform || activeHit || view.userData.spatialHadActiveHit) {
         this.applyVehicleHit(view, vehicle, snapshot.time);
@@ -5336,7 +5663,6 @@ export class SceneView {
       this.initialEntryPathStates.clear();
     } else {
       this.ensurePassengerViewCapacity(snapshot.slots.length);
-      const activeInitialEntryKeys = new Set();
       for (const slot of snapshot.slots) {
         const view = this.passengerViews[slot.index];
         view.visible = passengersVisible && slot.colorIndex !== null;
@@ -5344,12 +5670,9 @@ export class SceneView {
         const point = new THREE.Vector3();
         const tangent = new THREE.Vector3();
         this.sampleActiveCurve(slot.progress, point, tangent);
-        point.y += passengerHeight;
+        point.y += this.resolveTrackSurfaceOffset(point, slot.progress) + passengerHeight;
         if (slot.entryMotion) {
-          const entryKey = this.getInitialEntryPathKey(slot);
-          activeInitialEntryKeys.add(entryKey);
           const entryVisual = this.getInitialEntryPathVisual(
-            entryKey,
             slot,
             point,
             tangent,
@@ -5370,7 +5693,6 @@ export class SceneView {
       for (let index = snapshot.slots.length; index < this.passengerViews.length; index += 1) {
         this.passengerViews[index].visible = false;
       }
-      this.pruneInitialEntryPathStates(activeInitialEntryKeys);
     }
 
     const queueSnapshots = snapshot.queueItems ?? snapshot.queues.map((queue) => (
@@ -5700,6 +6022,16 @@ export class SceneView {
     return THREE.MathUtils.clamp(distance / length, 0, 1);
   }
 
+  // A track can declare that one of its two entrance lanes is not drawn at all.
+  // footage10 is authored that way: showing that lane produced a second column of
+  // people the reference never has. The lane is removed when the curves are
+  // built, so the game model never routes anyone into it either.
+  isQueueLaneVisible(laneIndex, tuning = getSelectedConveyorTuning()) {
+    const hidden = tuning?.showLeftQueue;
+    if (hidden === undefined) return true;
+    return laneIndex !== 0 || Number(hidden) === 1;
+  }
+
   getQueueCapacities() {
     if (this.activeConveyorLayout?.directEntrance) return [0];
     return this.queueCurves.map((curve, index) => (
@@ -5719,6 +6051,21 @@ export class SceneView {
       entryPercents: [...(this.entryPercents ?? [])],
       exitStart: layout.exitStart,
       exitEnd: layout.exitEnd,
+      // How much faster the belt runs while it is still filling itself. A 3D
+      // track's own tuning carries this; the prefab loops leave it at 1.
+      initialFillSpeedMultiplier: Math.max(1, Number(layout.initialFillSpeedMultiplier) || 1),
+      // footage11 is a tail-queue track: its passengers are pushed along the
+      // matte into the pit rather than parked in belt slots, so the model needs
+      // the whole creep/retreat profile, not just an exit window.
+      tailQueue: Number(layout.defaults?.queueEnabled) === 1
+        ? {
+          rowSpacing: layout.defaults.rowSpacing,
+          passengerSpeed: layout.defaults.passengerSpeed,
+          retreatSpeed: layout.defaults.retreatSpeed,
+          initialHeadPercent: layout.defaults.initialHeadPercent,
+          warningStartPercent: layout.defaults.warningStartPercent
+        }
+        : null,
       directEntrance: Boolean(layout.directEntrance),
       initiallyFull: layout.kind === 'spatial' && Boolean(SCENE_TUNING.spatialConveyor?.startFilled)
     };
@@ -5728,72 +6075,81 @@ export class SceneView {
     return this.queueCurves.map((curve) => curve?.getLength?.() ?? 0);
   }
 
-  getInitialEntryPathKey(slot) {
-    return `${slot.entryMotion?.passengerId ?? slot.index}:${slot.entryMotion?.startedAt ?? 0}`;
-  }
-
-  getInitialEntryPathVisual(key, slot, target, targetTangent, time, delta, speedMultiplier, passengerHeight) {
+  // Walks a passenger from its queue row onto the belt.
+  //
+  // This used to keep its own per-passenger `distance` and advance it toward a
+  // moving belt target. That only works while the belt is slower than a walking
+  // passenger. Once the initial fill runs at the authored 4x -- needed to fill a
+  // long track before play starts -- the target advances at ~8 world units/s
+  // against a 4-6 unit/s walk, so the gap never closes: every entering
+  // passenger crawls in place and shivers at the queue head until the belt
+  // happens to catch it. The transition is a fixed-duration blend driven by model
+  // time instead, which cannot run away and needs no per-passenger state.
+  // NOTE: the argument order here must match the call site exactly. The first
+  // `key` argument was dropped when the per-passenger state went away; leaving it
+  // in the signature shifted every argument by one, so `slot.entryMotion` read
+  // from the target Vector3 and the whole transition silently collapsed to the
+  // queue position -- the track looked empty.
+  getInitialEntryPathVisual(slot, target, targetTangent, time, delta, speedMultiplier, passengerHeight) {
     if (this.activeConveyorLayout?.directEntrance || !this.queueCurves?.length) {
       return { position: target, tangent: targetTangent, snapped: true };
     }
     const motion = LEVEL_1.passengerEntryMotion;
-    const entryPercent = this.entryPercents?.[slot.entryMotion.entryIndex] ?? 0;
-    let state = this.initialEntryPathStates.get(key);
-    if (!state) {
-      const queueKey = this.getQueueItemKey(slot.entryMotion.entryIndex, {
-        id: slot.entryMotion.passengerId
-      });
-      const queueState = this.queueEntryPathStates.get(queueKey);
-      const fromQueueDistance = this.getEntryMotionQueueDistance(slot.entryMotion);
-      state = {
-        distance: Math.max(0, fromQueueDistance - (queueState?.distanceFromHead ?? 0)),
-        snapped: false
-      };
-      this.initialEntryPathStates.set(key, state);
-    }
-    if (!motion || state.snapped) return { position: target, tangent: targetTangent, snapped: true };
+    if (!motion || !slot.entryMotion) return { position: target, tangent: targetTangent, snapped: true };
 
-    const conveyorLength = Math.max(0.0001, this.curve.getLength());
-    const targetConveyorDistance = ((slot.progress - entryPercent + 1) % 1) * conveyorLength;
+    // Duration is fixed per passenger so the walk can never chase a runaway
+    // target, but it is long enough to read as a walk rather than a pop-in: the
+    // shipped catch-up constant (0.2s) covers a few frames at 60fps and not a
+    // single one at the low frame rates an ad can hit on a weak device.
+    const walkSeconds = Math.max(
+      0.28,
+      Number(motion.initialFillCatchUpDuration) || 0.2
+    ) / Math.max(1, Number(speedMultiplier) || 1);
+    const elapsed = Math.max(0, time - (slot.entryMotion.startedAt ?? time));
+    const t = THREE.MathUtils.clamp(elapsed / walkSeconds, 0, 1);
+    if (t >= 1) return { position: target, tangent: targetTangent, snapped: true };
+
+    const entryIndex = slot.entryMotion.entryIndex ?? 0;
+    const queueCurve = this.queueCurves[entryIndex] ?? this.queueCurves[0];
+    const queueLength = Math.max(0.0001, queueCurve.getLength());
+    // Rows still to walk before reaching the queue head. A passenger spawned at
+    // the head has none, so it goes straight into the step onto the belt.
     const fromQueueDistance = this.getEntryMotionQueueDistance(slot.entryMotion);
-    const targetDistance = fromQueueDistance + targetConveyorDistance;
-    const pathScale = (Math.abs(SCENE_TUNING.path.scaleX) + Math.abs(SCENE_TUNING.path.scaleZ)) * 0.5;
-    const elapsed = Math.max(0, time - slot.entryMotion.startedAt);
-    const multiplier = Math.max(0.1, speedMultiplier);
-    const catchUpDuration = Math.max(motion.initialFillCatchUpDuration, 0.01);
-    const catchUpT = THREE.MathUtils.clamp(elapsed / catchUpDuration, 0, 1);
-    const catchUpSpeed = Math.max(0, motion.catchUpExtraSpeed * catchUpT);
-    const stepDistance = (motion.passengerSpeed + catchUpSpeed) * pathScale * multiplier * Math.max(0, delta);
-    state.distance = Math.min(targetDistance, state.distance + stepDistance);
+    const walkShare = fromQueueDistance > 0.001 ? 0.55 : 0;
 
-    const snapDistance = (motion.snapDistance ?? 0.02) * pathScale;
-    if (targetDistance - state.distance <= snapDistance) {
-      state.snapped = true;
-      state.distance = targetDistance;
-      return { position: target, tangent: targetTangent, snapped: true };
-    }
-
-    if (state.distance < fromQueueDistance) {
-      const queueCurve = this.queueCurves[slot.entryMotion.entryIndex] ?? this.queueCurves[0];
-      const queueLength = Math.max(0.0001, queueCurve.getLength());
-      const queueProgress = (fromQueueDistance - state.distance) / queueLength;
+    if (walkShare > 0 && t < walkShare) {
+      const walked = t / walkShare;
+      const queueProgress = THREE.MathUtils.clamp(
+        (fromQueueDistance * (1 - walked)) / queueLength,
+        0,
+        1
+      );
       const position = queueCurve.getPointAt(queueProgress);
       const tangent = queueCurve.getTangentAt(queueProgress).multiplyScalar(-1);
       position.y += passengerHeight;
       return { position, tangent, snapped: false };
     }
 
-    const conveyorProgress = (entryPercent + (state.distance - fromQueueDistance) / conveyorLength) % 1;
-    const position = this.curve.getPointAt(conveyorProgress);
-    const tangent = this.curve.getTangentAt(conveyorProgress);
-    position.y += passengerHeight;
+    // Step onto the belt and walk along it to wherever the passenger has reached.
+    // Sampling the curve (instead of lerping straight at the slot point) keeps
+    // the walk hugging the track: a straight line across a 3D spiral cuts visibly
+    // through the raised turns, and it also made the passenger cover ground far
+    // faster than a walk should.
+    const blend = THREE.MathUtils.smoothstep(
+      THREE.MathUtils.clamp((t - walkShare) / Math.max(0.0001, 1 - walkShare), 0, 1),
+      0,
+      1
+    );
+    const entryPercent = this.entryPercents?.[entryIndex] ?? 0;
+    // Belt distance from the entry to the passenger's current slot, taken the
+    // short way round so a slot just behind the entry does not walk the level.
+    let span = (slot.progress - entryPercent + 1) % 1;
+    if (span > 0.5) span -= 1;
+    const walkedPercent = (entryPercent + span * blend + 1) % 1;
+    const position = this.curve.getPointAt(walkedPercent);
+    const tangent = this.curve.getTangentAt(walkedPercent);
+    position.y += this.resolveTrackSurfaceOffset(position, walkedPercent) + passengerHeight;
     return { position, tangent, snapped: false };
-  }
-
-  pruneInitialEntryPathStates(activeKeys) {
-    for (const key of this.initialEntryPathStates.keys()) {
-      if (!activeKeys.has(key)) this.initialEntryPathStates.delete(key);
-    }
   }
 
   getQueueEntrySpawnDistance(queueIndex) {
@@ -5882,7 +6238,6 @@ export class SceneView {
     }
     this.boardingViews.length = 0;
     this.pendingBoardingSounds.length = 0;
-    this.vehicleBoardingPulses.clear();
     this.initialEntryPathStates.clear();
     this.queueEntryPathStates.clear();
     this.lastBoardingEventId = 0;
@@ -5946,40 +6301,6 @@ export class SceneView {
       return;
     }
     disposePassengerVisual(visual);
-  }
-
-  triggerVehicleBoardingPulse(vehicleId, time) {
-    const tuning = SCENE_TUNING.vehicleBoardingPulse ?? {};
-    if ((tuning.scale ?? 1) <= 1 || (tuning.speed ?? 0) <= 0) return;
-    const pulses = this.vehicleBoardingPulses.get(vehicleId) ?? [];
-    pulses.push(time);
-    this.vehicleBoardingPulses.set(vehicleId, pulses.slice(-12));
-  }
-
-  getVehicleBoardingPulseScale(vehicleId, time) {
-    const tuning = SCENE_TUNING.vehicleBoardingPulse ?? {};
-    const maxScale = Math.max(1, tuning.scale ?? 1);
-    const speed = Math.max(0, tuning.speed ?? 0);
-    const pulses = this.vehicleBoardingPulses.get(vehicleId);
-    if (maxScale <= 1 || speed <= 0 || !pulses?.length) return 1;
-
-    let scale = 1;
-    let activeCount = 0;
-    for (const startedAt of pulses) {
-      const progress = (time - startedAt) * speed;
-      if (progress < 0) {
-        pulses[activeCount] = startedAt;
-        activeCount += 1;
-        continue;
-      }
-      if (progress >= 1) continue;
-      scale = Math.max(scale, 1 + (maxScale - 1) * Math.sin(Math.PI * progress));
-      pulses[activeCount] = startedAt;
-      activeCount += 1;
-    }
-    pulses.length = activeCount;
-    if (pulses.length === 0) this.vehicleBoardingPulses.delete(vehicleId);
-    return scale;
   }
 
   processBoardingEvents(snapshot) {
@@ -6081,7 +6402,6 @@ export class SceneView {
         this.hooks.onPassengerAboard?.(entry.vehicleId);
       }
       if (progress < 1) continue;
-      this.triggerVehicleBoardingPulse(entry.vehicleId, time);
       if (Boolean(SCENE_TUNING.visibility?.vehicles ?? 1)) {
         this.vehicleEffects?.spawnAboardSmoke(entry.vehicleId);
       }

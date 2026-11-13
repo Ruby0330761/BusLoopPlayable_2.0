@@ -1,5 +1,57 @@
 # Playable Project Progress
 
+## Completed On 2026-11-13 - 部署颜色修复到远端 12151，数据卷迁移到平台白名单路径（v20261113-1518）
+
+- 目标：把两轮颜色修复（tint 双打光 + 漆色默认值/五区域画布）推到远端编辑器。
+- **部署连续被两道服务端校验拦下**，都不是本轮代码问题：
+  1. **挂载白名单**：平台只允许 `/data/<project-name>` 下的卷，而 `start.sh` 把 `DATA_ROOT` 硬编码在 `/data/bus-loop-playable-editor`（11-09 为保住线上关卡特意这么写）。
+  2. **安全策略**：脚本里清理旧名容器 `bus-loop-playable-editor` 的那几行被判定「停止不属于本项目的容器」。
+- **处理**：`DATA_ROOT` 改到 `/data/bus-loop-playable-editor-wxj`；在播种之前加一次性迁移 —— 新目录没有 `.seeded-v1` 且旧目录有文件时，先 `cp -a` 过去再写标记，`set -e` 保证复制失败就中止而不是回退到播种。同时删掉旧容器清理段（`list_deployed_services` 确认该容器已不存在，12151 上跑的就是 `-wxj`）。`rollback.sh` 同步改成同一根目录。`deploy.md` 已更新。
+- **验证（本次最要紧的一条）**：部署前后各拉一次 `/__level-authoring-overview`，都是 **140 条 = 117 web + 23 catalog，按 key 比对丢失 0 个**。迁移生效，没有触发重播种。
+- 线上校验：`index-DLJ_lPVF.js` 与本地 `server-dist` **md5 逐字节一致**；懒加载 chunk `level-editor-model` / `level-layout-editor` 同样逐字节一致；页面徽标 `SCENE EDITOR v20261113-1518`；线上选中车辆 #43 的「车身」显示 `#c24300`（橙的漆色，不是渲染色 `#ff7b1c`），漆色默认值确实上线。
+- 教训：`start.sh` 里任何「停掉别的容器」的清理逻辑都会被安全策略拦，改名前遗留的清理段要在改完后删掉；数据卷路径一改就必须配套迁移，否则 `set -e` 下不会报错的地方会静默重播种。
+
+## Completed On 2026-11-13 - 颜色微调补齐：漆色默认值 + 五个区域上画布（v20261113-1415）
+
+- 反馈：接着上一轮的 tint 修复，把「面板默认值取渲染色」和「画布只预览 body」两个问题一起修掉。
+- **问题 2（默认值颜色空间错位）**：颜色微调各字段存的是**漆色**，但默认值取的是试玩**渲染色**。只改车窗时会把渲染色写进 `colorOverrides.body`，整车被重涂亮一档。新增 `getVehiclePaintColor()`，单人/批量/小人三处面板默认值全部改用它。
+- **问题 1（画布只画 body）**：`drawVehicleSprite` 现在接收五个区域。车身渐变的高光/阴影段读「高光」「阴影」，「车窗」画挡风玻璃，「细节」画车头车尾保险杠饰条（只有填了才画——不给没用这个字段的关卡凭空加造型）。未设覆盖的区域仍由 body 推导，存量画布视觉不变。
+- **跨颜色空间换算**：覆盖色是漆色，画布要画屏幕色，所以新增 `getRenderedPaintColor()`。命中已测色位时**精确返回该色位的实测色**（所以默认值画出来就是试玩里的颜色）；手填颜色在已测色卡间按线性 RGB 反距离插值 —— 没有实测依据的颜色不硬造光照模型，否则下次改色卡就会漂。
+- 验证：`node --test` 相关 73/73（新增 `test/editor-color-spaces.test.js` 7 条钉住两条空间契约）。核心断言：每个已测色位的漆色默认值经换算后必须等于该色位的实测渲染色；只存 body 默认值 + 车窗覆盖时，body 渲染结果不变。
+
+## Completed On 2026-11-13 - 车辆颜色微调与试玩颜色对齐（v20261113-1215）
+
+- 反馈：编辑器「车辆颜色微调」改的颜色和游玩中的颜色对不上，导出也要保证一致。
+- **根因是双打光**：`colorOverrides.body` 被当成「已打光的屏幕色」直接写进色卡贴图，而贴图运行时会再过一遍光照。编辑器显示值 `#4EA4FF` 写进去 → 屏幕 `#2078F8`；同一辆车走内置色卡却是 `#48A0F8`。两条路径、两个颜色。
+- **修复**：把重涂抽到 `src/vehicle-color-tint.js`，覆盖色按**漆色**处理，明暗用逐通道仿射映射锚定在色卡自身实测底色上：`out = anchor + (pixel - reference) * (anchor / reference)`。`scene-view.js` 只留 canvas/缓存管线。
+- **两条不变量**（`test/vehicle-color-tint.test.js` 9 条钉住）：① 用色卡自己的底色重涂必须像素级不变（20 个色卡全过，交付用 `_q85.webp` 含压缩噪声也全过）——这才让覆盖色与内置色卡渲染一致；② body 覆盖必须精确落在所填漆色上。
+- **顺带修掉两个真 bug**：① 黑色色卡实际底色 `#101010`，旧逻辑拿色卡表 `#2d2d30` 当基准，车身被误判成车窗，黑车怎么改都不变色；② 旧逻辑把车身替换成单一 HSV 平色，色卡自带的高光/阴影波段被抹平，车阵里像贴纸。现在明暗随新漆色一起重算，且缩放加了 4× 上限，接近纯黑的底色不会被放大 30 倍烧白。
+- 存量覆盖色无需迁移：Q24/Q159 等 12 组已提交的覆盖值逐一验证仍精确落在原值上。
+- 验证：`node --test` 颜色相关 65/65。实跑 headless 对比：同色卡 + 自身漆色覆盖 vs 不覆盖，车阵主导色 `#50A4FC` vs `#4CA4FC`（Δ≤4，属抗锯齿/阴影采样差）。
+- 未做（已与需求方确认本轮只修 tint）：编辑器画布仍只预览 body，高光/阴影/车窗/细节四个字段填了看不到效果；「车身」输入框默认值仍取渲染色，只改车窗时会把渲染色写进 body；`PASSENGER_QUEUE_COLORS` 与 `VEHICLE_RENDERED_COLOR_CSS` 在 11–15 槽位有 5 处漂移。
+
+## Completed On 2026-11-13 - 校验面板加厚：素材体积 / 引导目标 / 渠道查重（v20261113-1123）
+
+- 反馈：新布局右栏「校验」只有命名、倒计时、链接、体积四项，太浅，希望把素材大小、引导选择等参数也校验进去。
+- **校验项 4 → 9**：新增「渠道代号」（七平台代号查重，导出会因重名拒绝构建）、「关卡数据」（车辆/乘客队列/关卡是否在列表）、「安装门槛」（门槛大于车数是永远触发不了的死配置）、「引导目标」（小手/开场引导的目标车不在本关、小手 scope 指向别的关卡）。
+- **素材体积两项**：`素材体积` 列出内联素材总量、缺失文件、超单素材上限的文件、最大的三个；`单包体积（估算）` 按 base64 + 壳估算，超过 5MB 预算报红，超过 80% 报黄。原先这里是 `skip`（「由服务端判定」）。
+- **关键设计**：内联素材清单抽到新模块 `src/playable-inline-assets.js`，打包器和编辑器校验共用同一份；面板上的数字就是导出会产出的数字。体积只能服务端 stat，新增 `POST /__playable-asset-sizes`（含路径逃逸防护）。
+- 交互：有问题的检查项整行可点/可键盘触发，「去修改」跳到对应面板并高亮聚焦字段。
+- 验证：`node --test` 695/695（新增 `test/editor-inspector-checks.test.js` 6 条；改动的 4 个断言随实现迁移）。浏览器实测：面板渲染 9 条、跳转把面板切到「引导」并高亮 `vehicleGuideHand.levelKey`、体积接口正确统计嵌套路径并拒绝 `/assets/../../package.json`。
+- 实测发现真问题：`/__playable-asset-sizes` 初版把 `basename(relative) !== relative` 当防逃逸守卫，导致所有嵌套素材（`applovin/textures/...`）被误报缺失；改为 containment 检查后恢复。
+- 已知：`npm run export:playable -- --platform applovin` 目前被**另一个会话**未提交的 `deploy-tools/.../rules/applovin.json` 改动挡住（新增的 `APL-AUD-001/002` 缺必填 `stage` 字段 → `APL-AUD-001 缺少字段 stage`），与本轮改动无关；`check:applovin` 单跑可以走完。
+
+## Completed On 2026-11-13 - BFT 包不再带 Bus Fever 字样（v20261113-1038）
+
+- 反馈：BFT 试玩里出现大量 `Bus Fever Party` 字样，应该显示 `Bus Crowd - Traffic Jam`。
+- **诊断（不是全都会显示）**：包内 37 处里 28 处是 `src/branding-localization.js` 的商店标题本地化表（google 13 行 + ios 15 行）+ 1 个 `DEFAULT_BRAND_TITLE` 常量，纯数据；Crowd 文案被判为「运营手写」后走 `titleForAuthoredText` 原样返回，永不渲染。真正可见的 8 处在 HTML 外壳：`<title>`、canvas `aria-label`、4 个 `alt`、`#branding-text` 与 `#loading-title` 的初始文本。
+- **实测**：无头 Chrome 跑原包，首帧起 `#branding-text` / `#loading-title` 已是 `Bus Crowd`，但 `document.title` 与全部 `alt`/`aria-label` 全程是 `Bus Fever Party!` —— 导出的 Crowd 只换了调参层，没换模板层。
+- 另一个危害是首屏：3.5 MB 单文件在 CPU 6× 降速下会先绘制模板文案；脚本加载失败则永久停在 Bus Fever 加载页。
+- **修复**：`scripts/export-playable-package.mjs` 新增 `BRANDING_SHELL_SLOTS` / `rewriteBrandingShellHtml()`，按品牌套改写外壳 8 个槽位（HTML 转义 + 幂等），接入 `applyWorkspaceBranding()`（各变体构建前）与 `retargetBrandingVariantHtml()`（「一键导出全部」复用首个变体的路径）。`src/main.js` 新增 `applyBrandingDocumentChrome()`，让 `document.title` 与无障碍名称跟随同一份 `resolveBrandingCopy()`。
+- 文案改为完整商店名 `Bus Crowd - Traffic Jam`（App Store 标题；Google Play 上是 `Bus Crowd`）。旧的 `Bus Crowd` 值当作默认值一并升级，运营手写的其他文案不动。
+- 验证：`node --test` 688/688。实跑 `--all --branding-set crowd` 七渠道全部产物 `<title>` / alt / aria 均为 `Bus Crowd - Traffic Jam`；浏览器实测首帧即正确、`attrs` 无 Bus Fever 残留、`#branding-text` 显示 `Bus Crowd - Traffic Jam`；ja/ko/de 三种语言下 CTA 与 `html lang` 正确跟随而文案保持不变。
+- 已知残留：单文件包内仍有 29 处 `Bus Fever Party`，全部位于本地化表（休眠数据）。单文件打包不做品牌级 tree-shaking，要消除须构建期常量折叠，收益低于风险。
+
 ## Completed On 2026-11-11 - 新功能导出素材审计 + 截图补上 HUD + 进度条读数层级（v20261111-1732）
 
 - 反馈：检查新加入的功能（尤其体力）导出时会不会缺素材或引用外部素材；另外用编辑器截图时截不到体力条。
@@ -3615,3 +3667,132 @@ Full 2026-07-07 progress log was archived to:
 - 测试：新增 `test/editor-shell-layout.test.js` 4 条（默认 classic、经典钩子齐全、shell 规则全部限定在 `#app.layout-shell`、九栏声明与孤儿行归属）。全量 **659/659**。
 - 过程中修掉的真问题：① 重构时误删 `const toggle` 导致整个编辑器挂载崩溃 —— 顺手把挂载失败从 `console.warn` 改成在页面显示错误；② 截图段与导出段是 `.editor-fields` 的兄弟节点而非子节点，只遍历 fields 会静默丢掉两段；③ `editor-level-tools` 是普通 div，没有归属会同时出现在九个面板里；④ 素材栏原本为空，改成指向五类素材库真实上传行的索引。
 - 未做：远端部署；新布局尚未在真机/平台上传链路验证（只影响编辑器，不影响导出包）。
+
+## Completed On 2026-11-12 - 内置四套 Footage 轨道（v20261112-1234）
+
+- 来源：需求方给的 4 个试玩（Q1V1 / Q25V2 / Q25V3 / Q37V1）各选中一条我们目录里没有的轨道；其余 7 条（dualQueue2/3/5/10、starLoop/heartLoop/catLoop）逐点比对与仓库**完全一致**，无需改动。
+- 新增轨道：三条立体（footage8/9/10，真实 3D 网格 + 侧墙 + 影子贴花）、一条平面成品美术（footage11 = Q37，含中心碎石坑与两盏警示灯，单入口）。
+- 素材：试玩里只内联各自选中那条，其余是 `AA==` 占位；四份文件合起来正好凑齐。网格从 gzip 的 three.js BufferGeometry JSON 重新打包为自有 CTK1（typed array + gzip），base64 成本从 269/153/227 KB 降到 118/70/90 KB；footage8/9/10 的踏面贴图是同一张 256×256，已去重为 `footage_track_surface.png`。
+- 渲染：新增 `src/playable-track-runtime.js`（CTK1 解码、`Ru` 等价变换矩阵、按 UV 选三角面的高度采样器、容量解析）与 `src/playable-track-layouts.js`（生成物）；`scene-view.js` 走 `buildImportedTrackCurves` + `loadThreeDimensionalTrackVisual` / `loadSpriteTrackVisual` 两条分支，乘客脚底吸附轨道表面。
+- **过程中修掉的四个真问题**：① CTK1 的变长 mesh 名让后续数据块非 4 字节对齐，直接建 typed-array 视图会抛异常（改为拷贝）；② 3D 轨道没有 `art.width/depth`，相机取景退化成 0，长轨道外圈被裁掉（改为按轨道曲线取景）；③ 轨道根节点是 Z 镜像，所有面被背面剔除 —— 深坑直接消失（统一 DoubleSide）；④ 短队列轨道永远填不满传送带导致不开工，`game-model.js` 补上「队列耗尽即结束首次填充」，与试玩一致。
+- 验证：窄测 **133/133**（新增 `test/playable-track-import.test.js` 16 条）；真实 Chrome（swiftshader）逐条实跑，四条轨道首次填充全部收敛 —— footage8 79/79@4.6s、footage9 64/64@4.2s、footage10 71/71@11.4s、footage11 114/114@20.9s；截图与原始试玩 Q37 对齐（环线完整、碎石坑、双警示灯）。全量 674 条中 672 通过，2 条 `playable-runtime-smoke` 因本机 Chrome 调试端口启动超时失败（环境问题，非本次改动）。
+- 未做：三条 3D 轨道的 `roadJoin`（道路接驳段）尚未接线，调参字段已预留；footage11 的 Q37 尾部队列推进模型（`q37Queue`）未复刻，目前按常规队列流。
+
+### 轨道调参取值修正（v20261112-1325）
+
+- 用户反馈「原有轨道适配度差很多」，于是把 **15 条轨道（11 条原有 + 4 条 Footage）全部逐条实机截图核对**，不再只比样条数值。
+- **原有 11 条结论：参数无差异、渲染无回归。** `art` / `curve` / `queueCurves` 三块逐字段与试玩比对全部相同；`starLoop` 改动前后同参数同画面（52/52 铺满星形环）。
+- **4 条 Footage 的真问题：调参读错了来源。** 一个试玩文件里除了自己选中的轨道，还带着其他轨道的预设块，那些预设是**过时/不同的值**。我第一版从 Q37（它跑 footage11）里读 footage10，拿到 `rowSpacing 0.32 / boarding 70.75%`；而真正跑 footage10 的 Q25V3 写的是 `0.23 / 85%`。结果乘客密度只有原版 1/3。
+- 修正后与原版实跑逐项对齐（footage10）：容量 **79**（原版 79）、出口 **0.811–0.889**（原版同值）、槽间距 **0.23**（原版 0.23）。
+- 导入脚本改为：先解析 `conveyorLayout:{selected:"…"}` 判断该文件实际跑哪条轨道，**只从选中来源取调参**，硬编码常量降级为“该轨道没有对应试玩时”的回退。新增两条测试锁死「catalog defaults 与 SCENE_TUNING 必须一致」和「footage10 容量/出口必须贴近原版 79 / 0.811–0.889」。
+- 排查中的一次误判值得记下：批量 `game.update()` 之后只调一次 `view.update()` 就截图，乘客还停在入场动画里，看起来像「全挤在入口」。**必须等真实渲染帧跑完入场动画再判断**。
+- 实机数据（清空 localStorage 后）：15 条轨道首次填充全部填满，渲染乘客数 == 槽位数。footage10 x 范围 -2.4→1.7 与曲线采样一致。
+- 已知非轨道问题：当前加载关卡本身只有 2 种乘客颜色（0/2），所以传送带看起来是单色；原版试玩加载的是它自己的 6 色关卡。
+
+## Completed On 2026-11-12 - 语言默认英文 / 边界放宽 / 车辆大小倍数（v20261112-1439）
+
+- 需求三条：① 语言默认改英文；② 车辆行驶路径边界滑条范围太小；③「上车放大倍数」改成「车辆大小倍数」，且无论放大到多大，车开上轨道都要回到原始大小。
+- **语言**：`branding.localization.previewLocale` 默认 `auto → en`，编辑器打开即是 English，「跟随浏览器」仍在选项里。已存 tuning 与 per-level profile 里等于旧默认 `auto` 的值由 `migratePreviewLocaleTuning` 改写；带一次性标记 `bus-loop-preview-locale-en-v1`，所以之后手动切回「跟随浏览器」不会被反复拉回。导出仍由 `apply-scene-tuning.mjs --strip-export-metadata` 重置为 `auto`，玩家设备语言不变。
+- **边界**：四个 `vehiclePath.parkingBounds.*` 滑条范围 ±6 → ±12。实测现有 33 个关卡的车阵最大到 x ±3.28 / z −3.24，原范围到 6 只是勉强够，大车阵根本没有余量。
+- **车辆大小倍数**：删掉 `vehicleBoardingPulse`（原本是上完客弹一下 1.09 倍），新增 `vehicleArea.sizeMultiplier`（默认 1，滑条 0.5–2.5）。判定统一收敛到 `src/vehicle-area-transform.js` 的 `parkedVehicleSizeMultiplier`：只有 `state` 为 `parked`/`colliding`、且不在 conveyor/gate/elevator 容器里的车才乘这个倍数；一旦进入 `moving-to-spot` 等行驶状态立刻回 1，车位、路线、传送带槽距全都不受影响。编辑器画布和关卡缩略图走同一个函数，所以放大后编辑器所见即游戏所见。
+- 同时按倍数修正了两处几何：① 相机取景预留（`getCameraContentBounds`）乘上倍数，否则放大后边缘车被裁；② 碰撞视觉补偿 `collisionVisualOverhang` 乘上倍数，否则车放大后会被挡在一段空白外。
+- 历史调参快照（`artifacts/*-tuning.json`、`artifacts/web-levels/*.json`）里的 `vehicleBoardingPulse` 已全部删除；`apply-scene-tuning.mjs` 也会丢弃旧快照里的这个键，避免 `validateTuning` 因未知键拒包。
+- 验证：全量 **680/680** 通过；新增 `test/vehicle-area-transform.test.js` 两条（只有停场车乘倍数、行驶/机制容器回 1；`displayVehicleSize` 输出翻倍且行驶车不变）。
+
+## Completed On 2026-11-12 - 音频设备静音与不可见静音（v20261112-1625）
+
+- 外部检查器两条 FAIL：**R9 设备音量事件响应**、**R10 不可见时音频停播/恢复**。两次都是「静音期间仍检测到 Web Audio 输出」，峰值约 0.729。
+- 根因两个，都在我们自己这边：
+  1. **完全没接设备音量**。全仓库搜不到 `audioVolumeChange` / `getAudioVolume`，WebView 里的 Web Audio 不跟随系统音量，设备静音时我们照放。
+  2. **「不可见」只认 MRAID viewableChange**。检查器隐藏广告走的是页面 `visibilitychange`，那条路径只暂停倒计时，从没碰音频；而且原实现只 `context.suspend()`，一旦宿主把 context resume 回来就又出声。
+- 改动：
+  - `src/platform-bridge.js` 与 `src/platform-bridges/unityads.js` 新增 `onAudioVolumeChange`：注册 `audioVolumeChange`、启动时与每次恢复可见时 `getAudioVolume()` 读初值（MRAID 给 0–100，桥里除成 0–1）。
+  - `src/audio-controller.js` 新增**主增益总线** `master`：一次性音效、循环音、BGM 全部改走它，不再直连 destination。`setDeviceVolume` 与 `setVisible` 共用 `applyMasterVolume` 一个写入口，所以「隐藏期间宿主恢复音量」不会漏声。
+  - 静音是硬切（`setValueAtTime(0)`），不是 `setTargetAtTime` 渐近到 0 —— 后者几个采样后峰值仍非零，检查器就是按采样判的。恢复才用短 ramp 防爆音。
+  - `src/main.js`：`visibilitychange` 与 `pagehide` 也调 `audio.setVisible(false)`；`onVisibilityChange` 改成 `visible && !document.hidden`，两个信号取与。
+- 自检：`scripts/check-playable-runtime.mjs` 新增 RUNTIME-AUDIO-003~006（设备静音/恢复、不可见/恢复可见），读的是成品自己通过 `window.__busLoop.audio()` 上报的 `outputLevel`；`scripts/export-playable-package.mjs` 传 `requireAudioLifecycle: true`，真实出包缺这个钩子直接 FAIL，smoke 测试的最小 fixture 跳过。
+- 验证：真实成品 `artifacts/applovin/index.html` 跑运行期门禁 **19/19 PASS**，四条音频读数依次 `outputLevel` = 0 → 1 → 0 → 1；全量 **684/684**。`check:applovin` 仍剩两条 FAIL（`no root-relative asset URLs`、`unselected branding Icon omitted`），stash 对照组同样两条，属存量问题，与本次无关。
+- 未做：真机/平台容器实测（本机只能跑 Chromium 桩），R9/R10 的最终确认要看上传后的检查器报告。
+
+### 立体轨道穿模与开场填充修复（v20261112-1820）
+
+- 用户反馈「全面穿模、远没有试玩流畅」。定位到**两个独立缺陷**，都不是调参问题：
+- **① 叠层轨道取错层（穿模本体）**：`createPlayableTrackSurface().heightAt()` 打分为 `Math.abs(height)`，即挑最接近 y=0 的那层三角面。footage10 螺旋有三层叠在同一条 XZ 上，内圈乘客被吸到外层或底层。改为 `Math.abs(height - referenceY)`，用调用方自己的高度作参考（原版也是这个写法）。离线实测：最坏偏差 **1.020 → 0.136**；slot 24 从 0.984 降到 0.013。
+- **② 入场动画绕过高度采样**：`getInitialEntryPathVisual()` 里两处 `position.y += passengerHeight` 直接落在平面上，所有正在入场的乘客都穿过路面。轨道段补 `resolveTrackSurfaceOffset()`；队列段按进度把 Y 平滑过渡到入口高度。偏差槽位 **43 → 4**，残留仅 0.10（约 3cm，入场瞬间过渡）。
+- **③ 开场乘客稀少（流畅度）**：`initialFillSpeedMultiplier` 读进来了但从未传给游戏模型，首轮填充按 1 倍速爬。接入后按原版 4 倍速填充，**模拟时间 6.5s 到 57/79**（此前 20 秒仍在 6/79）。
+- 真实运行测定（不手动推进模型、等动画自然结束）：`worstDeltaY 0.025 / badSlots 0 / sinkers 0`，无穿模。
+- **排查方法教训（重要）**：三次误判都来自「手工批量 `game.update()` 后立刻测量」—— 入场动画靠渲染帧增量推进，手工推进会让它卡在半路，于是看起来像穿模。**结论必须来自真实帧循环跑够时间后的快照。**
+- 新增测试 2 条：叠层轨道必须解析到乘客所在层（并断言该 fixture 真的存在重叠段，否则测试无意义）；首轮填充倍速必须接到模型。
+- 已知环境限制：headless Chrome + swiftshader 约 2fps，墙钟时间无法与原版对齐，只能比模拟时间。
+
+### Footage10 多出一列乘客（v20261112-1950）
+
+- 用户指出截图左上「多出来一列小人」。实为**左入口车道**：footage10 原版明确 `showLeftQueue: 0`，即该轨迹只展示一条排队车道。
+- 该参数此前只作为编辑器字段存在，`scene-view.js` 里**从未被读取**，渲染与模型都按两条车道跑，于是多出一列。
+- 修法不是「渲染时隐藏」：若只藏画面，模型仍会把乘客派进隐藏车道，人会在半途凭空消失。改为**在建曲线时就把隐藏车道剔掉**，并同步裁剪 `queueCapacities`，使 `entryPercents / queueCurves / queueCapacities / model.queues` 四者一起收敛到单车道，模型与渲染自然一致。
+- 实机核对：footage10 `lanes 1 / entries 1 / caps [18] / modelQ [10]`；footage8、footage9 保持 `lanes 2`；footage11 为 `lanes 1`（本就单入口）。四轨道均未误伤。
+- 新增测试 1 条，锁定「隐藏车道必须同时从曲线、入口百分比和容量中移除」，并断言 footage8/9 必须保留双车道。
+
+## Completed On 2026-11-13 - 修复小人上轨道卡顿（v20261113-1057）
+
+- 用户反馈「小人刚开局上去的时候为何这么卡顿」。逐帧量测后定位到**两个真问题**：
+
+**① 整条皮带被反复回拉（主因，手感卡顿来源）**
+`game-model.js` 的初始填充里，只要有槽位走到入口却没乘客可上，代码会把**一个 clamp 值从所有槽位的 progress 里减掉**。79 格轨道上，一次回拉等于倒退 2.3 个槽位，而每帧推进只有 2.9%，所以画面表现为「走一下、停六帧、再走一下」。
+实测原始 progress 序列：`0.075, 0.075×6帧, 0.0876, 0.0876×6帧, ...`，每 7 帧才前进一次。
+改为**只把等待中的那一个槽停在入口前**，其余槽继续流动。
+
+**② 入场动画在追赶一个更快的目标（次因）**
+`getInitialEntryPathVisual()` 原来每帧把 `state.distance` 朝「皮带上的移动目标」推进。该算法只在「皮带比人慢」时收敛；接入 4 倍速首轮填充后，目标以 ~8 单位/秒前进而小人只有 4~6 单位/秒，`targetDistance - state.distance` 从不为正，于是每个入场小人都在队头原地抽搐。
+改为**固定时长的插值**（0.28s 下限，按 `speedMultiplier` 缩放），起点是队头、终点是当前皮带点，并且**沿轨道曲线采样**而不是直线 lerp（直线会横穿立体轨道的坡面）。
+
+**③ 顺带优化**
+- 轨道表面高度改为按 progress 分桶缓存（1024 桶），避免每帧对每个乘客重复矩阵求逆 + 网格遍历。
+- 移除了不再使用的 `initialEntryPathStates` / `pruneInitialEntryPathStates` / `getInitialEntryPathKey` 死代码。
+
+- **实测证据**（固定 1/60 步进、跟踪单个槽位）：
+  - 每帧位移标准差 **0.0521 → 0.0031**（改善 17 倍）
+  - 入场步进序列 `0.096, 0, 0, 0, 0, 0, 0.133...` → `0.1328, 0.1327, 0.1329, 0.1330...`（完全均匀）
+  - 沿切线方向的倒退步数 **0**（footage8 / footage10 均为 0）
+- 回归：footage8/9/11、dualQueue3、starLoop 全部无倒退；123 项测试通过。
+- 新增测试 1 条，锁定「等待中的槽只停自己，不再整带回拉」。
+
+### 修正：小人消失（v20261113-1125，回退上一条的错误改法）
+
+- 上一版（v20261113-1057）为了消除顿挫，把「整条皮带回拉」改成了「只停等待中的那个槽」，结果**轨道上的小人几乎全没了**。
+- 原因：传送带是**刚性环路**，槽位必须保持等距。让单个槽停下不动，等于把槽位顺序打乱；而且空槽一旦越过入口就再也接不到人，只能绕一整圈回来。所以那条轨道只剩两头几撮人。
+- **正确做法**：保留刚性语义，把限速提前到推进之前 —— `limitAdvanceToWaitingEntrance()` 在移动前就想清楚「这一帧有没有空槽将越过一个没人上车的入口」，有的话把**整环**的推进量截到入口前。皮带因此表现为「停在入口前等」，而不是「先冲过去再被拽回来」。
+- 离线确定性验证（直接跑 `BusLoopGame`，不经浏览器）：footage8 **84/84**、footage9 **47/47**、footage10 **85/85**、footage11 **157/157**，全部 100% 填满。
+- 保留上一版真正有效的两项：入场动画改固定时长沿曲线插值、表面高度缓存。
+- 测试相应改写：断言 `limitAdvanceToWaitingEntrance` 存在且在任何槽位移动前应用，并**禁止** `initialFillHolds`（正是它清空了轨道）。
+
+### 小人彻底不显示的真正原因（v20261113-1144）
+
+- 上一条改完仍在「轨道空着」。逐帧对比后定位到**参数错位**，与回拉逻辑无关。
+- 起因是我清理死代码时删掉了 `getInitialEntryPathVisual()` 的第一个 `key` 参数，**只改了函数签名、没改调用处**（或反之），导致所有实参整体左移一位：
+  - `slot` 落进 `key`
+  - `target` 落进 `slot` → `slot.entryMotion` 读到 undefined
+  - 函数因此走「无 entryMotion」的早退分支，直接返回传进来的 `target` —— 而那个值其实是 `targetTangent`
+- 症状极具误导性：**没有报错、没有异常**，`visible` 全是 true、模型 100% 填充、`passengersVisible` 也是 1，只是每个小人显示在队列位置不动。第一次量测到的 `yRange -0.39`（沉进路面）就是它。
+- 修复后同一槽位实测：`targetOnCurve [0.36, 1.13, -2.33]` == `actualView [0.36, 1.13, -2.33]`，`yRange` 由 -0.39~0.38 变为 **0.08~1.21**（正确浮在轨道上方），截图确认整条 8 字形轨道铺满小人。
+- 新增测试 1 条：解析 `getInitialEntryPathVisual` 的签名与调用处，断言**参数个数一致且第一个参数是 `slot`**。这类「静默左移」只能靠结构断言拦住。
+- 教训：删除方法参数时必须同时改签名和调用处；而且这类错误不会抛异常，`visible` 之类的状态位也看不出来，只能比对「算出的位置」与「写进视图的位置」。
+
+### Footage11 黑洞失败机制（v20261113-1223）
+
+- 用户指出「这个轨道的逻辑是小人进入黑洞就失败了」。之前我只把坑当美术，没有任何判定。
+- **原版机制**（从 Q37 反编译确认）：
+  - `checkEndState` 里 `if (q37Queue && q37Danger >= failurePercent) → status = "lost", reason: "q37-pit"`
+  - `danger = (maxProgress - warningPercent) / (1 - warningPercent)`，即**队头在最前方的小人已推进到多深**
+  - `au()` 把整列小人当一条队伍往前推：头部按 `passengerSpeed` 前进，后面按 `rowSpacing` 保持间距；被取走时按 `retreatSpeed` 收拢
+  - 所以失败不是「物理掉进坑」的碰撞判定，而是**队头推进到坑位**（progress → 1）
+- **实现**：新增 `tailQueue` 配置（`rowSpacing / passengerSpeed / retreatSpeed / initialHeadPercent / warningStartPercent`），由 `scene-view` 从 footage11 调参传入；`updateTailQueue()` 在主循环里排在**常规上车逻辑之后**（先让小人正常登上轨道，再用推挤模型接管间距与前进），`checkEndState` 增加 `q37-pit` 分支。
+- **踩的两个坑**：
+  1. 一开始把常规上车逻辑整段 `else` 掉，导致 `filled` 恒为 0 —— 队列有 10 人但一个都上不了轨道。尾部队列只应改「轨道上怎么动」，不该改「怎么上轨道」。
+  2. `clampPercent` 的 `max=1` 先执行、再除 100，把 `52.2` 夹成 `0.01`，坑永远到不了。新增 `readPercent()`：先判断量纲再归一。
+- **离线确定性验证**（直接跑 `BusLoopGame`，footage11）：
+  - 15s 填满 150/157，danger 0.32
+  - 30s 157/157，danger 0.57（越过 0.522 警示阈值，警示灯开始闪）
+  - 45s danger 0.82 → **56s `status: lost`, `reason: "q37-pit"`**
+- 新增测试 1 条：断言 `q37-pit` 分支存在、`readPercent` 先转后夹、以及 footage11 的 42 / 52.2 两个百分比未被破坏。
+- 仍未做：`boardedGroups` 上车逻辑在尾部队列下仍走常规槽位路径；原版 Q37 是「乘客自己走到出口再上车」，这里只是把推进与失败补上。

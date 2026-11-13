@@ -31,6 +31,31 @@ export const MECHANISM_TYPE_ORDER = Object.freeze([
   MECHANISM_TYPES.vehicleTransportBelt
 ]);
 
+// Assets owned by one imported track. Registered per layout id (not per
+// mechanism type) because a playable only ever shows its selected track, and a
+// package that inlined all four would blow the 5 MB cap.
+export const PLAYABLE_TRACK_RESOURCES = Object.freeze({
+  footage8: Object.freeze([
+    '/assets/unity/conveyors/tracks/footage8.ctk',
+    '/assets/unity/conveyors/tracks/footage_track_surface.png',
+    '/assets/unity/conveyors/tracks/footage8_shadow.png'
+  ]),
+  footage9: Object.freeze([
+    '/assets/unity/conveyors/tracks/footage9.ctk',
+    '/assets/unity/conveyors/tracks/footage_track_surface.png',
+    '/assets/unity/conveyors/tracks/footage9_shadow.png'
+  ]),
+  footage10: Object.freeze([
+    '/assets/unity/conveyors/tracks/footage10.ctk',
+    '/assets/unity/conveyors/tracks/footage_track_surface.png',
+    '/assets/unity/conveyors/tracks/footage10_shadow.png'
+  ]),
+  footage11: Object.freeze([
+    '/assets/unity/conveyors/tracks/footage11_loop.png',
+    '/assets/unity/conveyors/tracks/footage11_pit.webp'
+  ])
+});
+
 export const MECHANISM_RESOURCE_MANIFEST = Object.freeze({
   [MECHANISM_TYPES.ordinaryConveyor]: Object.freeze([
     '/assets/unity/conveyors/Loop_02_q80.webp',
@@ -425,6 +450,17 @@ export function getMechanismTypesForLevels(
   return MECHANISM_TYPE_ORDER.filter((type) => types.includes(type));
 }
 
-export function getMechanismResourcePaths(types = []) {
-  return [...new Set(types.flatMap((type) => MECHANISM_RESOURCE_MANIFEST[type] ?? []))];
+export function getMechanismResourcePaths(types = [], { conveyorLayout = null, conveyorLayouts = null } = {}) {
+  const paths = [...new Set(types.flatMap((type) => MECHANISM_RESOURCE_MANIFEST[type] ?? []))];
+  // Imported tracks ship as a mesh/art pair per track, and each pair is well
+  // over 100 KB once base64'd. Only the tracks a session can actually reach may
+  // enter a package, or a single playable would carry every track it can never
+  // show. A stitched session can name more than one, so both a single layout and
+  // a collection are accepted.
+  const requested = conveyorLayouts ?? (conveyorLayout ? [conveyorLayout] : []);
+  for (const layoutId of requested) {
+    const trackPaths = PLAYABLE_TRACK_RESOURCES[layoutId];
+    if (trackPaths) paths.push(...trackPaths);
+  }
+  return [...new Set(paths)];
 }

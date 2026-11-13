@@ -62,6 +62,61 @@ test('AppLovin bridge waits for viewability, tracks both visibility directions, 
   assert.deepEqual(visibility, [false, true, false, true]);
 });
 
+test('AppLovin bridge forwards the MRAID device volume as a 0..1 ratio', async (t) => {
+  const listeners = {};
+  const volumes = [];
+  global.window = {
+    mraid: {
+      getState: () => 'default',
+      isViewable: () => true,
+      getAudioVolume: () => 40,
+      addEventListener: (name, listener) => { listeners[name] = listener; },
+      open: () => {}
+    },
+    ALPlayableAnalytics: { trackEvent: () => {} }
+  };
+  t.after(() => { delete global.window; });
+  const { createPlatformBridge } = await import(`../src/platform-bridge.js?test=volume-${Date.now()}`);
+  const bridge = createPlatformBridge({
+    onStart: () => {},
+    onAudioVolumeChange: (level) => volumes.push(level)
+  });
+  bridge.initialize();
+  // The initial level is read once the host is ready, so a muted device starts
+  // silent instead of waiting for the first hardware-button change.
+  assert.deepEqual(volumes, [0.4]);
+  assert.equal(typeof listeners.audioVolumeChange, 'function');
+  listeners.audioVolumeChange(0);
+  listeners.audioVolumeChange(100);
+  assert.deepEqual(volumes, [0.4, 0, 1]);
+});
+
+test('AppLovin bridge ignores malformed device volume reports', async (t) => {
+  const listeners = {};
+  const volumes = [];
+  global.window = {
+    mraid: {
+      getState: () => 'default',
+      isViewable: () => true,
+      addEventListener: (name, listener) => { listeners[name] = listener; },
+      open: () => {}
+    },
+    ALPlayableAnalytics: { trackEvent: () => {} }
+  };
+  t.after(() => { delete global.window; });
+  const { createPlatformBridge } = await import(`../src/platform-bridge.js?test=volume-bad-${Date.now()}`);
+  const bridge = createPlatformBridge({
+    onStart: () => {},
+    onAudioVolumeChange: (level) => volumes.push(level)
+  });
+  bridge.initialize();
+  listeners.audioVolumeChange(undefined);
+  listeners.audioVolumeChange('loud');
+  // 0 is a real, meaningful report: it is what a muted device sends.
+  listeners.audioVolumeChange(0);
+  assert.deepEqual(volumes, [0]);
+});
+
 test('AppLovin bridge backfills CHALLENGE_STARTED and keeps the retry funnel stuck to one attempt', async (t) => {
   const events = [];
   global.window = { ALPlayableAnalytics: { trackEvent: (name) => events.push(name) } };

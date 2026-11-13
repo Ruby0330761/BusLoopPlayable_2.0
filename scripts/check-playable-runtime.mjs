@@ -221,7 +221,7 @@ function probeBootstrap(platform, configuredImageAssets = []) {
     const bridgeCalls = [];
     const ctaInputEvents = [];
     const originalFunctions = Object.create(null);
-    const listeners = { ready: [], viewableChange: [], sizeChange: [] };
+    const listeners = { ready: [], viewableChange: [], sizeChange: [], audioVolumeChange: [] };
     const dynamicImages = {
       propertySetterInstrumented: false,
       setAttributeInstrumented: false,
@@ -233,6 +233,10 @@ function probeBootstrap(platform, configuredImageAssets = []) {
     let interacted = false;
     let mraidState = 'loading';
     let viewable = false;
+    // MRAID reports the device volume as 0-100. The harness starts unmuted and
+    // exposes both a getter and a setter so a check can mute the device the same
+    // way the real host does.
+    let audioVolume = 100;
     let canvasSampleAttempts = 0;
     let canvasPixels = null;
     const now = () => Date.now() - startedAt;
@@ -425,6 +429,7 @@ function probeBootstrap(platform, configuredImageAssets = []) {
       removeEventListener(name, callback) { if (listeners[name]) listeners[name] = listeners[name].filter((item) => item !== callback); },
       open(...args) { recordBridge('mraid', 'mraid.open', args); },
       getVersion: () => '3.0',
+      getAudioVolume: () => audioVolume,
       getScreenSize: () => ({ width: innerWidth, height: innerHeight }),
       getMaxSize: () => ({ width: innerWidth, height: innerHeight }),
       getCurrentPosition: () => ({ x: 0, y: 0, width: innerWidth, height: innerHeight }),
@@ -569,7 +574,23 @@ function probeBootstrap(platform, configuredImageAssets = []) {
       ctaDispatch: null,
       get userInteracted() { return interacted; },
       get canvasPixels() { return canvasPixels; },
-      get canvasSampleAttempts() { return canvasSampleAttempts; }
+      get canvasSampleAttempts() { return canvasSampleAttempts; },
+      // Drives the same MRAID event a real host fires on a hardware volume
+      // change, so a check can prove the creative goes silent at 0.
+      setDeviceVolume(next) {
+        audioVolume = Math.max(0, Math.min(100, Number(next) || 0));
+        for (const callback of listeners.audioVolumeChange.slice()) {
+          try { callback(audioVolume); } catch (error) { record('mraid-audio-volume', error); }
+        }
+        return audioVolume;
+      },
+      setViewable(next) {
+        viewable = Boolean(next);
+        for (const callback of listeners.viewableChange.slice()) {
+          try { callback(viewable); } catch (error) { record('mraid-viewable', error); }
+        }
+        return viewable;
+      }
     };
     const canvasSampler = setInterval(() => {
       sampleCanvas();
@@ -677,7 +698,11 @@ function readinessExpression() {
         ),
         userInteracted: window.__PLAYABLE_RUNTIME_SMOKE_HOST__.userInteracted,
         canvasPixels: window.__PLAYABLE_RUNTIME_SMOKE_HOST__.canvasPixels,
-        canvasSampleAttempts: window.__PLAYABLE_RUNTIME_SMOKE_HOST__.canvasSampleAttempts
+        canvasSampleAttempts: window.__PLAYABLE_RUNTIME_SMOKE_HOST__.canvasSampleAttempts,
+        // The playable exposes its own audio graph state through the QA hook;
+        // a lifecycle check needs it to prove silence, not just that the
+        // platform callback fired.
+        playableAudio: typeof window.__busLoop?.audio === 'function' ? window.__busLoop.audio() : null
       } : null
     };
   })()`;
@@ -1081,7 +1106,8 @@ async function runBrowser({
   screenshotFormat = 'png',
   screenshotQuality,
   device = null,
-  signal = null
+  signal = null,
+  requireAudioLifecycle = false
 }) {
   const port = await freePort();
   const args = [
@@ -1254,6 +1280,53 @@ async function runBrowser({
       await delay(400);
       readiness = await evaluate(client, readinessExpression()) ?? readiness;
     }
+    // Audio lifecycle probe: mute the device, then hide the ad, and read back
+    // the playable's own audio graph. Both must report silence. The device is
+    // unmuted first so the second measurement starts from a known level.
+    const audioLifecycle = await (async () => {
+      // A minimal fixture (or a caller that opted out) skips the probe entirely
+      // instead of paying two browser round-trips for nothing.
+      if (!requireAudioLifecycle) return { supported: false, hookAvailable: false, skipped: true };
+      const run = async (expression) => evaluate(client, expression).catch(() => null);
+      const hookAvailable = await run(`(() => typeof window.__busLoop?.audio === 'function')()`);
+      // A real package that cannot report its own audio state fails the gate;
+      // the probe evidence says why so the fix is obvious.
+      if (hookAvailable !== true) {
+        const probe = await run(`(() => ({
+          hasBusLoop: Boolean(window.__busLoop),
+          audioType: typeof window.__busLoop?.audio,
+          keys: window.__busLoop ? Object.keys(window.__busLoop).slice(0, 40) : []
+        }))()`);
+        return { supported: false, hookAvailable: false, probe };
+      }
+      const volumeMuted = await run(`(() => {
+        window.__PLAYABLE_RUNTIME_SMOKE_HOST__.setDeviceVolume(0);
+        return true;
+      })()`);
+      await delay(250);
+      const mutedState = await run(`(() => (typeof window.__busLoop?.audio === 'function' ? window.__busLoop.audio() : null))()`);
+      await run(`(() => { window.__PLAYABLE_RUNTIME_SMOKE_HOST__.setDeviceVolume(100); return true; })()`);
+      await delay(150);
+      const restoredState = await run(`(() => (typeof window.__busLoop?.audio === 'function' ? window.__busLoop.audio() : null))()`);
+      const hiddenSet = await run(`(() => {
+        window.__PLAYABLE_RUNTIME_SMOKE_HOST__.setViewable(false);
+        return true;
+      })()`);
+      await delay(250);
+      const hiddenState = await run(`(() => (typeof window.__busLoop?.audio === 'function' ? window.__busLoop.audio() : null))()`);
+      await run(`(() => { window.__PLAYABLE_RUNTIME_SMOKE_HOST__.setViewable(true); return true; })()`);
+      await delay(250);
+      const visibleState = await run(`(() => (typeof window.__busLoop?.audio === 'function' ? window.__busLoop.audio() : null))()`);
+      return {
+        supported: Boolean(volumeMuted && hiddenSet),
+        hookAvailable: true,
+        mutedState,
+        restoredState,
+        hiddenState,
+        visibleState
+      };
+    })();
+    return { readiness, screenshot, consoleErrors, exceptions, resourceFailures, stderr, audioLifecycle };
   } finally {
     if (abortBrowser) signal?.removeEventListener('abort', abortBrowser);
     client?.close();
@@ -1348,7 +1421,11 @@ export async function checkPlayableRuntimeArtifact({
   checkBatchId = null,
   ctaSelector = null,
   device = null,
-  signal = null
+  signal = null,
+  // Real deliveries set this: a package that cannot report its own audio state
+  // fails the gate. The minimal fixtures used by the smoke tests do not embed
+  // the playable, so they leave it off and the checks are skipped.
+  requireAudioLifecycle = false
 } = {}) {
   if (!artifactPath) throw new TypeError('artifactPath is required.');
   if (!SUPPORTED_PLATFORMS.has(platform)) throw new TypeError(`Unsupported playable platform: ${platform ?? '<missing>'}.`);
@@ -1377,7 +1454,8 @@ export async function checkPlayableRuntimeArtifact({
       configuredImageAssets,
       ctaSelector,
       device: DEVICE_PROFILES[device] ?? null,
-      signal
+      signal,
+      requireAudioLifecycle
     });
     if (result.aborted) {
       const aborted = new Error('试玩运行时检测被中止。');
@@ -1391,6 +1469,7 @@ export async function checkPlayableRuntimeArtifact({
     const pixels = result.screenshot ? inspectPngPixels(result.screenshot) : null;
     const readiness = result.readiness ?? {};
     const hostProbe = readiness.hostProbe ?? {};
+    const audioLifecycle = result.audioLifecycle ?? null;
     const audioBeforeInteraction = hostProbe.audioBeforeInteraction ?? [];
     const audioDecodes = hostProbe.audioDecodes ?? [];
     const invalidAudioDecodes = audioDecodes.filter((entry) => (
@@ -1446,6 +1525,24 @@ export async function checkPlayableRuntimeArtifact({
         decodes: audioDecodes,
         invalidDecodes: invalidAudioDecodes
       }),
+      // Two lifecycle rules ad reviewers apply to every creative. Both are read
+      // from the playable's own graph through the QA hook, so a passing report
+      // means the audio really went silent, not that a callback fired. Fixtures
+      // built before that hook existed are skipped instead of failed.
+      ...(audioLifecycle?.hookAvailable === true ? [
+        check('RUNTIME-AUDIO-003', '设备音量静音时输出静音', Number(audioLifecycle?.mutedState?.outputLevel) === 0, audioLifecycle ?? null),
+        check('RUNTIME-AUDIO-004', '恢复设备音量后输出恢复', Number(audioLifecycle?.restoredState?.outputLevel) > 0, {
+          restoredState: audioLifecycle?.restoredState ?? null
+        }),
+        check('RUNTIME-AUDIO-005', '广告不可见时输出静音', Number(audioLifecycle?.hiddenState?.outputLevel) === 0, {
+          hiddenState: audioLifecycle?.hiddenState ?? null
+        }),
+        check('RUNTIME-AUDIO-006', '广告恢复可见后输出恢复', Number(audioLifecycle?.visibleState?.outputLevel) > 0, {
+          visibleState: audioLifecycle?.visibleState ?? null
+        })
+      ] : audioLifecycle?.skipped === true ? [] : [
+        check('RUNTIME-AUDIO-003', '音频生命周期钩子可用', false, audioLifecycle ?? null)
+      ]),
       check('RUNTIME-CTA-000', '用户可信交互前无 CTA 或跳转调用', earlyBridgeCalls.length === 0, earlyBridgeCalls),
       check('RUNTIME-CTA-001', 'CTA 可见且可由浏览器操作', ctaCapture.target?.found === true
         && ctaCapture.target?.actionable === true, ctaCapture.target),
@@ -1493,6 +1590,7 @@ export async function checkPlayableRuntimeArtifact({
       probe: {
         audioBeforeInteraction,
         audioDecodes,
+        audioLifecycle,
         earlyBridgeCalls,
         dynamicImages: hostProbe.dynamicImages ?? null
       },

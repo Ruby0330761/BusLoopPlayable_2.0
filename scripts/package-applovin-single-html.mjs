@@ -1,8 +1,6 @@
 import { mkdir, readFile, readdir, stat, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { transformWithEsbuild } from 'vite';
-import { COUNTDOWN_SIREN_ASSET, COUNTDOWN_TIMER_ASSET } from '../src/countdown.js';
-import { getStaminaAssetPaths } from '../src/stamina.js';
 
 const ROOT = process.cwd();
 const DIST_DIR = path.resolve(process.env.PLAYABLE_DIST_DIR || path.join(ROOT, 'dist'));
@@ -241,17 +239,12 @@ function stripEditorMount(html) {
 
 async function main() {
   const [{ PLAYABLE_STAGES, PLAYABLE_STAGE_CHOICES, PLAYABLE_ALL_LEVELS, ACTIVE_PLAYABLE_SESSION }, { SCENE_TUNING }, {
-    BASE_RUNTIME_ASSET_PATHS,
-    PRE_ROLL_ASSET_PATHS,
-    PROGRESS_HUD_ASSET_PATHS,
-    getMechanismResourcePaths,
     getMechanismTypesForLevels
-  }, { isPreRollAssetPath, resolvePreRollAsset }, { LEVEL_AUDIO_CONFIG }] = await Promise.all([
+  }, { collectAssetUrls, collectPlayableInlineAssetUrls }] = await Promise.all([
     import('../src/generated-active-level.js'),
     import('../src/scene-tuning.js'),
     import('../src/mechanism-resources.js'),
-    import('../src/pre-roll.js'),
-    import('../src/level-audio-config.js')
+    import('../src/playable-inline-assets.js')
   ]);
   const htmlPath = path.join(DIST_DIR, 'index.html');
   const html = stripEditorMount(await readFile(htmlPath, 'utf8'));
@@ -267,15 +260,16 @@ async function main() {
   ]);
   const packagedCssSource = stripBundledFontFaces(cssSource);
   const spatialSelection = SCENE_TUNING.conveyorLayout?.selected;
+  // Every layout a reachable stage can select, so a stitched session that
+  // switches tracks still ships the art for each one it can show.
+  const collectSelectedTrackLayouts = () => [...new Set([
+    spatialSelection,
+    ...PLAYABLE_STAGES.map((stage) => stage?.scene?.conveyorLayout),
+    ...PLAYABLE_STAGE_CHOICES.flatMap((choice) => (
+      (choice?.options ?? []).map((option) => option?.scene?.conveyorLayout)
+    ))
+  ].filter(Boolean))];
   const choiceOptions = PLAYABLE_STAGE_CHOICES.flatMap((choice) => choice?.options ?? []);
-  // Mechanism art follows the whole reachable level set, not just the fixed
-  // order: a picked map can be the only stage that uses a special vehicle.
-  //
-  // The banner is requested by a *stage*, not by the global toggle, and the two
-  // session shapes carry their stages in different arrays: a fixed sequence
-  // (Q22's simple -> hard pair) in PLAYABLE_STAGES, and a map picker (Q23) in
-  // PLAYABLE_STAGE_CHOICES. Missing either one ships the six banner sprites as
-  // 1-byte octet-stream placeholders, and the banner degrades to a line of text.
   const stageBannerEnabled = PLAYABLE_STAGES.some((stage) => stage?.opening?.entryBanner?.enabled);
   const choiceBannerEnabled = PLAYABLE_STAGE_CHOICES.some((choice) => (
     choice?.options?.some((option) => option.opening?.entryBanner?.enabled)
@@ -286,76 +280,23 @@ async function main() {
       SCENE_TUNING.entryBanner?.enabled || stageBannerEnabled || choiceBannerEnabled
     )
   });
-  const realAssetUrls = new Set(BASE_RUNTIME_ASSET_PATHS);
-  // The progress HUD's three marker bitmaps (~193 KB) are only inlined for a
-  // build that actually turns the HUD on. Inlining them unconditionally bloated
-  // every delivery and, worse, made the runtime gate report missing assets for a
-  // package whose tuning had the HUD disabled.
-  if (Number(SCENE_TUNING.progressHud?.enabled) === 1) {
-    for (const asset of PROGRESS_HUD_ASSET_PATHS) realAssetUrls.add(asset);
-  }
-  if (Number(SCENE_TUNING.countdown?.enabled) === 1) realAssetUrls.add(COUNTDOWN_TIMER_ASSET);
-  // The siren is a separate ~12 KB clip and only belongs in a build whose clock
-  // was explicitly asked to loop it.
-  if (Number(SCENE_TUNING.countdown?.enabled) === 1
-    && Number(SCENE_TUNING.countdown?.sirenEnabled) === 1) {
-    realAssetUrls.add(COUNTDOWN_SIREN_ASSET);
-  }
-  for (const asset of getStaminaAssetPaths(SCENE_TUNING.stamina)) realAssetUrls.add(asset);
-  // A session can disable the pre-roll, and the runtime applies that by zeroing
-  // the tuning flag. Reading the raw `SCENE_TUNING.preRoll.enabled` here inlined
-  // a 519 KB MP4 the runtime never played, so the session has to be consulted
-  // in the same place the runtime consults it.
-  const selectedPreRollAsset = resolvePreRollAsset(SCENE_TUNING.preRoll, ACTIVE_PLAYABLE_SESSION);
-  if (selectedPreRollAsset && (
-    PRE_ROLL_ASSET_PATHS.includes(selectedPreRollAsset)
-    || isPreRollAssetPath(selectedPreRollAsset)
-  )) {
-    realAssetUrls.add(selectedPreRollAsset);
-  }
-  for (const level of PLAYABLE_ALL_LEVELS) collectAssetUrls(level, realAssetUrls);
-  // The BGM is addressed from tuning, not from a level document, so the plain
-  // URL collection above never sees it. Missing it ships a silently dead loop:
-  // the runtime requests a root-relative path that does not exist in the
-  // single-file ad and only logs a warning.
-  if (Number(SCENE_TUNING.audio?.bgm?.enabled) && SCENE_TUNING.audio?.bgm?.asset) {
-    realAssetUrls.add(SCENE_TUNING.audio.bgm.asset);
-  }
-  // Guide-stage media is addressed from tuning too: the weather sprite and one
-  // image per free-placed layer. Neither appears in a level document, so the
-  // plain URL collection above never sees them and every one of them used to
-  // ship as the 1-byte octet-stream placeholder — the overlays silently drew
-  // nothing while the static and runtime gates still passed.
-  if (Number(SCENE_TUNING.weatherEffect?.enabled) && SCENE_TUNING.weatherEffect?.sprite) {
-    realAssetUrls.add(SCENE_TUNING.weatherEffect.sprite);
-  }
-  for (const layer of SCENE_TUNING.freeAssets?.layers ?? []) {
-    // Hidden layers still assign `src`, so the browser fetches them; they have
-    // to be inlined whenever the layer exists, not only when it is visible.
-    if (layer?.asset) realAssetUrls.add(layer.asset);
-  }
-  // The picker art is not part of a level document, so it needs its own pass.
-  for (const option of choiceOptions) realAssetUrls.add(option.image);
+  // The inline set is shared with the editor's preflight (src/playable-inline-
+  // assets.js) so the size it shows is the size this build produces. Only the
+  // HTML/CSS-derived URLs are packager-only: they are read from the built
+  // bundle, which the editor cannot see.
+  const realAssetUrls = collectPlayableInlineAssetUrls({
+    tuning: SCENE_TUNING,
+    levels: PLAYABLE_ALL_LEVELS,
+    activeSession: ACTIVE_PLAYABLE_SESSION,
+    spatialSelection,
+    entryBannerEnabled: Boolean(
+      SCENE_TUNING.entryBanner?.enabled || stageBannerEnabled || choiceBannerEnabled
+    ),
+    conveyorLayouts: collectSelectedTrackLayouts(),
+    choiceOptionImages: choiceOptions.map((option) => option.image)
+  });
   collectAssetUrls(html, realAssetUrls);
   collectAssetUrls(packagedCssSource, realAssetUrls);
-  collectAssetUrls({
-    background: SCENE_TUNING.background?.asset,
-    icon: SCENE_TUNING.branding?.icon?.asset,
-    // One Bus build serves both stores and swaps its icon from the device UA, so
-    // every per-device icon has to be inlined. Taking only `icon.asset` shipped
-    // the iOS half with a root-relative image URL that resolves to nothing
-    // inside a single-file ad.
-    iconDeviceAssets: Object.values(SCENE_TUNING.branding?.icon?.deviceAssets ?? {}),
-    logo: SCENE_TUNING.branding?.logo?.asset
-  }, realAssetUrls);
-  for (const assetUrl of getMechanismResourcePaths(mechanismTypes)) realAssetUrls.add(assetUrl);
-  // The runtime completes a level's sound list from the canonical table, so a
-  // clip a level document does not name can still be requested at playback.
-  // Inlining only what the documents list would leave that fallback pointing at
-  // a root-relative URL that does not exist inside a single-file ad.
-  for (const entry of Object.values(LEVEL_AUDIO_CONFIG)) {
-    for (const clip of entry.clips) realAssetUrls.add(clip);
-  }
   realAssetUrls.delete(jsPath);
   realAssetUrls.delete(cssPath);
 

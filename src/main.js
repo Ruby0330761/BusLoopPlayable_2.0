@@ -63,6 +63,7 @@ const LEVEL36_VEHICLE_SCALE_MIGRATION_KEY = 'bus-loop-level36-vehicle-scale-v1';
 const LEVEL36_VEHICLE_COMPACTION_MIGRATION_KEY = 'bus-loop-level36-vehicle-compaction-v1';
 const LEVEL36_TIMED_GUIDE_MIGRATION_KEY = 'bus-loop-level36-timed-guide-v1';
 const SPEED_TOGGLE_HIDDEN_MIGRATION_KEY = 'bus-loop-speed-toggle-hidden-v1';
+const PREVIEW_LOCALE_MIGRATION_KEY = 'bus-loop-preview-locale-en-v1';
 const CUSTOM_BACKGROUND_ASSET_PREFIX = '/assets/editor-backgrounds/';
 // Horizons measured in the browser for backgrounds that shipped without the
 // sidecar metadata. Keyed by asset URL, so a re-imported or renamed artwork can
@@ -724,6 +725,31 @@ function migrateExportNamingProfiles() {
   return changed;
 }
 
+// The editor preview language used to default to "follow the browser". It now
+// opens in English, which is what most deliveries are reviewed in. Only the old
+// default is rewritten: an operator who picked a market keeps that pick. One
+// marker guards the pass, so choosing "follow browser" afterwards sticks.
+function migratePreviewLocaleTuning(source) {
+  if (localStorage.getItem(PREVIEW_LOCALE_MIGRATION_KEY) === '1') return false;
+  const localization = source?.branding?.localization;
+  if (!localization || typeof localization !== 'object') return false;
+  if (localization.previewLocale !== 'auto') return false;
+  localization.previewLocale = SCENE_TUNING.branding.localization.previewLocale;
+  return true;
+}
+
+function migratePreviewLocaleProfiles() {
+  if (localStorage.getItem(PREVIEW_LOCALE_MIGRATION_KEY) === '1') return false;
+  const profiles = readLevelTuningProfiles();
+  let changed = false;
+  for (const profile of Object.values(profiles)) {
+    if (!isLevelTuningProfile(profile)) continue;
+    if (migratePreviewLocaleTuning(profile.tuning)) changed = true;
+  }
+  if (changed) writeLevelTuningProfiles(profiles);
+  return changed;
+}
+
 function applyPreviewFrame() {
   const preview = SCENE_TUNING.preview;
   app?.classList.toggle('is-phone-preview', EDITOR_ENABLED && Boolean(preview?.enabled));
@@ -784,6 +810,7 @@ function loadSavedTuning() {
       const departureRouteHeightMigrated = migrateDepartureRouteHeightTuning(savedTuning);
       const seatCountBoardTextScaleMigrated = migrateSeatCountBoardTextScaleTuning(savedTuning);
       const footageConveyorArtMigrated = migrateFootageConveyorArtTuning(savedTuning);
+      const previewLocaleMigrated = migratePreviewLocaleTuning(savedTuning);
       const luxuryPassengerRotationRemoved = delete savedTuning.luxuryPassengerRotation;
       const luxuryPassengerOffsetRemoved = delete savedTuning.luxuryPassengerOffset;
       const luxuryMaterialDebugRemoved = delete savedTuning.luxuryMaterialDebug;
@@ -815,6 +842,7 @@ function loadSavedTuning() {
         || departureRouteHeightMigrated
         || seatCountBoardTextScaleMigrated
         || footageConveyorArtMigrated
+        || previewLocaleMigrated
         || luxuryPassengerRotationRemoved
         || luxuryPassengerOffsetRemoved
         || luxuryMaterialDebugRemoved
@@ -945,10 +973,12 @@ function restoreSelectedLevelTuning() {
   migrateSeatCountBoardTextScaleProfiles();
   migrateFootageConveyorArtProfiles();
   migrateGameOverRetryPositionProfiles();
+  migratePreviewLocaleProfiles();
   // Run the profile pass before the marker is written: both paths above skip
   // everything once the marker exists, so the marker has to be the last step.
   migrateSpeedToggleHiddenProfiles();
   localStorage.setItem(SPEED_TOGGLE_HIDDEN_MIGRATION_KEY, '1');
+  localStorage.setItem(PREVIEW_LOCALE_MIGRATION_KEY, '1');
   // Clean every stored profile, not only the selected one: switching levels
   // later would otherwise reload the same stale keys and break the export then.
   const storedProfiles = readLevelTuningProfiles();
@@ -1135,6 +1165,30 @@ function applyDocumentLanguage(locale) {
   if (document.documentElement.lang !== resolved) document.documentElement.lang = resolved;
 }
 
+// The visible caption is only one of the places a brand name lives. The tab
+// title and every accessible name on the branding art come from the shared HTML
+// shell, which holds the Bus template's copy; an exported Crowd build used to
+// keep announcing "Bus Fever Party!" in the tab and to screen readers long
+// after the caption had switched. Following the same resolved copy keeps all of
+// them in one language and one brand.
+function applyBrandingDocumentChrome(copy) {
+  const title = String(copy?.title ?? '').trim();
+  const loading = String(copy?.loadingTitle ?? '').trim() || title;
+  if (loading && document.title !== loading) document.title = loading;
+  if (title && canvas) {
+    if (canvas.getAttribute('aria-label') !== title) canvas.setAttribute('aria-label', title);
+    for (const [element, label] of [
+      [brandingItems.icon, 'icon'],
+      [brandingItems.logo, 'logo'],
+      [gameOverLogo, 'logo']
+    ]) {
+      if (!element) continue;
+      const alt = `${title} ${label}`;
+      if (element.getAttribute('alt') !== alt) element.setAttribute('alt', alt);
+    }
+  }
+}
+
 // One Bus build is uploaded to both stores. `branding.icon.deviceAssets` carries
 // the icon for each store and the device UA decides which one a player sees; the
 // store link already works this way, so the icon has to follow it or an iOS
@@ -1160,6 +1214,7 @@ function applyBrandingTuning(backgroundBounds = null) {
   // The resolved locale also sets <html lang>, so assistive tech announces the
   // caption and the button in the same language the player reads them in.
   applyDocumentLanguage(copy.locale);
+  applyBrandingDocumentChrome(copy);
   for (const [key, element] of Object.entries(brandingItems)) {
     if (!element) continue;
     const config = SCENE_TUNING.branding?.[key] ?? {};
@@ -2377,13 +2432,25 @@ async function startRuntime() {
     paintStamina();
   };
   finishCountdownForStore = () => { countdown.finish('finished'); paintCountdown(); };
-  document.addEventListener('visibilitychange', refreshCountdownVisibility);
+  // Two independent signals mean "the ad is not on screen": the platform's
+  // viewability callback and the browser's own page visibility. Audit tools
+  // hide the ad the second way, and an ad that keeps emitting Web Audio while
+  // hidden fails the lifecycle rule, so audio listens to both.
+  const syncAudioVisibility = () => audio?.setVisible(platformVisible && !document.hidden);
+  document.addEventListener('visibilitychange', () => {
+    refreshCountdownVisibility();
+    syncAudioVisibility();
+  });
   window.addEventListener('pagehide', () => {
     countdownPagePresent = false;
+    // A page being torn down or put into the back/forward cache must not keep
+    // Web Audio running; pageshow below restores it.
+    audio?.setVisible(false);
     refreshCountdownVisibility();
   });
   window.addEventListener('pageshow', () => {
     countdownPagePresent = true;
+    syncAudioVisibility();
     refreshCountdownVisibility();
   });
   paintCountdown();
@@ -3460,6 +3527,21 @@ async function startRuntime() {
       return speedToggleBoosted;
     },
     timeScale: () => getTimeScale(),
+    // QA hook for the audio lifecycle: a headless run has to prove the device
+    // volume reaches the graph and that hiding the ad silences it, without a
+    // real audio device.
+    audio: () => ({
+      deviceVolume: audio?.deviceVolume ?? null,
+      visible: audio?.visible ?? null,
+      // What actually reaches the destination: the master gain once the graph
+      // exists, otherwise the level the graph would start at. A check can read
+      // this without waiting for a first tap to build the audio context.
+      outputLevel: audio ? (audio.master
+        ? Number(audio.master.gain.value)
+        : (audio.visible ? Number(audio.deviceVolume) || 0 : 0)) : null,
+      masterGain: audio?.master ? Number(audio.master.gain.value) : null,
+      contextState: audio?.context?.state ?? null
+    }),
     // QA hook for the background music: a headless run has to prove the track
     // only starts after a real tap and keeps playing across retries.
     bgm: () => ({
@@ -3492,9 +3574,16 @@ platformBridge = createPlatformBridge({
   onVisibilityChange: (visible) => {
     platformVisible = visible;
     refreshCountdownVisibility();
-    audio?.setVisible(visible);
+    // The page's own hidden flag matters as much as the host's viewability: a
+    // checker that hides the ad without a MRAID callback would otherwise let
+    // audio keep playing into the "not visible" window.
+    audio?.setVisible(visible && !document.hidden);
     preRollController?.setVisible(visible);
   },
+  // The host's device volume: 1 is the ad's own mix, 0 must be true silence even
+  // while the context is still running. The controller keeps this level and
+  // re-applies it on every un-mute, so audio returns at the previous loudness.
+  onAudioVolumeChange: (level) => audio?.setDeviceVolume(level),
   onSizeChange: () => window.dispatchEvent(new Event('resize')),
   onRetry: () => window.__busLoop?.reset?.()
 });

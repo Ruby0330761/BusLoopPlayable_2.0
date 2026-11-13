@@ -191,9 +191,12 @@ test('background music starts on the first successful tap and never on load', ()
   assert.doesNotMatch(resetBlock, /bgm/);
 
   // The track is addressed from tuning, so the packager needs its own pass or
-  // the single-file ad requests a root-relative path that does not exist.
-  assert.match(packager, /SCENE_TUNING\.audio\?\.bgm\?\.enabled/);
-  assert.match(packager, /realAssetUrls\.add\(SCENE_TUNING\.audio\.bgm\.asset\)/);
+  // the single-file ad requests a root-relative path that does not exist. That
+  // pass lives in the shared inline-asset module.
+  const inlineAssets = readFileSync('src/playable-inline-assets.js', 'utf8');
+  assert.match(inlineAssets, /Number\(tuning\.audio\?\.bgm\?\.enabled\)/);
+  assert.match(inlineAssets, /urls\.add\(tuning\.audio\.bgm\.asset\)/);
+  assert.match(packager, /collectPlayableInlineAssetUrls\(\{/);
 });
 
 test('one collision plays the hit sound exactly once', () => {

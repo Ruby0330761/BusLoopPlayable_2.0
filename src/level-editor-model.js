@@ -74,6 +74,83 @@ export function getVehicleDisplayColor(colorIndex) {
   return renderedVehicleColor(Number(colorIndex));
 }
 
+// The atlas body paint for a slot — the colour space `colorOverrides` values are
+// authored in. The per-vehicle tuning fields must default to this, not to the
+// rendered colour above: storing a rendered value as an override asks the
+// runtime to repaint the car one lighting step brighter, which silently
+// repainted cars whose body colour the operator never touched.
+export function getVehiclePaintColor(colorIndex) {
+  return getVehicleColorOption(colorIndex).css.toLowerCase();
+}
+
+const srgbToLinear = (channel) => {
+  const value = channel / 255;
+  return value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4;
+};
+const linearToSrgb = (value) => {
+  const clamped = Math.max(0, Math.min(1, value));
+  return Math.round(255 * (clamped <= 0.0031308 ? clamped * 12.92 : 1.055 * clamped ** (1 / 2.4) - 0.055));
+};
+const hexChannels = (hex) => {
+  const match = /^#([0-9a-f]{6})$/i.exec(String(hex ?? ''));
+  return match ? [0, 2, 4].map((offset) => Number.parseInt(match[1].slice(offset, offset + 2), 16)) : null;
+};
+
+// Slot paint → slot rendered, in linear RGB, for the slots that have a measured
+// entry. Slots 11-16 are special vehicles whose swatch is a placeholder, so
+// feeding them into the interpolation would pull custom paints toward a colour
+// the playable never renders.
+const MEASURED_PAINT_PAIRS = Object.freeze(VEHICLE_COLOR_OPTIONS
+  .filter((color) => color.id <= 10 || color.id >= 17)
+  .map((color) => ({ paint: color.css.toLowerCase(), rendered: renderedVehicleColor(color.id) }))
+  .filter((entry) => /^#[0-9a-f]{6}$/i.test(entry.rendered))
+  .map((entry) => Object.freeze({
+    paintHex: entry.paint,
+    renderedHex: entry.rendered,
+    paintLinear: hexChannels(entry.paint).map(srgbToLinear)
+  })));
+
+/**
+ * The colour a paint value shows on screen.
+ *
+ * The per-vehicle tuning fields store *paint* (the same space as the atlas body
+ * base), but the canvas has to draw what the player sees — an override drawn as
+ * raw paint reads one lighting step darker than the same car in the playable,
+ * which is the mirror image of the bug that made overrides render too bright.
+ *
+ * A paint that matches a shipped slot returns that slot's measured colour
+ * exactly, so picking from the swatch list is pixel-consistent with the game.
+ * Any other paint is blended from its two nearest slots; there is no ground
+ * truth for hand-typed colours, so staying inside the measured palette keeps the
+ * result plausible instead of inventing a lighting model that would drift on the
+ * next atlas change.
+ */
+export function getRenderedPaintColor(paintCss, fallbackCss = null) {
+  const channels = hexChannels(String(paintCss ?? '').toLowerCase());
+  if (!channels) return fallbackCss;
+  const paintLinear = channels.map(srgbToLinear);
+  const measured = MEASURED_PAINT_PAIRS.find((entry) => (
+    entry.paintLinear.every((value, channel) => Math.abs(value - paintLinear[channel]) < 0.002)
+  ));
+  if (measured) return measured.renderedHex;
+  const scored = MEASURED_PAINT_PAIRS
+    .map((entry) => ({
+      entry,
+      distance: Math.hypot(...entry.paintLinear.map((value, channel) => value - paintLinear[channel]))
+    }))
+    .sort((left, right) => left.distance - right.distance)
+    .slice(0, 2);
+  const weighted = scored.map(({ entry, distance }) => ({
+    renderedLinear: hexChannels(entry.renderedHex).map(srgbToLinear),
+    weight: 1 / (distance ** 2 + 1e-6)
+  }));
+  const total = weighted.reduce((sum, item) => sum + item.weight, 0);
+  return `#${[0, 1, 2].map((channel) => {
+    const blended = weighted.reduce((sum, item) => sum + item.renderedLinear[channel] * item.weight, 0) / total;
+    return linearToSrgb(blended).toString(16).padStart(2, '0');
+  }).join('')}`;
+}
+
 const VEHICLE_COLOR_BY_ID = new Map(VEHICLE_COLOR_OPTIONS.map((color) => [color.id, color]));
 
 const SPECIAL_VEHICLE_COLOR_INDEX = Object.freeze({

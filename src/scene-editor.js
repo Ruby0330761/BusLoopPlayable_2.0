@@ -12,9 +12,23 @@ import { isValidStoreLink } from './store-links.js';
 import { detectPlayfieldHorizon, resolveBackgroundHorizon } from './background-alignment.js';
 import { BUILD_VERSION } from './build-version.js';
 import { BUILD_CHANGELOG, changelogVersions } from './build-changelog.js';
-import { normalizeCountdownConfig } from './countdown.js';
+import { COUNTDOWN_SIREN_ASSET, COUNTDOWN_TIMER_ASSET, normalizeCountdownConfig } from './countdown.js';
 import { BRANDING_LOCALE_OPTIONS } from './branding-localization.js';
-import { normalizeStaminaConfig } from './stamina.js';
+import { getStaminaAssetPaths, normalizeStaminaConfig } from './stamina.js';
+import {
+  BASE_RUNTIME_ASSET_PATHS,
+  PROGRESS_HUD_ASSET_PATHS,
+  getMechanismResourcePaths,
+  getMechanismTypesForLevels
+} from './mechanism-resources.js';
+import { LEVEL_AUDIO_CONFIG } from './level-audio-config.js';
+import { collectPlayableInlineAssetUrls } from './playable-inline-assets.js';
+import {
+  ACTIVE_PLAYABLE_SESSION,
+  PLAYABLE_ALL_LEVELS,
+  PLAYABLE_STAGES,
+  PLAYABLE_STAGE_CHOICES
+} from './generated-active-level.js';
 import {
   isForeignLevelOwner,
   levelOwnerHeaders,
@@ -1066,10 +1080,10 @@ const FIELD_GROUPS = [
       ['\u8f6c\u5f2f\u534a\u5f84', 'vehiclePath.turnRadius', 0.05, 1.5, 0.01],
       ['\u5165\u5f2f\u63a7\u5236', 'vehiclePath.turnInController', 0, 1.5, 0.01],
       ['\u51fa\u5f2f\u63a7\u5236', 'vehiclePath.turnOutController', 0, 1.5, 0.01],
-      ['\u8fb9\u754c\u5de6 X', 'vehiclePath.parkingBounds.minX', -6, 0, 0.01],
-      ['\u8fb9\u754c\u53f3 X', 'vehiclePath.parkingBounds.maxX', 0, 6, 0.01],
-      ['\u8fb9\u754c\u4e0b Z', 'vehiclePath.parkingBounds.minZ', -6, 0, 0.01],
-      ['\u8fb9\u754c\u4e0a Z', 'vehiclePath.parkingBounds.maxZ', 0, 6, 0.01]
+      ['\u8fb9\u754c\u5de6 X', 'vehiclePath.parkingBounds.minX', -12, 0, 0.01],
+      ['\u8fb9\u754c\u53f3 X', 'vehiclePath.parkingBounds.maxX', 0, 12, 0.01],
+      ['\u8fb9\u754c\u4e0b Z', 'vehiclePath.parkingBounds.minZ', -12, 0, 0.01],
+      ['\u8fb9\u754c\u4e0a Z', 'vehiclePath.parkingBounds.maxZ', 0, 12, 0.01]
     ]
   },
   {
@@ -1100,8 +1114,10 @@ const FIELD_GROUPS = [
       ['\u6295\u5f71\u989c\u8272', 'vehicleShadows.color', 0, 16777215, 1],
       ['Map Scale', 'vehicleArea.positionUnitScale', 0.1, 2.2, 0.01],
       ['\u6a21\u578b\u5927\u5c0f', 'vehicleArea.modelScale', 0.3, 2.5, 0.05],
-      ['\u4e0a\u8f66\u653e\u5927\u500d\u6570', 'vehicleBoardingPulse.scale', 1, 2, 0.01],
-      ['\u4e0a\u8f66\u7f29\u653e\u901f\u5ea6', 'vehicleBoardingPulse.speed', 0, 20, 0.1],
+      // Multiplies the parked cars only. Once a car starts driving its route it
+      // returns to the authored model size, so the route/spot framing never
+      // changes with this slider.
+      ['\u8f66\u8f86\u5927\u5c0f\u500d\u6570', 'vehicleArea.sizeMultiplier', 0.5, 2.5, 0.01],
       ['\u7bad\u5934 X', 'vehicleArrow.offsetX', -0.8, 0.8, 0.01],
       ['\u7bad\u5934\u9ad8\u5ea6', 'vehicleArrow.offsetY', 0, 0.8, 0.01],
       ['\u7bad\u5934 Z', 'vehicleArrow.offsetZ', -0.8, 0.8, 0.01],
@@ -4005,39 +4021,356 @@ export function createSceneEditor(root, {
       return path.replace(/^exportNaming\./, '').replace(/^channels\./, '渠道 ');
     }
 
-    function collectChecks() {
-      let badNames = 0;
-      let badUrls = 0;
-      let badCountdown = 0;
-      for (const [path, controls] of inputs) {
-        if (controls.isFilename && controls.updateValidity && !controls.updateValidity()) badNames += 1;
-        if (controls.urlInput && controls.urlInput.getAttribute('aria-invalid') === 'true') badUrls += 1;
-        if (path.startsWith('countdown.') && controls.updateValidity && !controls.updateValidity()) badCountdown += 1;
+    // The packager caps every delivery at 5 MB, and base64 inflates each inlined
+    // asset by a third. The panel used to skip this check because only the
+    // server could measure the artifact; it can still estimate the dominant
+    // term (inlined assets) with the same URL list the packager uses, which is
+    // what catches a 900 KB upload before a two-minute export fails.
+    const PLAYABLE_PAYLOAD_BUDGET_BYTES = 5 * 1024 * 1024;
+    const PLAYABLE_PAYLOAD_WARN_BYTES = Math.round(PLAYABLE_PAYLOAD_BUDGET_BYTES * 0.8);
+    // The single-file shell (runtime JS + CSS + markup) measured ~0.95 MB on the
+    // shipped Bus build; it is reported separately so the note never pretends
+    // the asset sum is the artifact size.
+    const PLAYABLE_SHELL_BYTES = 950 * 1024;
+    const perAssetCaps = [
+      ['/assets/editor-backgrounds/', CUSTOM_BACKGROUND_MAX_OUTPUT_BYTES, '背景图'],
+      [CUSTOM_PRE_ROLL_ASSET_PREFIX, 2 * 1024 * 1024, '前贴视频'],
+      ['/assets/editor-bgm/', 1024 * 1024, 'BGM'],
+      ['/assets/editor-effects/', 2 * 1024 * 1024, '特效贴图'],
+      ['/assets/editor-free-assets/', 4 * 1024 * 1024, '自由素材']
+    ];
+
+    let payloadStats = null;
+    let payloadStatsKey = '';
+    let payloadStatsBusy = false;
+    let payloadStatsTimer = 0;
+
+    function inlineAssetUrls() {
+      const tuning = getTuning();
+      // The editor preview always runs one stage built from the selected level
+      // (plus Level7 for the Level9 handoff). The baked catalogue entry is a
+      // stale twin of that same stage slot, so shipping it in the estimate
+      // counted every art path twice and reported assets the package drops.
+      const levels = [LEVEL_1];
+      if (LEVEL_1.key === 'level9') {
+        const handoff = PLAYABLE_ALL_LEVELS.find((level) => level?.key === 'level7');
+        if (handoff) levels.push(handoff);
       }
-      return [
+      const conveyorLayouts = [...new Set([
+        tuning.conveyorLayout?.selected,
+        ...PLAYABLE_STAGES.map((stage) => stage?.scene?.conveyorLayout),
+        ...PLAYABLE_STAGE_CHOICES.flatMap((choice) => (
+          (choice?.options ?? []).map((option) => option?.scene?.conveyorLayout)
+        ))
+      ].filter(Boolean))];
+      return collectPlayableInlineAssetUrls({
+        tuning,
+        levels,
+        activeSession: ACTIVE_PLAYABLE_SESSION,
+        spatialSelection: tuning.conveyorLayout?.selected,
+        entryBannerEnabled: Boolean(Number(tuning.entryBanner?.enabled)),
+        conveyorLayouts,
+        choiceOptionImages: PLAYABLE_STAGE_CHOICES
+          .flatMap((choice) => choice?.options ?? [])
+          .map((option) => option?.image)
+          .filter(Boolean)
+      });
+    }
+
+    // One HTTP round trip per distinct asset set. Sliders fire sync() on every
+    // input event, so the request is debounced and skipped while the checks tab
+    // is not visible.
+    function schedulePayloadStats() {
+      if (activeTab !== 'checks') return;
+      const urls = [...inlineAssetUrls()].sort();
+      const key = `${LEVEL_1.key}|${urls.join('\n')}`;
+      if (payloadStats?.key === key || payloadStatsKey === key) return;
+      payloadStatsKey = key;
+      clearTimeout(payloadStatsTimer);
+      payloadStatsTimer = setTimeout(async () => {
+        payloadStatsBusy = true;
+        renderInspector();
+        try {
+          const response = await fetch('/__playable-asset-sizes', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ urls })
+          });
+          const payload = await response.json().catch(() => ({}));
+          if (!response.ok) throw new Error(payload.error || `HTTP ${response.status}`);
+          const items = Array.isArray(payload.items) ? payload.items : [];
+          const rawBytes = items.reduce((sum, item) => sum + (Number(item.bytes) || 0), 0);
+          // Base64 payload cost per file rounded up to a 4-byte group, which is
+          // what the data URI actually adds to the single-file HTML.
+          const base64Bytes = items.reduce(
+            (sum, item) => sum + (Number(item.bytes) ? Math.ceil(Number(item.bytes) / 3) * 4 : 0),
+            0
+          );
+          payloadStats = {
+            key,
+            items,
+            rawBytes,
+            base64Bytes,
+            missing: items.filter((item) => !item.exists).map((item) => item.url)
+          };
+        } catch (error) {
+          // Cached under the same key as a success, so a persistent failure
+          // cannot spin into a retry loop. Re-opening the 校验 tab clears it,
+          // which is the natural "try again" gesture.
+          payloadStats = { key, error: error instanceof Error ? error.message : String(error) };
+        } finally {
+          payloadStatsBusy = false;
+          if (payloadStatsKey === key) payloadStatsKey = '';
+          if (activeTab === 'checks') renderInspector();
+        }
+      }, 350);
+    }
+
+    function collectChecks() {
+      const tuning = getTuning();
+      let badNames = 0;
+      let firstBadName = '';
+      let badUrls = 0;
+      let firstBadUrl = '';
+      let badCountdown = 0;
+      let firstBadCountdown = '';
+      for (const [path, controls] of inputs) {
+        if (controls.isFilename && controls.updateValidity && !controls.updateValidity()) {
+          badNames += 1;
+          firstBadName ||= path;
+        }
+        if (controls.urlInput && controls.urlInput.getAttribute('aria-invalid') === 'true') {
+          badUrls += 1;
+          firstBadUrl ||= path;
+        }
+        if (path.startsWith('countdown.') && controls.updateValidity && !controls.updateValidity()) {
+          badCountdown += 1;
+          firstBadCountdown ||= path;
+        }
+      }
+
+      // Export refuses duplicate channel codes, because two channels would
+      // resolve to the same delivery name. Surfacing it here turns a failed
+      // two-minute build into a one-click fix.
+      const channelOwners = new Map();
+      const duplicateChannels = [];
+      for (const [platform] of PLAYABLE_EXPORT_PLATFORMS) {
+        const code = String(tuning.exportNaming?.channels?.[platform] ?? '').trim().toLowerCase();
+        if (!code) continue;
+        if (channelOwners.has(code)) {
+          duplicateChannels.push(`exportNaming.channels.${channelOwners.get(code)} 与 ${platform} 都用 ${code}`);
+        } else {
+          channelOwners.set(code, platform);
+        }
+      }
+
+      const vehicles = Array.isArray(LEVEL_1?.vehicles) ? LEVEL_1.vehicles : [];
+      const vehicleIds = new Set(vehicles.map((vehicle) => Number(vehicle?.id)).filter(Number.isFinite));
+      const guideIssues = [];
+      let firstGuidePath = '';
+      const hand = tuning.vehicleGuideHand ?? {};
+      if (Number(hand.enabled) === 1) {
+        if (hand.levelKey && hand.levelKey !== LEVEL_1.key) {
+          guideIssues.push(`小手提示指向 ${hand.levelKey}，当前关卡是 ${LEVEL_1.key}`);
+          firstGuidePath = 'vehicleGuideHand.levelKey';
+        }
+        if (!vehicleIds.has(Number(hand.vehicleId))) {
+          guideIssues.push(`小手目标车 ${hand.vehicleId ?? '未选'} 不在本关`);
+          firstGuidePath ||= 'vehicleGuideHand.vehicleId';
+        }
+      }
+      const firstClick = tuning.firstClickGuide ?? {};
+      if (Number(firstClick.enabled) === 1 && !vehicleIds.has(Number(firstClick.vehicleId))) {
+        guideIssues.push(`开场引导目标车 ${firstClick.vehicleId ?? '未选'} 不在本关`);
+        firstGuidePath ||= 'firstClickGuide.vehicleId';
+      }
+
+      const levelIssues = [];
+      let firstLevelPath = '';
+      if (!LEVEL_1?.key) {
+        levelIssues.push('当前关卡没有加载到车辆数据');
+        firstLevelPath = 'level.selected';
+      } else {
+        if (!vehicles.length) {
+          levelIssues.push('关卡内没有车辆');
+          firstLevelPath = 'level.selected';
+        }
+        if (!Array.isArray(LEVEL_1.passengerQueues) || LEVEL_1.passengerQueues.flat().length === 0) {
+          levelIssues.push('关卡内没有乘客队列');
+          firstLevelPath ||= 'level.selected';
+        }
+        const knownLevel = levelOptionItems.some((item) => item.key === LEVEL_1.key);
+        if (!knownLevel && levelOptionItems.length > 0) {
+          levelIssues.push(`${LEVEL_1.key} 不在关卡列表里，导出会失败`);
+          firstLevelPath ||= 'level.selected';
+        }
+      }
+
+      // The store gate counts cleared vehicles; a custom threshold above the
+      // level's fleet can never be reached, so the ad runs out of cars with the
+      // CTA still inert.
+      const threshold = Number(tuning.installGate?.successfulOperationThreshold);
+      const gateUnreachable = Number.isFinite(threshold) && vehicles.length > 0 && threshold > vehicles.length;
+
+      const checks = [
         {
           state: badNames ? 'bad' : 'ok',
           title: '导出命名',
           note: badNames ? `${badNames} 个片段含非法字符` : '所有命名片段合法（可留空）',
+          path: firstBadName
+        },
+        {
+          state: duplicateChannels.length ? 'bad' : 'ok',
+          title: '渠道代号',
+          note: duplicateChannels.length
+            ? duplicateChannels.join('；')
+            : '七个渠道代号互不重复',
+          path: duplicateChannels.length ? 'exportNaming.channels' : ''
         },
         {
           state: badCountdown ? 'warn' : 'ok',
           title: '倒计时配置',
           note: badCountdown ? `${badCountdown} 项时间配置冲突` : '时间配置有效',
+          path: firstBadCountdown
         },
         {
           state: badUrls ? 'bad' : 'ok',
           title: '商店链接',
           note: badUrls ? `${badUrls} 个链接格式无效` : '链接格式有效',
+          path: firstBadUrl
         },
         {
-          // Honest about the boundary: the 5 MB gate runs on the packaged
-          // artifact server-side, so there is nothing to assert here.
+          state: levelIssues.length ? 'bad' : 'ok',
+          title: '关卡数据',
+          note: levelIssues.length
+            ? levelIssues.join('；')
+            : `${vehicles.length} 辆车、${LEVEL_1.passengerQueues.flat().length} 名乘客`,
+          path: firstLevelPath
+        },
+        {
+          state: gateUnreachable ? 'bad' : 'ok',
+          title: '安装门槛',
+          note: gateUnreachable
+            ? `门槛 ${threshold} 大于本关 ${vehicles.length} 辆车，永远触发不了`
+            : `${Number.isFinite(threshold) ? threshold : '自动'} 次操作后跳商店`,
+          path: gateUnreachable ? 'installGate.successfulOperationThreshold' : ''
+        },
+        {
+          state: guideIssues.length ? 'warn' : 'ok',
+          title: '引导目标',
+          note: guideIssues.length
+            ? guideIssues.join('；')
+            : '引导车辆都存在于本关',
+          path: firstGuidePath
+        },
+        ...describeSizeChecks()
+      ];
+      return checks;
+    }
+
+    function describeSizeChecks() {
+      if (payloadStats?.error) {
+        return [{
+          state: 'skip',
+          title: '素材体积',
+          note: `体积统计失败：${payloadStats.error}`
+        }, {
           state: 'skip',
           title: '单包体积',
           note: '导出时由服务端 5 MB 门禁判定',
-        },
-      ];
+          path: ''
+        }];
+      }
+      if (!payloadStats || payloadStatsBusy) {
+        return [{
+          state: 'skip',
+          title: '素材体积',
+          note: payloadStatsBusy ? '正在统计内联素材…' : '切换到这里时统计',
+          path: ''
+        }, {
+          state: 'skip',
+          title: '单包体积',
+          note: '导出时由服务端 5 MB 门禁判定',
+          path: ''
+        }];
+      }
+      const { items, rawBytes, base64Bytes, missing } = payloadStats;
+      const oversized = items.filter((item) => {
+        const cap = perAssetCaps.find(([prefix]) => item.url.startsWith(prefix));
+        return cap && Number(item.bytes) > cap[1];
+      });
+      const heaviest = items
+        .filter((item) => Number(item.bytes) > 0)
+        .sort((first, second) => Number(second.bytes) - Number(first.bytes))
+        .slice(0, 3)
+        .map((item) => `${assetShortName(item.url)} ${formatKilobytes(Number(item.bytes))}`);
+      const assetNotes = [];
+      if (missing.length) {
+        // A count with no names leaves the operator hunting; the export refuses
+        // the package over exactly these files, so say which ones.
+        assetNotes.push(`缺 ${missing.slice(0, 3).map(assetShortName).join('、')}${missing.length > 3 ? ` 等 ${missing.length} 个` : ''}`);
+      }
+      if (oversized.length) {
+        assetNotes.push(oversized.slice(0, 2).map((item) => {
+          const [, cap, label] = perAssetCaps.find(([prefix]) => item.url.startsWith(prefix));
+          return `${label} ${assetShortName(item.url)} 超过 ${formatKilobytes(cap)}`;
+        }).join('；'));
+      }
+      if (heaviest.length) assetNotes.push(`最大 ${heaviest.join('、')}`);
+
+      const estimatedBytes = base64Bytes + PLAYABLE_SHELL_BYTES;
+      const sizeState = estimatedBytes > PLAYABLE_PAYLOAD_BUDGET_BYTES
+        ? 'bad'
+        : estimatedBytes > PLAYABLE_PAYLOAD_WARN_BYTES ? 'warn' : 'ok';
+      return [{
+        state: oversized.length || missing.length ? 'bad' : 'ok',
+        title: '素材体积',
+        note: `${items.length} 个内联素材 ${formatKilobytes(rawBytes)}${assetNotes.length ? `，${assetNotes.join('，')}` : ''}`,        path: ''
+      }, {
+        state: sizeState,
+        title: '单包体积（估算）',
+        note: `素材 base64 ${formatKilobytes(base64Bytes)} + 壳约 ${formatKilobytes(PLAYABLE_SHELL_BYTES)}，上限 5 MB`,
+        path: ''
+      }];
+    }
+
+    function assetShortName(url) {
+      return String(url ?? '').split('/').pop() || url;
+    }
+
+    // Where a check's "fix" actually lives: the panel that owns the section,
+    // and the row to flash. A channel code lives on a specific channel row, but
+    // `exportNaming.channels.applovin` is addressed by its full path, while a
+    // bare `exportNaming.channels` has to fall back to the naming section.
+    function panelForPath(path) {
+      for (const panel of SHELL_PANELS) {
+        if (panel.match.test(path)) return panel.id;
+      }
+      return path.startsWith('exportNaming.') ? 'export' : 'scene';
+    }
+
+    function jumpToField(path) {
+      const controls = inputs.get(path);
+      const row = controls?.row
+        ?? root.querySelector(`.editor-field[data-path="${CSS.escape(path)}"]`);
+      const section = row?.closest('.editor-section')
+        ?? [...root.querySelectorAll('.editor-section')].find(
+          (candidate) => candidate.querySelector('.editor-field[data-path^="exportNaming."]')
+            && path.startsWith('exportNaming.')
+        );
+      if (section) {
+        setActivePanel(sectionPanel.get(section) ?? panelForPath(path));
+        section.open = true;
+      } else {
+        setActivePanel(panelForPath(path));
+      }
+      if (!row) return;
+      row.scrollIntoView({ block: 'center' });
+      row.classList.add('is-shell-flash');
+      setTimeout(() => row.classList.remove('is-shell-flash'), 1500);
+      const focusTarget = controls?.textInput ?? controls?.number ?? controls?.select
+        ?? controls?.urlInput ?? row.querySelector('input, select');
+      focusTarget?.focus?.({ preventScroll: true });
     }
 
     function renderInspector() {
@@ -4066,10 +4399,23 @@ export function createSceneEditor(root, {
       }
       if (activeTab === 'checks') {
         const checks = collectChecks();
-        inspectorBody.innerHTML = `<div class="shell-insp-checks">${checks.map((check) => (
-          `<div class="shell-insp-check ${check.state}"><i></i><div><strong>${check.title}</strong><small>${check.note}</small></div></div>`
+        inspectorBody.innerHTML = `<div class="shell-insp-checks">${checks.map((check, index) => (
+          `<div class="shell-insp-check ${check.state}${check.path ? ' has-jump' : ''}" data-check-index="${index}"${check.path ? ' role="button" tabindex="0"' : ''}><i></i><div><strong>${check.title}</strong><small>${check.note}</small>${check.path ? '<em class="shell-insp-jump-field">去修改</em>' : ''}</div></div>`
         )).join('')}</div>
-          <p class="shell-insp-note">同一结论也会落在出问题的字段旁：命名片段标红，倒计时时间冲突时导出按钮禁用。</p>`;
+          <p class="shell-insp-note">同一结论也会落在出问题的字段旁：命名片段标红，倒计时时间冲突时导出按钮禁用。点「去修改」直接跳到对应字段。</p>`;
+        for (const node of inspectorBody.querySelectorAll('.shell-insp-check.has-jump')) {
+          const jump = () => {
+            const check = checks[Number(node.dataset.checkIndex)];
+            if (check?.path) jumpToField(check.path);
+          };
+          node.addEventListener('click', jump);
+          node.addEventListener('keydown', (event) => {
+            if (event.key !== 'Enter' && event.key !== ' ') return;
+            event.preventDefault();
+            jump();
+          });
+        }
+        schedulePayloadStats();
         return;
       }
       const namingRows = [...inputs.entries()]
@@ -4098,6 +4444,9 @@ export function createSceneEditor(root, {
     for (const tab of inspectorTabs) {
       tab.addEventListener('click', () => {
         activeTab = tab.dataset.shellTab;
+        // Re-opening the panel is the retry gesture for a failed asset-size
+        // request; the failure is cached so an automatic refresh cannot loop.
+        if (activeTab === 'checks' && payloadStats?.error) payloadStats = null;
         renderInspector();
       });
     }

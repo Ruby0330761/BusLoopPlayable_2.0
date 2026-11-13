@@ -8,6 +8,8 @@ import {
   VEHICLE_COLORS,
   getVehicleColorOption,
   getVehicleDisplayColor,
+  getVehiclePaintColor,
+  getRenderedPaintColor,
   isSpecialVehicle,
   createLevelDocument,
   exportLevelCsv,
@@ -267,7 +269,8 @@ function vehicleBatchOverrideField(label, path, value, mixed = false) {
 
 function passengerColorOverridesMarkup(document, colorIndex) {
   const overrides = document.passengerColorOverrides?.[String(colorIndex)] ?? {};
-  const base = overrides.body ?? getVehicleDisplayColor(colorIndex);
+  // Paint space, same as the vehicle fields these values sync with.
+  const base = overrides.body ?? getVehiclePaintColor(colorIndex);
   return `<details class="level-layout-color-details"><summary>小人颜色微调</summary>
     ${passengerOverrideField('小人身体', 'body', colorIndex, base)}
     ${passengerOverrideField('小人高光', 'highlight', colorIndex, overrides.highlight ?? base)}
@@ -284,11 +287,33 @@ function invertHexColor(color) {
 }
 
 function vehicleDisplayColor(vehicle) {
-  // `colorOverrides.body` is a *paint* value authored against the atlas, so it
-  // is drawn as entered. Without an override the car shows the colour the
-  // playable's lighting actually produces, which is what makes the editor board
-  // and the game board read as the same palette.
-  return vehicle?.colorOverrides?.body ?? getVehicleDisplayColor(vehicle?.colorIndex);
+  // An override is a *paint* value in the atlas's space, but the canvas paints
+  // what the player sees, so it goes through the same paint→rendered mapping the
+  // shipped slots use. Drawing the paint raw made an overridden car read one
+  // lighting step darker than the same car in the playable — the mirror of the
+  // bug that made overrides render too bright in game.
+  const paint = vehicle?.colorOverrides?.body;
+  if (paint) {
+    return getRenderedPaintColor(paint, getVehicleDisplayColor(vehicle?.colorIndex));
+  }
+  return getVehicleDisplayColor(vehicle?.colorIndex);
+}
+
+// Region overrides as the canvas should draw them (rendered space). Only fields
+// the operator actually set are returned, so a region without an override keeps
+// its derived shading and untouched levels look exactly as before.
+function vehicleRenderedRegions(vehicle) {
+  const overrides = vehicle?.colorOverrides ?? {};
+  const regions = {};
+  const fallback = getVehicleDisplayColor(vehicle?.colorIndex);
+  for (const region of ['body', 'highlight', 'shadow', 'window', 'detail']) {
+    const paint = overrides[region];
+    if (!paint) continue;
+    const rendered = getRenderedPaintColor(paint, null);
+    if (rendered) regions[region] = rendered;
+  }
+  if (!Object.keys(regions).length) return null;
+  return { ...regions, fallback };
 }
 
 function passengerColor(colorIndex, document = null) {
@@ -561,11 +586,20 @@ function drawVehicleSeatBadge(context, screen, halfHeight, seats) {
   context.restore();
 }
 
-function drawVehicleSprite(context, vehicle, { width, length, color, inverseColor, selected }) {
+function drawVehicleSprite(context, vehicle, { width, length, color, inverseColor, selected, regions = null }) {
   const w = width;
   const l = length;
   const profile = vehicleCabinProfile(vehicle.seats);
   const bodyRadius = w * profile.bodyRadius;
+  // Region colours arrive in rendered space, the same space as `color`. When a
+  // region has no override it is derived from the body so the board keeps the
+  // shading it always had; when it does, the operator sees the change here
+  // instead of only after exporting.
+  const highlightColor = regions?.highlight ?? shadeHexColor(color, 0.04);
+  const shadowColor = regions?.shadow ?? shadeHexColor(color, -0.28);
+  const midColor = regions?.body ?? shadeHexColor(color, -0.04);
+  const windowColor = regions?.window ?? null;
+  const detailColor = regions?.detail ?? null;
 
   // Below roughly four screen pixels the detailed sprite degenerates into
   // mud, and a dense board redraws on every pointer move. Keep the outline and
@@ -606,15 +640,15 @@ function drawVehicleSprite(context, vehicle, { width, length, color, inverseColo
   }
 
   // Body paint: a light-to-dark sweep across the width reads as a curved panel.
-  // The sweep is centred on the paint value rather than biased lighter: the
-  // colour handed in is already the playable's rendered body colour, so adding
-  // a one-sided lift on top of it made every editor car look washed out next to
-  // the same car in game. The mid stop sits slightly below the target because
-  // canvas compositing over the light grid reads about one step brighter.
+  // The three stops are the same highlight/body/shadow split the colour atlas
+  // bakes in, so overriding any of those regions shows up here. The sweep is
+  // centred on the paint value rather than biased lighter: the colour handed in
+  // is already the playable's rendered body colour, so adding a one-sided lift on
+  // top of it made every editor car look washed out next to the same car in game.
   const paint = context.createLinearGradient(-w / 2, 0, w / 2, 0);
-  paint.addColorStop(0, shadeHexColor(color, 0.04));
-  paint.addColorStop(0.5, shadeHexColor(color, -0.04));
-  paint.addColorStop(1, shadeHexColor(color, -0.28));
+  paint.addColorStop(0, highlightColor);
+  paint.addColorStop(0.5, midColor);
+  paint.addColorStop(1, shadowColor);
   roundedRectPath(context, -w / 2, -l / 2, w, l, bodyRadius);
   context.fillStyle = paint;
   context.fill();
@@ -634,8 +668,9 @@ function drawVehicleSprite(context, vehicle, { width, length, color, inverseColo
   context.stroke();
 
   // Windscreen and rear window: dark bands across the roof ends. They are the
-  // strongest "car from above" signal and stay readable at any zoom.
-  const glass = 'rgba(22, 33, 45, .9)';
+  // strongest "car from above" signal and stay readable at any zoom. An explicit
+  // 车窗 override paints them, which is the only place that field shows up.
+  const glass = windowColor ?? 'rgba(22, 33, 45, .9)';
   const screenLength = Math.max(1.8, roofLength * 0.1);
   const taper = w * 0.045;
   context.fillStyle = glass;
@@ -667,6 +702,27 @@ function drawVehicleSprite(context, vehicle, { width, length, color, inverseColo
       context.moveTo(-roofHalfWidth + w * 0.05, y);
       context.lineTo(roofHalfWidth - w * 0.05, y);
       context.stroke();
+    }
+  }
+
+  // 细节 covers the atlas's non-body, non-glass trim (bumpers, lights). Only an
+  // explicit override draws it: adding trim marks to every board would restyle
+  // levels that never asked for this field, and the point of the field is that
+  // filling it in is visible immediately.
+  if (detailColor && w >= 10) {
+    const bumperHeight = Math.max(1.6, l * 0.055);
+    const bumperInset = w * 0.14;
+    context.fillStyle = detailColor;
+    for (const end of [-1, 1]) {
+      roundedRectPath(
+        context,
+        -w / 2 + bumperInset,
+        end * (l / 2) - bumperHeight / 2 - end * bumperHeight * 0.35,
+        w - bumperInset * 2,
+        bumperHeight,
+        bumperHeight * 0.45
+      );
+      context.fill();
     }
   }
 
@@ -1150,7 +1206,8 @@ function drawCanvas(canvas, model, camera, gesture, garageTexture, conveyorTextu
       length: spriteLength,
       color: vehicleColor,
       inverseColor,
-      selected
+      selected,
+      regions: vehicleRenderedRegions(vehicle)
     });
     context.globalAlpha = 1;
     context.restore();
@@ -1250,10 +1307,11 @@ function renderInspector(root, model) {
     const hasSpecialVehicle = selectedVehicles.some(isSpecialVehicle);
     const colorValue = (vehicle, key) => {
       const overrides = vehicle.colorOverrides ?? {};
-      const displayColor = getVehicleDisplayColor(vehicle.colorIndex);
-      if (key === 'body') return overrides.body ?? displayColor;
+      // Paint space: these values are written straight back as overrides.
+      const paintColor = getVehiclePaintColor(vehicle.colorIndex);
+      if (key === 'body') return overrides.body ?? paintColor;
       if (key === 'window') return overrides.window ?? '#263238';
-      return overrides[key] ?? (overrides.body ?? displayColor);
+      return overrides[key] ?? (overrides.body ?? paintColor);
     };
     const batchValue = (key) => {
       const values = selectedVehicles.map((vehicle) => colorValue(vehicle, key));
@@ -1306,7 +1364,11 @@ function renderInspector(root, model) {
   const item = selected[0];
   if (item.seats) {
     const specialVehicle = isSpecialVehicle(item);
-    const baseColor = getVehicleDisplayColor(item.colorIndex);
+    // Every field below is written back as a `colorOverrides` value, so all of
+    // them default to the atlas paint. Defaulting to the rendered colour meant
+    // editing only 车窗 stored the rendered body as an override and repainted a
+    // car the operator had not touched.
+    const baseColor = getVehiclePaintColor(item.colorIndex);
     const overrides = item.colorOverrides ?? {};
     const bodyColor = overrides.body ?? baseColor;
     root.innerHTML = `<h3>车辆 #${item.id}</h3>

@@ -3,6 +3,8 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import {
   createVehicleAreaTransform,
+  displayVehicleSize,
+  parkedVehicleSizeMultiplier,
   screenToWorldPoint,
   worldToScreenPoint
 } from '../src/vehicle-area-transform.js';
@@ -195,4 +197,43 @@ test('editor and thumbnail agree on screen direction for a real board', () => {
     assert.ok(byZ[index].z >= byZ[index - 1].z, 'ordering is stable');
   }
   assert.ok(sorted.length === level.vehicles.length);
+});
+
+test('the size multiplier only grows cars standing in the parking field', () => {
+  const area = { ...SHIPPED_AREA, modelScale: 0.64, modelDepthBySeats: { 4: 1.05 }, sizeMultiplier: 1.5 };
+  const parked = { seats: 4, state: 'parked', containerType: 1 };
+  assert.equal(parkedVehicleSizeMultiplier(parked, area), 1.5);
+
+  // A car mid-route keeps the authored model size: its lane, the spot it parks
+  // in and the collision box were all laid out for that size.
+  for (const state of ['moving-to-spot', 'at-spot', 'boarding-final', 'departing', 'leaving-garage']) {
+    assert.equal(
+      parkedVehicleSizeMultiplier({ ...parked, state }, area),
+      1,
+      `${state} must not inherit the parked multiplier`
+    );
+  }
+
+  // Mechanism containers carry their own authored slot spacing, so their cars
+  // are never resized, even in the parked state.
+  for (const key of ['conveyorId', 'gateId', 'elevatorId']) {
+    assert.equal(parkedVehicleSizeMultiplier({ ...parked, [key]: 7 }, area), 1, key);
+  }
+  assert.equal(parkedVehicleSizeMultiplier({ seats: 4, containerType: 3 }, area), 1);
+
+  // 1 (and any junk value) is a no-op, so the default tuning renders as before.
+  assert.equal(parkedVehicleSizeMultiplier(parked, { ...area, sizeMultiplier: 1 }), 1);
+  assert.equal(parkedVehicleSizeMultiplier(parked, { ...area, sizeMultiplier: 0 }), 1);
+  assert.equal(parkedVehicleSizeMultiplier(parked, SHIPPED_AREA), 1);
+});
+
+test('displayVehicleSize reports the enlarged size the canvas draws', () => {
+  const area = { ...SHIPPED_AREA, modelScale: 0.64, modelDepthBySeats: { 4: 1.05 }, sizeMultiplier: 2 };
+  const base = displayVehicleSize({ seats: 4, state: 'parked', containerType: 1 }, { ...area, sizeMultiplier: 1 });
+  const doubled = displayVehicleSize({ seats: 4, state: 'parked', containerType: 1 }, area);
+  assert.ok(Math.abs(doubled.length - base.length * 2) < 1e-9);
+  assert.ok(Math.abs(doubled.width - base.width * 2) < 1e-9);
+  // A car that has left the field is drawn at the authored size.
+  const driving = displayVehicleSize({ seats: 4, state: 'moving-to-spot' }, area);
+  assert.ok(Math.abs(driving.length - base.length) < 1e-9);
 });

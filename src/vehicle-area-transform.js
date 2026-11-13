@@ -169,6 +169,30 @@ export function collisionVehicleSize(vehicle) {
 }
 
 /**
+ * How much `vehicleArea.sizeMultiplier` enlarges this car right now.
+ *
+ * The multiplier is a board-scale control: it resizes cars standing in the
+ * parking field only. A car that starts following a route, or that sits on a
+ * mechanism whose slot spacing was authored for the original body (conveyor,
+ * gate queue, lift), snaps back to the authored model size so the geometry it
+ * was laid out against never changes. Accepts both runtime snapshots (`state`)
+ * and raw authored documents (`containerType`).
+ */
+export function parkedVehicleSizeMultiplier(vehicle, area) {
+  const multiplier = Number(area?.sizeMultiplier);
+  if (!(multiplier > 0) || multiplier === 1) return 1;
+  const state = vehicle?.state;
+  const containerType = vehicle?.containerType;
+  // Neither a runtime state nor an authored container record means this is a
+  // synthetic preview (a garage exit box, for example), which sits on a route.
+  if (state == null && containerType == null) return 1;
+  if (state != null && !['parked', 'colliding'].includes(state)) return 1;
+  if (vehicle?.conveyorId != null || vehicle?.gateId != null || vehicle?.elevatorId != null) return 1;
+  if (containerType != null && containerType !== 1) return 1;
+  return multiplier;
+}
+
+/**
  * Car width/length in display units — the size the playable actually renders.
  *
  * Falls back to the collision footprint scaled into display units when the
@@ -177,14 +201,15 @@ export function collisionVehicleSize(vehicle) {
 export function displayVehicleSize(vehicle, area) {
   const collision = collisionVehicleSize(vehicle);
   const transform = vehicleAreaTransformFor(area);
+  const sizeMultiplier = parkedVehicleSizeMultiplier(vehicle, area);
   const depth = Number(area?.modelDepthBySeats?.[vehicle?.seats]);
   const modelScale = Number(area?.modelScale);
   if (!(depth > 0) || !(modelScale > 0)) {
     return {
-      width: collision.width * transform.scale,
-      length: collision.length * transform.scale
+      width: collision.width * transform.scale * sizeMultiplier,
+      length: collision.length * transform.scale * sizeMultiplier
     };
   }
-  const length = depth * modelScale;
+  const length = depth * modelScale * sizeMultiplier;
   return { width: length * (collision.width / collision.length), length };
 }

@@ -146,8 +146,12 @@ test('the countdown siren clip ships and is only inlined when the toggle is on',
   // 2 s at 48 kbps is ~12 KB; anything near a megabyte would blow the ad budget.
   assert.ok(bytes.length > 4000 && bytes.length < 60000, `siren is ${bytes.length} bytes`);
   const packager = readFileSync(new URL('../scripts/package-applovin-single-html.mjs', import.meta.url), 'utf8');
-  assert.match(packager, /COUNTDOWN_SIREN_ASSET/);
-  assert.match(packager, /countdown\?\.sirenEnabled/);
+  // The siren/progress/stamina whitelist moved into the shared inline-asset
+  // module so the editor's size preflight measures the same package.
+  const inlineAssets = readFileSync(new URL('../src/playable-inline-assets.js', import.meta.url), 'utf8');
+  assert.match(inlineAssets, /COUNTDOWN_SIREN_ASSET/);
+  assert.match(inlineAssets, /countdown\?\.sirenEnabled/);
+  assert.match(packager, /collectPlayableInlineAssetUrls\(\{/);
 });
 
 test('countdown timeout jump reuses the install gate and suppresses the failure card', () => {

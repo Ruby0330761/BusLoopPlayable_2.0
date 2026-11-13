@@ -87,6 +87,18 @@ const MAX_WEATHER_ASSET_BYTES = 2 * 1024 * 1024;
 const FREE_ASSET_ROOT = path.resolve('artifacts', 'editor-free-assets');
 const MAX_FREE_ASSET_BYTES = 4 * 1024 * 1024;
 
+// Where an `/assets/...` URL lives on disk. The packaged build resolves them
+// from `public/`, while the five editor libraries are served by middleware from
+// the artifacts volume, so both have to be searchable for a size preflight.
+const PLAYABLE_ASSET_SIZE_ROOTS = Object.freeze([
+  ['/assets/editor-backgrounds/', BACKGROUND_ASSET_ROOT],
+  ['/assets/editor-prerolls/', PRE_ROLL_ASSET_ROOT],
+  ['/assets/editor-bgm/', BGM_ASSET_ROOT],
+  ['/assets/editor-effects/', WEATHER_ASSET_ROOT],
+  ['/assets/editor-free-assets/', FREE_ASSET_ROOT],
+  ['/assets/', path.resolve('public', 'assets')]
+]);
+
 const MAX_PREFAB_BYTES = 12 * 1024 * 1024;
 const MAX_SPATIAL_PACKAGE_BYTES = 4 * 1024 * 1024;
 const SPATIAL_BACKUP_ROOT = path.resolve('artifacts', 'spatial-conveyor-backups');
@@ -1935,6 +1947,48 @@ export default defineConfig({
             sendJson(response, 200, { item: result });
           } catch (error) {
             sendJsonLevelError(response, error);
+          }
+          return;
+        }
+        if (pathname === '/__playable-asset-sizes' && request.method === 'POST') {
+          // Preflight support for the editor's 校验 panel: the browser decides
+          // *which* assets a package inlines (src/playable-inline-assets.js is
+          // shared with the packager), but only the server can stat them.
+          // Sending the URL list keeps the two from drifting: the same list
+          // drives both the estimate and the real build.
+          try {
+            const body = JSON.parse(await readRequestBody(request, 512 * 1024, 'Asset size request'));
+            const urls = Array.isArray(body?.urls) ? body.urls : [];
+            if (urls.length > 4000) throw new Error('Too many asset URLs requested.');
+            const items = await Promise.all(urls.map(async (url) => {
+              if (typeof url !== 'string' || !url.startsWith('/assets/')) {
+                return { url: String(url ?? ''), bytes: 0, exists: false };
+              }
+              for (const [prefix, root] of PLAYABLE_ASSET_SIZE_ROOTS) {
+                if (!url.startsWith(prefix)) continue;
+                const relative = url.slice(prefix.length);
+                if (!relative || relative.endsWith('/')) {
+                  return { url, bytes: 0, exists: false };
+                }
+                // Nested paths are normal here (`applovin/textures/x.jpg`); the
+                // traversal guard is a containment check, not a flat-name rule.
+                const resolved = path.resolve(root, relative);
+                if (resolved !== root && !resolved.startsWith(`${root}${path.sep}`)) {
+                  return { url, bytes: 0, exists: false };
+                }
+                try {
+                  const info = await stat(resolved);
+                  return { url, bytes: info.size, exists: info.isFile() };
+                } catch (error) {
+                  if (error.code !== 'ENOENT') throw error;
+                  return { url, bytes: 0, exists: false };
+                }
+              }
+              return { url, bytes: 0, exists: false };
+            }));
+            sendJson(response, 200, { items });
+          } catch (error) {
+            sendJson(response, error.statusCode ?? 400, { error: error.message });
           }
           return;
         }

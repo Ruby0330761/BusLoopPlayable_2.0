@@ -3,13 +3,15 @@ set -eu
 
 PORT="${1:-5173}"
 # The deploy platform identifies a service by its container name, so this has
-# to match the project name it was registered under. The data directory stays
-# on the original path on purpose: /data/bus-loop-playable-editor/artifacts
-# holds the live authored levels, and pointing a fresh, empty volume at it
-# would reseed from the image's 32 bundled levels and lose the other ~70.
+# to match the project name it was registered under.
 PROJECT_NAME="bus-loop-playable-editor-wxj"
 IMAGE_NAME="bus-loop-playable-editor-wxj"
-DATA_ROOT="/data/bus-loop-playable-editor"
+# The platform only allows host volumes under /data/<project-name>, so the data
+# root had to move off the older /data/bus-loop-playable-editor path. That old
+# directory holds the live authored levels, so it is migrated once below before
+# anything can seed an empty volume over it.
+DATA_ROOT="/data/bus-loop-playable-editor-wxj"
+LEGACY_DATA_ROOT="/data/bus-loop-playable-editor"
 ARTIFACTS_DIR="${DATA_ROOT}/artifacts"
 SEED_MARKER="${DATA_ROOT}/.seeded-v1"
 
@@ -17,6 +19,21 @@ docker tag "${IMAGE_NAME}:latest" "${IMAGE_NAME}:rollback" 2>/dev/null || true
 docker build -t "${IMAGE_NAME}:latest" .
 
 mkdir -p "${ARTIFACTS_DIR}"
+
+# One-time migration off the legacy data root. Without this the fresh directory
+# has no marker, the seeding block below runs, and the image's bundled levels
+# overwrite the ~117 authored levels that live on the server. A failed copy
+# aborts the deploy (`set -e`) instead of quietly reseeding.
+if [ ! -f "${SEED_MARKER}" ] && [ -d "${LEGACY_DATA_ROOT}/artifacts" ]; then
+  LEGACY_ENTRIES="$(ls -A "${LEGACY_DATA_ROOT}/artifacts" 2>/dev/null | wc -l | tr -d ' ')"
+  if [ "${LEGACY_ENTRIES}" != "0" ]; then
+    echo "Migrating authored data from ${LEGACY_DATA_ROOT} (${LEGACY_ENTRIES} entries)..."
+    cp -a "${LEGACY_DATA_ROOT}/artifacts/." "${ARTIFACTS_DIR}/"
+    touch "${SEED_MARKER}"
+    echo "Migration complete."
+  fi
+fi
+
 if [ ! -f "${SEED_MARKER}" ]; then
   SEED_CONTAINER="${PROJECT_NAME}-seed-$$"
   docker create --name "${SEED_CONTAINER}" "${IMAGE_NAME}:latest" >/dev/null
@@ -27,14 +44,7 @@ fi
 
 docker stop "${PROJECT_NAME}" >/dev/null 2>&1 || true
 docker rm "${PROJECT_NAME}" >/dev/null 2>&1 || true
-# Older releases of this editor were deployed as `bus-loop-playable-editor`
-# and may still be holding the port after the service record was removed.
-# Stop that leftover container too, or the new one cannot bind.
-LEGACY_NAME="bus-loop-playable-editor"
-if [ "${LEGACY_NAME}" != "${PROJECT_NAME}" ]; then
-  docker stop "${LEGACY_NAME}" >/dev/null 2>&1 || true
-  docker rm "${LEGACY_NAME}" >/dev/null 2>&1 || true
-fi
+
 CONTAINER_ID="$(docker run -d \
   --name "${PROJECT_NAME}" \
   --restart unless-stopped \

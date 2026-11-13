@@ -71,8 +71,13 @@ async function main() {
   // Conveyor mechanism presentation is shipped from its isolated fixed config.
   // Ignore stale temporary component overrides from older tuning exports.
   delete patch.conveyorVisual;
+  // `vehicleBoardingPulse` was replaced by `vehicleArea.sizeMultiplier`. Tuning
+  // JSON saved before that rename still carries it, and the exporter rejects any
+  // key the current tuning does not declare, so drop it here.
+  delete patch.vehicleBoardingPulse;
   const next = deepMerge(current, patch);
   delete next.conveyorVisual;
+  delete next.vehicleBoardingPulse;
   if (stripExportMetadata) {
     delete next.exportNaming;
     // `branding.localization.previewLocale` is an editor-only preview switch.

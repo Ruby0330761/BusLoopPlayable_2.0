@@ -1,4 +1,9 @@
 // Generated from Unity prefab overrides by scripts/extract-unity-conveyor-layouts.mjs.
+// The 3D/sprite tracks (footage8/9/10/11) are imported separately from shipped
+// playables by scripts/import-playable-footage-tracks.mjs and merged below, so
+// re-running the Unity extractor never drops them.
+import { PLAYABLE_TRACK_LAYOUTS } from './playable-track-layouts.js';
+
 const deepFreeze = (value) => {
   if (!value || typeof value !== 'object' || Object.isFrozen(value)) return value;
   Object.freeze(value);
@@ -7,6 +12,7 @@ const deepFreeze = (value) => {
 };
 
 export const CONVEYOR_LAYOUTS = deepFreeze({
+  ...Object.fromEntries(PLAYABLE_TRACK_LAYOUTS.map((layout) => [layout.id, layout])),
   "dualQueue2": {
     "id": "dualQueue2",
     "label": "GameSceneDualQueue2",

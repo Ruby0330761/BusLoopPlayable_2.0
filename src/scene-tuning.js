@@ -114,7 +114,7 @@ export const SCENE_TUNING = {
     },
     "localization": {
       "enabled": 1,
-      "previewLocale": "auto"
+      "previewLocale": "en"
     }
   },
   "camera": {
@@ -616,6 +616,84 @@ export const SCENE_TUNING = {
       ]
     }
   },
+  // Tuning for the tracks imported from shipped playables (footage8/9/10/11).
+  // These are keyed by layout id and read through getSelectedConveyorTuning,
+  // which falls back here when conveyorLayouts has no entry. The defaults are
+  // the values the playable that actually selects each track authored, so a
+  // fresh selection matches the reference. Do not copy these from a playable
+  // that merely carries the track as an inactive preset -- those blocks hold
+  // different, stale numbers (that mistake put footage10 at 0.25/65.4% instead
+  // of its real 0.23/85%).
+  "playableTracks": {
+    "footage8": {
+      "positionX": 0,
+      "positionY": 0.025,
+      "positionZ": -2.2,
+      "scale": 2,
+      "rotationYDegrees": 0,
+      "rowSpacing": 0.2,
+      "speed": 0.8,
+      "initialFillSpeedMultiplier": 4,
+      "passengerSizeMultiplier": 1.2,
+      "roadJoinLanding": 0.14,
+      "roadJoinSteps": 3,
+      "roadJoinEnabled": 1,
+      "roadJoinExtension": -0.18,
+      "footClearance": 0.008,
+      "boardingPositionPercent": 30,
+      "boardingWidthPercent": 6,
+      "showBoardingZone": 0
+    },
+    "footage9": {
+      "positionX": 0,
+      "positionY": 0.1,
+      "positionZ": -2.2,
+      "scale": 1.75,
+      "rotationYDegrees": 0,
+      "rowSpacing": 0.25,
+      "speed": 0.8,
+      "initialFillSpeedMultiplier": 4,
+      "footClearance": 0.008,
+      "boardingPositionPercent": 65.4,
+      "boardingWidthPercent": 10,
+      "showBoardingZone": 1
+    },
+    "footage10": {
+      "positionX": -0.35,
+      "positionY": 0.15,
+      "positionZ": -2.35,
+      "scale": 1.8,
+      "rotationYDegrees": 0,
+      "rowSpacing": 0.23,
+      "speed": 0.8,
+      "initialFillSpeedMultiplier": 4,
+      "footClearance": 0.008,
+      "boardingPositionPercent": 85,
+      "boardingWidthPercent": 7.8,
+      "showBoardingZone": 0,
+      "showLeftQueue": 0
+    },
+    "footage11": {
+      "positionX": 0.1,
+      "positionY": 1.05,
+      "positionZ": -2.15,
+      "scale": 1.55,
+      "rotationYDegrees": 0,
+      "rowSpacing": 0.2,
+      "speed": 0.8,
+      "initialFillSpeedMultiplier": 4,
+      "footClearance": 0.008,
+      "boardingPositionPercent": 35.2,
+      "boardingWidthPercent": 40,
+      "showBoardingZone": 1,
+      "queueEnabled": 1,
+      "passengerSpeed": 0.25,
+      "retreatSpeed": 0.9,
+      "initialHeadPercent": 42,
+      "disableAcceleration": 1,
+      "warningStartPercent": 52.2
+    }
+  },
   "conveyorCurve": {
     "offsetX": 0,
     "offsetZ": 0.6,
@@ -792,11 +870,8 @@ export const SCENE_TUNING = {
       "6": 1.23,
       "10": 1.48
     },
-    "modelScale": 0.64
-  },
-  "vehicleBoardingPulse": {
-    "scale": 1.09,
-    "speed": 11.7
+    "modelScale": 0.64,
+    "sizeMultiplier": 1
   },
   "vehicleGuideHand": {
     "enabled": 1,

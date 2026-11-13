@@ -18,9 +18,16 @@ so platform package export and runtime validation stay available on the server.
 
 ## Persistence
 
-Editor data is stored under `/data/bus-loop-playable-editor` on the host
-(the path predates the `-wxj` service name and is kept so existing levels
-survive redeploys):
+Editor data is stored under `/data/bus-loop-playable-editor-wxj` on the host.
+The deploy platform only permits host volumes under the project directory, so
+the data root moved off the older `/data/bus-loop-playable-editor` path.
+
+`start.sh` migrates the legacy directory once on the first deploy after the
+move: if the new root has no `.seeded-v1` marker but the old directory still
+holds files, it copies them across and writes the marker. Without that copy the
+empty directory would look unseeded and the image's bundled levels would
+overwrite the authored levels. A failed copy aborts the deploy rather than
+reseeding. `rollback.sh` uses the same root, so a rollback sees the same data.
 
 - `artifacts/`: authored levels, backups, selected level, and the generated
   Unity level catalog updated by remote imports

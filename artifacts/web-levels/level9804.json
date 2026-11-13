@@ -986,10 +986,6 @@
       },
       "modelScale": 0.65
     },
-    "vehicleBoardingPulse": {
-      "scale": 1.09,
-      "speed": 11.7
-    },
     "vehicleGuideHand": {
       "enabled": 0,
       "levelKey": "level36",
