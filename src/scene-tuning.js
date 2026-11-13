@@ -161,6 +161,8 @@ export const SCENE_TUNING = {
     "multiplier": 2
   },
   "installGate": {
+    "enabled": 1,
+    "customThresholdEnabled": 0,
     "successfulOperationThreshold": 64
   },
   "collision": {

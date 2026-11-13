@@ -1493,6 +1493,8 @@ test('editor sizing, source background ratio, and passenger shadow anchor stay w
     appearSpeed: 1.45
   });
   assert.deepEqual(SCENE_TUNING.installGate, {
+    enabled: 1,
+    customThresholdEnabled: 0,
     successfulOperationThreshold: 64
   });
   assert.deepEqual(SCENE_TUNING.gameOver, {
@@ -2635,8 +2637,8 @@ test('main thread saves and restores scene tuning from localStorage', () => {
   assert.doesNotMatch(mainSource, /countedInstallVehicles = new Set\(\)/);
   assert.match(mainSource, /INSTALL_GATE_VEHICLE_STATES = new Set\(\['at-spot', 'boarding-final', 'departing', 'done'\]\)/);
   assert.match(mainSource, /const markInstallVehicle = \(vehicleId\) => \{/);
-  assert.match(mainSource, /const threshold = Math\.max\(1, getSuccessfulOperationThreshold\(\)\)/);
-  assert.match(mainSource, /levelSession\.recordSuccessfulVehicle\(vehicleId, threshold\)/);
+  assert.match(mainSource, /const threshold = gateEnabled\s*\? Math\.max\(1, getSuccessfulOperationThreshold\(\)\)/);
+  assert.match(mainSource, /levelSession\.recordSuccessfulVehicle\(vehicleId, gateEnabled \? threshold : Infinity\)/);
   assert.match(mainSource, /const handleVehicleClick = \(vehicleId\) => \{/);
   assert.match(mainSource, /const result = game\.clickVehicle\(vehicleId\)/);
   assert.match(mainSource, /^\s*if \(result\?\.ok\) \{\r?\n\s*startBackgroundMusic\(\);\r?\n\s*if \(markInstallVehicle\(vehicleId\)\) InstallFullGame\(\);/m);
@@ -2813,7 +2815,7 @@ test('successful operation store redirect uses the baked threshold and remains e
   assert.match(editorSource, /installGate\.successfulOperationThreshold/);
   assert.match(mainSource, /SCENE_TUNING\.installGate\?\.successfulOperationThreshold/);
   assert.match(mainSource, /^\s*if \(result\?\.ok\) \{\r?\n\s*startBackgroundMusic\(\);\r?\n\s*if \(markInstallVehicle\(vehicleId\)\) InstallFullGame\(\);/m);
-  assert.match(mainSource, /levelSession\.recordSuccessfulVehicle\(vehicleId, threshold\)/);
+  assert.match(mainSource, /levelSession\.recordSuccessfulVehicle\(vehicleId, gateEnabled \? threshold : Infinity\)/);
   assert.doesNotMatch(mainSource, /INSTALL_GATE_AFTER_SUCCESSFUL_OPERATIONS_ENABLED/);
 });
 

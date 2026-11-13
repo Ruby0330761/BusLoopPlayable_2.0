@@ -15,6 +15,7 @@ import { BUILD_CHANGELOG, changelogVersions } from './build-changelog.js';
 import { normalizeCountdownConfig } from './countdown.js';
 import { BRANDING_LOCALE_OPTIONS } from './branding-localization.js';
 import { normalizeStaminaConfig } from './stamina.js';
+import { getExportVariantPlan, isInstallGateEnabled, parseExportVariantValues, syncExportVariantTuning } from './export-variants.js';
 import {
   isForeignLevelOwner,
   levelOwnerHeaders,
@@ -537,11 +538,10 @@ const FIELD_GROUPS = [
       ['\u683c\u5f0f', 'exportNaming.format', 0, 0, 1, null, 'filename'],
       ['\u8bbe\u8ba1\u5e08', 'exportNaming.designer', 0, 0, 1, null, 'filename'],
       ['\u9700\u6c42\u4eba', 'exportNaming.requester', 0, 0, 1, null, 'filename'],
-      ['\u6b65\u6570', 'exportNaming.steps', 0, 0, 1, null, 'filename'],
-      // The tail segment is the delivery version tag (N/B/T/BT). It used to be
-      // the stamina field; a stale `stamina` key fails tune validation outright,
-      // so the row must write the key the export template actually defines.
-      ['\u5c3e\u6bb5\u7248\u672c', 'exportNaming.version', 0, 0, 1, null, 'filename'],
+      ['\u6b65\u6570', 'exportNaming.steps', 0, 0, 1, null, 'variant'],
+      // Reuse the existing tail field for one or more stamina variants. The
+      // exporter expands it into scalar hp names before validating artifacts.
+      ['\u5c3e\u6bb5\u7248\u672c', 'exportNaming.version', 0, 0, 1, null, 'variant'],
       ['AppLovin \u6e20\u9053', 'exportNaming.channels.applovin', 0, 0, 1, null, 'filename'],
       ['Google Ads \u6e20\u9053', 'exportNaming.channels.google-ads', 0, 0, 1, null, 'filename'],
       ['Meta \u6e20\u9053', 'exportNaming.channels.meta', 0, 0, 1, null, 'filename'],
@@ -758,6 +758,7 @@ const FIELD_GROUPS = [
   {
     title: '\u5546\u5e97\u8df3\u8f6c',
     fields: [
+      ['按成功操作次数跳转', 'installGate.enabled', 0, 1, 1, null, 'toggle'],
       ['\u6210\u529f\u64cd\u4f5c\u6b21\u6570', 'installGate.successfulOperationThreshold', 1, 200, 1],
       ['Android \u94fe\u63a5', 'storeLinks.android', 0, 0, 1, null, 'url'],
       ['iOS \u94fe\u63a5', 'storeLinks.ios', 0, 0, 1, null, 'url']
@@ -1362,6 +1363,7 @@ export function createSceneEditor(root, {
           <button class="editor-export-button" type="button">\u5bfc\u51fa\u5f53\u524d\u5e73\u53f0</button>
           <button class="editor-export-all-button" type="button">\u4e00\u952e\u5bfc\u51fa\u5168\u90e8</button>
         </div>
+        <p class="editor-export-limit editor-export-variants" role="status" aria-live="polite"></p>
         <p class="editor-export-limit" role="note">\u6240\u6709\u6e20\u9053\u4e0a\u9650 5 MB\uff1a\u8d85\u8fc7\u7684\u5305\u4e0d\u4f1a\u4e0b\u8f7d\uff0c\u5bfc\u51fa\u4f1a\u76f4\u63a5\u62a5\u9519\u5e76\u5217\u51fa\u5360\u7528\u6700\u5927\u7684\u7d20\u6750\u3002</p>
         <p class="editor-export-status" role="status" aria-live="polite" aria-atomic="true">\u5c31\u7eea</p>
         <p class="editor-export-events" role="status" aria-live="polite" aria-atomic="true">\u5bfc\u51fa\u5305\u81ea\u5e26 AppLovin 12 \u4e2a\u6807\u51c6\u4e8b\u4ef6</p>
@@ -1383,6 +1385,7 @@ export function createSceneEditor(root, {
   const exportButton = root.querySelector('.editor-export-button');
   const exportAllButton = root.querySelector('.editor-export-all-button');
   const exportStatus = root.querySelector('.editor-export-status');
+  const exportVariantsStatus = root.querySelector('.editor-export-variants');
   const exportEventsStatus = root.querySelector('.editor-export-events');
   const localeSelect = root.querySelector('.editor-locale-select');
   const screenshotSelect = root.querySelector('.editor-screenshot-select');
@@ -1440,6 +1443,40 @@ export function createSceneEditor(root, {
     }
   }
 
+  function updateExportVariantControls() {
+    const tuning = getTuning();
+    for (const [path, enabled] of [
+      ['exportNaming.version', Number(tuning.stamina?.enabled) === 1],
+      ['exportNaming.steps', isInstallGateEnabled(tuning.installGate)]
+    ]) {
+      const controls = inputs.get(path);
+      if (!controls) continue;
+      controls.row.classList.toggle('is-readonly', !enabled);
+      controls.textInput.disabled = !enabled;
+      if (!enabled) controls.textInput.value = 'N';
+      controls.updateValidity();
+    }
+    const gateControls = inputs.get('installGate.successfulOperationThreshold');
+    if (gateControls) {
+      const disabled = !isInstallGateEnabled(tuning.installGate);
+      gateControls.row.classList.toggle('is-readonly', disabled);
+      gateControls.range.disabled = disabled;
+      gateControls.number.disabled = disabled;
+    }
+    let valid = true;
+    try {
+      const plan = getExportVariantPlan(tuning);
+      exportVariantsStatus.textContent = `${plan.count}个版本；当前渠道 ${plan.count} 份，全部渠道 ${plan.count * 7} 份。多值用 / 分隔，预览使用第一个值。`;
+    } catch (error) {
+      valid = false;
+      exportVariantsStatus.textContent = error.message;
+    }
+    exportVariantsStatus.dataset.state = valid ? '' : 'error';
+    const invalidCountdown = [...inputs.values()].some(controls => controls.isCountdownNumber && !controls.updateValidity());
+    exportButton.disabled = exportAllButton.disabled = playableExportBusy || !valid || invalidCountdown;
+    return valid;
+  }
+
   const sameTuning = (left, right) => JSON.stringify(left) === JSON.stringify(right);
   function updateHistoryButtons() {
     undoButton.disabled = tuningUndoStack.length === 0;
@@ -1447,6 +1484,7 @@ export function createSceneEditor(root, {
   }
   function commitTuning(next, { path, merge = false } = {}) {
     const before = structuredClone(getTuning());
+    syncExportVariantTuning(next, path);
     const result = setTuning(next, { path });
     const after = structuredClone(result ?? getTuning());
     if (!restoringHistory && !sameTuning(before, after)) {
@@ -1523,6 +1561,10 @@ export function createSceneEditor(root, {
   });
 
   async function exportPlayable({ all = false } = {}) {
+    if (!updateExportVariantControls()) {
+      [...inputs.values()].find(controls => controls.isVariant && !controls.updateValidity())?.textInput.reportValidity();
+      return;
+    }
     if (!updateCountdownControls()) {
       const invalidCountdownControl = [...inputs.values()]
         .find((controls) => controls.isCountdownNumber && !controls.number.disabled && !controls.updateValidity());
@@ -1547,6 +1589,8 @@ export function createSceneEditor(root, {
     const platformLabel = all
       ? `\u5168\u90e8 7 \u4e2a\u5e73\u53f0 \u00d7 ${brandingSetLabel}`
       : `${PLAYABLE_EXPORT_PLATFORMS.find(([id]) => id === platform)?.[1] ?? platform}\uff08${brandingSetLabel}\uff09`;
+    const variantCount = getExportVariantPlan(getTuning()).count;
+    const exportLabel = `${platformLabel}，${variantCount}个版本 / ${variantCount * (all ? 7 : 1)}份`;
     playableExportBusy = true;
     exportSetSelect.disabled = true;
     exportSelect.disabled = true;
@@ -1555,14 +1599,14 @@ export function createSceneEditor(root, {
     exportButton.setAttribute('aria-busy', 'true');
     exportAllButton.setAttribute('aria-busy', 'true');
     exportStatus.dataset.state = 'busy';
-    exportStatus.textContent = `\u6b63\u5728\u6253\u5305 ${platformLabel}...`;
+    exportStatus.textContent = `\u6b63\u5728\u6253\u5305 ${exportLabel}...`;
     // The first export of a setup rebuilds every platform (about two minutes
     // on the one-CPU server) while a repeat of the same setup is much faster.
     // A live counter keeps that wait legible instead of looking hung.
     const exportStartedAt = Date.now();
     const exportElapsedTimer = setInterval(() => {
       const seconds = Math.round((Date.now() - exportStartedAt) / 1000);
-      exportStatus.textContent = `\u6b63\u5728\u6253\u5305 ${platformLabel}...\uff08\u5df2\u7528 ${seconds} \u79d2\uff09`;
+      exportStatus.textContent = `\u6b63\u5728\u6253\u5305 ${exportLabel}...（已用 ${seconds} 秒）`;
     }, 1000);
     try {
       const exportPayload = getPlayableExportPayload() ?? { tuning: getTuning() };
@@ -1591,7 +1635,7 @@ export function createSceneEditor(root, {
       }
 
       const blob = await response.blob();
-      const filename = all
+      const filename = all || response.headers.get('Content-Type')?.includes('application/zip')
         ? (downloadFilename(response, 'all').replace(/\.html$/i, '.zip'))
         : downloadFilename(response, platform);
       const objectUrl = URL.createObjectURL(blob);
@@ -1629,6 +1673,7 @@ export function createSceneEditor(root, {
       exportSelect.disabled = false;
       playableExportBusy = false;
       updateCountdownControls();
+      updateExportVariantControls();
       exportButton.removeAttribute('aria-busy');
       exportAllButton.removeAttribute('aria-busy');
     }
@@ -1677,7 +1722,8 @@ export function createSceneEditor(root, {
       const isToggle = control === 'toggle';
       const isCountdownNumber = control === 'countdown-number';
       const isFilename = control === 'filename';
-      const isText = control === 'text' || isFilename;
+      const isVariant = control === 'variant';
+      const isText = control === 'text' || isFilename || isVariant;
       const isUrl = control === 'url';
       const row = document.createElement('label');
       row.className = 'editor-field';
@@ -1714,25 +1760,37 @@ export function createSceneEditor(root, {
         textInput.maxLength = 4096;
       }
       const urlInput = row.querySelector('.editor-url');
+      if (isVariant) {
+        textInput.maxLength = 256;
+        textInput.spellcheck = false;
+        textInput.placeholder = path.endsWith('.version') ? '如 3/5/10' : '如 10/20';
+      }
       if (control === 'stamina-number') {
         range.setAttribute('aria-label', `${group.title} ${label}滑条`);
+        let livesDirty = false;
         const commitLives = (rawValue) => {
           const current = normalizeStaminaConfig(getTuning().stamina);
           const lives = rawValue.trim() === '' ? current.lives : normalizeStaminaConfig({ lives: rawValue }).lives;
-          if (lives !== current.lives) {
+          if (lives !== current.lives || getTuning().exportNaming?.version !== String(lives)) {
             const next = structuredClone(getTuning());
             next.stamina = { ...current, lives };
             commitTuning(next, { path });
           }
           number.value = String(lives);
           range.value = String(lives);
+          sync();
         };
         range.addEventListener('input', () => commitLives(range.value));
-        number.addEventListener('blur', () => commitLives(number.value));
+        number.addEventListener('input', () => { livesDirty = true; });
+        number.addEventListener('blur', () => {
+          if (livesDirty) commitLives(number.value);
+          livesDirty = false;
+        });
         number.addEventListener('keydown', event => {
           if (event.key !== 'Enter') return;
           event.preventDefault();
-          commitLives(number.value);
+          if (livesDirty) commitLives(number.value);
+          livesDirty = false;
         });
         inputs.set(path, { row, range, number, step });
         section.append(row);
@@ -1780,7 +1838,7 @@ export function createSceneEditor(root, {
             setAtPath(next, 'vehicleGuideHand.levelKey', getAtPath(next, 'level.selected'));
           }
           commitTuning(next, { path });
-          if (path === 'firstClickGuide.enabled' || path.startsWith('countdown.') || path.startsWith('stamina.')) sync();
+          if (path === 'firstClickGuide.enabled' || path.startsWith('countdown.') || path.startsWith('stamina.') || path.startsWith('installGate.')) sync();
         });
         inputs.set(path, { row, checkbox, step });
         section.append(row);
@@ -1788,6 +1846,15 @@ export function createSceneEditor(root, {
       }
       if (isText) {
         const updateValidity = () => {
+          if (isVariant) {
+            const enabled = path.endsWith('.version') ? Number(getTuning().stamina?.enabled) === 1 : isInstallGateEnabled(getTuning().installGate);
+            let message = '';
+            try { parseExportVariantValues(textInput.value, path.endsWith('.version') ? 'stamina' : 'steps', enabled); }
+            catch (error) { message = error.message; }
+            textInput.setAttribute('aria-invalid', String(Boolean(message)));
+            textInput.setCustomValidity(message);
+            return !message;
+          }
           if (!isFilename) return true;
           const valid = isValidExportNamingPart(textInput.value);
           textInput.setAttribute('aria-invalid', String(!valid));
@@ -1799,9 +1866,10 @@ export function createSceneEditor(root, {
           const next = structuredClone(getTuning());
           setAtPath(next, path, textInput.value);
           commitTuning(next, { path, merge: true });
+          if (isVariant) sync();
         });
         textInput.addEventListener('blur', updateValidity);
-        inputs.set(path, { row, textInput, isFilename, updateValidity });
+        inputs.set(path, { row, textInput, isFilename, isVariant, updateValidity });
         section.append(row);
         continue;
       }
@@ -1894,6 +1962,7 @@ export function createSceneEditor(root, {
         if (range) range.value = String(value);
         number.value = formatValue(value, step);
         if (color) color.value = formatColor(value);
+        if (path === 'installGate.successfulOperationThreshold') sync();
       };
       range?.addEventListener('input', () => commit(range.value));
       number.addEventListener(isColor ? 'change' : 'input', () => commit(number.value));
@@ -3448,6 +3517,7 @@ export function createSceneEditor(root, {
     updateConveyorLayoutVisibility(tuning);
     updateCountdownControls();
     updateStaminaControls();
+    updateExportVariantControls();
     // 起点 X is computed while auto-centring is on, so leave the row in place but
     // mark it read-only -- dragging a slider that cannot win the argument reads
     // as a broken control.

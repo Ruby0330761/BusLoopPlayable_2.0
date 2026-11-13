@@ -892,7 +892,7 @@ button:hover { transform: translateY(-1px); background: #fff; }
   width: 100%; min-width: 0; padding: 7px 8px; border: 1px solid rgba(16,35,61,.14);
   border-radius: 8px; background: #fff; color: #173451; font: 700 11px/1.2 'Poppins Branding', Arial, sans-serif;
 }
-.editor-url[aria-invalid="true"] { border-color: #c53b3b; box-shadow: 0 0 0 1px rgba(197,59,59,.14); }
+.editor-url[aria-invalid="true"], .editor-text[aria-invalid="true"] { border-color: #c53b3b; box-shadow: 0 0 0 1px rgba(197,59,59,.14); }
 .editor-playable-export { border-color: rgba(31, 111, 76, .24); background: rgba(250, 255, 252, .9); }
 .editor-export-set { display: grid; gap: 6px; margin-bottom: 8px; color: #5a7085; font-size: 11px; }
 .editor-export-set-select {
@@ -930,6 +930,7 @@ button:hover { transform: translateY(-1px); background: #fff; }
 .editor-export-status[data-state="busy"] { color: #8a5b16; }
 .editor-export-status[data-state="success"] { color: #21764f; }
 .editor-export-status[data-state="error"] { color: #a43a38; }
+.editor-export-variants[data-state="error"] { color: #a43a38; }
 .editor-export-limit {
   margin: 6px 0 0; color: #7a6a48; font-size: 10px; line-height: 1.4;
   padding: 5px 7px; border-radius: 5px; background: rgba(255, 246, 224, .9);

@@ -24,6 +24,7 @@ import {
 } from './progress-hud-config.js';
 import { normalizeStaminaConfig, validateStaminaConfig } from './stamina.js';
 import { createStaminaView } from './stamina-view.js';
+import { isInstallGateEnabled, syncExportVariantTuning } from './export-variants.js';
 import { drawStageOverlays } from './screenshot-overlay.js';
 import { createGameAudioController } from './audio-controller.js';
 import { resolveLevelAudioConfig } from './level-audio-config.js';
@@ -582,8 +583,7 @@ function migrateExportNamingTuning(savedTuning) {
   const replacements = [
     ['requirementCode', ['AC-2607141', 'BUS'], 'BL'],
     ['designer', ['NLY'], 'WXJ'],
-    ['requester', ['ZZN'], 'TJW'],
-    ['steps', ['5moves'], '0']
+    ['requester', ['ZZN'], 'TJW']
   ];
   let changed = false;
   // The tail segment was renamed from `stamina` to `version` (N/B/T/BT). The
@@ -1733,7 +1733,7 @@ function InstallFullGame() {
 
 function getSuccessfulOperationThreshold() {
   const configuredThreshold = Number(SCENE_TUNING.installGate?.successfulOperationThreshold);
-  const hasCustomThreshold = !EDITOR_ENABLED
+  const hasCustomThreshold = !EDITOR_ENABLED || Number(SCENE_TUNING.installGate?.customThresholdEnabled) === 1
     || localStorage.getItem(INSTALL_THRESHOLD_CUSTOM_STORAGE_KEY) === '1';
   if (!hasCustomThreshold) return Math.max(1, LEVEL_1.vehicles?.length ?? 40);
   if (Number.isFinite(configuredThreshold) && configuredThreshold > 0) {
@@ -2041,7 +2041,8 @@ async function startRuntime() {
   // would open the store half way through the second stage and swallow clicks.
   // A choice session is counted after the pick, because only four of the five
   // authored maps are ever played and the fifth would inflate the gate.
-  if (!EDITOR_ENABLED && sessionLevels.length > 1 && !sessionChoices.some(Boolean)) {
+  const hasAuthoredStepThreshold = () => Number(SCENE_TUNING.installGate?.customThresholdEnabled) === 1;
+  if (!EDITOR_ENABLED && !hasAuthoredStepThreshold() && sessionLevels.length > 1 && !sessionChoices.some(Boolean)) {
     const sessionVehicleCount = sessionLevels.reduce(
       (total, level) => total + Math.max(0, level.vehicles?.length ?? 0),
       0
@@ -2050,6 +2051,7 @@ async function startRuntime() {
       SCENE_TUNING.installGate.successfulOperationThreshold = sessionVehicleCount;
     }
   }
+  if (EDITOR_ENABLED) syncExportVariantTuning(SCENE_TUNING, 'initialize');
   const initialInstallThreshold = SCENE_TUNING.installGate.successfulOperationThreshold;
   const currentStage = () => sessionStages[levelSession.state().levelIndex] ?? null;
   // The scene's belt and background are module-level read points, so the stage
@@ -2117,12 +2119,15 @@ async function startRuntime() {
 
   updateLoadingProgress(0);
   const markInstallVehicle = (vehicleId) => {
-    const threshold = Math.max(1, getSuccessfulOperationThreshold());
-    const ready = levelSession.recordSuccessfulVehicle(vehicleId, threshold);
+    const gateEnabled = isInstallGateEnabled(SCENE_TUNING.installGate);
+    const threshold = gateEnabled
+      ? Math.max(1, getSuccessfulOperationThreshold())
+      : Math.max(1, sessionLevels.reduce((total, level) => total + (level.vehicles?.length ?? 0), 0));
+    const ready = levelSession.recordSuccessfulVehicle(vehicleId, gateEnabled ? threshold : Infinity);
     const { successfulOperationCount } = levelSession.state();
     platformBridge?.challengeProgress?.((successfulOperationCount / threshold) * 100);
-    if (ready) platformBridge?.challengeSolved?.();
-    return ready;
+    if (gateEnabled && ready) platformBridge?.challengeSolved?.();
+    return gateEnabled && ready;
   };
 
   let view;
@@ -2735,7 +2740,7 @@ async function startRuntime() {
       if (syncEditor) editor.sync();
       return SCENE_TUNING;
     }
-    if (path?.startsWith('stamina.')) {
+    if (path?.startsWith('stamina.') || path === 'exportNaming.version') {
       const previous = normalizeStaminaConfig(SCENE_TUNING.stamina);
       const settings = validateStaminaConfig(next.stamina);
       deepMerge(SCENE_TUNING, { ...next, stamina: settings });
@@ -2796,8 +2801,14 @@ async function startRuntime() {
       if (syncEditor) editor.sync();
       return SCENE_TUNING;
     }
-    if (path === 'installGate.successfulOperationThreshold') {
-      setLevelInstallThresholdCustom(SCENE_TUNING.level?.selected, true);
+    if (path?.startsWith('installGate.') || path?.startsWith('exportNaming.')) {
+      if (path === 'installGate.successfulOperationThreshold' || path === 'exportNaming.steps') {
+        setLevelInstallThresholdCustom(SCENE_TUNING.level?.selected, true);
+      }
+      deepMerge(SCENE_TUNING, next);
+      saveTuning(SCENE_TUNING, { immediate: true });
+      if (syncEditor) editor.sync();
+      return SCENE_TUNING;
     }
     if (path?.startsWith('gameOver.')) {
       deepMerge(SCENE_TUNING, next);
@@ -3037,7 +3048,7 @@ async function startRuntime() {
       (total, level) => total + Math.max(0, level.vehicles?.length ?? 0),
       0
     );
-    if (vehicles > 0) SCENE_TUNING.installGate.successfulOperationThreshold = vehicles;
+    if (vehicles > 0 && !hasAuthoredStepThreshold()) SCENE_TUNING.installGate.successfulOperationThreshold = vehicles;
     const stage = currentStage();
     setActiveStageScene(stage?.scene ?? null);
     view.setStageOpening?.(stage?.opening ?? null, stage?.labels ?? []);
@@ -3063,7 +3074,8 @@ async function startRuntime() {
         ? Math.max(highest, vehicle.ambulanceStepLimit)
         : highest
     ), 0);
-    return stepLimit > 0 && getSuccessfulOperationThreshold() === stepLimit;
+    return isInstallGateEnabled(SCENE_TUNING.installGate)
+      && stepLimit > 0 && getSuccessfulOperationThreshold() === stepLimit;
   }
 
   // A countdown that is configured to jump to the store owns its own ending:
@@ -3267,7 +3279,7 @@ async function startRuntime() {
     // again or the next run would start with a stale final stage.
     sessionLevels = initialSessionLevels.slice();
     sessionStages = initialSessionStages.slice();
-    SCENE_TUNING.installGate.successfulOperationThreshold = initialInstallThreshold;
+    if (!hasAuthoredStepThreshold()) SCENE_TUNING.installGate.successfulOperationThreshold = initialInstallThreshold;
     const initialLevel = levelSession.reset();
     // Reset returns to the first stage, so its belt, guide, and labels come back with it.
     setActiveStageScene(currentStage()?.scene ?? null);

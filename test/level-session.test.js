@@ -53,6 +53,18 @@ test('production session follows the selected level and keeps the Level9 to Leve
   assert.match(generatorSource, /const sessionLevelKeys = selected === 'level9' \? \['level9', 'level7'\] : \[selected\];/);
 });
 
+test('disabled automatic store gate still counts real successes without becoming install-ready', () => {
+  const session = createLevelSession(HANDOFF_SEQUENCE);
+  assert.equal(session.recordSuccessfulVehicle(1, Infinity), false);
+  assert.equal(session.recordSuccessfulVehicle(1, Infinity), false);
+  assert.equal(session.state().successfulOperationCount, 1);
+  session.advanceAfterWin();
+  assert.equal(session.recordSuccessfulVehicle(1, Infinity), false);
+  assert.equal(session.recordSuccessfulVehicle(2, Infinity), false);
+  assert.equal(session.state().successfulOperationCount, 3);
+  assert.equal(session.state().installReady, false);
+});
+
 test('successful-operation count survives the level handoff and namespaces repeated vehicle ids', () => {
   const session = createLevelSession(HANDOFF_SEQUENCE);
   assert.equal(session.currentLevel().key, 'level9');
