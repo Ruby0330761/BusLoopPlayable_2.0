@@ -1,5 +1,14 @@
 ﻿# Task Plan
 
+## xzx — 命名字段批量导出（2026-11-12）
+
+- **Confirmed**：用户确认当前对话方案及双向同步细节。尾段/步数支持 `/` 多值；关闭为 N，开启必填；预览首值，导出独立快照；引导手改数字收敛为单值；两栏多值生成全部组合。沿用现有单渠道/全部导出格式与目录。
+- 范围：`src/{export-variants,scene-editor,scene-tuning,main,build-version,build-changelog}.js`、`src/styles.css`（沿用原错误色标记输入）、`scripts/export-playable-package.mjs`、`vite.config.js`、配对测试与当前项目文档。Level 1 / D1 私有纯函数抽取；标准质量；Web DOM + Node/Vite 出包；无第三方变化。
+- 技能：团队 `confirmed-plan-implementation`。仅本地实现和验证；本轮未授权推送、合并或更新共享服务。
+- 验证：解析/同步/快照/旧配置回归，构建，真实编辑器禁用/必填/双向同步/撤销/刷新，实际多渠道批量ZIP的结构、命名和内嵌配置。
+- 当前：方案、实现、自测、独立审查和本地客观验收完成；246测试及构建通过；14渠道包和4组合包按实际level24/命名/配置验证。手机3/5心、必填草稿刷新、真实编辑才收敛、Undo与预览保留均通过。证据在 `artifacts/playable-exports/xzx-export-variants-20261112/`；下一步由 xzx 在本机体验。真实平台验收/推送/共享部署不在本轮范围。
+- 审查：无可复用自定义角色配置，临时只读审查子 agent 继承主设置；3项P2均闭环。额外实包发现默认session覆盖母关，已在既定导出范围修复并复核；私有workspace镜像当前预览，CLI旧路径和level9→7保留。
+
 ## Current Hand Hint Phases
 
 1. **Complete:** Removed the Level 36 dimming mask while preserving an immediate opening hand hint.
@@ -40,6 +49,41 @@
 4. **Complete:** Targeted syntax and model/editor tests pass, and the durable editor feature status is recorded.
 
 ## Current Goal
+
+2026-11-12 — **Git handoff authorized by xzx:** new branch `feature/xzx/20261112-editor-stamina-endcard` from the current checkout, with the completed editor changes below. The user explicitly deferred batch export; its naming-list proposal has not been implemented. Commit scope is editor source, paired tests and project notes; authored level24/25 and the ownership registry remain local. Validation reuses the recorded tests/build/browser evidence for v20261112-1418. Push targets this new branch on the existing `origin` only; merging and deployment are outside this request.
+
+- Local branch created and 19 scoped files staged; staged diff checks and remote push dry-run passed. Commit identity was resolved from the signed-in GitLab account's selected Commit email; author name `xzx` is configured for this repository only. Commit and push to the named branch are authorized; batch export remains deferred.
+
+## Completed Local Feature Snapshot
+
+2026-11-12 — **Confirmed and implemented locally: failure end-card store interaction**, v20261112-1418. xzx confirmed dim/non-pulsing Download, no Retry, and tap-anywhere only after the icon appears.
+
+- Existing `D:/Trial_Play/BFT/editor`; small Level 1 / D0 / light Web DOM change, existing dependencies only. Files: `src/main.js`, `src/styles.css`, `src/scene-tuning.js`, `src/scene-editor.js`, existing model/UI regression test, version/changelog and project notes. Reused the existing retry switch and native platform store interface.
+- Failure CTA sits below the mask and stops pulsing. With Retry off (new default), the failure overlay becomes an accessible store link only at the existing icon-ready phase. Clicks/Enter/Space route through `InstallFullGame`; normal play, hidden/reset overlays and winning cards do not acquire this action. An explicitly enabled legacy Retry remains available; the editor explains the off mode. Game Over edits update interaction state without restarting the round.
+- **Implementation/self-check/scoped review complete:** 215 focused tests and build pass. One actual AppLovin QA export was checked with a local MRAID simulator: pre-icon click count stayed 0; blank/icon/old CTA position/keyboard/portrait edge/landscape edge produced exactly counts 1–6 through the store interface. Real editor level25 was failed by a blocked click, displayed the dim CTA/no Retry/icon link, then reset through normal controls; CTA pulse/enabled state restored. No browser error logs.
+- Evidence: `artifacts/playable-exports/xzx-failure-endcard-20261112/` (tests/build, unmodified export, separately instrumented `qa.html`, visible count log and screenshots). Viewports: 1280×720 / 390×844 / 844×390. The original authored logo geometry was retained; landscape checks concern click coverage and failure presentation, not a new logo-fit design.
+- Current browser remains on the user's BFT-26102328-母素材/level25 (selected by xzx before browser verification), Retry off, three hearts and opening intro restored. User level24/25/ownership file edits were not edited by this round. **xzx subjective review pending.** No commit/push, shared editor update, prior delivery-file modification or real ad-platform/device acceptance; the QA export intentionally skipped platform checkers.
+
+## Previous Goal (2026-11-12 stamina alignment)
+
+2026-11-12 — **Confirmed and completed locally: responsive stamina alignment**, v20261112-1151. xzx confirmed the left/center/right anchor plan in this chat.
+
+- Scope: existing `D:/Trial_Play/BFT/editor`, small Level 1 / D0 / light Web DOM change, no new dependencies. `src/stamina.js`, `src/stamina-view.js`, `src/scene-tuning.js`, `src/scene-editor.js`, their existing test, version/changelog and project notes. Local implementation only; previous CTA/stamina changes retained.
+- `stamina.horizontalAlign` accepts left/center/right, defaults center. Zero X offset anchors the actual HUD edge/center to visible game content with safe edge margins; horizontal nudges scale with content width. Selecting an alignment clears X, preventing the previous 399/400 adjustment from carrying over. Y behavior remains independent.
+- **Implementation, self-check and scoped review complete:** 87 focused tests and build pass. 21 editor browser layouts (1280×720, 390×844, 844×390; representative 1/3/10 hearts) and 6 real exported-page layouts pass, maximum measured error <0.012 px. Fresh reload, X reset, master-off disabled selector, downloaded screenshot centering and three actual AppLovin QA exports verified. No error-level browser logs or blocking visual issues observed. Evidence: `artifacts/playable-exports/xzx-stamina-alignment-20261112/`.
+- Preview `http://127.0.0.1:5180/` retains the user's BFT-26102327/level24 selection, three hearts and intro enabled, now center/X0. Existing authored level24/ownership file edits were present before this round and were not edited. **xzx subjective review pending.** No commit/push, shared 12151 update, old delivery-file changes or ad-platform acceptance. QA exports intentionally skip platform checkers.
+
+## Previous Goal (2026-11-12 CTA and stamina behaviors)
+
+2026-11-12 — **Confirmed and implemented locally for xzx**, v20261112-1055, branch `feature/xzx/20261112-cta-stamina-controls` in `D:/Trial_Play/BFT/editor`.
+
+- Scope: freely editable CTA text shared by preview/screenshot/export; wrong clicks spend one heart at contact while retaining the ordinary bump/return/audio; separate parking-rescue switch reusing the existing deadlock condition, delay, passenger transfer and departure/bay release. Both switches share the current stamina pool. Empty CTA text retains device localization. Existing Game Over/Retry remains the exhaustion result.
+- Small local Level 1 / D0 change using the existing DOM/Three.js editor and dependencies; no new third parties. Source, paired tests and export compatibility only. User's confirmation in this chat is the plan/implementation authorization.
+- **Implementation and self-check complete:** 224 focused model/view/localization/export/countdown/effects/changelog tests pass; build passes. The Windows directory-link export issue was fixed with a junction and the 42 export tests rerun successfully. Local BFT AppLovin QA export, real screenshot download, 1280×720 desktop / 390×844 mobile browser checks, custom/blank/localized text, refresh persistence and independent/disabled switches verified. Exported-page collision reduced 3→2 hearts without removing the blocker; error-level browser logs empty.
+- **Scoped review complete:** ordinary collision motion/contact events are unchanged; costs are once-only/nonnegative; flags change without refilling stamina; original station failure predicate and delay preserved. Evidence: `artifacts/playable-exports/xzx-cta-stamina-20261112/`.
+- **User acceptance pending:** xzx reviews the local editor at `http://127.0.0.1:5180/` and subjective collision/rescue feel. Shared editor `10.0.0.54:12151` has not been updated; no Git commit/push or prior delivery-file changes. Ad-platform checking is outside this local editor task; the QA export intentionally skipped those checkers.
+
+## Previous Goal (2026-11-10)
 
 2026-11-10 PR handoff: User explicitly requests committing/pushing this stamina work and creating/merging a PR into main. Preparing a scoped commit on codex/xiaosuo, synchronizing origin/main's background.horizon export fix, and validating the integrated result. Keep unrelated material variants, image-layout drafts, IDE files, ignore changes and spatial-editor test edits out of this PR. Git SSH access works; GitLab web login is pending for the normal merge UI. Existing implementation evidence below remains valid for its recorded snapshot.
 

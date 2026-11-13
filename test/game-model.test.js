@@ -1527,7 +1527,7 @@ test('vehicle area rotation uses the transformed vehicle-region center', () => {
   assert.ok(Math.abs(pivot.z - (bounds.minZ + bounds.maxZ) / 2) < 1e-9);
   assert.match(sceneViewSource, /getVehicleAreaPivot\(area\)/);
   assert.match(gameModelSource, /getVehicleAreaPivot\(area\)/);
-  assert.match(sceneViewSource, /function mapVehicleAreaYaw\(yawDegrees\) \{[\s\S]*?return mirroredYaw - deg\(SCENE_TUNING\.vehicleArea\.rotationDegrees\);\n\}/);
+  assert.match(sceneViewSource, /function mapVehicleAreaYaw\(yawDegrees\) \{[\s\S]*?return mirroredYaw - deg\(SCENE_TUNING\.vehicleArea\.rotationDegrees\);\r?\n\}/);
   assert.match(gameModelSource, /function visualYawToVehicleAreaYaw\(yawDegrees\) \{[\s\S]*?return area\.mirrorZ \? 180 - yawDegrees : yawDegrees;/);
 });
 
@@ -1585,6 +1585,7 @@ test('editor sizing, source background ratio, and passenger shadow anchor stay w
   });
   assert.deepEqual(SCENE_TUNING.cta, {
     enabled: 1,
+    text: '',
     x: 540,
     y: 2018,
     height: 110,
@@ -1598,6 +1599,8 @@ test('editor sizing, source background ratio, and passenger shadow anchor stay w
     appearSpeed: 1.45
   });
   assert.deepEqual(SCENE_TUNING.installGate, {
+    enabled: 1,
+    customThresholdEnabled: 0,
     successfulOperationThreshold: 64
   });
   assert.deepEqual(SCENE_TUNING.gameOver, {
@@ -1612,7 +1615,7 @@ test('editor sizing, source background ratio, and passenger shadow anchor stay w
     logoHeight: 587,
     logoRadius: 30,
     logoAppearSpeed: 1.45,
-    retryEnabled: 1,
+    retryEnabled: 0,
     // What the red pill does: restart the round (default) or open the store.
     // Only a delivery that opts in changes it.
     retryAction: 'restart',
@@ -2750,11 +2753,11 @@ test('main thread saves and restores scene tuning from localStorage', () => {
   assert.doesNotMatch(mainSource, /countedInstallVehicles = new Set\(\)/);
   assert.match(mainSource, /INSTALL_GATE_VEHICLE_STATES = new Set\(\['at-spot', 'boarding-final', 'departing', 'done'\]\)/);
   assert.match(mainSource, /const markInstallVehicle = \(vehicleId\) => \{/);
-  assert.match(mainSource, /const threshold = Math\.max\(1, getSuccessfulOperationThreshold\(\)\)/);
-  assert.match(mainSource, /levelSession\.recordSuccessfulVehicle\(vehicleId, threshold\)/);
+  assert.match(mainSource, /const threshold = gateEnabled\s*\? Math\.max\(1, getSuccessfulOperationThreshold\(\)\)/);
+  assert.match(mainSource, /levelSession\.recordSuccessfulVehicle\(vehicleId, gateEnabled \? threshold : Infinity\)/);
   assert.match(mainSource, /const handleVehicleClick = \(vehicleId\) => \{/);
   assert.match(mainSource, /const result = game\.clickVehicle\(vehicleId\)/);
-  assert.match(mainSource, /^\s*if \(result\?\.ok\) \{\n\s*startBackgroundMusic\(\);\n\s*if \(markInstallVehicle\(vehicleId\)\) InstallFullGame\(\);/m);
+  assert.match(mainSource, /^\s*if \(result\?\.ok\) \{\r?\n\s*startBackgroundMusic\(\);\r?\n\s*if \(markInstallVehicle\(vehicleId\)\) InstallFullGame\(\);/m);
   assert.match(mainSource, /function updateInstallGate\(state\)/);
   assert.match(mainSource, /for \(const vehicle of state\.vehicles \?\? \[\]\)/);
   assert.match(mainSource, /levelSession\.hasCountedVehicle\(vehicle\.id\)/);
@@ -2927,8 +2930,8 @@ test('successful operation store redirect uses the baked threshold and remains e
   assert.equal(SCENE_TUNING.installGate.successfulOperationThreshold, 64);
   assert.match(editorSource, /installGate\.successfulOperationThreshold/);
   assert.match(mainSource, /SCENE_TUNING\.installGate\?\.successfulOperationThreshold/);
-  assert.match(mainSource, /^\s*if \(result\?\.ok\) \{\n\s*startBackgroundMusic\(\);\n\s*if \(markInstallVehicle\(vehicleId\)\) InstallFullGame\(\);/m);
-  assert.match(mainSource, /levelSession\.recordSuccessfulVehicle\(vehicleId, threshold\)/);
+  assert.match(mainSource, /^\s*if \(result\?\.ok\) \{\r?\n\s*startBackgroundMusic\(\);\r?\n\s*if \(markInstallVehicle\(vehicleId\)\) InstallFullGame\(\);/m);
+  assert.match(mainSource, /levelSession\.recordSuccessfulVehicle\(vehicleId, gateEnabled \? threshold : Infinity\)/);
   assert.doesNotMatch(mainSource, /INSTALL_GATE_AFTER_SUCCESSFUL_OPERATIONS_ENABLED/);
 });
 
@@ -3242,7 +3245,96 @@ test('a single-queue level fills every visible queue lane', async () => {
   assert.deepEqual([...usedEntries].sort(), [0, 1], 'both entry points must feed the belt');
 });
 
-test('the failure card offers a Retry that restarts the run, and a win never shows it', async () => {
+function resultCardFixture({ retryEnabled = 0, failed = true } = {}) {
+  const mainSource = readFileSync('src/main.js', 'utf8');
+  const start = mainSource.indexOf('  function syncResultInteraction()');
+  const end = mainSource.indexOf('  function showResultOverlay(', start);
+  assert.ok(start >= 0 && end > start);
+  const classes = new Set(failed ? ['is-failed'] : []);
+  const attrs = new Map();
+  const overlay = {
+    hidden: false,
+    classList: {
+      contains: key => classes.has(key),
+      toggle(key, enabled) { if (enabled) classes.add(key); else classes.delete(key); }
+    },
+    setAttribute: (key, value) => attrs.set(key, value),
+    removeAttribute: key => attrs.delete(key)
+  };
+  const retry = {}, cta = {}, storeCalls = [];
+  const create = new Function('gameOverOverlay', 'gameOverRetryButton', 'ctaButton', 'SCENE_TUNING',
+    'resolveBrandingCopy', 'InstallFullGame', `
+      let gameOverActive = true;
+      ${mainSource.slice(start, end)}
+      return { syncResultInteraction, handleResultActivation,
+        setActive(value) { gameOverActive = value; syncResultInteraction(); } };
+    `);
+  const controller = create(overlay, retry, cta, { gameOver: { retryEnabled } },
+    () => ({ ctaLabel: 'Download' }), () => storeCalls.push('store'));
+  controller.syncResultInteraction();
+  const event = (type = 'click', key) => ({ type, key, prevented: false, stopped: false,
+    preventDefault() { this.prevented = true; }, stopPropagation() { this.stopped = true; } });
+  return { controller, overlay, retry, cta, classes, attrs, storeCalls, event };
+}
+
+test('failure end-card activation waits for the icon, hides Retry and uses one store call per click', () => {
+  const f = resultCardFixture();
+  assert.equal(f.retry.hidden, true);
+  assert.equal(f.cta.disabled, true);
+  assert.equal(f.overlay.tabIndex, -1);
+  f.controller.handleResultActivation(f.event());
+  assert.deepEqual(f.storeCalls, []);
+  f.classes.add('is-cta-ready');
+  f.controller.syncResultInteraction();
+  assert.deepEqual(f.storeCalls, [], 'the icon appearing must not open the store by itself');
+  assert.equal(f.overlay.tabIndex, 0);
+  assert.equal(f.attrs.get('role'), 'link');
+  assert.equal(f.attrs.get('aria-label'), 'Download');
+  const click = f.event();
+  f.controller.handleResultActivation(click);
+  assert.deepEqual(f.storeCalls, ['store']);
+  assert.equal(click.prevented && click.stopped, true);
+  f.controller.handleResultActivation(f.event('keydown', 'Escape'));
+  assert.equal(f.storeCalls.length, 1);
+  for (const key of ['Enter', ' ']) f.controller.handleResultActivation(f.event('keydown', key));
+  assert.equal(f.storeCalls.length, 3);
+  f.overlay.hidden = true;
+  f.controller.handleResultActivation(f.event());
+  assert.equal(f.storeCalls.length, 3, 'a hidden end card cannot retain its click target');
+  f.controller.setActive(false);
+  assert.equal(f.cta.disabled, false);
+  assert.equal(f.overlay.tabIndex, -1);
+  assert.equal(f.attrs.has('role'), false);
+  f.controller.handleResultActivation(f.event());
+  assert.equal(f.storeCalls.length, 3);
+});
+
+test('Retry mode and winning cards do not acquire the failure card store action', () => {
+  for (const config of [{ retryEnabled: 1, failed: true }, { retryEnabled: 0, failed: false }]) {
+    const f = resultCardFixture(config);
+    f.classes.add('is-cta-ready');
+    f.controller.syncResultInteraction();
+    f.controller.handleResultActivation(f.event());
+    assert.deepEqual(f.storeCalls, []);
+    assert.equal(f.retry.hidden, !config.failed);
+    assert.equal(f.cta.disabled, config.failed);
+    assert.equal(f.overlay.tabIndex, -1);
+  }
+});
+
+test('failure presentation places Download below the mask without its pulse and wires the full card', () => {
+  const mainSource = readFileSync('src/main.js', 'utf8');
+  const stylesSource = readFileSync('src/styles.css', 'utf8');
+  const dimmed = stylesSource.match(/\.game-over-overlay\.is-failed:not\(\[hidden\]\) ~ \.cta-button \{([^}]+)\}/)[1];
+  assert.match(dimmed, /animation: none/);
+  assert.match(dimmed, /transform: translate\(-50%, -50%\)/);
+  const maskZ = Number(stylesSource.match(/\.game-over-overlay \{[^}]*z-index: (\d+)/)[1]);
+  assert.ok(Number(dimmed.match(/z-index: (\d+)/)[1]) < maskZ);
+  assert.match(mainSource, /gameOverOverlay\?\.addEventListener\('click', handleResultActivation\)/);
+  assert.match(mainSource, /gameOverOverlay\?\.addEventListener\('keydown', handleResultActivation\)/);
+});
+
+test('an opted-in Retry restarts the run, while wins and the default store end card hide it', async () => {
   const mainSource = readFileSync('src/main.js', 'utf8');
   const indexSource = readFileSync('index.html', 'utf8');
   const stylesSource = readFileSync('src/styles.css', 'utf8');
@@ -3255,10 +3347,11 @@ test('the failure card offers a Retry that restarts the run, and a win never sho
   assert.match(stylesSource, /\.game-over-overlay\.is-cta-ready \+ \.game-over-retry/);
   assert.doesNotMatch(stylesSource, /\.game-over-overlay\.is-cta-ready ~ \.game-over-retry/);
 
-  // A loss must show it; a win must not, because the store button owns that ending.
-  assert.match(mainSource, /gameOverRetryButton\.hidden = !failed \|\| !Boolean\(SCENE_TUNING\.gameOver\?\.retryEnabled \?\? 1\)/);
+  // The default failure card uses the entire overlay as its store link.
+  assert.equal(SCENE_TUNING.gameOver.retryEnabled, 0);
+  assert.match(mainSource, /gameOverRetryButton\.hidden = !gameOverActive \|\| !failed \|\| tapToStore/);
   assert.match(mainSource, /showResultOverlay\('You Win!', \{ failed: false \}\)/);
-  assert.match(mainSource, /function hideGameOver\(\)[\s\S]{0,400}gameOverRetryButton\.hidden = true/);
+  assert.match(mainSource, /function hideGameOver\(\)[\s\S]{0,550}gameOverRetryButton\.hidden = true/);
 
   // Tapping it restarts the run by default, through the same reset path as the
   // other replay buttons, so the session, install gate and speed state are all

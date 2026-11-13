@@ -29,14 +29,21 @@ function fixture(width = 390, height = 844, bounds = null, timerRect = null, spe
 
 test('all ten life counts survive editor export round trips; legacy profiles remain off', () => {
   assert.equal(normalizeStaminaConfig().enabled, 0);
-  for (let lives = 1; lives <= 10; lives++) {
-    const config = { enabled: 1, lives, introEnabled: 1, offsetX: -100, offsetY: 120, scale: 1.25 };
+  for (let lives = 1; lives <= 10; lives++) for (const horizontalAlign of ['left', 'center', 'right']) {
+    const config = { enabled: 1, lives, collisionPenaltyEnabled: 1, parkingRescueEnabled: 1, introEnabled: 1, horizontalAlign, offsetX: -100, offsetY: 120, scale: 1.25 };
     assert.deepEqual(validateTuning({ stamina: config }, SCENE_TUNING).stamina, config);
   }
   assert.throws(() => validateStaminaConfig({ lives: 11 }), /integer between 1 and 10/);
   assert.throws(() => validateStaminaConfig({ scale: 0 }), /scale/);
   assert.throws(() => validateStaminaConfig({ lives: '3' }), /integer between 1 and 10/);
   assert.throws(() => validateStaminaConfig({ unknown: 1 }), /not supported/);
+  assert.equal(normalizeStaminaConfig().horizontalAlign, 'center');
+  for (const horizontalAlign of [undefined, null, 0, 'invalid']) {
+    assert.equal(normalizeStaminaConfig({ horizontalAlign }).horizontalAlign, 'center');
+  }
+  for (const horizontalAlign of [null, 0, '', 'invalid']) {
+    assert.throws(() => validateStaminaConfig({ horizontalAlign }), /left, center or right/);
+  }
 });
 
 test('disabled stamina does not fetch any images; each preset paints actual full and empty hearts', () => {
@@ -90,10 +97,8 @@ test('HUD remains within content across portrait, landscape and extreme offsets'
     [1920, 1080, { left: 748, top: 0, right: 1172, bottom: 1080 }, { bottom: 65 }, null]
   ]) {
     const f = fixture(width, height, bounds, timerRect, speedRect);
-    if (speedRect) assert.ok(parseFloat(f.root.style.left) + parseFloat(f.root.style.width) / 2 < speedRect.left,
-      'the default left HUD clears the right speed button');
-    for (let lives = 1; lives <= 10; lives++) for (const direction of [-1, 1]) {
-      f.view.resize(bounds, { enabled: 1, lives, offsetX: direction * 1080, offsetY: direction * 2160, scale: 3 }, 0.36);
+    for (let lives = 1; lives <= 10; lives++) for (const direction of [-1, 1]) for (const horizontalAlign of ['left', 'center', 'right']) {
+      f.view.resize(bounds, { enabled: 1, lives, horizontalAlign, offsetX: direction * 1080, offsetY: direction * 2160, scale: 3 }, 0.36);
       const x = parseFloat(f.root.style.left), y = parseFloat(f.root.style.top), w = parseFloat(f.root.style.width);
       const h = parseFloat(f.root.style.height);
       const referenceSizes = [[83, 72], [115, 72], [147, 72], [179, 72], [211, 72],
@@ -114,8 +119,48 @@ test('manual HUD coordinates are independent of the countdown and speed button a
   for (const key of ['left', 'top', 'width']) assert.equal(plain.root.style[key], withOtherHud.root.style[key]);
   const x = parseFloat(plain.root.style.left), y = parseFloat(plain.root.style.top);
   plain.view.resize(bounds, { offsetX: 100, offsetY: 200, scale: 1 }, 0.36);
-  assert.ok(Math.abs(parseFloat(plain.root.style.left) - x - 36) < 1e-6);
+  assert.ok(Math.abs(parseFloat(plain.root.style.left) - x - 100 * 390 / 1080) < 1e-6);
   assert.ok(Math.abs(parseFloat(plain.root.style.top) - y - 72) < 1e-6);
+});
+
+test('zero horizontal offset aligns actual HUD edges or center to visible content on every viewport and size', () => {
+  for (const [width, height, bounds] of [
+    [390, 844, { left: 0, top: 0, right: 390, bottom: 844 }],
+    [844, 390, { left: 260, top: 10, right: 584, bottom: 380 }],
+    [1920, 1080, { left: 748, top: 0, right: 1172, bottom: 1080 }],
+    [320, 568, { left: 12, top: 20, right: 308, bottom: 550 }]
+  ]) {
+    const f = fixture(width, height, bounds);
+    const contentWidth = bounds.right - bounds.left;
+    const inset = Math.min(8, contentWidth * 0.02, (bounds.bottom - bounds.top) * 0.02);
+    for (const horizontalAlign of ['left', 'center', 'right']) for (let lives = 1; lives <= 10; lives++) {
+      for (const scale of [0.25, 1, 3]) {
+        f.view.resize(bounds, { enabled: 1, lives, scale, horizontalAlign, offsetX: 0 }, 0.18);
+        const center = parseFloat(f.root.style.left), halfWidth = parseFloat(f.root.style.width) / 2;
+        const actual = horizontalAlign === 'left' ? center - halfWidth : horizontalAlign === 'right' ? center + halfWidth : center;
+        const expected = horizontalAlign === 'left' ? bounds.left + inset : horizontalAlign === 'right' ? bounds.right - inset : (bounds.left + bounds.right) / 2;
+        assert.ok(Math.abs(actual - expected) < 1e-6, `${width}x${height}/${horizontalAlign}/${lives}/${scale}`);
+      }
+    }
+  }
+});
+
+test('horizontal nudges retain the same fraction of visible width across aspect ratios and UI scales', () => {
+  for (const [width, height, bounds] of [
+    [390, 844, { left: 0, top: 0, right: 390, bottom: 844 }],
+    [844, 390, { left: 260, top: 0, right: 584, bottom: 390 }]
+  ]) {
+    const f = fixture(width, height, bounds);
+    for (const [horizontalAlign, offsetX] of [['left', 80], ['center', 80], ['center', -80], ['right', -80]]) {
+      const config = { horizontalAlign, lives: 1, scale: 0.25 };
+      f.view.resize(bounds, { ...config, offsetX: 0 }, 0.1);
+      const base = parseFloat(f.root.style.left);
+      for (const uiScale of [0.1, 0.8]) {
+        f.view.resize(bounds, { ...config, offsetX }, uiScale);
+        assert.ok(Math.abs((parseFloat(f.root.style.left) - base) / (bounds.right - bounds.left) - offsetX / 1080) < 1e-6);
+      }
+    }
+  }
 });
 
 test('exports include only the selected opening artwork and omit it when the opening is disabled', () => {

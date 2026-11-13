@@ -16,7 +16,10 @@ export const SCENE_TUNING = {
   "stamina": {
     "enabled": 0,
     "lives": 3,
+    "collisionPenaltyEnabled": 1,
+    "parkingRescueEnabled": 1,
     "introEnabled": 1,
+    "horizontalAlign": "center",
     "offsetX": 0,
     "offsetY": 0,
     "scale": 1
@@ -136,6 +139,7 @@ export const SCENE_TUNING = {
   },
   "cta": {
     "enabled": 1,
+    "text": "",
     "x": 540,
     "y": 2018,
     "height": 110,
@@ -157,6 +161,8 @@ export const SCENE_TUNING = {
     "multiplier": 2
   },
   "installGate": {
+    "enabled": 1,
+    "customThresholdEnabled": 0,
     "successfulOperationThreshold": 64
   },
   "collision": {
@@ -187,7 +193,7 @@ export const SCENE_TUNING = {
     "logoHeight": 587,
     "logoRadius": 30,
     "logoAppearSpeed": 1.45,
-    "retryEnabled": 1,
+    "retryEnabled": 0,
     // What the failure card's red button does. "restart" keeps the original
     // behaviour (rebuild the round); "store" turns it into a second CTA that
     // opens the store. Per-delivery, so every other package is unaffected.

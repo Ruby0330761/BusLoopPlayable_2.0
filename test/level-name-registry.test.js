@@ -59,9 +59,13 @@ test('editor level selects rebuild from the merged server list without stale opt
   // A selection with no level data would make every export fail; the editor
   // has to say so rather than leave the picker empty.
   assert.match(sceneEditor, /没有关卡数据，请重新选择关卡/);
-  // Long exports show a live counter plus the server-reported duration.
+  // Long exports report a duration in seconds, preferring the server-measured
+  // value and falling back to the local stopwatch. Assert the behaviour rather
+  // than one spelling: the merged editor says 耗时 where the branch said 已用.
   assert.match(sceneEditor, /X-Playable-Export-Duration-Ms/);
-  assert.match(sceneEditor, /\\u5df2\\u7528 \$\{seconds\} \\u79d2/);
+  assert.match(sceneEditor, /serverMs/);
+  assert.match(sceneEditor, /exportStartedAt/);
+  assert.match(sceneEditor, /\\u79d2/);
 });
 
 test('the level picker only lists levels that actually have data', () => {

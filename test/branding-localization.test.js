@@ -143,6 +143,19 @@ test('the full-width exclamation used by older tuning exports still counts as de
   assert.equal(copy.title, STORE_TITLE_TABLES.google.ko);
 });
 
+test('authored CTA copy overrides every locale and blank copy keeps automatic localization', () => {
+  for (const locale of Object.keys(BRANDING_LOCALIZATION)) {
+    for (const enabled of [false, true]) {
+      assert.equal(resolveLocalizedBranding({ languages: [locale], enabled, ctaText: '  Download  ' }).ctaLabel, 'Download');
+      assert.equal(resolveLocalizedBranding({ languages: [locale], enabled, ctaText: '领取奖励 <3 & Play' }).ctaLabel, '领取奖励 <3 & Play');
+      for (const ctaText of ['', '   ', undefined, null]) {
+        assert.equal(resolveLocalizedBranding({ languages: [locale], enabled, ctaText }).ctaLabel,
+          enabled ? BRANDING_LOCALIZATION[locale].cta : DEFAULT_CTA_LABEL);
+      }
+    }
+  }
+});
+
 test('disabling localization keeps the English creative exactly as authored', () => {
   const copy = resolveLocalizedBranding({
     languages: ['ja-JP'],
@@ -218,11 +231,12 @@ test('an exported package can never be pinned to the editor preview locale', () 
 test('runtime resolves the copy before measuring the fixed-size boxes', () => {
   // The bottom caption is swapped before fitBrandingText measures it.
   assert.match(mainSource, /const copy = resolveBrandingCopy\(\);/);
-  assert.match(mainSource, /element\.textContent = content;\n\s*element\.setAttribute\('aria-label', content\);/);
+  assert.match(mainSource, /element\.textContent = content;\r?\n\s*element\.setAttribute\('aria-label', content\);/);
   assert.match(mainSource, /const content = copy\.title;/);
   // The CTA label is swapped before fitCtaLabel runs.
   assert.match(mainSource, /const ctaLabel = resolveBrandingCopy\(\)\.ctaLabel;/);
   assert.match(mainSource, /ctaButton\.textContent = ctaLabel;/);
+  assert.match(mainSource, /ctaText: SCENE_TUNING\.cta\?\.text/);
   // The screenshot compositor draws the same localized label, not a literal.
   assert.match(mainSource, /const ctaLabel = resolveBrandingCopy\(\)\.ctaLabel;[\s\S]{0,2000}strokeText\(ctaLabel/);
   assert.doesNotMatch(mainSource, /strokeText\('Play Now'/);

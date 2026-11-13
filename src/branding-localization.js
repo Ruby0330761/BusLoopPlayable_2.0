@@ -184,6 +184,7 @@ export function resolveLocalizedBranding({
   languages = [],
   enabled = true,
   text = '',
+  ctaText = '',
   loadingTitle = '',
   storefront = DEFAULT_STOREFRONT
 } = {}) {
@@ -194,7 +195,7 @@ export function resolveLocalizedBranding({
   return {
     enabled: active,
     locale,
-    ctaLabel: active ? strings.cta : DEFAULT_CTA_LABEL,
+    ctaLabel: (typeof ctaText === 'string' ? ctaText.trim() : '') || (active ? strings.cta : DEFAULT_CTA_LABEL),
     title: titleForAuthoredText(text, localizedTitle),
     loadingTitle: titleForAuthoredText(loadingTitle, localizedTitle)
   };

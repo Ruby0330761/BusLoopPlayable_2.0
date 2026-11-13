@@ -105,10 +105,13 @@ export function createStaminaView({ root, frame, hearts, intro, introFrame, stag
     const baseWidth = Math.max(1, layout.width * Math.min(1, contentWidth * 0.55 / 211));
     const width = Math.max(1, Math.min(baseWidth * configValue.scale, contentWidth - inset * 2, (contentHeight - inset * 2) * ratio));
     const height = width / ratio;
-    // Start at the left of the content, leaving the right header for speed.
-    // The clock never moves this anchor; authors can still apply their own X/Y.
-    const baseCenter = left + inset + baseWidth / 2;
-    const center = Math.max(left + inset + width / 2, Math.min(baseCenter + configValue.offsetX * scale, right - inset - width / 2));
+    // Anchor to the visible game content and the actual scaled HUD edges.
+    // Horizontal nudges use content width so their relative position survives rotation.
+    const baseCenter = configValue.horizontalAlign === 'left' ? left + inset + width / 2
+      : configValue.horizontalAlign === 'right' ? right - inset - width / 2
+      : left + contentWidth / 2;
+    const center = Math.max(left + inset + width / 2,
+      Math.min(baseCenter + configValue.offsetX * contentWidth / 1080, right - inset - width / 2));
     const centerY = top + inset + baseWidth / ratio / 2 + configValue.offsetY * scale;
     const y = Math.max(top + inset, Math.min(centerY - height / 2, bottom - height - inset));
     Object.assign(root.style, { left: `${center}px`, top: `${y}px`, width: `${width}px`, height: `${height}px` });

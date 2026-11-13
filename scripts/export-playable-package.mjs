@@ -550,7 +550,8 @@ function commandError(label, code, output) {
 
 async function run(command, args, { cwd, env = {}, signal, allowExitCodes = [0], label = command } = {}) {
   await new Promise((resolve, reject) => {
-    const child = spawn(command, args, {
+    const executable = command === 'python3' ? (process.env.PLAYABLE_EXPORT_PYTHON || command) : command;
+    const child = spawn(executable, args, {
       cwd,
       env: { ...process.env, ...env },
       stdio: ['ignore', 'pipe', 'pipe'],
@@ -771,7 +772,22 @@ async function applyWorkspaceBranding(workRoot, tuning) {
   await writeFile(indexPath, source, 'utf8');
 }
 
-async function prepareWorkspace(projectRoot, tuning, levelDocument = null) {
+export function createEditorExportSession(tuning) {
+  const levelKey = tuning?.level?.selected;
+  if (!/^level[1-9]\d*$/u.test(levelKey ?? '')) throw new TypeError('编辑器导出缺少有效的当前关卡');
+  return {
+    format: 'bus-loop-playable-session-v1',
+    active: 'editor-current-level',
+    sessions: {
+      'editor-current-level': {
+        stages: (levelKey === 'level9' ? ['level9', 'level7'] : [levelKey])
+          .map(key => ({ id: key, levelKey: key }))
+      }
+    }
+  };
+}
+
+async function prepareWorkspace(projectRoot, tuning, levelDocument = null, useSelectedLevel = false) {
   const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'bus-loop-playable-export-'));
   const workRoot = path.join(tempRoot, 'project');
   await mkdir(workRoot, { recursive: true });
@@ -804,11 +820,19 @@ async function prepareWorkspace(projectRoot, tuning, levelDocument = null) {
       'utf8'
     );
   }
+  if (useSelectedLevel) {
+    // Scope the override to the disposable export workspace. Production CLI
+    // sessions and the author's original session document remain independent.
+    await writeFile(path.join(workRoot, 'artifacts', 'playable-session.json'), `${JSON.stringify(createEditorExportSession(tuning))}\n`, 'utf8');
+  }
   await copySelectedEditorBackground(projectRoot, workRoot, tuning);
   await copySelectedEditorPreRoll(projectRoot, workRoot, tuning);
   await copySelectedGuideAssets(projectRoot, workRoot, tuning);
+  // `applyWorkspaceBranding` supersedes the icon-only variant: it rewrites the
+  // shell title/labels as well as the icons. Keep the branch's Windows junction
+  // handling so a Windows checkout can still symlink node_modules.
   await applyWorkspaceBranding(workRoot, tuning);
-  await symlink(path.join(projectRoot, 'node_modules'), path.join(workRoot, 'node_modules'), 'dir');
+  await symlink(path.join(projectRoot, 'node_modules'), path.join(workRoot, 'node_modules'), process.platform === 'win32' ? 'junction' : 'dir');
   const tuningPath = path.join(workRoot, 'artifacts', 'export-tuning.json');
   await writeFile(tuningPath, `${JSON.stringify(tuning, null, 2)}\n`, 'utf8');
   await run(process.execPath, [
@@ -912,12 +936,13 @@ async function deterministicZip(tool, root, output, entries, signal, timestamp) 
   });
 }
 
-async function generateWorkspaceSources(workRoot, signal) {
+async function generateWorkspaceSources(workRoot, signal, useSelectedLevel = false) {
   await Promise.all([
     run(process.execPath, ['scripts/generate-active-level.mjs'], {
       cwd: workRoot,
       signal,
-      label: 'Generate active level'
+      label: 'Generate active level',
+      env: useSelectedLevel ? { PLAYABLE_SESSION_KEY: 'editor-current-level' } : {}
     }),
     run(process.execPath, ['scripts/generate-active-spatial-conveyor.mjs'], {
       cwd: workRoot,
@@ -1528,7 +1553,7 @@ async function readPlayableSessionConfig(projectRoot) {
   return { key, session, config };
 }
 
-async function exportInputFingerprint(projectRoot, tuning, levelDocument = null, variants = null, platforms = null) {
+async function exportInputFingerprint(projectRoot, tuning, levelDocument = null, variants = null, platforms = null, useSelectedLevel = false) {
   const candidates = [
     path.join(projectRoot, 'artifacts', 'selected-level.txt'),
     path.join(projectRoot, 'artifacts', 'level-catalog.js'),
@@ -1595,7 +1620,7 @@ async function exportInputFingerprint(projectRoot, tuning, levelDocument = null,
     // The platform list is part of the key too: a single-platform export only
     // builds that platform's HTML, and reusing it for an all-platform run failed
     // with "Cached <platform> build is missing" for the other six.
-    .update(`${EXPORT_SOURCE_CACHE_VERSION}\n${JSON.stringify(platforms)}\n${JSON.stringify(tuning)}\n${JSON.stringify(variants)}\n${JSON.stringify(levelDocument)}\n${JSON.stringify(artifactStates)}\n${JSON.stringify(sourceStates)}`)
+    .update(`${EXPORT_SOURCE_CACHE_VERSION}\n${useSelectedLevel}\n${JSON.stringify(platforms)}\n${JSON.stringify(tuning)}\n${JSON.stringify(variants)}\n${JSON.stringify(levelDocument)}\n${JSON.stringify(artifactStates)}\n${JSON.stringify(sourceStates)}`)
     .digest('hex');
 }
 
@@ -1638,10 +1663,10 @@ async function mapWithConcurrency(items, concurrency, operation) {
   return results;
 }
 
-async function exportPlatforms({ projectRoot, tuning, levelDocument = null, platforms, outputDir, signal, variants = null, skipRuntime = false, skipChecks = false, keepMaterialCode = false, namingOverride = null }) {
+async function exportPlatforms({ projectRoot, tuning, levelDocument = null, platforms, outputDir, signal, variants = null, skipRuntime = false, skipChecks = false, keepMaterialCode = false, namingOverride = null, useSelectedLevel = false }) {
   const resolvedRoot = path.resolve(projectRoot);
   const template = await loadTemplate(resolvedRoot);
-  const sessionConfig = await readPlayableSessionConfig(resolvedRoot);
+  const sessionConfig = useSelectedLevel ? null : await readPlayableSessionConfig(resolvedRoot);
   let safeTuning;
   let outputNames;
   try {
@@ -1658,11 +1683,11 @@ async function exportPlatforms({ projectRoot, tuning, levelDocument = null, plat
     throw error;
   }
   const skill = await resolveSkillTools();
-  const sourceCacheKey = variants ? await exportInputFingerprint(resolvedRoot, safeTuning, levelDocument, variants, platforms) : null;
+  const sourceCacheKey = variants ? await exportInputFingerprint(resolvedRoot, safeTuning, levelDocument, variants, platforms, useSelectedLevel) : null;
   const cachedSources = sourceCacheKey ? getCachedExportSources(sourceCacheKey) : null;
   const workspace = cachedSources
     ? { tempRoot: await mkdtemp(path.join(os.tmpdir(), 'bus-loop-playable-export-')), workRoot: null }
-    : await prepareWorkspace(resolvedRoot, safeTuning, levelDocument);
+    : await prepareWorkspace(resolvedRoot, safeTuning, levelDocument, useSelectedLevel);
   const stageRoot = path.join(workspace.tempRoot, 'delivery');
   await mkdir(stageRoot, { recursive: true });
   const zipTimestamp = new Date().toISOString();
@@ -1694,7 +1719,7 @@ async function exportPlatforms({ projectRoot, tuning, levelDocument = null, plat
       const reusesBuiltSources = reusableSources && variantIndex > 0;
       if (!reusesBuiltSources && !cachedSources) {
         if (variant.id) await applyWorkspaceTuning(workspace.workRoot, variantTuning);
-        await generateWorkspaceSources(workspace.workRoot, signal);
+        await generateWorkspaceSources(workspace.workRoot, signal, useSelectedLevel);
       }
       const targetIconDataUri = reusesBuiltSources
         ? await loadBrandingIconDataUri(resolvedRoot, variantTuning)
@@ -1802,6 +1827,7 @@ export async function exportPlayablePackage({
   keepMaterialCode = false,
   namingOverride = null,
   noBrandingSuffix = false,
+  useSelectedLevel = false,
   brandingSet = DEFAULT_PLAYABLE_BRANDING_SET
 } = {}) {
   if (!SUPPORTED_PLATFORMS.includes(platform)) {
@@ -1821,6 +1847,7 @@ export async function exportPlayablePackage({
     skipChecks,
     keepMaterialCode,
     namingOverride,
+    useSelectedLevel,
     // Every set is built through its branding variant, BL included. BL is one
     // Android+iOS package: the variant bakes both store icons into the same HTML
     // and the runtime picks one from the device UA, so the editor's Icon 版本
@@ -1884,34 +1911,58 @@ export async function exportAllPlayablePackages({
   namingOverride = null,
   noBrandingSuffix = false,
   deliveryDate = null,
+  tuningVariants = null,
+  platforms = SUPPORTED_PLATFORMS,
+  useSelectedLevel = false,
   brandingSet = DEFAULT_PLAYABLE_BRANDING_SET
 } = {}) {
   const destinationRoot = path.resolve(outputDir ?? path.join(projectRoot, 'artifacts', 'playable-exports'));
   const brandingVariants = resolveBrandingSetVariants(brandingSet);
-  const built = await exportPlatforms({
-    projectRoot,
-    tuning,
-    levelDocument,
-    platforms: SUPPORTED_PLATFORMS,
-    outputDir: destinationRoot,
-    signal,
-    // The device list travels with the variant: one Bus package is uploaded to
-    // both stores, so both UAs must be smoked here too.
-    // A product that carries its own identity in the file name (BFT) does not
-    // want the branding-set suffix appended as well.
-    variants: brandingVariants.map(({ id, suffix, runtimeDevices }) => ({
-      id,
-      suffix: noBrandingSuffix ? '' : suffix,
-      runtimeDevices
-    })),
-    // Runtime smoke is part of the online editor's export contract. The remote
-    // fast flag may reuse the Google Ads backup image, but must not publish an
-    // artifact whose JavaScript path was never exercised.
-    skipRuntime: process.env.PLAYABLE_EXPORT_SKIP_RUNTIME === '1',
-    skipChecks,
-    keepMaterialCode,
-    namingOverride
-  });
+  if (tuningVariants !== null && (!Array.isArray(tuningVariants) || !tuningVariants.length)) {
+    throw new TypeError('至少需要一个有效的导出版本');
+  }
+  const builds = [];
+  try {
+    for (const variantTuning of tuningVariants ?? [tuning]) {
+      if (signal?.aborted) throw new Error('导出已取消');
+      builds.push(await exportPlatforms({
+        projectRoot,
+        tuning: variantTuning,
+        levelDocument,
+        platforms,
+        outputDir: destinationRoot,
+        signal,
+        // Keep each branding set's existing device profiles and native formats.
+        variants: brandingVariants.map(({ id, suffix, runtimeDevices }) => ({
+          id,
+          suffix: noBrandingSuffix ? '' : suffix,
+          runtimeDevices
+        })),
+        skipRuntime: process.env.PLAYABLE_EXPORT_SKIP_RUNTIME === '1',
+        skipChecks,
+        keepMaterialCode,
+        useSelectedLevel,
+        namingOverride: tuningVariants ? { ...namingOverride, ...variantTuning.exportNaming } : namingOverride
+      }));
+    }
+  } catch (error) {
+    await Promise.all(builds.map(build => rm(build.workspace.tempRoot, { recursive: true, force: true })));
+    throw error;
+  }
+  const built = {
+    ...builds[0],
+    sourceCacheHit: builds.every(build => build.sourceCacheHit),
+    results: builds.flatMap(build => build.results.map(item => ({
+      ...item,
+      sourcePath: path.join(build.stageRoot, item.fileName),
+      variant: {
+        steps: build.tuning.exportNaming.steps,
+        version: build.tuning.exportNaming.version,
+        lives: build.tuning.stamina?.lives,
+        successfulOperationThreshold: build.tuning.installGate?.successfulOperationThreshold
+      }
+    })))
+  };
   try {
     const checksSkipped = built.results.some(({ checkSummary }) => checkSummary.conclusion === 'SKIPPED_LOCAL_CHECKS');
     const requirementPrefix = String(built.tuning?.exportNaming?.requirementCode ?? '').trim();
@@ -1940,13 +1991,14 @@ export async function exportAllPlayablePackages({
         pattern: PLAYABLE_NAMING_PATTERN,
         values: built.tuning.exportNaming
       },
-      artifacts: built.results.map(({ platform, brandingVariant, format, fileName, bytes, sha256, checkSummary }) => ({
+      artifacts: built.results.map(({ platform, brandingVariant, format, fileName, bytes, sha256, checkSummary, variant }) => ({
         platform,
         brandingVariant,
         format,
         fileName,
         bytes,
         sha256,
+        variant,
         check: {
           conclusion: checkSummary.conclusion,
           checkBatchId: checkSummary.checkBatchId,
@@ -1987,7 +2039,7 @@ export async function exportAllPlayablePackages({
       const channelFolder = resolveChannelFolder(built.tuning, item.platform);
       const channelRoot = path.join(deliveryRoot, channelFolder);
       await mkdir(channelRoot, { recursive: true });
-      await copyFile(path.join(built.stageRoot, item.fileName), path.join(channelRoot, item.fileName));
+      await copyFile(item.sourcePath, path.join(channelRoot, item.fileName));
     }
     const aggregateStage = path.join(built.workspace.tempRoot, aggregateName);
     await deterministicZip(
@@ -2005,12 +2057,13 @@ export async function exportAllPlayablePackages({
       // Report files follow the delivery package label, so a reviewer can match a
       // report to the folder it belongs in without decoding the branding set.
       const label = packageLabel || (item.brandingVariant === 'bus' ? BUS_BRANDING_LABEL : item.brandingVariant);
+      const variantLabel = tuningVariants?.length > 1 ? `-${item.variant.steps}-${item.variant.version}` : '';
       return [
-        `${item.brandingVariant}-${item.platform}`,
+        `${item.brandingVariant}-${item.platform}${variantLabel}`,
         await publishCheckReports(
           item.checkSummary,
           destinationRoot,
-          item.brandingVariant ? `${item.platform}-${label}` : item.platform
+          `${item.brandingVariant ? `${item.platform}-${label}` : item.platform}${variantLabel}`
         )
       ];
     })));
@@ -2036,7 +2089,7 @@ export async function exportAllPlayablePackages({
       }
     };
   } finally {
-    await rm(built.workspace.tempRoot, { recursive: true, force: true });
+    await Promise.all(builds.map(build => rm(build.workspace.tempRoot, { recursive: true, force: true })));
   }
 }
 

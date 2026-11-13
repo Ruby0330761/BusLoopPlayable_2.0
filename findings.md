@@ -1,5 +1,34 @@
 # Findings
 
+## 2026-11-12 批量导出：字段、运行配置与母关必须一致
+
+- `src/export-variants.js` 是命名列表解析、双向同步、首值预览和独立配置展开的共同契约。只有体力1～10、成功操作次数1～200可进入包名；关闭为N；显式空值不能被初始化迁移自动补成有效版本。数字框只在真实输入/滑动后收敛列表，不能在普通blur时清除多值。
+- `installGate.enabled` 控制自动按次跳转，旧配置缺字段仍开启；`customThresholdEnabled` 保留显式阈值，不能依赖被生产出包剥离的 exportNaming。关闭跳转时仍用真实车辆数记录进度，session计数阈值传Infinity，避免丢失统计或进入installReady。
+- 实包画面发现仓库默认 `bl42-progress` 会把编辑器level24导成level15。编辑器入口使用 `useSelectedLevel`，仅在临时workspace写 `editor-current-level` 会话并传入生成子进程；CLI默认false，原生产会话不改。镜像编辑器level9→7旧链路；其余当前关单独导出。缓存包含模式、调参、草稿与关卡文件状态。
+- 每个体力/步数组合完整生成自己的资源和配置，汇总时按各workspace的sourcePath收集；各版本报告标签也要带版本防止相互覆盖。Windows显式Python可用`PLAYABLE_EXPORT_PYTHON`，不修改全局PATH；项目内导出HTML/临时workspace必须从Vite watcher排除，否则生成文件会刷新编辑器并取消自己的下载。
+- 246项回归、构建、实际14份跨渠道和4份AL组合验证通过。两个最终验证JSON强制每个包只含当前level24，核对名字、运行数值、渠道原生格式、目录、SHA-256及时间；手机3/5心与对应开场图已实际渲染。证据集中在 `artifacts/playable-exports/xzx-export-variants-20261112/`。
+
+## 2026-11-12 失败落版：暗 CTA、无 Retry、icon 出现后任意点击商店
+
+- 原 CTA 层级13，高于失败遮罩12，且持续 `cta-pulse`，所以失败后像被单独高亮。现在 `.is-failed` 遮罩可见时将 CTA 放到11并停动画，由同一遮罩压暗；同时禁用其独立按钮输入，防止键盘绕过落版时机。
+- 复用 `gameOver.retryEnabled`：新默认0，编辑器当前关卡也已关闭；显式启用的历史 Retry 模式仍保留。关闭时落版在 `.is-cta-ready`（原标题过渡结束、icon 开始出现）后成为完整点击区域，click/Enter/Space 统一调用现有 `InstallFullGame`，沿用渠道跳转与去重。失败过渡前、隐藏/重开后、胜利卡片不触发新增行为。
+- `syncResultInteraction` 同步 Retry/CTA 禁用状态和 overlay 的 link 语义；`hideGameOver` 清理状态与定时器，恢复正常 CTA。Game Over 设置有局部刷新分支，可在编辑器中直接切换现有重试设置。
+- 本地模拟渠道 SDK 的可见计数验证：icon 前0；空白/icon/CTA原位置/键盘/竖屏边缘/横屏边缘逐次1–6。真实编辑器失败和重开验证同样通过，三心/开场说明已还原。模拟只存在于 QA 副本，未改渠道接口或注入生产导出。215 定向测试、构建通过，证据在 `artifacts/playable-exports/xzx-failure-endcard-20261112/`。
+
+## 2026-11-12 体力条水平定位改为显式左/中/右锚点
+
+- 旧定位从内容左侧加 `baseWidth/2` 起算，X 又按 `uiScale=min(横向比例,纵向比例)` 缩放；体力条宽度却按内容宽度及上限独立计算。因此一个设备上用 399/400 凑出的居中值在另一比例下不成立。
+- 新 `stamina.horizontalAlign` 默认 center；left/right 用最终缩放后的实际宽度定位边缘，center 直接取可见游戏内容中心。X 按内容宽度/1080 缩放并继续防越界，Y 沿用原比例。切换对齐时把 X 清零，随后允许正右/负左微调。体力/倒计时/倍速的显式布局互不推动。
+- 未带新字段的配置会归一化为 center，但已有非零 X 不会在加载时被静默删除；选一次对齐即可清除旧偏移。真实用户当前预览由 399 改为 center/X0，原三心与开场说明已恢复。截图读取真实 DOM 布局，所以无需复制一份定位公式。
+- 87 定向测试、构建、21 编辑器布局与 6 真实导出页布局通过；测量误差 <0.012 px（浏览器亚像素舍入）。见 `artifacts/playable-exports/xzx-stamina-alignment-20261112/`。
+
+## 2026-11-12 xzx：点错扣体力与满车位救援独立
+
+- 点错不再写入 `pendingStaminaRescue`：在已有 `collision.contactTriggered` 的一次性接触分支扣一心，车辆/容器碰撞的运动、受击、事件与音效继续走普通流程，不消耗乘客、不救走阻挡车。最后一心耗尽后等待碰撞回退完成，再进入现有 `stamina-exhausted` Game Over。
+- `stamina.collisionPenaltyEnabled` / `parkingRescueEnabled` 为独立 0/1 字段，缺省均为 1；主开关仍缺省关闭、初始三心。动态读取开关避免切换时补满体力。满车位仍以“车位全部停稳 + 传送带满 + 无可上车乘客”持续原失败延迟后救援，不改为单纯车位数量满即触发。
+- `cta.text` 非空优先于语言表，留空沿用自动本地化；runtime 和截图共用 `resolveBrandingCopy()`。字段编辑只刷新 CTA，避免输入时重建场景。模板、保存、导出校验都保留此字符串及两个体力字段。
+- Windows 本地导出原来的 `symlink(..., 'dir')` 会因创建符号链接权限失败；改为 win32 使用 `junction`，其他平台仍用 `dir`。真实 QA 导出成功，未引入依赖或绕过系统权限。
+
 ## 2026-11-11 只有调参引用的素材必须显式进打包白名单，否则静默变成 1 字节占位图
 
 - **症状**：开启天气特效 / 上传自由素材后导出，成品里画面什么都没有，但静态检查 33/35 PASS、runtime 也 PASS，`brokenImages` 为空。
