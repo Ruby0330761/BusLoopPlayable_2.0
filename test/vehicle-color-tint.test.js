@@ -274,3 +274,40 @@ test('scene-view tints through the shared model instead of its own copy', () => 
   // The old inline HSV replacement is gone.
   assert.doesNotMatch(source, /const sourceHsv = rgbHue\(source\)/, 'the inline HSV tint must be removed');
 });
+
+test('a repaint never amplifies the atlas shading', () => {
+  // BL-2611096 painted the green slot (#206d53) with #3e897d. Because the paint
+  // is brighter than the slot, the old scale of 1.72 multiplied that brightness
+  // into the atlas's baked highlight bands. Those bands cover most of the visible
+  // car, so the car rendered bright cyan (#4cdcd0) while the operator had typed a
+  // dark teal. Shading may be compressed but must never be stretched.
+  const reference = hexToRgb('#206d53');
+  const paint = hexToRgb('#3e897d');
+  const referenceLuma = lumaOfRgb(reference);
+  const paintLuma = lumaOfRgb(paint);
+  assert.ok(paintLuma > referenceLuma, 'this case needs a brighter paint than the slot');
+
+  for (const pixel of [[70, 125, 110], [140, 140, 140], [200, 200, 200]]) {
+    const shaded = shadePixelToPaint(pixel, reference, paint);
+    const before = lumaOfRgb(pixel) - referenceLuma;
+    const after = lumaOfRgb(shaded) - paintLuma;
+    // A highlight must stay exactly as far above the body as it started; any
+    // stretch here is what turned the car into a bright cyan smear.
+    assert.ok(
+      after <= before + 0.02,
+      `shading offset grew from ${before.toFixed(3)} to ${after.toFixed(3)}`
+    );
+  }
+
+  // A darker paint compresses shading instead of stretching it.
+  const dark = shadePixelToPaint([140, 140, 140], reference, hexToRgb('#123a30'));
+  assert.ok(
+    lumaOfRgb(dark) - lumaOfRgb(hexToRgb('#123a30')) <= lumaOfRgb([140, 140, 140]) - referenceLuma + 0.02,
+    'a darker paint must not stretch the shading offset either'
+  );
+});
+
+/** Relative luminance of an 8-bit colour, 0..1. */
+function lumaOfRgb([r, g, b]) {
+  return (r * 0.2126 + g * 0.7152 + b * 0.0722) / 255;
+}

@@ -38,11 +38,17 @@
 
 const BODY_REGION_KEYS = ['body', 'highlight', 'shadow', 'window', 'detail'];
 
-// A near-black reference channel cannot produce a usable ratio, so the scale is
-// bounded instead of trusted. 4 keeps real shading contrast (atlas highlights
-// sit at 2-3.6x the body) while refusing the blow-out values a #101010 body
-// would otherwise generate.
-const MAX_SHADING_SCALE = 4;
+// Shading may be COMPRESSED (a darker paint flattens the highlights) but must
+// never be AMPLIFIED. Amplifying is what made an override look nothing like the
+// paint that produced it: repainting the green slot (#206d53) with #3e897d asks
+// for a 1.72x luminance scale, which pushed the atlas's baked highlight bands far
+// past the paint itself. Those bands cover most of the visible car, so the car
+// read as bright cyan (#4cdcd0) while the operator had typed a dark teal.
+//
+// The lower bound still exists so a near-black reference cannot divide by
+// something tiny and blow the texture out.
+const MAX_SHADING_COMPRESSION = 4;
+const MAX_SHADING_SCALE = 1;
 
 // A pixel counts as "body" when it is saturated enough to carry the paint hue
 // and its hue is near the atlas's own hue. The neutral branch exists because a
@@ -54,6 +60,12 @@ const DARK_GLASS_LUMA = 0.32;
 
 const lumaOf = ([r, g, b]) => (r * 0.2126 + g * 0.7152 + b * 0.0722) / 255;
 const clampChannel = (value) => Math.max(0, Math.min(255, Math.round(value)));
+
+/** The single luminance scale a repaint applies to every shading offset. */
+function shadingScale(reference, anchor) {
+  const ratio = lumaOf(anchor) / Math.max(lumaOf(reference), 0.02);
+  return Math.max(1 / MAX_SHADING_COMPRESSION, Math.min(MAX_SHADING_SCALE, ratio));
+}
 
 export function hexToRgb(value) {
   const hex = String(value ?? '').replace('#', '');
@@ -136,10 +148,8 @@ export function resolveTintReference(atlasBaseRgb, measuredBodyRgb = null) {
  * scene lit it the car read brown instead of black. One scalar moves every
  * channel together, so the shading darkens without changing hue.
  */
-export function shadePixelToPaint(pixel, reference, anchor, maxScale = MAX_SHADING_SCALE) {
-  const referenceLuma = lumaOf(reference);
-  const anchorLuma = lumaOf(anchor);
-  const scale = Math.max(1 / maxScale, Math.min(maxScale, anchorLuma / Math.max(referenceLuma, 0.02)));
+export function shadePixelToPaint(pixel, reference, anchor) {
+  const scale = shadingScale(reference, anchor);
   return [0, 1, 2].map((channel) => (
     clampChannel(anchor[channel] + (pixel[channel] - reference[channel]) * scale)
   ));
@@ -163,11 +173,11 @@ function isNeutralPaint(rgb) {
  * read brown once lit), while a warm off-white target such as `#fff9ef` keeps its
  * warmth instead of being flattened to pure grey.
  */
-export function shadeToNeutral(pixel, reference, anchor, maxScale = MAX_SHADING_SCALE) {
+export function shadeToNeutral(pixel, reference, anchor) {
   const referenceLuma = lumaOf(reference);
   const anchorLuma = lumaOf(anchor);
   const pixelLuma = lumaOf(pixel);
-  const scale = Math.max(1 / maxScale, Math.min(maxScale, anchorLuma / Math.max(referenceLuma, 0.02)));
+  const scale = shadingScale(reference, anchor);
   const shaded = Math.max(0, Math.min(1, anchorLuma + (pixelLuma - referenceLuma) * scale));
 
   const anchorHsv = rgbToHsv(anchor);

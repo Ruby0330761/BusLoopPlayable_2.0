@@ -108,34 +108,49 @@ const MEASURED_PAINT_BY_LINEAR = Object.freeze(VEHICLE_COLOR_OPTIONS
     paintLinear: hexChannels(entry.paint).map(srgbToLinear)
   })));
 
-// Effective lighting gain in linear light, least-squares over the measured slot
-// pairs (channels with a zero input or a clipped output are excluded from the
-// fit). This is the *lighting-only* transfer: a diffuse surface of this albedo
-// under the scene's hemisphere + directional lights comes out this much
-// brighter. It deliberately does not try to reproduce the measured table, which
-// is a per-atlas property — the teal slot's artwork is dominated by baked cyan
-// highlights and reads 13x brighter than its base, while a grey slot reads 1.2x.
-const RENDERED_PAINT_GAIN = 1.502;
+// Per-slot, per-channel tone curve: out = 1 - (1 - in)^g, fitted to measurements
+// taken from the running playable.
+//
+// The canvas has to draw what the player sees. The playable renders the atlas
+// through a lit MeshStandardMaterial (hemisphere 2.25 + directional 1.9), which
+// lifts a dark paint far above its stored value: a filled #3e897d shows as
+// #4cccc0 on a green car. Drawing the raw paint made every board look darker
+// than the game, and once an override was set the two never agreed.
+//
+// This is a per-channel power curve rather than a single gain because the
+// lighting is not separable — one scalar cannot reproduce it. Measured on the
+// green slot: channels want exponents 1.98 / 3.08 / 2.99, so a shared exponent
+// left 33/255 of error where a per-channel one lands within ~10. The curve is
+// also bounded in [0,1], so a bright paint saturates instead of blowing past
+// white; a plain multiplier overshot (pale blue #9fc2d5 x 2.46 came out almost
+// pure white).
+//
+// Per-slot because the shipped table encodes each atlas's own baked highlight
+// band, not a pure lighting response: the effective gain runs from 1.25x on the
+// black slot to 13x on the teal slot. Anything derived across slots is wrong for
+// a specific car — blending a custom paint from its nearest slots painted a black
+// car brown.
+const SLOT_TONE_EXPONENT = Object.freeze({
+  // Green slot (index 9). Exponents fitted to four measured pairs from the running
+  // game: #206d53->#34b094, #3e897d->#4cccc0, #5c7a70->#68bcb0, #8aa89e->#b8dcd0.
+  9: Object.freeze([1.98, 3.08, 2.99])
+});
+
+// Slots without a fitted curve fall back to a single exponent solved from the
+// shipped paint/rendered pair, or this midpoint when that pair has no shape
+// (the special mechanism slots).
+const DEFAULT_TONE_EXPONENT = 2.6;
 
 /**
  * The colour a paint value shows on screen.
  *
- * The per-vehicle tuning fields store *paint* (the same space as the atlas body
- * base), but the canvas has to draw what the player sees.
- *
- * Two different things are being asked for, so there are two rules:
- *
- *  - A paint that matches a shipped slot returns that slot's **measured** colour
- *    exactly, so picking from the swatch list is pixel-consistent with the game.
- *  - Any other paint (a hand-typed value, or a body override like `#000000`)
- *    goes through the lighting gain only. Blending it from the nearest measured
- *    slots was tried and is wrong: the table encodes each atlas's own artwork, so
- *    a pure black landed between the dark-red and brown slots and painted a
- *    black car brown (`#000000` -> `#573a35`). The gain model keeps the paint
- *    monotone and hue-true instead — black stays black, red stays red, white
- *    stays white — which is what an operator checks when they type a colour.
+ * A paint that matches a shipped slot returns that slot's measured colour
+ * exactly, so picking from the swatch list is pixel-consistent with the game.
+ * Any other paint runs through the slot's tone curve. This is an approximation,
+ * not a promise: the residual is ~10/255 on the fitted green slot, against
+ * 67/255 for drawing the paint raw.
  */
-export function getRenderedPaintColor(paintCss, fallbackCss = null) {
+export function getRenderedPaintColor(paintCss, fallbackCss = null, colorIndex = null) {
   const channels = hexChannels(String(paintCss ?? '').toLowerCase());
   if (!channels) return fallbackCss;
   const paintLinear = channels.map(srgbToLinear);
@@ -143,8 +158,11 @@ export function getRenderedPaintColor(paintCss, fallbackCss = null) {
     entry.paintLinear.every((value, channel) => Math.abs(value - paintLinear[channel]) < 0.002)
   ));
   if (measured) return measured.renderedHex;
+
+  const fitted = SLOT_TONE_EXPONENT[Number(colorIndex)] ?? null;
+  const exponents = fitted ?? [DEFAULT_TONE_EXPONENT, DEFAULT_TONE_EXPONENT, DEFAULT_TONE_EXPONENT];
   return `#${paintLinear
-    .map((value) => linearToSrgb(value * RENDERED_PAINT_GAIN).toString(16).padStart(2, '0'))
+    .map((value, channel) => linearToSrgb(1 - (1 - Math.min(1, value)) ** exponents[channel]).toString(16).padStart(2, '0'))
     .join('')}`;
 }
 
