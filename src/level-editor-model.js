@@ -133,7 +133,12 @@ const MEASURED_PAINT_BY_LINEAR = Object.freeze(VEHICLE_COLOR_OPTIONS
 const SLOT_TONE_EXPONENT = Object.freeze({
   // Green slot (index 9). Exponents fitted to four measured pairs from the running
   // game: #206d53->#34b094, #3e897d->#4cccc0, #5c7a70->#68bcb0, #8aa89e->#b8dcd0.
-  9: Object.freeze([1.98, 3.08, 2.99])
+  9: Object.freeze([1.98, 3.08, 2.99]),
+  // Blue slot (index 0). Fitted to three measured pairs: #0061e8->#50a4fc,
+  // #5a8fd0->#acd4fc, #2b62c4->#7ca4f4. The red channel needs a much steeper
+  // curve than green/blue: blue paint has almost no red to lift, so any red that
+  // does show has to come from the specular term.
+  0: Object.freeze([5.38, 3.48, 3.08])
 });
 
 // Slots without a fitted curve fall back to a single exponent solved from the

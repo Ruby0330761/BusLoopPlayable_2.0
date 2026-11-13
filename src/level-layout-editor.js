@@ -591,13 +591,15 @@ function drawVehicleSprite(context, vehicle, { width, length, color, inverseColo
   const l = length;
   const profile = vehicleCabinProfile(vehicle.seats);
   const bodyRadius = w * profile.bodyRadius;
-  // Region colours arrive in rendered space, the same space as `color`. When a
-  // region has no override it is derived from the body so the board keeps the
-  // shading it always had; when it does, the operator sees the change here
-  // instead of only after exporting.
-  const highlightColor = regions?.highlight ?? shadeHexColor(color, 0.04);
-  const shadowColor = regions?.shadow ?? shadeHexColor(color, -0.28);
-  const midColor = regions?.body ?? shadeHexColor(color, -0.04);
+  // Region colours arrive already converted to what the playable shows. The
+  // gradient's middle stop IS that colour: `color` has been through the slot's
+  // lighting model, so drawing it untouched is what makes the board match the
+  // game. Darkening the mid stop (it used to be shadeHexColor(color, -0.04))
+  // put a systematic 4% shadow over every car, which is why a white car read
+  // #f5f5f5 on the board while the game showed #ffffff.
+  const highlightColor = regions?.highlight ?? shadeHexColor(color, 0.06);
+  const shadowColor = regions?.shadow ?? shadeHexColor(color, -0.22);
+  const midColor = regions?.body ?? color;
   const windowColor = regions?.window ?? null;
   const detailColor = regions?.detail ?? null;
 
