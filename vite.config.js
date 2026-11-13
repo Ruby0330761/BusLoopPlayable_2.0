@@ -1658,6 +1658,11 @@ function levelExportDisposition(fileName) {
 }
 
 export default defineConfig({
+  // Export HTML and workspaces are outputs, not editor source. Watching them
+  // reloads the page during a batch and aborts its own download request.
+  server: {
+    watch: { ignored: ['**/artifacts/playable-exports/**', '**/artifacts/export-builds/**'] }
+  },
   optimizeDeps: {
     noDiscovery: true,
     include: []
@@ -2023,10 +2028,18 @@ export default defineConfig({
               transientExportRoot = await mkdtemp(path.join(os.tmpdir(), 'bus-loop-remote-export-'));
             }
             const { exportAllPlayablePackages, exportPlayablePackage } = await import('./scripts/export-playable-package.mjs');
-            const result = await (exportAll ? exportAllPlayablePackages : exportPlayablePackage)({
+            const { expandExportVariantTunings } = await import('./src/export-variants.js');
+            let tuningVariants;
+            try { tuningVariants = expandExportVariantTunings(payload.tuning); }
+            catch (error) { error.statusCode = 400; throw error; }
+            const multipleVariants = tuningVariants.length > 1;
+            const result = await (exportAll || multipleVariants ? exportAllPlayablePackages : exportPlayablePackage)({
               projectRoot: process.cwd(),
-              ...(exportAll ? {} : { platform: payload.platform }),
-              tuning: payload.tuning,
+              ...(exportAll ? {} : multipleVariants ? { platforms: [payload.platform] } : { platform: payload.platform }),
+              tuning: tuningVariants[0],
+              ...(multipleVariants ? { tuningVariants } : {}),
+              namingOverride: tuningVariants[0].exportNaming,
+              useSelectedLevel: true,
               levelDocument,
               brandingSet,
               signal: exportAbortController.signal,

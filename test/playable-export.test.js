@@ -631,8 +631,8 @@ test('editor and server expose production-only single-platform and all-platform 
   assert.match(exporter, /detached: process\.platform !== 'win32'/);
   assert.match(exporter, /process\.kill\(-child\.pid, killSignal\)/);
   assert.match(exporter, /mapWithConcurrency\([\s\S]*?platforms[\s\S]*?getExportConcurrency\(platforms\.length\)/);
-  assert.match(exporter, /generateWorkspaceSources\(workspace\.workRoot, signal\)/);
-  assert.match(exporter, /prepareWorkspace\(resolvedRoot, safeTuning, levelDocument\)/);
+  assert.match(exporter, /generateWorkspaceSources\(workspace\.workRoot, signal, useSelectedLevel\)/);
+  assert.match(exporter, /prepareWorkspace\(resolvedRoot, safeTuning, levelDocument, useSelectedLevel\)/);
   assert.match(exporter, /JSON\.stringify\(levelDocument\)/);
   assert.match(exporter, /PLAYABLE_DIST_DIR: distRoot/);
   assert.match(exporter, /PLAYABLE_INLINE_OUTPUT_FILE: outputPath/);
