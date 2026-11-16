@@ -74,6 +74,13 @@ export const MECHANISM_RESOURCE_MANIFEST = Object.freeze({
   [MECHANISM_TYPES.entryBanner]: Object.freeze([
     `${MECHANISM_ROOT}/entry-banner/sprites/Main_EntryBanner_PurpleArrows.png`,
     `${MECHANISM_ROOT}/entry-banner/sprites/Main_EntryBanner_RedArrows.png`,
+    // Single-plate banners (art and copy baked in) for the `custom` style. They
+    // are choices an author can pick without uploading anything, so they ride
+    // with the mechanism rather than the upload library. Both are shipped
+    // unconditionally like the layered sprites below: the style is a tuning
+    // value, so a build must be able to switch plates without a rebuild.
+    `${MECHANISM_ROOT}/entry-banner/sprites/Main_EntryBanner_Storm.webp`,
+    `${MECHANISM_ROOT}/entry-banner/sprites/Main_EntryBanner_Rain.webp`,
     `${MECHANISM_ROOT}/entry-banner/sprites/Hard.png`,
     `${MECHANISM_ROOT}/entry-banner/sprites/HardBg.png`,
     `${MECHANISM_ROOT}/entry-banner/sprites/SuperHard.png`,
@@ -179,7 +186,11 @@ export const MECHANISM_ASSETS = Object.freeze({
     superHardTitle: `${MECHANISM_ROOT}/entry-banner/sprites/SuperHard.png`,
     superHardBackground: `${MECHANISM_ROOT}/entry-banner/sprites/SuperHardBg.png`,
     purpleArrows: `${MECHANISM_ROOT}/entry-banner/sprites/Main_EntryBanner_PurpleArrows.png`,
-    redArrows: `${MECHANISM_ROOT}/entry-banner/sprites/Main_EntryBanner_RedArrows.png`
+    redArrows: `${MECHANISM_ROOT}/entry-banner/sprites/Main_EntryBanner_RedArrows.png`,
+    // Fallback for the `custom` style: an uploaded banner replaces it, but a
+    // profile saved before any upload still has to render something.
+    stormBanner: `${MECHANISM_ROOT}/entry-banner/sprites/Main_EntryBanner_Storm.webp`,
+    rainBanner: `${MECHANISM_ROOT}/entry-banner/sprites/Main_EntryBanner_Rain.webp`
   }),
   luxuryVehicle: Object.freeze({
     vehicleModel: `${MECHANISM_ROOT}/luxury-vehicle/models/Luxury_001.fbx.bin`,

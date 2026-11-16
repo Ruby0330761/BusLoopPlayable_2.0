@@ -18,8 +18,12 @@ test('mechanism resource manifest keeps every mechanism family under its owned d
 
 test('entry banner resources stay isolated and are selected only when enabled', () => {
   const entryBanner = MECHANISM_RESOURCE_MANIFEST.entryBanner;
-  assert.equal(entryBanner.length, 6);
+  // Six layered sprites plus the two single-plate banners that seed the custom
+  // style before any upload.
+  assert.equal(entryBanner.length, 8);
   assert.ok(entryBanner.every((asset) => asset.includes('/mechanisms/entry-banner/')));
+  assert.ok(entryBanner.some((asset) => asset.endsWith('Main_EntryBanner_Storm.webp')));
+  assert.ok(entryBanner.some((asset) => asset.endsWith('Main_EntryBanner_Rain.webp')));
   assert.deepEqual(
     deriveLevelMechanics({}).types,
     ['ordinaryConveyor']
@@ -59,11 +63,23 @@ test('entry banner uses the supplied title/background images and keeps the match
   assert.match(styleSource, /\.entry-banner-arrow-group[\s\S]*z-index: 3/);
   assert.match(styleSource, /\.entry-banner-label-group[\s\S]*z-index: 4/);
   assert.match(styleSource, /\.entry-banner-label[\s\S]*height: 67\.5%/);
+  // The custom style draws one uploaded plate: the arrow and title layers are
+  // hidden and the group sizes itself from the plate's own aspect ratio.
+  assert.match(styleSource, /\.entry-banner-overlay\.is-custom \.entry-banner-banner-group[\s\S]*aspect-ratio/);
+  assert.match(styleSource, /\.entry-banner-overlay\.is-custom \.entry-banner-arrow-group[\s\S]*display: none/);
+  assert.match(sceneSource, /applyEntryBannerPlateAspect/);
+  assert.match(sceneSource, /assets\.stormBanner/);
+  // A custom plate must not inherit the layered art's 1.9x component scale: that
+  // scale bleeds the band off both edges by design, which ran a phone-width plate
+  // past the screen edges. The plate takes `none` instead.
+  assert.match(sceneSource, /banner\.card\.style\.transform = 'none'/);
   assert.doesNotMatch(styleSource, /-webkit-text-fill-color: transparent/);
   assert.equal(existsSync('public/assets/unity/mechanisms/entry-banner/sprites/Hard.png'), true);
   assert.equal(existsSync('public/assets/unity/mechanisms/entry-banner/sprites/HardBg.png'), true);
   assert.equal(existsSync('public/assets/unity/mechanisms/entry-banner/sprites/SuperHard.png'), true);
   assert.equal(existsSync('public/assets/unity/mechanisms/entry-banner/sprites/SuperHardBg.png'), true);
+  assert.equal(existsSync('public/assets/unity/mechanisms/entry-banner/sprites/Main_EntryBanner_Storm.webp'), true);
+  assert.equal(existsSync('public/assets/unity/mechanisms/entry-banner/sprites/Main_EntryBanner_Rain.webp'), true);
   const removedEntryBannerAssets = [
     'EntryBanner.cs',
     'EntryBanner.prefab',

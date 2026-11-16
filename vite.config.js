@@ -77,6 +77,7 @@ let preRollCompressionInFlight = null;
 //   editor-bgm/         background music tracks (one selected per level)
 //   editor-effects/     full-screen weather particle sprites
 //   editor-free-assets/ free-placed overlays (drag + lock)
+//   editor-banners/     entry-banner plates uploaded for `style: custom`
 const BGM_ASSET_ROOT = path.resolve('artifacts', 'editor-bgm');
 const MAX_BGM_ASSET_BYTES = 8 * 1024 * 1024;
 // Compressed target for an uploaded track. A 30 s loop at 96 kbps is ~360 KB,
@@ -86,6 +87,11 @@ const WEATHER_ASSET_ROOT = path.resolve('artifacts', 'editor-effects');
 const MAX_WEATHER_ASSET_BYTES = 2 * 1024 * 1024;
 const FREE_ASSET_ROOT = path.resolve('artifacts', 'editor-free-assets');
 const MAX_FREE_ASSET_BYTES = 4 * 1024 * 1024;
+// Entry-banner plates (`entryBanner.style === 'custom'`). Same lifecycle as the
+// other guide libraries, but kept separate: a banner is one wide plate that the
+// runtime draws on its own, not a draggable layer or a particle sprite.
+const BANNER_ASSET_ROOT = path.resolve('artifacts', 'editor-banners');
+const MAX_BANNER_ASSET_BYTES = 3 * 1024 * 1024;
 
 // Where an `/assets/...` URL lives on disk. The packaged build resolves them
 // from `public/`, while the five editor libraries are served by middleware from
@@ -96,6 +102,7 @@ const PLAYABLE_ASSET_SIZE_ROOTS = Object.freeze([
   ['/assets/editor-bgm/', BGM_ASSET_ROOT],
   ['/assets/editor-effects/', WEATHER_ASSET_ROOT],
   ['/assets/editor-free-assets/', FREE_ASSET_ROOT],
+  ['/assets/editor-banners/', BANNER_ASSET_ROOT],
   ['/assets/', path.resolve('public', 'assets')]
 ]);
 
@@ -1216,6 +1223,17 @@ const GUIDE_ASSET_LIBRARIES = {
       ['.png', 'image/png'],
       ['.webp', 'image/webp']
     ])
+  },
+  banner: {
+    root: BANNER_ASSET_ROOT,
+    urlPrefix: '/assets/editor-banners',
+    maxBytes: MAX_BANNER_ASSET_BYTES,
+    kind: 'Entry banner',
+    extensions: ['.png', '.webp'],
+    mime: new Map([
+      ['.png', 'image/png'],
+      ['.webp', 'image/webp']
+    ])
   }
 };
 
@@ -1321,8 +1339,13 @@ async function saveGuideAsset(kind, { filename, bytes, label = null }) {
     : filename;
   const hash = createHash('sha256').update(storedBytes).digest('hex').slice(0, 10);
   const ext = path.extname(storedName).toLowerCase();
-  const prefix = kind === 'bgm' ? 'bgm' : kind === 'weather' ? 'fx' : 'asset';
-  const slug = normalizeGuideAssetLabel(filename).replace(/[^A-Za-z0-9\u4e00-\u9fff_-]+/gu, '-').slice(0, 60) || 'asset';
+  const prefix = kind === 'bgm' ? 'bgm' : kind === 'weather' ? 'fx' : kind === 'banner' ? 'banner' : 'asset';
+  // The stored name has to satisfy `isGuideAssetFilename`, which only admits
+  // ASCII. Keeping CJK here wrote `banner-<hash>-红色警告.png` to disk and then
+  // every list/serve request rejected it, so a Chinese-named upload silently
+  // vanished. The readable name lives in the sidecar `label` instead.
+  const rawSlug = normalizeGuideAssetLabel(filename).replace(/[^A-Za-z0-9_-]+/gu, '-').replace(/^-+|-+$/gu, '');
+  const slug = rawSlug.slice(0, 60) || 'asset';
   const outputName = `${prefix}-${hash}-${slug}${ext}`;
   await mkdir(library.root, { recursive: true });
   const targetPath = path.join(library.root, outputName);
@@ -1828,13 +1851,14 @@ export default defineConfig({
           }
           return;
         }
-        // Guide-stage media: /assets/editor-bgm|editor-effects|editor-free-assets/<file>.
+        // Guide-stage media: /assets/editor-bgm|editor-effects|editor-free-assets|editor-banners/<file>.
         // Audio needs Range support so a browser can seek/preview a long track.
-        const guideAssetMatch = pathname.match(/^\/assets\/(editor-bgm|editor-effects|editor-free-assets)\/([^/]+)$/u);
+        const guideAssetMatch = pathname.match(/^\/assets\/(editor-bgm|editor-effects|editor-free-assets|editor-banners)\/([^/]+)$/u);
         if (guideAssetMatch && (request.method === 'GET' || request.method === 'HEAD')) {
           const kind = guideAssetMatch[1] === 'editor-bgm'
             ? 'bgm'
-            : guideAssetMatch[1] === 'editor-effects' ? 'weather' : 'free';
+            : guideAssetMatch[1] === 'editor-effects' ? 'weather'
+              : guideAssetMatch[1] === 'editor-banners' ? 'banner' : 'free';
           try {
             const filename = decodeURIComponent(guideAssetMatch[2]);
             if (!isGuideAssetFilename(kind, filename)) throw new Error(`Invalid ${kind} filename.`);
@@ -1878,7 +1902,7 @@ export default defineConfig({
           return;
         }
         // Guide-stage libraries: list / import / rename / delete per kind.
-        const guideAssetRouteMatch = pathname.match(/^\/__guide-assets\/(bgm|weather|free)(\/[a-z]+)?$/u);
+        const guideAssetRouteMatch = pathname.match(/^\/__guide-assets\/(bgm|weather|free|banner)(\/[a-z]+)?$/u);
         if (guideAssetRouteMatch) {
           const kind = guideAssetRouteMatch[1];
           const action = guideAssetRouteMatch[2] || '';

@@ -29,6 +29,9 @@ const FIRST_CLICK_GUIDE_KEYS = new Set([
 const ENTRY_BANNER_KEYS = new Set([
   'enabled',
   'style',
+  // The `custom` style's plate. An uploaded banner lives on the editor volume,
+  // so a session that overrides the style has to be able to name its own art.
+  'customAsset',
   'durationSeconds',
   'maskEnabled',
   'maskOpacity',
@@ -36,6 +39,8 @@ const ENTRY_BANNER_KEYS = new Set([
   'positionX',
   'positionY'
 ]);
+
+const ENTRY_BANNER_STYLES = new Set(['hard', 'superhard', 'custom']);
 
 const LABEL_ALIGNMENTS = new Set(['left', 'center', 'right']);
 
@@ -121,10 +126,16 @@ export function normalizeStageOpening(opening = {}) {
     if (banner.maskEnabled !== undefined) next.maskEnabled = toToggle(banner.maskEnabled, 'stage.opening.entryBanner.maskEnabled');
     if (banner.style !== undefined) {
       const style = String(banner.style).toLowerCase();
-      if (style !== 'hard' && style !== 'superhard') {
-        throw new TypeError('stage.opening.entryBanner.style must be hard or superhard.');
+      if (!ENTRY_BANNER_STYLES.has(style)) {
+        throw new TypeError('stage.opening.entryBanner.style must be hard, superhard or custom.');
       }
       next.style = style;
+    }
+    if (banner.customAsset !== undefined) {
+      if (typeof banner.customAsset !== 'string' || !banner.customAsset) {
+        throw new TypeError('stage.opening.entryBanner.customAsset must be an asset URL.');
+      }
+      next.customAsset = banner.customAsset;
     }
     for (const key of ['durationSeconds', 'maskOpacity', 'scale', 'positionX', 'positionY']) {
       if (banner[key] !== undefined) {

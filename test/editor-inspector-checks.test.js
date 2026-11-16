@@ -88,6 +88,20 @@ test('guide media and free-placed layers are inlined from tuning, not from the l
   assert.ok(urls.has('/assets/editor-free-assets/hidden.webp'));
 });
 
+test('a custom entry-banner plate is inlined only when the banner is on', () => {
+  const tuning = structuredClone(SCENE_TUNING);
+  tuning.entryBanner.customAsset = '/assets/editor-banners/banner-abc-storm.webp';
+  const withBanner = collectPlayableInlineAssetUrls({
+    ...baseOptions(),
+    tuning,
+    entryBannerEnabled: true
+  });
+  assert.ok(withBanner.has('/assets/editor-banners/banner-abc-storm.webp'));
+  // A build that can never show the banner must not pay for its plate.
+  const withoutBanner = collectPlayableInlineAssetUrls({ ...baseOptions(), tuning });
+  assert.ok(!withoutBanner.has('/assets/editor-banners/banner-abc-storm.webp'));
+});
+
 test('the editor preflight shares the packager inline set and the 5 MB budget', async () => {
   const [editor, inliner, server] = await Promise.all([
     read('src/scene-editor.js'),

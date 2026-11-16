@@ -28,5 +28,14 @@ artifacts/applovin/*.html
 # Progress-bar art extraction scratch (raw crops, mattes, per-asset checks)
 artifacts/progress-ui-extract/
 
+# Editor upload volumes. These are operator-uploaded runtime media the editor
+# creates on first upload, not shipped assets: committing them would put one
+# machine's uploads into everyone's checkout. `editor-backgrounds/` and
+# `editor-prerolls/` stay tracked because they also hold delivered art.
+artifacts/editor-bgm/
+artifacts/editor-effects/
+artifacts/editor-free-assets/
+artifacts/editor-banners/
+
 # Packager size report (rewritten on every package:applovin)
 artifacts/applovin/*.payload.json

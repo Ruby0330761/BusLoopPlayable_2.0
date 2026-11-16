@@ -1842,7 +1842,15 @@ export class SceneView {
       const rotation = component.rotation ?? {};
       return `translate3d(${toNumber(position.x) / 10.8}cqw, ${toNumber(position.y) / 10.8}cqw, ${toNumber(position.z) / 10.8}cqw) rotateX(${toNumber(rotation.x)}deg) rotateY(${toNumber(rotation.y)}deg) rotateZ(${toNumber(rotation.z)}deg) scale3d(${toNumber(scale.x, defaultScale)}, ${toNumber(scale.y, defaultScale)}, ${toNumber(scale.z, defaultScale)})`;
     };
-    banner.card.style.transform = transform(components.banner);
+    // `custom` is a single plate that has to fit the frame, so its card takes no
+    // component transform. The layered art is authored to bleed off both edges
+    // (its 1.9x default scale is deliberate), and applying that scale to a plate
+    // whose ends are visible ran a phone-width banner off both screen edges.
+    if (this.resolveEntryBannerStyle(this.getEntryBannerTuning()) === 'custom') {
+      banner.card.style.transform = 'none';
+    } else {
+      banner.card.style.transform = transform(components.banner);
+    }
     banner.arrowGroup.style.transform = transform(components.arrows);
     banner.labelGroup.style.transform = transform(components.label);
   }
@@ -1895,19 +1903,34 @@ export class SceneView {
     if (!this.entryBanner) this.entryBanner = this.createEntryBanner();
     const banner = this.entryBanner;
     if (!banner) return;
-    const style = String(tuning.style ?? 'hard').toLowerCase() === 'superhard' ? 'superhard' : 'hard';
+    const style = this.resolveEntryBannerStyle(tuning);
     const assets = MECHANISM_ASSETS.entryBanner;
     banner.root.classList.toggle('is-superhard', style === 'superhard');
+    banner.root.classList.toggle('is-custom', style === 'custom');
     banner.mask.hidden = !Boolean(tuning.maskEnabled);
     banner.mask.style.setProperty('--entry-banner-mask-opacity', String(
       THREE.MathUtils.clamp(Number(tuning.maskOpacity ?? 0.62), 0, 1)
     ));
-    banner.card.src = style === 'superhard' ? assets.superHardBackground : assets.hardBackground;
-    for (const arrow of banner.arrows) {
-      arrow.src = style === 'superhard' ? assets.purpleArrows : assets.redArrows;
+    if (style === 'custom') {
+      // A custom plate already carries its own copy and badges, so the arrow and
+      // title layers stay hidden. An author who picked the style before
+      // uploading anything still gets the shipped storm plate instead of a
+      // broken image.
+      const source = typeof tuning.customAsset === 'string' && tuning.customAsset
+        ? tuning.customAsset
+        : assets.stormBanner;
+      banner.label.alt = '';
+      this.applyEntryBannerPlateAspect(source);
+    } else {
+      banner.card.src = style === 'superhard' ? assets.superHardBackground : assets.hardBackground;
+      for (const arrow of banner.arrows) {
+        arrow.src = style === 'superhard' ? assets.purpleArrows : assets.redArrows;
+      }
+      banner.label.src = style === 'superhard' ? assets.superHardTitle : assets.hardTitle;
+      banner.label.alt = style === 'superhard' ? 'SUPER HARD' : 'HARD';
+      banner.bannerGroup.style.removeProperty('--entry-banner-plate-aspect');
+      banner.bannerGroup.style.aspectRatio = '';
     }
-    banner.label.src = style === 'superhard' ? assets.superHardTitle : assets.hardTitle;
-    banner.label.alt = style === 'superhard' ? 'SUPER HARD' : 'HARD';
     this.updateEntryBannerComponentTransforms();
     banner.scene.style.setProperty('--entry-banner-scale', String(
       THREE.MathUtils.clamp(Number(tuning.scale ?? 1), 0.3, 2)
@@ -1916,6 +1939,42 @@ export class SceneView {
     banner.root.classList.remove('is-preview');
     this.updateEntryBannerFrame(0);
   }
+
+  /**
+   * Resolve the authored style to one of the three renderable variants.
+   * `custom` is only honoured when it has artwork to draw, so a profile that
+   * asked for it and never uploaded a plate falls back to the built-in set
+   * rather than showing an empty overlay.
+   */
+  resolveEntryBannerStyle(tuning) {
+    const style = String(tuning?.style ?? 'hard').toLowerCase();
+    if (style === 'superhard' || style === 'hard') return style;
+    if (style === 'custom') return 'custom';
+    return 'hard';
+  }
+
+  /**
+   * Size the plate group to the uploaded art's own aspect ratio. A custom plate
+   * is a different shape from the built-in band, so stretching it into the band
+   * box would distort the lettering baked into it.
+   */
+  applyEntryBannerPlateAspect(source) {
+    const banner = this.entryBanner;
+    if (!banner) return;
+    const ratio = () => {
+      const width = banner.card.naturalWidth;
+      const height = banner.card.naturalHeight;
+      if (!(width > 0) || !(height > 0)) return;
+      banner.bannerGroup.style.setProperty('--entry-banner-plate-aspect', `${width} / ${height}`);
+      banner.bannerGroup.style.aspectRatio = `${width} / ${height}`;
+    };
+    // A decoded image (or one switched back to a cached URL) reports its size
+    // immediately; otherwise the load that this src assignment started will.
+    if (banner.card.complete) ratio();
+    banner.card.onload = ratio;
+    if (banner.card.src !== source) banner.card.src = source;
+  }
+
 
   showEntryBanner() {
     if (!this.getEntryBannerTuning()?.enabled) {

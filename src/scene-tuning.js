@@ -1003,6 +1003,7 @@ export const SCENE_TUNING = {
   "entryBanner": {
     "enabled": 0,
     "style": "superhard",
+    "customAsset": "",
     "positionX": 540,
     "positionY": 1080,
     "scale": 1,

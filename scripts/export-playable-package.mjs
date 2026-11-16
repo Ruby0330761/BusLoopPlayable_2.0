@@ -704,7 +704,8 @@ async function copySelectedEditorPreRoll(projectRoot, workRoot, tuning) {
 const GUIDE_ASSET_SOURCES = Object.freeze({
   '/assets/editor-bgm/': { dir: 'editor-bgm', extensions: ['.mp3', '.m4a', '.ogg', '.wav'] },
   '/assets/editor-effects/': { dir: 'editor-effects', extensions: ['.png', '.webp'] },
-  '/assets/editor-free-assets/': { dir: 'editor-free-assets', extensions: ['.png', '.webp'] }
+  '/assets/editor-free-assets/': { dir: 'editor-free-assets', extensions: ['.png', '.webp'] },
+  '/assets/editor-banners/': { dir: 'editor-banners', extensions: ['.png', '.webp'] }
 });
 
 function guideAssetReferences(tuning) {
@@ -714,6 +715,7 @@ function guideAssetReferences(tuning) {
   };
   push(tuning?.audio?.bgm?.asset);
   push(tuning?.weatherEffect?.sprite);
+  push(tuning?.entryBanner?.customAsset);
   for (const layer of tuning?.freeAssets?.layers ?? []) push(layer?.asset);
   return values;
 }

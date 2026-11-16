@@ -99,8 +99,7 @@ test('a locked layer stops accepting drags while staying visible', () => {
   assert.match(freeSource, /element\.hidden = !layer\.visible/);
 });
 
-test('the editor offers upload, download and delete for all three libraries', () => {
-  // One factory serves bgm/weather/free so the three panels cannot drift apart.
+test('the editor offers upload, download and delete for all three libraries', () => {  // One factory serves bgm/weather/free so the three panels cannot drift apart.
   assert.match(editorSource, /function createGuideAssetPanel/);
   assert.match(editorSource, /const endpoint = `\/__guide-assets\/\$\{kind\}`/);
   // Both library-backed panels are wired through that factory.
@@ -116,6 +115,11 @@ test('the editor offers upload, download and delete for all three libraries', ()
   // The BGM picker is fed from the library, so an upload becomes selectable.
   assert.match(editorSource, /selectPath: 'audio\.bgm\.asset'/);
   assert.match(editorSource, /selectPath: 'weatherEffect\.sprite'/);
+  // Uploading an entry-banner plate goes through the same factory and also flips
+  // the style that renders it, so the upload is visible without a second step.
+  assert.match(editorSource, /kind: 'banner'/);
+  assert.match(editorSource, /selectPath: 'entryBanner\.customAsset'/);
+  assert.match(editorSource, /setAtPath\(next, 'entryBanner\.style', 'custom'\)/);
 });
 
 test('the runtime mounts both overlays inside the stage and renders weather each frame', () => {
@@ -133,7 +137,8 @@ test('the editor serves a list/import/rename/delete library per kind', () => {
   assert.match(vizeSource, /editor-bgm/);
   assert.match(vizeSource, /editor-effects/);
   assert.match(vizeSource, /editor-free-assets/);
-  assert.match(vizeSource, /\/\^\\\/__guide-assets\\\/\(bgm\|weather\|free\)/);
+  assert.match(vizeSource, /editor-banners/);
+  assert.match(vizeSource, /\/\^\\\/__guide-assets\\\/\(bgm\|weather\|free\|banner\)/);
   // Only the declared extensions get through, and path traversal is rejected.
   assert.match(vizeSource, /if \(!library\.extensions\.includes\(ext\) \|\| path\.basename\(filename\) !== filename\)/);
   // Audio needs Range support so a browser can preview/seek a long track.
@@ -146,6 +151,9 @@ test('the exporter copies only the guide assets a level references', () => {
   assert.match(exporterSource, /tuning\?\.audio\?\.bgm\?\.asset/);
   assert.match(exporterSource, /tuning\?\.weatherEffect\?\.sprite/);
   assert.match(exporterSource, /tuning\?\.freeAssets\?\.layers/);
+  // A custom entry-banner plate lives in its own library and must be staged with
+  // the other tuning-addressed media.
+  assert.match(exporterSource, /tuning\?\.entryBanner\?\.customAsset/);
   // A referenced-but-missing file has to fail loudly instead of shipping a
   // package that silently loses its artwork.
   assert.match(exporterSource, /Guide asset is referenced but missing from the editor volume/);

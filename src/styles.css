@@ -385,6 +385,21 @@ body { user-select: none; overscroll-behavior: none; }
   object-fit: fill;
   filter: drop-shadow(0 5px 0 rgba(107, 52, 18, .22));
 }
+/* Custom plate (`style: custom`): one uploaded image with its own artwork and
+   copy, so the arrow/title layers have nothing to add. The group sizes itself
+   from the plate's aspect ratio (written by the runtime) instead of the built-in
+   band box, otherwise a wider plate would be squashed by `object-fit: fill`. */
+.entry-banner-overlay.is-custom .entry-banner-banner-group {
+  height: auto;
+  aspect-ratio: var(--entry-banner-plate-aspect, 1600 / 693);
+}
+.entry-banner-overlay.is-custom .entry-banner-card {
+  height: 100%;
+  object-fit: contain;
+  filter: drop-shadow(0 6px 0 rgba(0, 0, 0, .24));
+}
+.entry-banner-overlay.is-custom .entry-banner-arrow-group,
+.entry-banner-overlay.is-custom .entry-banner-label-group { display: none; }
 .entry-banner-arrow {
   width: auto;
   height: auto;

@@ -127,6 +127,17 @@ const BACKGROUND_OPTIONS = [
   ['/assets/applovin/textures/BG01_split01_Grassland_q60.jpg', 'BG01 \u8349\u5730']
 ];
 
+// `entryBanner.style === 'custom'` plates. Both shipped plates ride with the
+// mechanism; the editor appends every uploaded banner from its own library, so
+// this list only seeds the picker before the first fetch resolves. The empty
+// entry is what the delete action lands on — the runtime then draws the shipped
+// storm plate rather than an empty overlay.
+const BANNER_OPTIONS = [
+  ['', '\uff08\u672a\u9009\uff0c\u4f7f\u7528\u5185\u7f6e\u98ce\u66b4\u56fe\uff09'],
+  ['/assets/unity/mechanisms/entry-banner/sprites/Main_EntryBanner_Storm.webp', '\u98ce\u66b4\u8b66\u544a\uff08\u81ea\u5e26\u6587\u6848\uff09'],
+  ['/assets/unity/mechanisms/entry-banner/sprites/Main_EntryBanner_Rain.webp', '\u66b4\u96e8\u8b66\u544a\uff08\u81ea\u5e26\u6587\u6848\uff09']
+];
+
 // BL ships both store icons inside one package; the device UA picks one at
 // runtime. These options only choose which art the editor preview shows, so
 // "BL 安卓" and "BL iOS" are two previews of the same BL export.
@@ -1216,8 +1227,12 @@ const FIELD_GROUPS = [
       ['\u542f\u7528', 'entryBanner.enabled', 0, 1, 1, null, 'toggle'],
       ['\u96be\u5ea6\u6837\u5f0f', 'entryBanner.style', 0, 0, 1, [
         ['hard', 'Hard'],
-        ['superhard', 'SuperHard']
+        ['superhard', 'SuperHard'],
+        ['custom', '\u81ea\u5b9a\u4e49\u6a2a\u5e45']
       ]],
+      // The custom plate itself. Built-in options keep the picker usable before
+      // anything was uploaded; the library panel below appends every upload.
+      ['\u6a2a\u5e45\u56fe\u7247', 'entryBanner.customAsset', 0, 0, 1, BANNER_OPTIONS],
       ['X \u4f4d\u7f6e', 'entryBanner.positionX', 0, 2160, 1],
       ['Y \u4f4d\u7f6e', 'entryBanner.positionY', 0, 4320, 1],
       ['\u7f29\u653e', 'entryBanner.scale', 0.3, 2, 0.01],
@@ -2102,6 +2117,12 @@ export function createSceneEditor(root, {
           if (path === 'vehicleGuideHand.vehicleId') {
             setAtPath(next, 'vehicleGuideHand.levelKey', getAtPath(next, 'level.selected'));
           }
+          // Picking a plate is also the request to use it, so the style that
+          // renders it follows. An empty value keeps the style: the runtime
+          // falls back to the shipped storm plate.
+          if (path === 'entryBanner.customAsset' && value) {
+            setAtPath(next, 'entryBanner.style', 'custom');
+          }
           if (path === 'background.asset') applySelectedBackgroundDimensions(next, select.selectedOptions?.[0]);
           commitTuning(next, { path });
           select.value = String(value);
@@ -2730,12 +2751,16 @@ export function createSceneEditor(root, {
   });
 
   /* --- Guide media libraries --------------------------------------------------
-   * Background music, weather sprites and free-asset artwork all come from the
-   * same kind of library (list / upload / rename / delete) and all offer the
-   * same download affordance. One factory keeps the three panels honest instead
-   * of three near-copies drifting apart.
+   * Background music, weather sprites, free-asset artwork and entry-banner plates
+   * all come from the same kind of library (list / upload / rename / delete) and
+   * all offer the same download affordance. One factory keeps the panels honest
+   * instead of four near-copies drifting apart.
    */
-  function createGuideAssetPanel({ kind, label, accept, selectPath, section, hint }) {
+  // Every panel registers here so a tuning change can re-evaluate its button
+  // states — selecting a library item from the field dropdown is not an action
+  // of the panel itself.
+  const guideAssetBusyRefreshers = [];
+  function createGuideAssetPanel({ kind, label, accept, selectPath, section, hint, onBeforeCommit }) {
     const tools = document.createElement('div');
     tools.className = 'editor-pre-roll-tools';
     tools.innerHTML = `
@@ -2767,6 +2792,12 @@ export function createSceneEditor(root, {
       deleteButton.disabled = busy || !currentAsset();
       downloadButton.disabled = busy || !currentAsset();
     };
+    // Two ways reach a library asset: uploading it through this panel (which
+    // calls setBusy itself) and picking one from the field's dropdown. The
+    // dropdown path never ran through here, so delete/download stayed disabled on
+    // a perfectly selected asset. sync() drives this on every tuning change.
+    const refreshBusy = () => setBusy(busy);
+    guideAssetBusyRefreshers.push(refreshBusy);
 
     function replaceOptions(items) {
       const select = assetOptions();
@@ -2796,6 +2827,9 @@ export function createSceneEditor(root, {
     async function commitAssetValue(value, assetLabel = '') {
       const next = structuredClone(getTuning());
       setAtPath(next, selectPath, value);
+      // Some libraries cannot be expressed by the asset alone — picking a custom
+      // entry banner also has to switch the style that renders it.
+      onBeforeCommit?.(next, value);
       commitTuning(next, { path: selectPath });
       const select = assetOptions();
       if (select && value) {
@@ -2941,6 +2975,25 @@ export function createSceneEditor(root, {
       selectPath: 'weatherEffect.sprite',
       section: weatherSection,
       hint: '\u4e0a\u4f20\u7c92\u5b50\u8d34\u56fe\uff08PNG / WebP\uff0c2 MB \u4ee5\u5185\uff09\uff0c\u7559\u7a7a\u5219\u7528\u7a0b\u5e8f\u7ed8\u5236\u7684\u96e8\u96ea\u5f62\u72b6'
+    });
+  }
+
+  const bannerSection = inputs.get('entryBanner.customAsset')?.row.closest('.editor-section');
+  if (bannerSection) {
+    createGuideAssetPanel({
+      kind: 'banner',
+      label: '\u6a2a\u5e45\u56fe\u7247',
+      accept: 'image/png,image/webp,.png,.webp',
+      selectPath: 'entryBanner.customAsset',
+      section: bannerSection,
+      hint: '\u4e0a\u4f20\u5e26\u6587\u6848\u7684\u6574\u5f20\u6a2a\u5e45\u56fe\uff08PNG / WebP\uff0c\u81ea\u52a8\u538b\u7f29\u5230 320 KB\uff09\uff1b\u4e0a\u4f20\u540e\u6837\u5f0f\u81ea\u52a8\u5207\u5230\u300c\u81ea\u5b9a\u4e49\u6a2a\u5e45\u300d\uff0c\u6a2a\u5e45\u6309\u56fe\u7247\u81ea\u8eab\u6bd4\u4f8b\u7f29\u653e',
+      onBeforeCommit: (next, value) => {
+        // A plate only renders in the custom style, so choosing artwork is also
+        // the intent to use it. Deleting the plate leaves the style alone: the
+        // runtime then falls back to the shipped storm plate instead of an
+        // empty overlay.
+        if (value) setAtPath(next, 'entryBanner.style', 'custom');
+      }
     });
   }
 
@@ -3823,6 +3876,7 @@ export function createSceneEditor(root, {
     }
     setPreRollBusy(preRollBusy);
     setBackgroundBusy(false);
+    for (const refreshBusy of guideAssetBusyRefreshers) refreshBusy();
     // The header picker mirrors the tuning value, so a locale forced from the
     // field row or restored from a saved profile shows up here too.
     if (localeSelect) {
@@ -4166,7 +4220,10 @@ export function createSceneEditor(root, {
       [CUSTOM_PRE_ROLL_ASSET_PREFIX, 2 * 1024 * 1024, '前贴视频'],
       ['/assets/editor-bgm/', 1024 * 1024, 'BGM'],
       ['/assets/editor-effects/', 2 * 1024 * 1024, '特效贴图'],
-      ['/assets/editor-free-assets/', 4 * 1024 * 1024, '自由素材']
+      ['/assets/editor-free-assets/', 4 * 1024 * 1024, '自由素材'],
+      // A banner upload is compressed in the browser to the shared image cap
+      // before it leaves the editor, so the stored plate is already small.
+      ['/assets/editor-banners/', IMAGE_UPLOAD_MAX_OUTPUT_BYTES, '入场横幅']
     ];
 
     let payloadStats = null;

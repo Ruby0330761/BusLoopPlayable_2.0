@@ -36,8 +36,26 @@ test('stage opening normalizes toggles, numbers, and banner style', () => {
 
 test('stage opening rejects unsupported keys and banner styles', () => {
   assert.throws(() => normalizeStageOpening({ firstClickGuide: { levelKey: 'level7' } }), /not supported/);
-  assert.throws(() => normalizeStageOpening({ entryBanner: { style: 'expert' } }), /hard or superhard/);
+  assert.throws(() => normalizeStageOpening({ entryBanner: { style: 'expert' } }), /hard, superhard or custom/);
   assert.throws(() => normalizeStageOpening({ entryBanner: { opacity: 1 } }), /not supported/);
+});
+
+test('a stage can override the banner to a custom plate', () => {
+  const opening = normalizeStageOpening({
+    entryBanner: {
+      enabled: 1,
+      style: 'custom',
+      customAsset: '/assets/editor-banners/banner-abc-storm.webp'
+    }
+  });
+  assert.equal(opening.entryBanner.style, 'custom');
+  assert.equal(opening.entryBanner.customAsset, '/assets/editor-banners/banner-abc-storm.webp');
+  // An empty string is not a usable plate; the runtime falls back to the shipped
+  // storm art, so a session must not be able to encode "custom with nothing".
+  assert.throws(
+    () => normalizeStageOpening({ entryBanner: { style: 'custom', customAsset: '' } }),
+    /must be an asset URL/
+  );
 });
 
 test('stage labels are clamped to a small bounded list with numeric positions', () => {

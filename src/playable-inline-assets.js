@@ -103,6 +103,14 @@ export function collectPlayableInlineAssetUrls({
   for (const image of choiceOptionImages) {
     if (typeof image === 'string' && image) urls.add(image);
   }
+  // A custom entry-banner plate is addressed from tuning and can live on the
+  // editor volume, so neither the level walk nor the mechanism manifest sees it.
+  // Only a build that can actually show the banner pays for it.
+  if (entryBannerEnabled
+    && typeof tuning.entryBanner?.customAsset === 'string'
+    && tuning.entryBanner.customAsset) {
+    urls.add(tuning.entryBanner.customAsset);
+  }
   collectAssetUrls({
     background: tuning.background?.asset,
     icon: tuning.branding?.icon?.asset,

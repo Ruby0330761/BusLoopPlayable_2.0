@@ -1,5 +1,28 @@
 # Playable Project Progress
 
+## Completed On 2026-11-16 - 入场横幅支持自定义整图与素材库上传
+
+- 新增 `entryBanner.style = 'custom'`：整张横幅图（文案/图标已烘焙）单独渲染，箭头层与标题层隐藏，条带按图片自身宽高比缩放（`applyEntryBannerPlateAspect` 写 `--entry-banner-plate-aspect`），不会被原来的 1080×610 条带框拉变形。
+- 素材：两张内置整图横幅随机制打包，作为 custom 样式的现成选项（未上传时的兜底仍是风暴图）：`Main_EntryBanner_Storm.webp`（1600×693，115 KB，来自「bus横幅-红色storm/红色警告.png」）与 `Main_EntryBanner_Rain.webp`（1600×637，124 KB，来自 `20261116-164922.png`）。
+- 编辑器：入场横幅分组新增「横幅图片」下拉 + 上传/删除/下载面板（`createGuideAssetPanel` 新增 `banner` 类型），上传走浏览器端 `compressUploadedImage`（320 KB 上限）转 WebP，上传或从下拉选中都会自动把样式切到 `custom`。
+- 后端：`GUIDE_ASSET_LIBRARIES.banner` → `artifacts/editor-banners/`，路由 `/__guide-assets/banner`，静态服务 `/assets/editor-banners/`。
+- 出包：`collectPlayableInlineAssetUrls` 在 `entryBannerEnabled` 时内联 `customAsset`，`GUIDE_ASSET_SOURCES` 增补 `editor-banners` 以便导出时复制。
+- 顺带修 `saveGuideAsset` 的存量 bug：中文名素材写盘后文件名含 CJK，被 `isGuideAssetFilename` 拒收，列表和访问都拿不到（写入即消失）。现在落盘名只保留 ASCII，中文显示名走 sidecar `label`。
+- 顺带修 `createGuideAssetPanel` 的存量 bug：从下拉框选择已有素材时删除/下载按钮一直 disabled，只有走上传路径才会刷新。`sync()` 现在会重算所有媒体面板的按钮状态。
+- 修自定义横幅在手机上左右被切断：分层横幅的 `components.banner.scale = 1.9` 是刻意的出血设计，整图横幅继承后两端跑出画面（390px 实测卡片宽 390 但内容溢出）。`updateEntryBannerComponentTransforms` 现在对 custom 样式给 card 写 `transform: none`，位置/旋转仍由 scene 容器负责。
+- 验证：`node --test test/*.test.js` 754/754 通过；按编辑器导出路径（`useSelectedLevel: true`）实跑 AppLovin 导出，两张整图横幅分别在 390×844 视口实测完整显示（`groupW=390, cardX=0, transform=none`），横幅字节 base64 内联、无外部资源残留，`check-playable-runtime` 15/15 PASS；浏览器实测上传→选中自动切样式→按比例渲染→下载→删除（删除后回落到内置风暴图）闭环。
+- 注意：CLI `export:playable` 不带 `--tuning-json` 时会用仓库里 `artifacts/playable-session.json` 的 `bl42-progress` session，其 stage 显式写了 `entryBanner.enabled: 0`，会覆盖全局调参导致横幅不播；要验横幅请走编辑器导出或显式指定带横幅的 session/调参。
+
+## Completed On 2026-11-16 - BL-2611135 Q211V1 底部/顶部元素让开平台安全区
+
+- 反馈：已交付的 `BL-2611135-Q211V1`（7 渠道）在手机上，底部品牌文字整条落在平台操作区内，倍速键上半截落在顶部保留区内。
+- 量化（无头 Chrome，390×844 视口，设计稿 1080×2160）：通用安全区 44/40 CSS px 换算为设计坐标 **顶部 113 / 底部 102**（即底部安全线 y≈2058）。实测原包：`speedToggle` 54–182、`caption` 2068–2160、CTA 1965–2071、logo 1966–2080、icon 1961–2075。
+- 改动（只动两处坐标，其余调参不变）：`branding.text.y 2114 → 1895`（落 1849–1941，让开安全线且不压车阵/按钮）、`speedToggle.y 118 → 180`（落 116–244，完整在顶带下方）。底部 CTA/logo/icon 保持原位——车阵下沿约 1825，CTA 下方没有可容纳文字的横向空带。
+- 出包依据：这份调参不在本地 `artifacts/*` 里，从**远端 level99（displayName `BL-2611135`，69 车）**取回关卡文档与其自带调参，用产物里内嵌的实际几何值（`background.offsetY 0.25 / parkingSpots.count 6 / vehicleArea.offsetZ 0.7 / speedToggle.enabled 1`）覆盖后出包。背景图 `bg-7296357f05-...-nano-banana-2_20261113_105456.jpg`（标签「感恩节-TJW」）本地缺失，按 SHA-1 与包内内联字节比对一致后从远端取回并入库。
+- 对照验证：用当前代码按原坐标重出一版，与已交付包渲染像素差 0.003%（同产物重复渲染的传送带动画噪声为 0.4%），确认 14:08/14:53 两次提交未改变本关画面；再对比改坐标前后，差异只剩 1870–1936（文字新位置）与 2090–2156（文字旧位置）两段。
+- 验证：7 渠道（AL/GG/FB/MT/MO/TT/UN）逐个渲染实测均为 `speed 116–244 / caption 1849–1941 / cta 1965–2071`；文件名与原交付逐字段一致；AL 包运行时门禁 15/15 PASS（CTA 经 mraid 正确跳 Play 商店）。
+- 产物留在 `~/Downloads/BL-2611135-Q211V1-safearea/`（未上传 NAS，按要求先给文件）。`export:playable` 的 `APL-AUD-001 缺少字段 stage` 仍会拦本地检查，本次用 `skipChecks` + 单独跑 `check-playable-runtime` 验证。
+
 ## Completed On 2026-11-16 - 合入 origin/main 车辆路径统一（v20261116-1128）
 
 - 背景：本地 main 与 `origin/main` 分叉，远端多出 xiaosuo 的 `ba5fea7 统一路径快照并支持自动边界`，推送被拒。
