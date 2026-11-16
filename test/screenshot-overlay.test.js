@@ -78,19 +78,26 @@ function fakeElement({
 
 function fakeContext() {
   const calls = [];
-  return {
+  const context = {
     calls,
     save() {}, restore() {},
     drawImage: (...args) => calls.push({ type: 'drawImage', args }),
     fillText: (...args) => calls.push({ type: 'fillText', args }),
     strokeText: (...args) => calls.push({ type: 'strokeText', args }),
+    // Styles are recorded on the call: the pill painter sets a colour and fills
+    // immediately, so the colour is what the assertion is about.
+    fill: () => calls.push({ type: 'fill', args: [context._fillStyle] }),
+    stroke: () => calls.push({ type: 'stroke', args: [context._strokeStyle, context._lineWidth] }),
     translate() {}, rotate() {}, beginPath() {}, rect() {}, clip() {}, roundRect() {},
     set textAlign(value) { this._textAlign = value; },
     set textBaseline(value) { this._textBaseline = value; },
     set font(value) { this._font = value; },
     set fillStyle(value) { this._fillStyle = value; },
+    set strokeStyle(value) { this._strokeStyle = value; },
+    set lineWidth(value) { this._lineWidth = value; },
     set globalAlpha(value) { this._alpha = value; }
   };
+  return context;
 }
 
 function fakeStage({ width = 360, height = 640, overlays = [] } = {}) {
@@ -268,6 +275,65 @@ test('countdown digits and speed label are re-set with their computed font', asy
   assert.deepEqual(texts, ['00:27', 'x2']);
   // Stroke is drawn for the clock only: the speed label has no stroke.
   assert.equal(context.calls.filter((call) => call.type === 'strokeText').length, 1);
+});
+
+test('the speed switch pill is painted, not just its icon and numeral', async () => {
+  // The default skin's pill is a CSS background image, so the generic image pass
+  // never saw it; the editor screenshot used to show a floating icon and number.
+  const label = fakeElement({
+    id: 'speed-toggle-label',
+    rect: { left: 230, top: 30, width: 26, height: 20 },
+    textContent: '2x',
+    style: { fontSize: '16px', fontWeight: '900', color: 'rgb(92, 101, 139)' }
+  });
+  const defaultSkin = fakeElement({
+    id: 'speed-toggle',
+    rect: { left: 200, top: 20, width: 70, height: 46 },
+    style: { backgroundImage: 'url("/assets/applovin/speed-toggle-bg_q90.webp")' },
+    custom: { element: { querySelectorAll: (selector) => (selector === '#speed-toggle-label' ? [label] : []) } }
+  });
+  defaultSkin.selectors = ['#speed-toggle'];
+  const pillArt = { naturalWidth: 512, naturalHeight: 340 };
+  const requested = [];
+  const context = fakeContext();
+  await drawStageOverlays(context, {
+    stage: fakeStage({ overlays: [defaultSkin] }),
+    width: 720,
+    height: 1280,
+    loadImage: async (source) => { requested.push(source); return pillArt; }
+  });
+  // The encoded URL is decoded and drawn at the button's own box.
+  assert.deepEqual(requested, ['/assets/applovin/speed-toggle-bg_q90.webp']);
+  const artCall = context.calls.find((call) => call.type === 'drawImage' && call.args[0] === pillArt);
+  assert.ok(artCall, 'the pill artwork must reach the capture');
+  assert.equal(artCall.args[3], 140);
+  assert.equal(artCall.args[4], 92);
+  assert.deepEqual(context.calls.filter((call) => call.type === 'fillText').map((call) => call.args[0]), ['2x']);
+
+  // The light skin has no artwork: a flat fill plus its lavender rim have to be
+  // reproduced from computed style, or that skin captures as an empty box.
+  const lightSkin = fakeElement({
+    id: 'speed-toggle',
+    rect: { left: 200, top: 20, width: 70, height: 46 },
+    style: {
+      backgroundImage: 'none',
+      backgroundColor: 'rgb(249, 252, 255)',
+      borderTopWidth: '2px',
+      borderTopColor: 'rgb(185, 194, 227)',
+      borderRadius: '23px'
+    }
+  });
+  lightSkin.selectors = ['#speed-toggle'];
+  const lightContext = fakeContext();
+  await drawStageOverlays(lightContext, {
+    stage: fakeStage({ overlays: [lightSkin] }),
+    width: 720,
+    height: 1280
+  });
+  const fill = lightContext.calls.find((call) => call.type === 'fill');
+  const stroke = lightContext.calls.find((call) => call.type === 'stroke');
+  assert.deepEqual(fill?.args, ['rgb(249, 252, 255)']);
+  assert.deepEqual(stroke?.args.slice(0, 1), ['rgb(185, 194, 227)']);
 });
 
 test('free-placed layers are painted with their rotation and opacity', async () => {

@@ -6,11 +6,17 @@ import { LEVEL_1, setActiveLevel } from './level-data.js';
 import { createLevelSession } from './level-session.js';
 import { SceneView } from './scene-view.js';
 import { setActiveStageScene } from './stage-scene.js';
-import { calculateAutoCameraFit, clampCenteredRectX } from './scene-layout.js';
+import { calculateAutoCameraFit, clampCenteredRectX, clampCenteredRectY } from './scene-layout.js';
 import { SCENE_TUNING } from './scene-tuning.js';
 import { pruneUnknownTuning } from './tuning-migrations.js';
 import { isValidStoreLink, resolveStoreLink } from './store-links.js';
-import { formatSpeedLabel, normalizeSpeedMultiplier, resolveTimeScale } from './speed-toggle.js';
+import {
+  formatSpeedLabel,
+  normalizeSpeedMultiplier,
+  normalizeSpeedToggleStyle,
+  resolveSpeedToggleIcon,
+  resolveTimeScale
+} from './speed-toggle.js';
 import { COUNTDOWN_SIREN_ASSET, createCountdown, normalizeCountdownConfig, validateCountdownConfig } from './countdown.js';
 import { createCountdownView } from './countdown-view.js';
 import { createWeatherEffect } from './weather-effect.js';
@@ -41,7 +47,11 @@ import {
   refreshSpatialConveyorPackages
 } from './spatial-conveyor-runtime.js';
 import { detectPlayfieldHorizon, resolveBackgroundHorizon } from './background-alignment.js';
-import { DEFAULT_STOREFRONT, fitFontSizeToWidth, resolveLocalizedBranding } from './branding-localization.js';
+import {
+  fitFontSizeToWidth,
+  normalizeStorefrontPreview,
+  resolveLocalizedBranding
+} from './branding-localization.js';
 
 const EDITOR_ENABLED = import.meta.env.DEV || __REMOTE_EDITOR__;
 const DEFAULT_SCENE_TUNING = EDITOR_ENABLED ? structuredClone(SCENE_TUNING) : null;
@@ -1141,8 +1151,15 @@ function readBrowserLanguages() {
 // One package serves both stores, so the caption has to read the same storefront
 // the icon and store link already resolve to. The editor previews one line at a
 // time, so it shows the Bus (Google) wording unless a locale is forced.
+// One package serves both stores, so the caption has to read the same storefront
+// the icon and store link already resolve to. The editor previews one line at a
+// time, so its `storefrontPreview` field picks which one to show (or "跟随设备" to
+// mirror an export on this machine).
 function resolveBrandingStorefront() {
-  if (EDITOR_ENABLED) return DEFAULT_STOREFRONT;
+  if (EDITOR_ENABLED) {
+    const preview = normalizeStorefrontPreview(SCENE_TUNING.branding?.localization?.storefrontPreview);
+    if (preview !== 'auto') return preview;
+  }
   return isIOSDevice() ? 'ios' : 'google';
 }
 
@@ -1157,7 +1174,10 @@ function resolveBrandingCopy() {
     text: typeof textConfig.content === 'string' ? textConfig.content : '',
     ctaText: SCENE_TUNING.cta?.text,
     loadingTitle: typeof loadingConfig.title === 'string' ? loadingConfig.title : '',
-    storefront: resolveBrandingStorefront()
+    storefront: resolveBrandingStorefront(),
+    // A brand whose two listings are named differently (Crowd) carries the pair
+    // in tuning; Bus leaves both slots empty and falls back to the market tables.
+    storeTitles: SCENE_TUNING.branding?.storeTitles
   });
 }
 
@@ -2525,12 +2545,15 @@ async function startRuntime() {
   let speedToggleBoosted = false;
   const updateCtaPosition = () => {
     view.resize();
+    // One measurement for the resize pass: the CTA, branding, countdown, stamina
+    // and speed switch all clamp against the same painted bounds.
+    const backgroundBounds = view.getBackgroundCanvasBounds();
     applyGameOverTuning();
     applyCtaTuning();
-    applySpeedToggleTuning();
-    applyBrandingTuning(view.getBackgroundCanvasBounds());
+    applySpeedToggleTuning(backgroundBounds);
+    applyBrandingTuning(backgroundBounds);
     syncStageOverlays();
-    countdownView.resize(view.getBackgroundCanvasBounds(), SCENE_TUNING.countdown, getBrandingStageMetrics().uiScale);
+    countdownView.resize(backgroundBounds, SCENE_TUNING.countdown, getBrandingStageMetrics().uiScale);
     layoutProgressHud(progressHudRoot, {
       width: progressHudRootWidth(),
       fraction: progressHudFraction(),
@@ -2540,7 +2563,7 @@ async function startRuntime() {
       // so the "N% OF PLAYERS FAIL HERE" copy is never clipped.
       drop: 222
     });
-    staminaView.resize(view.getBackgroundCanvasBounds(), SCENE_TUNING.stamina, getBrandingStageMetrics().uiScale);
+    staminaView.resize(backgroundBounds, SCENE_TUNING.stamina, getBrandingStageMetrics().uiScale);
     if (stageChoiceVisible) positionStageChoiceHand();
   };
   const getCameraPreset = (action) => {
@@ -2600,12 +2623,13 @@ async function startRuntime() {
     const configured = Number(SCENE_TUNING.speedToggle?.multiplier);
     return normalizeSpeedMultiplier(configured, 2);
   }
-  function applySpeedToggleTuning() {
+  function applySpeedToggleTuning(backgroundBounds = null) {
     if (!speedToggleButton) return;
     const config = SCENE_TUNING.speedToggle ?? {};
     const metrics = getBrandingStageMetrics();
     const uiScale = metrics.uiScale;
     const enabled = Boolean(config.enabled ?? 0);
+    const style = normalizeSpeedToggleStyle(config.style);
     const width = Math.max(1, Number(config.width) || 105);
     const height = Math.max(1, Number(config.height) || 69);
     const renderedWidth = width * uiScale;
@@ -2613,41 +2637,80 @@ async function startRuntime() {
     const centerX = Number.isFinite(Number(config.x)) ? Number(config.x) : metrics.designWidth * 0.84;
     const centerY = Number.isFinite(Number(config.y)) ? Number(config.y) : metrics.designHeight * 0.14;
     speedToggleButton.hidden = !enabled;
+    // The CSS owns both looks keyed off this attribute; the geometry below stays
+    // shared so one position/size field row controls either skin.
+    speedToggleButton.dataset.speedStyle = style;
+    // The light capsule's parts are sized off a unit that fits *both* fields. Its
+    // sign-off art needs 2.01 x its height in width (numeral, gap, badge and the
+    // two end paddings), so a button narrower than that would push the badge out
+    // of the pill. Deriving every part from this unit keeps any width/height pair
+    // inside the capsule instead of stretching one part past another.
+    const lightUnit = Math.min(height, width / 2.01);
     speedToggleButton.style.setProperty('--speed-toggle-width', scaledPx(width, uiScale));
     speedToggleButton.style.setProperty('--speed-toggle-height', scaledPx(height, uiScale));
-    speedToggleButton.style.setProperty('--speed-toggle-gap', scaledPx(Math.max(2, width * 0.05), uiScale));
-    speedToggleButton.style.setProperty('--speed-toggle-icon-width', scaledPx(Math.max(6, height * 0.38), uiScale));
-    speedToggleButton.style.setProperty('--speed-toggle-icon-height', scaledPx(Math.max(6, height * 0.52), uiScale));
+    speedToggleButton.style.setProperty(
+      '--speed-toggle-gap',
+      scaledPx(style === 'light' ? Math.max(2, lightUnit * 0.1875) : Math.max(2, width * 0.05), uiScale)
+    );
+    speedToggleButton.style.setProperty(
+      '--speed-toggle-icon-width',
+      scaledPx(Math.max(6, style === 'light' ? lightUnit * 0.7625 : height * 0.38), uiScale)
+    );
+    speedToggleButton.style.setProperty(
+      '--speed-toggle-icon-height',
+      scaledPx(Math.max(6, style === 'light' ? lightUnit * 0.7625 : height * 0.52), uiScale)
+    );
     speedToggleButton.style.setProperty(
       '--speed-toggle-font-size',
-      scaledPx(Math.max(6, height * 0.42), uiScale)
+      scaledPx(Math.max(6, style === 'light' ? lightUnit * 0.583 : height * 0.42), uiScale)
     );
-    speedToggleButton.style.left = `${clampConfigNumber(
-      centerX * metrics.positionScaleX,
-      renderedWidth / 2,
-      metrics.stageWidth - renderedWidth / 2,
-      metrics.stageWidth * 0.84
-    )}px`;
-    speedToggleButton.style.top = `${clampConfigNumber(
-      centerY * metrics.positionScaleY,
-      renderedHeight / 2,
-      metrics.stageHeight - renderedHeight / 2,
-      metrics.stageHeight * 0.14
-    )}px`;
+    speedToggleButton.style.setProperty(
+      '--speed-toggle-pad-left',
+      scaledPx(style === 'light' ? lightUnit * 0.3625 : 0, uiScale)
+    );
+    speedToggleButton.style.setProperty(
+      '--speed-toggle-pad-right',
+      scaledPx(style === 'light' ? lightUnit * 0.1 : 0, uiScale)
+    );
+    // The authored position is in design space, but a wide viewport letterboxes
+    // the portrait artwork: the renderer clears the margins in flat blue and the
+    // scene only covers a centred strip. Scaling design X over the whole stage
+    // therefore parked this button in that empty margin on wide screens (16:9
+    // desktop preview, landscape uploads). Map the design coordinate into the
+    // painted strip instead, so 916/1080 keeps meaning "84% across the game
+    // screen" at any aspect ratio, then clamp as a safety net. Without measured
+    // bounds both the strip and the stage are the same rectangle, so nothing
+    // changes for a portrait phone.
+    const boundsLeft = Number.isFinite(backgroundBounds?.left) ? backgroundBounds.left : 0;
+    const boundsRight = Number.isFinite(backgroundBounds?.right) ? backgroundBounds.right : metrics.stageWidth;
+    const boundsTop = Number.isFinite(backgroundBounds?.top) ? backgroundBounds.top : 0;
+    const boundsBottom = Number.isFinite(backgroundBounds?.bottom) ? backgroundBounds.bottom : metrics.stageHeight;
+    const boundsWidth = Math.max(1, boundsRight - boundsLeft);
+    const boundsHeight = Math.max(1, boundsBottom - boundsTop);
+    speedToggleButton.style.left = `${clampCenteredRectX({
+      centerX: boundsLeft + centerX / metrics.designWidth * boundsWidth,
+      width: renderedWidth,
+      left: boundsLeft,
+      right: boundsRight
+    })}px`;
+    speedToggleButton.style.top = `${clampCenteredRectY({
+      centerY: boundsTop + centerY / metrics.designHeight * boundsHeight,
+      height: renderedHeight,
+      top: boundsTop,
+      bottom: boundsBottom
+    })}px`;
     if (!enabled) speedToggleBoosted = false;
     syncSpeedToggleUi();
   }
   function syncSpeedToggleUi() {
     if (!speedToggleButton) return;
+    const style = normalizeSpeedToggleStyle(SCENE_TUNING.speedToggle?.style);
     const multiplier = speedToggleBoosted ? getSpeedToggleMultiplier() : 1;
+    const label = formatSpeedLabel(multiplier, style);
     speedToggleButton.setAttribute('aria-pressed', String(speedToggleBoosted));
-    speedToggleButton.setAttribute('aria-label', `Playback speed ${formatSpeedLabel(multiplier)}`);
-    if (speedToggleLabel) speedToggleLabel.textContent = formatSpeedLabel(multiplier);
-    if (speedToggleIcon) {
-      speedToggleIcon.src = speedToggleBoosted
-        ? '/assets/applovin/speed-toggle-icon-boost.png'
-        : '/assets/applovin/speed-toggle-icon-normal.png';
-    }
+    speedToggleButton.setAttribute('aria-label', `Playback speed ${label}`);
+    if (speedToggleLabel) speedToggleLabel.textContent = label;
+    if (speedToggleIcon) speedToggleIcon.src = resolveSpeedToggleIcon(style, speedToggleBoosted);
   }
   function setSpeedToggleBoosted(boosted) {
     const enabled = Boolean(SCENE_TUNING.speedToggle?.enabled ?? 1);
@@ -2925,9 +2988,12 @@ async function startRuntime() {
     }
     if (path?.startsWith('speedToggle.')) {
       deepMerge(SCENE_TUNING, next);
-      applySpeedToggleTuning();
-      countdownView.resize(view.getBackgroundCanvasBounds(), SCENE_TUNING.countdown, getBrandingStageMetrics().uiScale);
-      staminaView.resize(view.getBackgroundCanvasBounds(), SCENE_TUNING.stamina, getBrandingStageMetrics().uiScale);
+      // Editing X/Y in the panel has to obey the same painted-bounds clamp the
+      // resize pass uses, or the preview jumps to a spot the export will refuse.
+      const backgroundBounds = view.getBackgroundCanvasBounds();
+      applySpeedToggleTuning(backgroundBounds);
+      countdownView.resize(backgroundBounds, SCENE_TUNING.countdown, getBrandingStageMetrics().uiScale);
+      staminaView.resize(backgroundBounds, SCENE_TUNING.stamina, getBrandingStageMetrics().uiScale);
       // A multiplier change has to reach the running game even while the button
       // is off, because the next toggle-on has to use the new value.
       applyIdleSpeedMultiplier();

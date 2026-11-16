@@ -159,6 +159,15 @@ test('one Bus package serves both stores and carries both icons', () => {
     android: '/assets/icon-crowd.jpg',
     ios: '/assets/icon-crowd.jpg'
   });
+  // Crowd's two store listings are named differently, so the caption has to
+  // follow the same storefront as the icon and the store link rather than pinning
+  // one name for both. Bus ships no per-store naming and must actively clear the
+  // pair, because a deep merge cannot delete a key left by a Crowd session.
+  assert.deepEqual(crowd.branding.storeTitles, {
+    google: 'Bus Crowd',
+    ios: 'Bus Crowd - Traffic Jam'
+  });
+  assert.deepEqual(bus.branding.storeTitles, { google: '', ios: '' });
   // Both slots stay valid because a platform preview can run with the other device UA.
   const storeTuning = { storeLinks: { ...STORE_LINKS } };
   const busStores = createBrandingVariantTuning(storeTuning, 'bus').storeLinks;

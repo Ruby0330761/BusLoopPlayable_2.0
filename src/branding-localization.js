@@ -85,6 +85,35 @@ export const STORE_TITLE_TABLES = Object.freeze({
 
 export const DEFAULT_STOREFRONT = 'google';
 
+// A brand whose two store listings are named differently cannot use one caption:
+// Bus Crowd ships as `Bus Crowd` on Google Play and `Bus Crowd - Traffic Jam` on
+// the App Store. A branding set declares the pair, the exporter copies it into
+// `branding.storeTitles`, and the runtime picks the row matching the storefront it
+// already chose for the icon and the store link. Bus leaves both empty and keeps
+// using the per-market tables above.
+export function normalizeStoreTitles(storeTitles) {
+  if (!storeTitles || typeof storeTitles !== 'object' || Array.isArray(storeTitles)) return null;
+  const output = {};
+  for (const storefront of Object.keys(STORE_TITLE_TABLES)) {
+    const value = storeTitles[storefront];
+    if (typeof value === 'string' && value.trim()) output[storefront] = value.trim();
+  }
+  return Object.keys(output).length > 0 ? output : null;
+}
+
+// Editor preview choice: "auto" mirrors what an export does on this device,
+// while picking a storefront shows that store's caption without exporting twice.
+export const STOREFRONT_PREVIEW_OPTIONS = Object.freeze([
+  ['auto', '跟随设备（导出口径）'],
+  ['google', 'Google Play'],
+  ['ios', 'App Store']
+]);
+
+export function normalizeStorefrontPreview(value) {
+  const key = String(value ?? '').trim().toLowerCase();
+  return STOREFRONT_PREVIEW_OPTIONS.some(([option]) => option === key) ? key : 'auto';
+}
+
 // Editor preview choices. "auto" follows the operator's browser language so a
 // Chinese-language editor shows what a Chinese player would see; picking a
 // locale forces that preview. Exports ignore the override and use the device.
@@ -170,14 +199,20 @@ export function resolveStoreTitle(locale, storefront = DEFAULT_STOREFRONT) {
 
 // An authored line is product copy, not a translation slot. Treat empty and the
 // shipped default (in any width variant of the exclamation mark) as "untouched,
-// safe to localize"; anything else passes through byte for byte.
-function isShippedDefaultTitle(value) {
+// safe to localize"; anything else passes through byte for byte. A brand that
+// names itself per storefront has no single default, so any of its own store
+// titles counts as untouched too — otherwise the first export would pin whichever
+// name it happened to carry and the other store would never get its own.
+function isShippedDefaultTitle(value, brandTitles = []) {
   const normalized = String(value ?? '').normalize('NFKC').trim();
-  return normalized === '' || normalized === DEFAULT_BRAND_TITLE;
+  if (normalized === '' || normalized === DEFAULT_BRAND_TITLE) return true;
+  return brandTitles.some((title) => (
+    title && String(title).normalize('NFKC').trim() === normalized
+  ));
 }
 
-function titleForAuthoredText(authored, localized) {
-  return isShippedDefaultTitle(authored) ? localized : String(authored).trim();
+function titleForAuthoredText(authored, localized, brandTitles = []) {
+  return isShippedDefaultTitle(authored, brandTitles) ? localized : String(authored).trim();
 }
 
 export function resolveLocalizedBranding({
@@ -186,18 +221,28 @@ export function resolveLocalizedBranding({
   text = '',
   ctaText = '',
   loadingTitle = '',
-  storefront = DEFAULT_STOREFRONT
+  storefront = DEFAULT_STOREFRONT,
+  storeTitles = null
 } = {}) {
   const active = Boolean(enabled);
   const locale = active ? resolveBrandingLocale(languages) : DEFAULT_BRANDING_LOCALE;
   const strings = BRANDING_LOCALIZATION[locale] ?? BRANDING_LOCALIZATION[DEFAULT_BRANDING_LOCALE];
-  const localizedTitle = active ? resolveStoreTitle(locale, storefront) : DEFAULT_BRAND_TITLE;
+  const brandTitles = normalizeStoreTitles(storeTitles) ?? {};
+  const tableTitle = active ? resolveStoreTitle(locale, storefront) : DEFAULT_BRAND_TITLE;
+  // A per-storefront brand name overrides the caption only: the tables translate
+  // one product name per market, this is the product name itself differing per
+  // listing. The pre-boot loader keeps its authored line, so a Crowd build still
+  // shows the full `Bus Crowd - Traffic Jam` while it boots.
+  const storeTitle = active ? brandTitles[normalizeStorefront(storefront)] : null;
+  // Only an active build may treat a store name as "untouched": with
+  // localization off every authored line is used exactly as written.
+  const untouched = active ? Object.values(brandTitles) : [];
   return {
     enabled: active,
     locale,
     ctaLabel: (typeof ctaText === 'string' ? ctaText.trim() : '') || (active ? strings.cta : DEFAULT_CTA_LABEL),
-    title: titleForAuthoredText(text, localizedTitle),
-    loadingTitle: titleForAuthoredText(loadingTitle, localizedTitle)
+    title: titleForAuthoredText(text, storeTitle || tableTitle, untouched),
+    loadingTitle: titleForAuthoredText(loadingTitle, tableTitle)
   };
 }
 

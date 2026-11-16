@@ -578,6 +578,23 @@ function drawElementImages(context, root, { view, origin, scale }) {
   }
 }
 
+// The speed switch's pill is a CSS background, not a child <img>, so the generic
+// image pass never saw it: the default skin used to leave a floating icon and
+// numeral on the scene, and the light skin (a flat pill plus a border) had nothing
+// at all. Both looks are read back from computed style here.
+async function drawSpeedTogglePill(context, root, { view, origin, scale, loadImage }) {
+  const box = toLocalRect(root.getBoundingClientRect(), origin, scale);
+  const style = styleOf(root, view);
+  const source = /url\((?:"|')?([^"')]+)(?:"|')?\)/u.exec(String(style?.backgroundImage ?? ''))?.[1];
+  const image = source ? await loadImage(source) : null;
+  if (image) {
+    context.drawImage(image, box.x, box.y, box.width, box.height);
+    return;
+  }
+  drawRoundedBox(context, box, style);
+  drawBorder(context, box, style);
+}
+
 // Reads the capsule artwork from the same custom property the CSS uses. In the
 // editor that is a project URL; in a packaged ad it is already a data URI, and
 // re-reading it here keeps the screenshot working in both without hard-coding
@@ -679,6 +696,9 @@ export async function drawStageOverlays(context, {
       if (painted) {
         await drawProgressHud(context, root, { view, origin, scale });
         continue;
+      }
+      if (root.id === 'speed-toggle') {
+        await drawSpeedTogglePill(context, root, { view, origin, scale, loadImage });
       }
       drawElementImages(context, root, { view, origin, scale });
       for (const textSelector of OVERLAY_TEXT_SELECTORS) {

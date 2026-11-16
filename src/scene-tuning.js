@@ -117,7 +117,12 @@ export const SCENE_TUNING = {
     },
     "localization": {
       "enabled": 1,
-      "previewLocale": "en"
+      "previewLocale": "en",
+      "storefrontPreview": "auto"
+    },
+    "storeTitles": {
+      "google": "",
+      "ios": ""
     }
   },
   "camera": {
@@ -154,6 +159,7 @@ export const SCENE_TUNING = {
   },
   "speedToggle": {
     "enabled": 0,
+    "style": "default",
     "x": 916,
     "y": 118,
     "width": 210,

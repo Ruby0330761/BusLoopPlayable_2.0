@@ -104,12 +104,20 @@ export const PLAYABLE_BRANDING_SETS = Object.freeze({
       // (`BFT-2610293`), requester and step tag all come from the tuning the
       // operator exported. This set must not invent `BFT`/`ZZN`, or a delivery
       // is renamed into a different requirement than the one being worked on.
-      // Only replaces the untouched Bus default; a custom line is left alone.
-      // The caption and the loader title use the full store name, which is what
-      // the delivery was reviewed against — the short `Bus Crowd` only survives
-      // as a value an operator may have typed before this shipped.
+      //
+      // The two store listings are worded differently — `Bus Crowd` on Google
+      // Play, `Bus Crowd - Traffic Jam` on the App Store — so the pair travels in
+      // `branding.storeTitles` and the runtime caption follows the same storefront
+      // as the icon and the store link. `textContent` stays the fuller name so a
+      // build that somehow reaches neither branch still reads as the long title.
+      // Every name this set has ever shipped counts as untouched, so a session
+      // saved before the split is not mistaken for hand-written copy.
       textContent: 'Bus Crowd - Traffic Jam',
       defaultTextContent: ['Bus Fever Party!', 'Bus Crowd'],
+      storeTitles: Object.freeze({
+        google: 'Bus Crowd',
+        ios: 'Bus Crowd - Traffic Jam'
+      }),
       // The Crowd wordmark under the CTA has to sit dead centre. The editor
       // stores a draggable x, and a saved session can leave it a few pixels off
       // (a 534 instead of 540 shipped once), so the Crowd set pins the text to
@@ -342,6 +350,13 @@ export function createBrandingVariantTuning(tuning, variantId) {
     output.branding.loading.icon = '';
     output.branding.loading.title = variant.loadingTitle;
   }
+  // Per-storefront brand names. Written unconditionally, including the empty Bus
+  // pair: the workspace deep-merges tuning and cannot delete a key, so a Bus
+  // export started from a Crowd session would otherwise keep Crowd's names. An
+  // empty pair is what tells the runtime to use the per-market title tables.
+  output.branding.storeTitles = variant.storeTitles
+    ? { ...variant.storeTitles }
+    : { google: '', ios: '' };
   if (variant.exportNaming) {
     output.exportNaming ??= {};
     Object.assign(output.exportNaming, variant.exportNaming);

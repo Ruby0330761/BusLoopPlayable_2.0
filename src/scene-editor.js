@@ -13,8 +13,9 @@ import { detectPlayfieldHorizon, resolveBackgroundHorizon } from './background-a
 import { BUILD_VERSION } from './build-version.js';
 import { BUILD_CHANGELOG, changelogVersions } from './build-changelog.js';
 import { COUNTDOWN_SIREN_ASSET, COUNTDOWN_TIMER_ASSET, normalizeCountdownConfig } from './countdown.js';
-import { BRANDING_LOCALE_OPTIONS } from './branding-localization.js';
+import { BRANDING_LOCALE_OPTIONS, STOREFRONT_PREVIEW_OPTIONS, normalizeStorefrontPreview } from './branding-localization.js';
 import { getStaminaAssetPaths, normalizeStaminaConfig } from './stamina.js';
+import { SPEED_TOGGLE_STYLES, normalizeSpeedToggleStyle } from './speed-toggle.js';
 import { getExportVariantPlan, isInstallGateEnabled, parseExportVariantValues, syncExportVariantTuning } from './export-variants.js';
 import {
   BASE_RUNTIME_ASSET_PATHS,
@@ -42,6 +43,11 @@ import {
 // so it never leaks into exported playable packages.
 const LEVEL_SORT_STORAGE_KEY = 'bus-loop-level-sort-v1';
 const LEVEL_SORT_MODES = Object.freeze(['number', 'name', 'created']);
+
+// The speed button's skins, as the field row shows them. Values must stay in
+// step with `SPEED_TOGGLE_STYLES` in speed-toggle.js, which the runtime and the
+// exporter validate against.
+const SPEED_TOGGLE_STYLE_OPTIONS = SPEED_TOGGLE_STYLES.map((style) => [style.value, style.label]);
 
 const CONVEYOR_LAYOUT_OPTIONS = [
   ['dualQueue2', 'GameSceneDualQueue2'],
@@ -659,7 +665,10 @@ const FIELD_GROUPS = [
       ['\u6587\u672c\u5bbd\u5ea6', 'branding.text.width', 16, 2160, 1],
       ['\u6587\u672c\u9ad8\u5ea6', 'branding.text.height', 16, 2160, 1],
       ['\u591a\u8bed\u8a00\u9002\u914d', 'branding.localization.enabled', 0, 1, 1, null, 'toggle'],
-      ['\u8bed\u8a00\u9884\u89c8', 'branding.localization.previewLocale', 0, 0, 1, BRANDING_LOCALE_OPTIONS]
+      ['\u8bed\u8a00\u9884\u89c8', 'branding.localization.previewLocale', 0, 0, 1, BRANDING_LOCALE_OPTIONS],
+      // Which store's caption the editor shows. Exports always follow the device;
+      // this only picks which of the two lines an operator has to look at.
+      ['\u5e97\u94fa\u9884\u89c8', 'branding.localization.storefrontPreview', 0, 0, 1, STOREFRONT_PREVIEW_OPTIONS]
     ]
   },
   {
@@ -759,6 +768,7 @@ const FIELD_GROUPS = [
     defaultOpen: true,
     fields: [
       ['\u542f\u7528', 'speedToggle.enabled', 0, 1, 1, null, 'toggle'],
+      ['\u6837\u5f0f', 'speedToggle.style', 0, 0, 1, SPEED_TOGGLE_STYLE_OPTIONS],
       ['\u5c4f\u5e55 X', 'speedToggle.x', 0, 1080, 1],
       ['\u5c4f\u5e55 Y', 'speedToggle.y', 0, 2160, 1],
       ['\u5bbd\u5ea6', 'speedToggle.width', 40, 640, 1],
@@ -3726,10 +3736,16 @@ export function createSceneEditor(root, {
   function sync({ resetCountdownDrafts = false } = {}) {
     const tuning = getTuning();
     for (const [path, controls] of inputs) {
+      // A profile saved before the skin existed has no `speedToggle.style`, and a
+      // hand-edited one may carry a value this build dropped. Either way the
+      // select must land on a real option instead of going blank.
       const value = path.startsWith('countdown.')
         ? normalizeCountdownConfig(tuning.countdown)[path.slice('countdown.'.length)]
         : path.startsWith('stamina.') ? normalizeStaminaConfig(tuning.stamina)[path.slice('stamina.'.length)]
-          : getAtPath(tuning, path);
+          : path === 'speedToggle.style' ? normalizeSpeedToggleStyle(getAtPath(tuning, path))
+            : path === 'branding.localization.storefrontPreview'
+              ? normalizeStorefrontPreview(getAtPath(tuning, path))
+              : getAtPath(tuning, path);
       if (controls.isCountdownNumber) {
         if (resetCountdownDrafts || !controls.dirty || controls.lastValue !== value) {
           controls.number.value = String(value);

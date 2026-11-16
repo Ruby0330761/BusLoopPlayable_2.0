@@ -6,6 +6,7 @@ import {
   calculateOrthographicHalfHeight,
   calculatePerspectiveDistance,
   clampCenteredRectX,
+  clampCenteredRectY,
   createSceneBounds,
   evaluateDreamteckClosedBSpline,
   extendSceneBounds,
@@ -42,6 +43,19 @@ test('centered rectangles stay fully inside horizontal bounds', () => {
   assert.equal(clampCenteredRectX({ centerX: 121, width: 140, left: 326, right: 954 }), 396);
   assert.equal(clampCenteredRectX({ centerX: 1110, width: 60, left: 326, right: 954 }), 924);
   assert.equal(clampCenteredRectX({ centerX: 640, width: 140, left: 326, right: 954 }), 640);
+});
+
+test('centered rectangles stay fully inside vertical bounds', () => {
+  // Same rule as X: a wide viewport letterboxes the portrait art, so a
+  // design-space Y can land outside the painted strip too.
+  assert.equal(clampCenteredRectY({ centerY: 40, height: 120, top: 200, bottom: 900 }), 260);
+  assert.equal(clampCenteredRectY({ centerY: 1000, height: 120, top: 200, bottom: 900 }), 840);
+  assert.equal(clampCenteredRectY({ centerY: 500, height: 120, top: 200, bottom: 900 }), 500);
+  // An unmeasured background (no bounds) must leave the value alone.
+  assert.equal(clampCenteredRectY({ centerY: 40, height: 120, top: undefined, bottom: 900 }), 40);
+  assert.equal(clampCenteredRectY({ centerY: 40, height: 120, top: 900, bottom: 200 }), 40);
+  // Taller than the strip: centre it rather than letting it hang off one edge.
+  assert.equal(clampCenteredRectY({ centerY: 40, height: 900, top: 200, bottom: 900 }), 550);
 });
 
 test('oversized centered rectangles use the available background midpoint', () => {

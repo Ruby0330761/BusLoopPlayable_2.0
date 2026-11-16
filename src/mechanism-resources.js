@@ -338,6 +338,11 @@ export const BASE_RUNTIME_ASSET_PATHS = Object.freeze([
   '/assets/applovin/speed-toggle-bg_q90.webp',
   '/assets/applovin/speed-toggle-icon-normal.png',
   '/assets/applovin/speed-toggle-icon-boost.png',
+  // The light capsule's round badge. Both skins are always inlined because the
+  // picker only sets a look — a level exported after switching skin must not
+  // depend on which one was selected at build time.
+  '/assets/applovin/speed-toggle-icon-light-normal.png',
+  '/assets/applovin/speed-toggle-icon-light-boost.png',
   '/assets/unity/ui/Main_Prop_GreenBtn.png',
   // The failure card's Retry pill (art only — the word is a text layer so its
   // size stays tunable). It is referenced only from styles.css, so leaving it

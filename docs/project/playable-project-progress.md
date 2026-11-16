@@ -1,5 +1,31 @@
 # Playable Project Progress
 
+## Completed On 2026-11-16 - BFT 底部标题按店铺切换（v20261116-1128）
+
+- 反馈：BFT 安卓和 iOS 的商店名不一样，试玩底部也要跟随系统变。
+- 现状核实：`Bus Crowd`（Google Play）/ `Bus Crowd - Traffic Jam`（App Store）。旧实现把 `textContent` 写死成 `Bus Crowd - Traffic Jam`，两种设备都显示长名。
+- 做法：调新增 `branding.storeTitles: { google, ios }`，`resolveLocalizedBranding` 里**优先于**市场标题表取用；storefront 与 icon、商店链接同源（运行时按 UA 判 `isIOSDevice()`）。
+- `createBrandingVariantTuning` **无条件**写这一对（Bus 写空串）：workspace 是深合并，删不掉 key，否则 Bus 包会带着 Crowd 的名字。
+- 判定「未改动可本地化」的范围扩到品牌自己的所有店名，旧存档里存着 `Bus Crowd` 或长名都不会被当成运营手写而钉死。
+- 预启动 loader 保持 `Bus Crowd - Traffic Jam`（`loadingTitle` 走市场表，不吃 storeTitles），因为启动图上的长名是过审口径。
+- 编辑器「多语言」新增**店铺预览**下拉（跟随设备 / Google Play / App Store），写 `branding.localization.storefrontPreview`；出包时 `--strip-export-metadata` 复位为 `auto`。
+- 验证：真实出包（`--branding-set crowd` + `package:applovin`）同一份 HTML，Android UA 读到 `Bus Crowd`、iPhone UA 读到 `Bus Crowd - Traffic Jam`；Bus 未受影响（ja 仍按表输出 `バスゲーム` / `バス渋滞脱出`）。`node --test` 740/740。
+- 注：`export:playable` 仍被 `deploy-tools` 里既有的 `APL-AUD-001 缺少字段 stage` 挡住，与本次无关；Crowd 包是用 `apply-scene-tuning` + `package:applovin` 这条等价路径验的。
+
+## Completed On 2026-11-16 - 倍速按钮新增浅色胶囊样式（v20261116-1117）
+
+- 需求：倍速按钮除默认深蓝按钮外，再提供参考图那款浅色胶囊（白底、深蓝数字、蓝色圆徽），1x 用单箭头、2x 用双箭头。
+- 编辑器「倍速按钮」分组新增**样式**下拉：`默认（深蓝按钮）` / `浅色胶囊（蓝色圆徽）`，写入 `speedToggle.style` 随关卡导出；旧存档没有该字段时归一化为 `default`，不会把按钮变成空白。
+- 两种样式的**数字顺序不同**：默认仍是 `x1/x2`（历史交付口径），浅色胶囊是 `1x/2x`（跟随参考图）。`formatSpeedLabel(multiplier, style)` 负责这层差异。
+- 浅色胶囊只在美术资源里存**圆徽**（128px 方图，`speed-toggle-icon-light-{normal,boost}.png`），胶囊体、淡紫描边和投影都由 CSS 绘制，并统一按 `--speed-toggle-*` 变量从宽度/高度字段推导；`main.js` 用 `lightUnit = min(height, width/2.01)` 保证任何宽高组合都不会把圆徽挤出胶囊。
+- 圆徽用 `scripts/prepare-speed-toggle-light-art.py` 生成，几何是**对参考图做 IoU 拟合**得到的（三角形高 0.50·盘径、宽 0.33、圆角 0.07、双箭头间距 0.245、描边 0.049、光学偏移 +0.082/−0.015）；在参考图自身的 61px 盘径下 1x IoU 0.94、2x 0.92。第一版用 blur+refit 会把 27° 尖角磨圆、整字形缩小，已废弃。
+- 两张圆徽都加入 `BASE_RUNTIME_ASSET_PATHS`，出包时都内联（实测 payload 里 4 个 speed-toggle 图标 + 1 张底图全在，无 `/assets/applovin/speed-toggle*` 字面量残留），所以切换样式不需要重新构建。
+- **顺带修复截图漏按钮底**：`screenshot-overlay.js` 过去只画 `#speed-toggle` 里的 `<img>` 和文字，背景是 CSS，所以两种样式的按钮底都没进截图。新增 `drawSpeedTogglePill`（有底图就贴图，没有就按 computed style 画圆角填充+描边）。实测浅色截图该区域有 5199 白 / 1232 蓝 / 50 深蓝像素，默认样式仍有 4061 饱和蓝像素。
+- 验证：`node --test` 738/738；实机浏览器两种样式截图与参考图一致；编辑器下拉切到浅色后运行时 `data-speed-style=light`、图标换成 light 圆徽、数字变 `1x`。
+- **导出位置修复（同日晚）**：反馈说倍速按钮在出包里跑到游戏画面外。根因是 `applySpeedToggleTuning` 按**整个舞台**宽度换算设计坐标（`centerX * positionScaleX`），而宽高比不是 1:2 时渲染器只在舞台中间画一条竖条美术，两侧用 `0xc9d7ed` 填平——于是 916/1080 的比例落进了蓝色留白。改为把设计坐标**映射进画面条带**（`getBackgroundCanvasBounds`）：`boundsLeft + centerX/designWidth * boundsWidth`，再用 `clampCenteredRectX/Y` 兜底；没量到边界时条带等于舞台，竖屏手机行为不变。实测 720×1280 / 1280×720 / 1920×992 三种比例下按钮都在画面内，16:9 下贴右上角（之前 x 中心在 1602px、画面右缘只有 1379px）。
+- 顺带补齐 `clampCenteredRectY`（原来只有 X 轴版本），并把 `updateCtaPosition` 与 `speedToggle.*` 编辑路径的 `getBackgroundCanvasBounds()` 收敛成一次测量。
+- `npm run check:applovin` 的两条 FAIL（`no root-relative asset URLs`、`unselected branding Icon omitted`）在改动前的基线构建上同样失败，与本次改动无关。
+
 ## Completed On 2026-11-13 - 画布渐变中段改用目标色（v20261113-1819）
 
 - 反馈：画布和游戏预览"还是不太对照"。

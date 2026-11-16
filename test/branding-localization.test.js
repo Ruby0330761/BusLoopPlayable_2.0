@@ -9,6 +9,7 @@ import {
   DEFAULT_CTA_LABEL,
   STORE_TITLE_TABLES,
   fitFontSizeToWidth,
+  normalizeStorefrontPreview,
   resolveBrandingLocale,
   resolveLocalizedBranding,
   resolveStoreTitle
@@ -138,6 +139,62 @@ test('the shipped default title and loading title localize, custom copy does not
   assert.equal(custom.title, 'Download now');
 });
 
+test('a brand named differently per store follows the storefront', () => {
+  // BFT ships as `Bus Crowd` on Google Play and `Bus Crowd - Traffic Jam` on the
+  // App Store, so one caption cannot serve both. The device decides, exactly as
+  // it already does for the icon and the store link.
+  const storeTitles = { google: 'Bus Crowd', ios: 'Bus Crowd - Traffic Jam' };
+  const android = resolveLocalizedBranding({
+    languages: ['en-US'], text: 'Bus Crowd - Traffic Jam', storeTitles, storefront: 'google'
+  });
+  assert.equal(android.title, 'Bus Crowd');
+  const ios = resolveLocalizedBranding({
+    languages: ['en-US'], text: 'Bus Crowd', storeTitles, storefront: 'ios'
+  });
+  assert.equal(ios.title, 'Bus Crowd - Traffic Jam');
+  // Either shipped name counts as untouched, so re-exporting a session saved
+  // before the split is not mistaken for hand-written copy.
+  for (const shipped of ['Bus Crowd', 'Bus Crowd - Traffic Jam', 'Bus Crowd - Traffic Jam']) {
+    const copy = resolveLocalizedBranding({ languages: ['en-US'], text: shipped, storeTitles, storefront: 'google' });
+    assert.equal(copy.title, 'Bus Crowd', `${shipped} should be localized`);
+  }
+  // An operator-authored line still wins over both names.
+  const custom = resolveLocalizedBranding({
+    languages: ['en-US'], text: 'Grab the bus!', storeTitles, storefront: 'google'
+  });
+  assert.equal(custom.title, 'Grab the bus!');
+});
+
+test('the per-store name never overrides the pre-boot loader or non-branded builds', () => {
+  const storeTitles = { google: 'Bus Crowd', ios: 'Bus Crowd - Traffic Jam' };
+  // The loader keeps its authored line so the boot splash still shows the full
+  // name; only the caption under the CTA follows the store listing.
+  const copy = resolveLocalizedBranding({
+    languages: ['en-US'], text: 'Bus Crowd', loadingTitle: 'Bus Crowd - Traffic Jam',
+    storeTitles, storefront: 'google'
+  });
+  assert.equal(copy.title, 'Bus Crowd');
+  assert.equal(copy.loadingTitle, 'Bus Crowd - Traffic Jam');
+  // Bus has no per-store naming: empty slots fall through to the market tables.
+  const bus = resolveLocalizedBranding({
+    languages: ['ja-JP'], text: 'Bus Fever Party!', storeTitles: { google: '', ios: '' }, storefront: 'google'
+  });
+  assert.equal(bus.title, STORE_TITLE_TABLES.google.ja);
+  // With localization off the authored line is used as-is, store names included.
+  const off = resolveLocalizedBranding({
+    languages: ['ja-JP'], enabled: false, text: 'Bus Crowd', storeTitles, storefront: 'ios'
+  });
+  assert.equal(off.title, 'Bus Crowd');
+});
+
+test('an unknown storefront preview value falls back to following the device', () => {
+  assert.equal(normalizeStorefrontPreview('auto'), 'auto');
+  assert.equal(normalizeStorefrontPreview('iOS'), 'ios');
+  assert.equal(normalizeStorefrontPreview('google'), 'google');
+  assert.equal(normalizeStorefrontPreview('nintendo'), 'auto');
+  assert.equal(normalizeStorefrontPreview(undefined), 'auto');
+});
+
 test('the full-width exclamation used by older tuning exports still counts as default', () => {
   const copy = resolveLocalizedBranding({ languages: ['ko-KR'], text: 'Bus Fever Party！' });
   assert.equal(copy.title, STORE_TITLE_TABLES.google.ko);
@@ -200,9 +257,16 @@ test('the editor header offers a language picker that drives the preview', () =>
 test('tuning exposes a localization switch and an editor preview locale', () => {
   // The editor opens in English; "follow the browser" is still offered, but it
   // is no longer the default.
-  assert.deepEqual(SCENE_TUNING.branding.localization, { enabled: 1, previewLocale: 'en' });
+  assert.deepEqual(SCENE_TUNING.branding.localization,
+    { enabled: 1, previewLocale: 'en', storefrontPreview: 'auto' });
   assert.match(editorSource, /branding\.localization\.enabled', 0, 1, 1, null, 'toggle'/);
   assert.match(editorSource, /branding\.localization\.previewLocale', 0, 0, 1, BRANDING_LOCALE_OPTIONS\]/);
+  // The storefront preview row lets an operator see the App Store caption without
+  // exporting; exports still follow the device.
+  assert.match(editorSource, /branding\.localization\.storefrontPreview', 0, 0, 1, STOREFRONT_PREVIEW_OPTIONS\]/);
+  // Bus ships no per-store naming, so both slots start empty and the per-market
+  // title tables stay in charge.
+  assert.deepEqual(SCENE_TUNING.branding.storeTitles, { google: '', ios: '' });
 });
 
 test('the device language is read from every WebView signal, not just one', () => {

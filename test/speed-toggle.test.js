@@ -7,12 +7,21 @@ import { SCENE_TUNING } from '../src/scene-tuning.js';
 import { BASE_RUNTIME_ASSET_PATHS } from '../src/mechanism-resources.js';
 import { BusLoopGame } from '../src/game-model.js';
 import { LEVEL_1 } from '../src/level-data.js';
-import { formatSpeedLabel, normalizeSpeedMultiplier, resolveTimeScale } from '../src/speed-toggle.js';
+import {
+  SPEED_TOGGLE_STYLES,
+  formatSpeedLabel,
+  normalizeSpeedMultiplier,
+  normalizeSpeedToggleStyle,
+  resolveSpeedToggleIcon,
+  resolveTimeScale
+} from '../src/speed-toggle.js';
 
 const SPEED_TOGGLE_ASSETS = [
   '/assets/applovin/speed-toggle-bg_q90.webp',
   '/assets/applovin/speed-toggle-icon-normal.png',
-  '/assets/applovin/speed-toggle-icon-boost.png'
+  '/assets/applovin/speed-toggle-icon-boost.png',
+  '/assets/applovin/speed-toggle-icon-light-normal.png',
+  '/assets/applovin/speed-toggle-icon-light-boost.png'
 ];
 
 test('speed toggle scales the whole simulation clock and defaults to x1', () => {
@@ -26,6 +35,30 @@ test('speed toggle scales the whole simulation clock and defaults to x1', () => 
   assert.equal(normalizeSpeedMultiplier(-3, 2), 2);
   assert.equal(formatSpeedLabel(2), 'x2');
   assert.equal(formatSpeedLabel(1.75), 'x1.75');
+});
+
+test('the light skin prints the numeral first and picks its own badge art', () => {
+  // The reference art reads "2x", the original skin has always read "x2", so the
+  // label format follows the skin instead of forcing one order on both.
+  assert.equal(formatSpeedLabel(2), 'x2');
+  assert.equal(formatSpeedLabel(2, 'default'), 'x2');
+  assert.equal(formatSpeedLabel(1), 'x1');
+  assert.equal(formatSpeedLabel(2, 'light'), '2x');
+  assert.equal(formatSpeedLabel(1, 'light'), '1x');
+  assert.equal(formatSpeedLabel(1.5, 'light'), '1.5x');
+
+  // A saved profile can predate the skin field or name a skin this build dropped.
+  assert.equal(normalizeSpeedToggleStyle(undefined), 'default');
+  assert.equal(normalizeSpeedToggleStyle(''), 'default');
+  assert.equal(normalizeSpeedToggleStyle('Light'), 'light');
+  assert.equal(normalizeSpeedToggleStyle('neon'), 'default');
+
+  assert.match(resolveSpeedToggleIcon('default', false), /speed-toggle-icon-normal\.png$/u);
+  assert.match(resolveSpeedToggleIcon('default', true), /speed-toggle-icon-boost\.png$/u);
+  assert.match(resolveSpeedToggleIcon('light', false), /speed-toggle-icon-light-normal\.png$/u);
+  assert.match(resolveSpeedToggleIcon('light', true), /speed-toggle-icon-light-boost\.png$/u);
+  // An unknown style still has to resolve to something drawable.
+  assert.match(resolveSpeedToggleIcon('neon', true), /speed-toggle-icon-boost\.png$/u);
 });
 
 test('scaled substeps advance the game twice as far as real time at x2', () => {
@@ -56,6 +89,10 @@ test('speed toggle tuning keeps its top-right geometry and a valid multiplier', 
   // valid so a level that wants it can just flip `enabled` back on.
   assert.equal(tuning.enabled, 0);
   assert.equal(tuning.multiplier, 2);
+  // The skin is part of the tuning, so an exported level carries its look; the
+  // default has to name a real option or the editor select starts blank.
+  assert.ok(SPEED_TOGGLE_STYLES.some((style) => style.value === tuning.style),
+    `speedToggle.style ${tuning.style} is not a known skin`);
   assert.ok(tuning.width > 0 && tuning.height > 0);
   // Design space is 1080x2160, so the button's centre sits far right and near
   // the top rather than at the old 84%/14% default.
@@ -101,5 +138,31 @@ test('the playable renders the speed button and wires it to the simulation clock
   assert.match(mainSource, /event\.stopPropagation\(\);\n\s+audio\.unlock\(\);\n\s+setSpeedToggleBoosted/u);
   assert.match(editorSource, /speedToggle\.enabled/u);
   assert.match(editorSource, /speedToggle\.multiplier/u);
+  // The skin picker and the runtime it drives.
+  assert.match(editorSource, /'speedToggle\.style'/u);
+  assert.match(mainSource, /normalizeSpeedToggleStyle\(config\.style\)/u);
+  assert.match(mainSource, /speedToggleButton\.dataset\.speedStyle = style/u);
+  assert.match(mainSource, /resolveSpeedToggleIcon\(style, speedToggleBoosted\)/u);
+  assert.match(stylesSource, /\.speed-toggle\[data-speed-style="light"\]/u);
+  // The light skin draws the pill in CSS and only ships the round badge, so the
+  // icon has to keep `contain` or the square asset would stretch into an ellipse.
+  assert.match(stylesSource, /\.speed-toggle-icon \{[\s\S]*?object-fit: contain/u);
   assert.match(stylesSource, /\.speed-toggle \{/u);
+});
+
+test('the speed button maps its design position into the painted scene strip', async () => {
+  const mainSource = await readFile(new URL('../src/main.js', import.meta.url), 'utf8');
+  // Reported symptom: on a wide (letterboxed) viewport the button landed in the
+  // flat-blue margin beside the artwork. Scaling design X across the whole stage
+  // is the cause, so the position has to be mapped into the background bounds.
+  assert.match(mainSource, /function applySpeedToggleTuning\(backgroundBounds = null\)/u);
+  assert.match(mainSource, /boundsLeft \+ centerX \/ metrics\.designWidth \* boundsWidth/u);
+  assert.match(mainSource, /boundsTop \+ centerY \/ metrics\.designHeight \* boundsHeight/u);
+  // Every call site has to feed the measured bounds, or the edit path silently
+  // keeps using the old stage-wide maths.
+  const calls = [...mainSource.matchAll(/applySpeedToggleTuning\(([^)]*)\)/gu)]
+    .map((match) => match[1].trim())
+    .filter((argument) => argument !== 'backgroundBounds = null');
+  assert.ok(calls.length >= 2, `expected the resize and edit call sites, saw ${calls.length}`);
+  for (const argument of calls) assert.equal(argument, 'backgroundBounds');
 });

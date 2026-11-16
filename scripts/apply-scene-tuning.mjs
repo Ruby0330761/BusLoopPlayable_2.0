@@ -86,7 +86,12 @@ async function main() {
     // — and if that guard ever regressed, the pin would silently become real.
     // Reset it to 'auto' so the delivered tuning states what actually happens:
     // the player's device language decides.
-    if (next.branding?.localization) next.branding.localization.previewLocale = 'auto';
+    if (next.branding?.localization) {
+      next.branding.localization.previewLocale = 'auto';
+      // Same reasoning for the storefront picker: an export follows the device,
+      // so a delivered tuning file must not claim it is pinned to one store.
+      next.branding.localization.storefrontPreview = 'auto';
+    }
   }
   migrateLegacyConveyorTuning(next, patch);
   await writeFile(TUNING_FILE, toModuleSource(next), 'utf8');

@@ -50,6 +50,25 @@ export function clampCenteredRectX({ centerX, width, left, right }) {
   return clamp(safeCenterX, safeLeft + safeWidth / 2, safeRight - safeWidth / 2);
 }
 
+// Same rule on the vertical axis. A wide viewport letterboxes the portrait
+// artwork, so a design-space Y can also land outside the visible scene.
+export function clampCenteredRectY({ centerY, height, top, bottom }) {
+  const safeCenterY = Number(centerY);
+  const safeHeight = Math.max(0, Number(height) || 0);
+  const safeTop = Number(top);
+  const safeBottom = Number(bottom);
+  if (
+    !Number.isFinite(safeCenterY)
+    || !Number.isFinite(safeTop)
+    || !Number.isFinite(safeBottom)
+    || safeBottom <= safeTop
+  ) {
+    return safeCenterY;
+  }
+  if (safeHeight >= safeBottom - safeTop) return (safeTop + safeBottom) / 2;
+  return clamp(safeCenterY, safeTop + safeHeight / 2, safeBottom - safeHeight / 2);
+}
+
 function clampCropOffset(offset, cropSize, sourceSize) {
   if (cropSize >= sourceSize) return 0;
   const maxOffset = (sourceSize - cropSize) / 2;

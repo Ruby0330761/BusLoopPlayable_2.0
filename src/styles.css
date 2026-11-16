@@ -801,6 +801,35 @@ button:hover { transform: translateY(-1px); background: #fff; }
   text-shadow: 0 2px 3px rgba(8, 41, 96, .55);
   pointer-events: none;
 }
+/* Light capsule skin (operator-picked "浅色胶囊"): white pill, lavender rim,
+   navy numeral, blue round badge on the right. The artwork is only the badge —
+   the pill, rim and shadow are CSS so they follow the width/height fields.
+   `row-reverse` swaps the paint order the markup uses for the dark skin, which
+   puts the numeral on the left and the badge on the right as the art does. */
+.speed-toggle[data-speed-style="light"] {
+  flex-direction: row-reverse;
+  justify-content: space-between;
+  padding: 0 var(--speed-toggle-pad-right, 0) 0 var(--speed-toggle-pad-left, 0);
+  border-radius: calc(var(--speed-toggle-height, 69px) * .5);
+  border: max(1px, calc(var(--speed-toggle-height, 69px) * .022)) solid #b9c2e3;
+  background: #f9fcff;
+  box-shadow:
+    inset 0 calc(var(--speed-toggle-height, 69px) * .03) 0 rgba(255, 255, 255, .9),
+    0 calc(var(--speed-toggle-height, 69px) * .045) calc(var(--speed-toggle-height, 69px) * .07) rgba(124, 138, 186, .22);
+}
+.speed-toggle[data-speed-style="light"]:hover { background: #f9fcff; }
+/* The badge is a square that the runtime sizes from the pill height (76% of it,
+   measured off the sign-off art); `object-fit: contain` keeps it off an ellipse. */
+.speed-toggle[data-speed-style="light"] .speed-toggle-icon {
+  flex: 0 0 auto;
+  object-fit: contain;
+}
+.speed-toggle[data-speed-style="light"] .speed-toggle-label {
+  min-width: 0;
+  color: #5c658b;
+  text-align: left;
+  text-shadow: none;
+}
 .scene-editor {
   position: relative; z-index: 20; flex: 0 0 320px; width: 320px; min-width: 0; height: 100%;
   display: flex; flex-direction: column; overflow: hidden; touch-action: pan-y;
