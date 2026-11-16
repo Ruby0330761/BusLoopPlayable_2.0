@@ -1,5 +1,19 @@
 # Playable Project Progress
 
+## Completed On 2026-11-16 - 合入 origin/main 车辆路径统一（v20261116-1128）
+
+- 背景：本地 main 与 `origin/main` 分叉，远端多出 xiaosuo 的 `ba5fea7 统一路径快照并支持自动边界`，推送被拒。
+- 合并原则：**不取单边**。xiaosuo 的 `vehicle-path-config.js` 重构（路径配置缓存、自动边界、`routeConfig` 随 `motionData` 传递）与本地 `parkedVehicleSizeMultiplier` 碰撞外扩修正正交，两者都保留。
+- 逐处处理：
+  - `game-model.js`：用他的重构，保留本地碰撞外扩修正；`getVehicleAreaPivot` 只被已删除的内联 helper 使用，随之移除。
+  - `scene-view.js`：路由点走 `routeTransform` 映射，同时保留按车阵缩放的尺寸倍率。
+  - `scene-editor.js`：`autoBounds` 开关刷新边界行可见性，与本地新增的 `installGate` / 倍速样式 / 店铺预览字段共存。
+  - 文档与 changelog 两侧记录都保留，changelog 把 vehicle-path 那条并入 11-12 当日条目并补上 `20261112-1540`。
+- **一个必要动作**：`generated-active-level.js` 必须重新生成。xiaosuo 的快照测试要求 `vehicleArea.sizeMultiplier` 进入烘焙快照，而旧快照是在该字段存在前生成的，直接合并会让 `vehicle-path-config.test.js` 失败。
+- 验证：`node --test` **752/752**（含他新增的 9 项路径测试）；本地与 `PLAYABLE_REMOTE_EDITOR=1` 构建均通过；已推送 `307e6d8`，与 origin 同步 0/0。
+- 线上（12151）重新部署后：chunk md5 与本地一致（`862ae95...`）；关卡 145 个、key 集合不变；四项功能同时在线——浅色胶囊样式、店铺预览、自动边界行、`vehiclePath.autoBounds=1`。
+- 运行时实测：连点 67 台车，215 次 `moving-to-spot`、503 次 `colliding`、4 个车位填满，**零 JS 报错**，画面与 HUD 正常。
+
 ## Completed On 2026-11-16 - BFT 底部标题按店铺切换（v20261116-1128）
 
 - 反馈：BFT 安卓和 iOS 的商店名不一样，试玩底部也要跟随系统变。
