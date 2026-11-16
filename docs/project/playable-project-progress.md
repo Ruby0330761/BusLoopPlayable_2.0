@@ -145,6 +145,15 @@
 - 本地 `http://127.0.0.1:5180/` 为 v20261112-1658；测试后恢复原命名 BFT / 83 / 10hp，按新同步规则预览为10心。用户 level24/25/ownership 源文件 SHA-256 均与本轮开始一致。服务重启期间的历史 fetch 错误保留在浏览器日志，最终导出页面无 error；没有把历史日志写成全会话零错误。
 - 实现、自测、独立审查和本地客观验证完成；xzx 主观体验及真实广告平台验收未覆盖。本轮无新依赖、推送、合并或共享12151部署。Windows 本地导出可通过 `PLAYABLE_EXPORT_PYTHON` 指定已有 Python；本机5180已配置，输出/临时目录从 Vite 监听中排除，避免导出触发页面刷新而中断请求。
 
+## Completed Locally On 2026-11-12 - 车辆路径方案 A（v20261112-1540）
+
+- 按用户要求先合入 `origin/main` 新提交，当前分支基于 `5f2afd9`，保留本地原有改动；恢复时 task_plan 冲突已合并双方记录。
+- 新增 `src/vehicle-path-config.js`：统一车位、到站/离场参数、完整变换和自动外围边界；模型/预览/导出生成共用不可变快照。修正阵列旋转的逆朝向与 `evaluatePath` 100% 浮点回跳；新几何调参重置预览局面。
+- 编辑器新增自动边界/留白；自动时显示计算出的四边且只读，关闭立即还原手动值。旧自定义边界迁移为手动，保留手调车位和曲线。每个导出 stage/choice 按有效车位数烘 `vehiclePathSnapshot`。
+- 完整回归 710 项：707 pass / 0 fail / 3 skip；新增路径行为测试 9/9（含生成后的真实 stage、每车每车位一致性）。`npm run build` 通过，保留既有 chunk-size 提示；AppLovin 文件 3,324,982 B，SHA-256 `7f036a65d7b7164c5c5113eeffdefb2c556c823652eaaba2e9d29a8f8d684105`，运行时 15/15 PASS。
+- 本地 `http://127.0.0.1:5179/` 显示同版本；浏览器验证自动/手动即时切换、实际边界数值、34px 表单行、刷新持久化、桌面和移动截图、最终单文件画面与无脚本报错。证据 `artifacts/playable-exports/vehicle-path-a/`，实现及纠正结论见 `docs/architecture/bl/vehicle-path-review.md`。
+- 既有 `bl42-progress` 会话覆盖规则保留（默认生产 stage 为 level15 / 6车位，编辑器单关可不同）；不能把不同有效输入当成路径漂移。A 不提供 B 的障碍寻路或 C 的手动画线；真实平台上传/设备手感未验收，无 commit/push/远程部署。
+
 ## Completed Locally On 2026-11-12 — 失败落版点击任意位置跳转（v20261112-1418）
 
 - 按 xzx 确认的三项修改：失败后 Download 随原遮罩变暗并停止呼吸；默认关闭 Retry；保留原 icon 落版动画，icon 出现后整张试玩落版都可点击商店。复用现有重试开关，关闭即新模式，已保存的显式开启配置仍支持原 Retry。

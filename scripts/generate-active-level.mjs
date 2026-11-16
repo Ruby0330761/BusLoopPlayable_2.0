@@ -2,6 +2,7 @@ import { copyFile, mkdir, readFile, writeFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
+import { resolveVehiclePathConfig } from '../src/vehicle-path-config.js';
 
 const root = process.cwd();
 const tuningUrl = `${pathToFileURL(path.join(root, 'src', 'scene-tuning.js')).href}?t=${Date.now()}`;
@@ -141,9 +142,11 @@ function completeLevelAssets(level) {
   return completeLevelAudio(completeColorAtlases(level));
 }
 
-function withSelectedBackground(sessionLevel) {
+function withSelectedBackground(sessionLevel, scene = {}) {
+  const spots = { ...SCENE_TUNING.parkingSpots, ...(scene.parkingSpots ?? {}) };
   return {
     ...sessionLevel,
+    vehiclePathSnapshot: resolveVehiclePathConfig(sessionLevel, SCENE_TUNING, spots),
     assets: {
       ...sessionLevel.assets,
       background: selectedBackground
@@ -174,7 +177,7 @@ for (const stage of stageDefinitions) {
   if (stageLevel.key !== stage.levelKey) {
     throw new Error(`Session level ${stage.levelKey} resolved to ${stageLevel.key}.`);
   }
-  stageLevels.push(withSelectedBackground(stageLevel));
+  stageLevels.push(withSelectedBackground(stageLevel, stage.scene));
 }
 
 // Choice options are full stages that only start if the player picks them. They
@@ -190,7 +193,7 @@ for (const [index, stage] of stageDefinitions.entries()) {
     if (optionLevel.key !== option.levelKey) {
       throw new Error(`Choice level ${option.levelKey} resolved to ${optionLevel.key}.`);
     }
-    optionLevels.push(withSelectedBackground(optionLevel));
+    optionLevels.push(withSelectedBackground(optionLevel, option.scene));
   }
   choiceLevelsByStage.set(index, optionLevels);
 }

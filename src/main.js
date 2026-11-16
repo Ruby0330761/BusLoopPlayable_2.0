@@ -9,6 +9,7 @@ import { setActiveStageScene } from './stage-scene.js';
 import { calculateAutoCameraFit, clampCenteredRectX, clampCenteredRectY } from './scene-layout.js';
 import { SCENE_TUNING } from './scene-tuning.js';
 import { pruneUnknownTuning } from './tuning-migrations.js';
+import { migrateVehiclePathTuning } from './vehicle-path-config.js';
 import { isValidStoreLink, resolveStoreLink } from './store-links.js';
 import {
   formatSpeedLabel,
@@ -803,6 +804,7 @@ function loadSavedTuning() {
     const saved = localStorage.getItem(TUNING_STORAGE_KEY);
     if (saved) {
       const savedTuning = JSON.parse(saved);
+      const vehiclePathMigrated = migrateVehiclePathTuning(savedTuning);
       const guideHandMotionMigrated = migrateGuideHandMotionTuning(savedTuning);
       const level33EnhancementMigrated = migrateLevel33EnhancementTuning(savedTuning);
       const level36VehicleScaleMigrated = migrateLevel36VehicleScaleTuning(savedTuning);
@@ -836,6 +838,7 @@ function loadSavedTuning() {
       migrateLegacyConveyorTuning(savedTuning);
       if (
         guideHandMotionMigrated
+        || vehiclePathMigrated
         || level33EnhancementMigrated
         || level36VehicleScaleMigrated
         || level36VehicleCompactionMigrated
@@ -872,6 +875,7 @@ function loadSavedTuning() {
       return;
     }
     const legacy = JSON.parse(legacySaved);
+    migrateVehiclePathTuning(legacy);
     migrateGuideHandMotionTuning(legacy);
     migrateLevel33EnhancementTuning(legacy);
     migrateLevel36VehicleScaleTuning(legacy);
@@ -962,6 +966,8 @@ function saveImportedLevelTuning(levelKey, tuning) {
   if (!EDITOR_ENABLED || !/^level[1-9]\d*$/.test(key)) return false;
   if (!tuning || typeof tuning !== 'object' || Array.isArray(tuning)) return false;
   const merged = structuredClone(DEFAULT_SCENE_TUNING);
+  tuning = structuredClone(tuning);
+  migrateVehiclePathTuning(tuning);
   deepMerge(merged, structuredClone(tuning));
   pruneUnknownTuning(merged, DEFAULT_SCENE_TUNING);
   merged.level ??= {};
@@ -995,6 +1001,7 @@ function restoreSelectedLevelTuning() {
   let profilesPruned = false;
   for (const [key, entry] of Object.entries(storedProfiles)) {
     if (!isLevelTuningProfile(entry)) continue;
+    if (migrateVehiclePathTuning(entry.tuning)) profilesPruned = true;
     if (pruneUnknownTuning(entry.tuning, DEFAULT_SCENE_TUNING)) {
       storedProfiles[key] = entry;
       profilesPruned = true;
@@ -1036,6 +1043,7 @@ function getLevelTuningForSelection(levelKey) {
   const profile = profiles[String(levelKey ?? '').trim()];
   if (isLevelTuningProfile(profile)) {
     const tuning = structuredClone(profile.tuning);
+    migrateVehiclePathTuning(tuning);
     pruneUnknownTuning(tuning, DEFAULT_SCENE_TUNING);
     tuning.level ??= {};
     tuning.level.selected = levelKey;
@@ -3015,10 +3023,11 @@ async function startRuntime() {
       || path === 'spatialConveyor.capacity'
       || path === 'spatialConveyor.startFilled'
     );
+    const vehicleRouteChanged = /^(vehiclePath\.(?:parkingBounds|autoBounds|boundsPadding|turn)|vehicleDeparturePath\.(?:backDistance|exit|turn)|parkingSpots\.|vehicleArea\.|facing\.parkingSpotYawDegrees)/u.test(path ?? '');
     const colorIndex = getPassengerMaterialColorIndex(path);
     const tuning = view.setTuning(next, { mode: materialOnly ? 'passengerMaterial' : 'full', colorIndex });
     if (!materialOnly) {
-      if (conveyorStructureChanged) game.reset();
+      if (conveyorStructureChanged || vehicleRouteChanged) game.reset();
       initializeGameQueues({ resetSlots: conveyorStructureChanged });
       if (!pressed && (
         conveyorStructureChanged
@@ -3581,6 +3590,7 @@ async function startRuntime() {
   window.__busLoop = {
     get game() { return game; },
     get view() { return view; },
+    vehiclePathConfig: () => game.getVehiclePathConfig(),
     snapshot: () => game.snapshot(),
     countdown: () => countdown.snapshot(),
     // QA hook for the progress HUD: a smoke test has to read the bar's ratio and

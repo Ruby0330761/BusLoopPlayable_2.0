@@ -1,8 +1,8 @@
 import { LEVEL_1 } from './level-data.js';
 import { SCENE_TUNING } from './scene-tuning.js';
-import { getVehicleAreaPivot } from './vehicle-area.js';
 import { parkedVehicleSizeMultiplier } from './vehicle-area-transform.js';
 import { resolveParkingSpots, resolveParkingStartX } from './stage-scene.js';
+import { createVehicleRouteTransform, resolveVehiclePathConfig } from './vehicle-path-config.js';
 import { CONVEYOR_MECHANISM_TUNING } from './conveyor-mechanism-config.js';
 import { normalizeStaminaConfig } from './stamina.js';
 import {
@@ -206,31 +206,6 @@ function isTurnVehicleRotating(vehicle) {
   return Boolean(vehicle?.turnRotation?.active);
 }
 
-function visualToVehicleAreaPoint(x, z) {
-  const area = SCENE_TUNING.vehicleArea;
-  const pivot = getVehicleAreaPivot(area);
-  const unitScale = area.positionUnitScale ?? LEVEL_1.mapScale;
-  const rotation = -(area.rotationDegrees || 0) * Math.PI / 180;
-  const dx = x - pivot.x;
-  const dz = z - pivot.z;
-  const unrotatedX = pivot.x + dx * Math.cos(rotation) - dz * Math.sin(rotation);
-  const unrotatedZ = pivot.z + dx * Math.sin(rotation) + dz * Math.cos(rotation);
-  const unityX = (unrotatedX - area.offsetX) / area.unityToWorldScale - area.sourceRootX;
-  const unityZ = (
-    (unrotatedZ - area.offsetZ)
-    / (area.unityToWorldScale * (area.mirrorZ ? -1 : 1))
-  ) - area.sourceRootZ;
-  return {
-    x: (unityX - area.positionPivotX) / unitScale + area.positionPivotX,
-    z: (unityZ - area.positionPivotZ) / unitScale + area.positionPivotZ
-  };
-}
-
-function visualYawToVehicleAreaYaw(yawDegrees) {
-  const area = SCENE_TUNING.vehicleArea;
-  return area.mirrorZ ? 180 - yawDegrees : yawDegrees;
-}
-
 function vehicleForward(vehicle) {
   const yaw = vehicle.yaw * Math.PI / 180;
   return { x: Math.sin(yaw), z: Math.cos(yaw) };
@@ -335,6 +310,7 @@ export class BusLoopGame {
   }
 
   reset() {
+    this.vehiclePathConfigKey = null;
     this.resetVersion += 1;
     this.time = 0;
     this.status = 'playing';
@@ -591,7 +567,7 @@ export class BusLoopGame {
       }))
     };
     this.garageRefreshPending = this.mechanicState.garages.length > 0;
-    const spotCount = resolveParkingSpots().count ?? this.level.spotCount;
+    const spotCount = this.getVehiclePathConfig().spots.length;
     this.spots = Array.from({ length: spotCount }, (_, index) => ({
       index, vehicleId: null
     }));
@@ -1256,11 +1232,12 @@ export class BusLoopGame {
       vehicle.elevatorActive = false;
     }
     const target = this.getSpotPosition(spot.index);
-    const path = buildRoundedPath(buildToStationPoints(vehicle, target, SCENE_TUNING.vehiclePath), SCENE_TUNING.vehiclePath);
+    const routeConfig = this.getVehiclePathConfig();
+    const path = buildRoundedPath(buildToStationPoints(vehicle, target, routeConfig.station), routeConfig.station);
     const stationMotion = getStationMotion(path.length);
     Object.assign(vehicle, {
       state: 'moving-to-spot', spotIndex: spot.index, motion: 0,
-      motionData: { path, duration: stationMotion.duration, curve: stationMotion.curve }
+      motionData: { path, duration: stationMotion.duration, curve: stationMotion.curve, routeConfig }
     });
     const ambulanceResult = this.consumeAmbulanceStep(vehicle);
     const completedTurnVehicleIds = this.startTurnVehicleRotation(vehicle);
@@ -1391,7 +1368,7 @@ export class BusLoopGame {
     if (vehicle.state === 'revive-boarding') {
       let departure;
       if (vehicle.reviveFromStation) {
-        const config = SCENE_TUNING.vehicleDeparturePath ?? {};
+        const config = this.getVehiclePathConfig().departure;
         const backwardPath = buildRoundedPath(buildOutStationPoints(this.getSpotPosition(vehicle.spotIndex), config), config);
         const corner = backwardPath.segments.at(-1)?.p1 ?? this.getSpotPosition(vehicle.spotIndex);
         const forwardPath = buildRoundedPath(buildDepartureForwardPoints(corner, config), config);
@@ -1401,13 +1378,15 @@ export class BusLoopGame {
       } else {
         const spots = resolveParkingSpots();
         const laneZ = spots.z + 1.65;
-        const lane = { ...visualToVehicleAreaPoint(resolveParkingStartX(spots), laneZ), yaw: visualYawToVehicleAreaYaw(90) };
-        const points = buildToStationPoints(vehicle, lane, SCENE_TUNING.vehiclePath);
-        points.push(visualToVehicleAreaPoint(8.5, laneZ));
-        const path = buildRoundedPath(points, SCENE_TUNING.vehiclePath);
+        const config = this.getVehiclePathConfig();
+        const transform = createVehicleRouteTransform(this.level, config.vehicleArea);
+        const lane = { ...transform.unproject(resolveParkingStartX(spots), laneZ), yaw: transform.sourceYaw(90) };
+        const points = buildToStationPoints(vehicle, lane, config.station);
+        points.push(transform.unproject(8.5, laneZ));
+        const path = buildRoundedPath(points, config.station);
         departure = { path, duration: Math.max(0.9, path.length / 7) };
       }
-      Object.assign(vehicle, { state: 'revive-departing', motion: 0, motionData: { ...departure, elapsed: 0 } });
+      Object.assign(vehicle, { state: 'revive-departing', motion: 0, motionData: { ...departure, elapsed: 0, routeConfig: this.getVehiclePathConfig() } });
       this.pendingStaminaRescue.phase = 'departing';
       return;
     }
@@ -1603,13 +1582,14 @@ export class BusLoopGame {
           changed = true;
         }
       } else if (vehicle.state === 'boarding-final') {
-        const fullLoadDelay = SCENE_TUNING.vehicleDeparturePath?.fullLoadDelay ?? this.level.boardingDepartureDelay;
+        const fullLoadDelay = this.getVehiclePathConfig().departure.fullLoadDelay ?? this.level.boardingDepartureDelay;
         vehicle.motion = fullLoadDelay <= 0 ? 1 : clamp01(vehicle.motion + delta / fullLoadDelay);
         if (vehicle.motion >= 1) {
           const spot = this.spots[vehicle.spotIndex];
           if (spot?.vehicleId === vehicle.id) spot.vehicleId = null;
           const target = this.getSpotPosition(vehicle.spotIndex);
-          const departure = SCENE_TUNING.vehicleDeparturePath ?? {};
+          const routeConfig = this.getVehiclePathConfig();
+          const departure = routeConfig.departure;
           const backwardPath = buildRoundedPath(buildOutStationPoints(target, departure), departure);
           const forwardStart = backwardPath.segments.at(-1)?.p1 ?? target;
           const forwardPath = buildRoundedPath(
@@ -1621,6 +1601,7 @@ export class BusLoopGame {
             motionData: {
               backwardPath,
               forwardPath,
+              routeConfig,
               backwardDuration: backwardPath.length / Math.max(0.001, departure.backwardSpeed ?? 2.5),
               forwardDuration: forwardPath.length / Math.max(0.001, departure.forwardSpeed ?? 10)
             }
@@ -1862,44 +1843,22 @@ export class BusLoopGame {
     ));
   }
 
-  getSpotPosition(index) {
+  getVehiclePathConfig() {
     const spots = resolveParkingSpots();
-    // The renderer derives the row's left edge from the spot count when
-    // auto-centring is on; using the raw authored startX here would park the car
-    // beside the spot it was sent to, by half the width difference.
-    const startX = resolveParkingStartX(spots);
-    const visualYaw = SCENE_TUNING.facing.parkingSpotYawDegrees ?? this.level.vehicleMotion.spotYaw;
-    const sourceYaw = visualYawToVehicleAreaYaw(visualYaw);
-    const approachOffset = SCENE_TUNING.vehicleDeparturePath?.backDistance ?? this.level.vehicleMotion.spotApproachOffsetZ;
-    const visualCenter = {
-      x: startX + spots.spacing * index,
-      z: spots.z
-    };
-    const visualForward = {
-      x: Math.sin(visualYaw * Math.PI / 180),
-      z: Math.cos(visualYaw * Math.PI / 180)
-    };
-    const approachDirection = this.level.vehicleMotion.spotApproachDirection === 'screen-down'
-      ? { x: 0, z: 1 }
-      : { x: -visualForward.x, z: -visualForward.z };
-    const visualApproach = approachOffset == null ? null : {
-      x: visualCenter.x + approachDirection.x * approachOffset,
-      z: visualCenter.z + approachDirection.z * approachOffset
-    };
-    const center = visualToVehicleAreaPoint(visualCenter.x, visualCenter.z);
-    const approach = visualApproach ? visualToVehicleAreaPoint(visualApproach.x, visualApproach.z) : null;
-    return {
-      x: center.x,
-      z: center.z,
-      yaw: sourceYaw,
-      visualX: visualCenter.x,
-      visualZ: visualCenter.z,
-      visualYaw,
-      approachX: approach?.x ?? null,
-      approachZ: approach?.z ?? null,
-      visualApproachX: visualApproach?.x ?? null,
-      visualApproachZ: visualApproach?.z ?? null
-    };
+    // Geometry is cached until tuning/stage/level inputs change. The snapshot
+    // is immutable and captured by dispatch, so previews can inspect that route.
+    const key = JSON.stringify([spots, SCENE_TUNING.vehicleArea, SCENE_TUNING.facing?.parkingSpotYawDegrees,
+      SCENE_TUNING.vehiclePath, SCENE_TUNING.vehicleDeparturePath]);
+    if (this.vehiclePathConfigKey !== key || this.vehiclePathLevel !== this.level) {
+      this.vehiclePathConfig = resolveVehiclePathConfig(this.level, SCENE_TUNING, spots);
+      this.vehiclePathConfigKey = key;
+      this.vehiclePathLevel = this.level;
+    }
+    return this.vehiclePathConfig;
+  }
+
+  getSpotPosition(index) {
+    return this.getVehiclePathConfig().spots[index];
   }
 
   dequeuePassenger(queueIndex, includeDetails = false) {

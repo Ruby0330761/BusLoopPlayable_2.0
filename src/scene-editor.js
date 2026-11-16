@@ -25,6 +25,7 @@ import {
 } from './mechanism-resources.js';
 import { LEVEL_AUDIO_CONFIG } from './level-audio-config.js';
 import { collectPlayableInlineAssetUrls } from './playable-inline-assets.js';
+import { resolveVehiclePathConfig } from './vehicle-path-config.js';
 import {
   ACTIVE_PLAYABLE_SESSION,
   PLAYABLE_ALL_LEVELS,
@@ -1087,6 +1088,8 @@ const FIELD_GROUPS = [
     title: '\u8f66\u8f86\u884c\u9a76\u8def\u5f84',
     fields: [
       ['\u663e\u793a\u8def\u5f84', 'vehiclePath.enabled', 0, 1, 1],
+      ['自动路径边界', 'vehiclePath.autoBounds', 0, 1, 1, null, 'toggle'],
+      ['自动边界留白', 'vehiclePath.boundsPadding', 0, 2, 0.01],
       ['\u663e\u793a\u88ab\u6321\u8f66', 'vehiclePath.showBlocked', 0, 1, 1],
       ['\u7ebf\u6761\u9ad8\u5ea6', 'vehiclePath.y', 0.02, 0.5, 0.005],
       ['\u7ebf\u6761\u900f\u660e\u5ea6', 'vehiclePath.opacity', 0.1, 1, 0.01],
@@ -1737,6 +1740,24 @@ export function createSceneEditor(root, {
     undoButton.disabled = tuningUndoStack.length === 0;
     redoButton.disabled = tuningRedoStack.length === 0;
   }
+  function updateVehiclePathBounds(tuning) {
+    const automatic = Boolean(Number(tuning.vehiclePath?.autoBounds));
+    const bounds = automatic ? resolveVehiclePathConfig(LEVEL_1, tuning).station.parkingBounds
+      : tuning.vehiclePath?.parkingBounds;
+    for (const edge of ['minX', 'maxX', 'minZ', 'maxZ']) {
+      const controls = inputs.get(`vehiclePath.parkingBounds.${edge}`);
+      controls?.row?.classList.toggle('is-readonly', automatic);
+      if (controls?.range) {
+        controls.range.disabled = automatic;
+        controls.range.value = String(bounds?.[edge]);
+      }
+      if (controls?.number) {
+        controls.number.disabled = automatic;
+        controls.number.value = formatValue(bounds?.[edge], controls.step);
+      }
+    }
+  }
+
   function commitTuning(next, { path, merge = false } = {}) {
     const before = structuredClone(getTuning());
     syncExportVariantTuning(next, path);
@@ -1753,6 +1774,7 @@ export function createSceneEditor(root, {
       tuningRedoStack.length = 0;
     }
     updateHistoryButtons();
+    if (/^(vehiclePath|vehicleArea|parkingSpots|facing)\./u.test(path ?? '')) updateVehiclePathBounds(getTuning());
     return result;
   }
 
@@ -2098,7 +2120,11 @@ export function createSceneEditor(root, {
             setAtPath(next, 'vehicleGuideHand.levelKey', getAtPath(next, 'level.selected'));
           }
           commitTuning(next, { path });
-          if (path === 'firstClickGuide.enabled' || path.startsWith('countdown.') || path.startsWith('stamina.') || path.startsWith('installGate.')) sync();
+          // `vehiclePath.autoBounds` disables the manual bound sliders, so the
+          // row visibility has to be refreshed on the toggle that flips it.
+          if (path === 'firstClickGuide.enabled' || path === 'vehiclePath.autoBounds'
+            || path.startsWith('countdown.') || path.startsWith('stamina.')
+            || path.startsWith('installGate.')) sync();
         });
         inputs.set(path, { row, checkbox, step });
         section.append(row);
@@ -3784,6 +3810,7 @@ export function createSceneEditor(root, {
     updateCountdownControls();
     updateStaminaControls();
     updateExportVariantControls();
+    updateVehiclePathBounds(tuning);
     // 起点 X is computed while auto-centring is on, so leave the row in place but
     // mark it read-only -- dragging a slider that cannot win the argument reads
     // as a broken control.
