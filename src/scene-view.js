@@ -3822,9 +3822,9 @@ export class SceneView {
       setMaterial(this.parkingTemplate, this.parkingMaterial);
 
       this.vehicleTemplates = {
-        4: this.prepareVehicleTemplate(carFbx, 4),
-        6: this.prepareVehicleTemplate(vanFbx, 6),
-        10: this.prepareVehicleTemplate(busFbx, 10)
+        4: this.prepareVehicleTemplate(carFbx, 4, { passengerRoof: true }),
+        6: this.prepareVehicleTemplate(vanFbx, 6, { passengerRoof: true }),
+        10: this.prepareVehicleTemplate(busFbx, 10, { passengerRoof: true })
       };
       this.hiddenVehicleTemplates = {
         4: hiddenCarFbx ? this.prepareVehicleTemplate(hiddenCarFbx, 4) : null,
@@ -3866,9 +3866,51 @@ export class SceneView {
     }
   }
 
-  prepareVehicleTemplate(source, seats) {
+  prepareVehicleTemplate(source, seats, { passengerRoof = false } = {}) {
     const targetDepth = SCENE_TUNING.vehicleArea.modelDepthBySeats[seats] ?? 1.2;
-    return normalizeObject(toStaticMeshGroup(source), { depth: targetDepth });
+    const root = toStaticMeshGroup(source);
+    if (passengerRoof) {
+      // The shipped car/van/bus paint islands occupy the atlas's left strip.
+      // Split only the upper, upward-facing paint triangles; glass, trim,
+      // wheels and side panels retain their authored UVs and vehicle material.
+      for (const mesh of [...root.children]) {
+        const geometry = mesh.geometry;
+        const position = geometry.attributes.position;
+        const normal = geometry.attributes.normal;
+        const uv = geometry.attributes.uv;
+        const bounds = geometry.boundingBox;
+        if (!position || !normal || !uv || !bounds) continue;
+        const roofY = bounds.min.y + (bounds.max.y - bounds.min.y) * 0.72;
+        const roofIndices = [];
+        const bodyIndices = [];
+        const count = geometry.index?.count ?? position.count;
+        for (let i = 0; i < count; i += 3) {
+          const triangle = [0, 1, 2].map((offset) => geometry.index?.getX(i + offset) ?? i + offset);
+          const isRoof = !/wheel/i.test(mesh.name)
+            && triangle.every((index) => position.getY(index) >= roofY
+              && uv.getX(index) < 0.085 && uv.getY(index) > 0.12 && uv.getY(index) < 0.37)
+            && triangle.reduce((sum, index) => sum + normal.getY(index), 0) / 3 > 0.25;
+          (isRoof ? roofIndices : bodyIndices).push(...triangle);
+        }
+        if (!roofIndices.length) continue;
+        const roofGeometry = geometry.clone();
+        roofGeometry.setIndex(roofIndices);
+        roofGeometry.clearGroups();
+        // Idle_boy01's highest head vertex samples this UV (verified against
+        // its VATM mesh). The atlas's large upper-left patch is a darker base,
+        // not the visible passenger head colour, despite sharing the same hue.
+        // Keep the roof on the actual head swatch, with its own surface normals.
+        const roofUv = roofGeometry.attributes.uv;
+        for (const index of new Set(roofIndices)) roofUv.setXY(index, 0.036364831, 0.442264944);
+        geometry.setIndex(bodyIndices);
+        geometry.clearGroups();
+        const roof = new THREE.Mesh(roofGeometry);
+        roof.name = `${mesh.name} Passenger Roof`;
+        roof.userData.isPassengerRoof = true;
+        root.add(roof);
+      }
+    }
+    return normalizeObject(root, { depth: targetDepth });
   }
 
   prepareVehicleShadowTemplate(source, seats) {
@@ -4658,6 +4700,14 @@ export class SceneView {
 
   updatePassengerMaterialTuning({ colorIndex: changedColorIndex = null } = {}) {
     const shouldUpdateColor = (colorIndex) => changedColorIndex == null || colorIndex === changedColorIndex;
+    for (const view of this.vehicleViews.values()) {
+      const material = view.userData.roofMaterial;
+      if (!material) continue;
+      const colorIndex = material.userData.passengerColorIndex;
+      if (!shouldUpdateColor(colorIndex)) continue;
+      const map = this.passengerColorTextures[colorIndex] ?? this.passengerColorTextures[0];
+      applyPassengerMaterial(material, colorIndex, map);
+    }
     this.passengerMaterials?.forEach((material, colorIndex) => {
       if (!material || !shouldUpdateColor(colorIndex)) return;
       const map = this.passengerColorTextures[colorIndex] ?? this.passengerColorTextures[0];
@@ -4783,10 +4833,23 @@ export class SceneView {
           entry.needsUpdate = true;
         });
       }
+      view.userData.roofMaterial?.dispose();
+      view.userData.roofMaterial = null;
       view.clear();
       const shadow = this.makeVehicleShadow(isLuxury ? 10 : vehicle.seats);
       const model = template.clone(true);
       const bodyMeshes = setMaterial(model, material);
+      if (!isAmbulance && !isFiretruck && !isPolice && !isChristmas && !isLuxury) {
+        const roofMeshes = bodyMeshes.filter((mesh) => mesh.userData.isPassengerRoof);
+        if (roofMeshes.length) {
+          const roofMaterial = new THREE.MeshStandardMaterial({ side: THREE.DoubleSide });
+          roofMaterial.userData.isVehicleRoofMaterial = true;
+          const map = this.passengerColorTextures[vehicle.colorIndex] ?? this.passengerColorTextures[0];
+          applyPassengerMaterial(roofMaterial, vehicle.colorIndex, map);
+          for (const mesh of roofMeshes) mesh.material = roofMaterial;
+          view.userData.roofMaterial = roofMaterial;
+        }
+      }
       const hiddenTemplate = vehicle.isHidden
         ? (this.hiddenVehicleTemplates[vehicle.seats] ?? this.hiddenVehicleTemplates[10])
         : null;
@@ -5628,7 +5691,10 @@ export class SceneView {
     this.vehicleEffects?.clear();
     this.clearGarageViews();
     this.clearConveyorViews();
-    for (const view of this.vehicleViews.values()) this.vehicleRoot.remove(view);
+    for (const view of this.vehicleViews.values()) {
+      view.userData.roofMaterial?.dispose();
+      this.vehicleRoot.remove(view);
+    }
     this.vehicleViews.clear();
     this.buildGarageViews();
     this.buildConveyorViews();
@@ -5983,7 +6049,7 @@ export class SceneView {
           ...(view.userData.bodyMeshes ?? []),
           ...(view.userData.hiddenBodyMeshes ?? [])
         ]) {
-          if (!mesh.material.emissive) continue;
+          if (!mesh.material.emissive || mesh.material.userData.isVehicleRoofMaterial) continue;
           const highlighted = isMovable && activeMeshes?.includes(mesh);
           mesh.material.emissive.setHex(highlighted ? 0x123a20 : 0x000000);
           mesh.material.emissiveIntensity = highlighted ? 0.22 : 0;
