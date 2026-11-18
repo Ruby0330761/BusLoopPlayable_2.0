@@ -1642,9 +1642,6 @@ export class BusLoopGame {
     // front is what makes that a pause; moving first and reversing afterwards
     // made the whole belt rock back and forth every frame.
     const progressDelta = this.limitAdvanceToWaitingEntrance(progressDelta0);
-    let initialFillClamp = 0;
-    let initialFillHoldSlot = null;
-    let initialFillHoldProgress = 0;
     for (const slot of this.slots) {
       slot.previousProgress = slot.progress;
       slot.progress = wrap01(slot.progress + progressDelta);
@@ -1653,15 +1650,6 @@ export class BusLoopGame {
         if (!entry) continue;
         const passenger = this.dequeuePassenger(entry.index, true);
         if (passenger === null) {
-          if (this.initialFillActive) {
-            const holdProgress = wrap01(entry.percent - INITIAL_ENTRY_OFFSET_PERCENT);
-            const clamp = wrap01(slot.progress - holdProgress);
-            if (clamp > initialFillClamp) {
-              initialFillClamp = clamp;
-              initialFillHoldSlot = slot;
-              initialFillHoldProgress = holdProgress;
-            }
-          }
           continue;
         }
         slot.colorIndex = passenger.colorIndex;
@@ -1685,13 +1673,11 @@ export class BusLoopGame {
     // flow on (an earlier attempt) left the track visibly bare, because a slot
     // that passes an entrance unfilled cannot pick anyone up until it comes all
     // the way round again.
-    if (this.initialFillActive && initialFillClamp > 0) {
-      for (const slot of this.slots) {
-        slot.progress = wrap01(slot.progress - initialFillClamp);
-        slot.previousProgress = wrap01(slot.previousProgress - initialFillClamp);
-      }
-      if (initialFillHoldSlot) initialFillHoldSlot.progress = initialFillHoldProgress;
-    }
+    // The advance was already capped up front by limitAdvanceToWaitingEntrance,
+    // so nothing has to be rewound here. The old rewind pulled every slot back
+    // except the held one, which closed the gap between a waiting slot and its
+    // neighbour to almost nothing -- two passengers ended up drawn on top of each
+    // other, and on a looping track like catLoop that reads as a clump.
 
     // The initial fill used to end only once every belt slot had been filled.
     // A level whose authored queues are smaller than the belt then locked up
