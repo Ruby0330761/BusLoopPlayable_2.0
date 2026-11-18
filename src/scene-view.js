@@ -1658,6 +1658,9 @@ export class SceneView {
     // Seeded empty so the first `syncPassengerShadowBatch` runs the enter pass
     // and hides the per-object meshes before anything draws.
     this.passengerShadowMode = null;
+    // Same contract for the vehicle-shadow batch.
+    this.vehicleShadowMode = null;
+    this.vehicleShadowBatch = null;
     this.pendingBoardingSounds = [];
     this.initialEntryPathStates = new Map();
     this.queueEntryPathStates = new Map();
@@ -5130,7 +5133,12 @@ export class SceneView {
     const material = this.vehicleShadowMaterials?.[seats] ?? this.vehicleShadowMaterials?.[10];
     setMaterial(shadow, material);
     shadow.traverse((object) => {
-      if (object.isMesh) object.userData.isFakeShadow = true;
+      if (!object.isMesh) return;
+      object.userData.isFakeShadow = true;
+      // Batch carrier, like the passenger shadows: the instanced path draws it
+      // from one batch per (seat-type) geometry, and the mesh itself is hidden
+      // for as long as that path is active.
+      object.userData.vehicleShadowCarrier = true;
     });
     shadow.position.y = SCENE_TUNING.vehicleShadows.y;
     const seatScale = SCENE_TUNING.vehicleShadows.scaleBySeats?.[seats] ?? {};
@@ -5140,6 +5148,121 @@ export class SceneView {
       SCENE_TUNING.vehicleShadows.scaleZ * (seatScale.z ?? 1)
     ));
     return shadow;
+  }
+
+  // Vehicle shadows are the same shape per seat count: 81 of them measured as 3
+  // distinct geometries and 3 shared materials, i.e. 81 draw calls for 3 batches'
+  // worth of work. They are drawn from one InstancedMesh per geometry; the cloned
+  // meshes stay in the graph as hidden transform carriers.
+  //
+  // Keyed by geometry uuid so a level that swaps shadow art (or a per-seat
+  // material) rebuilds instead of drawing with a stale batch.
+  ensureVehicleShadowBatch(carriers) {
+    if (SCENE_TUNING.vehicleShadows?.instanced === 0) return null;
+    const groups = new Map();
+    for (const carrier of carriers) {
+      const key = carrier.geometry.uuid;
+      if (!groups.has(key)) groups.set(key, { geometry: carrier.geometry, material: carrier.material, carriers: [] });
+      groups.get(key).carriers.push(carrier);
+    }
+    const existing = this.vehicleShadowBatch;
+    const sameShape = existing
+      && existing.groups.size === groups.size
+      && [...groups.keys()].every((key) => existing.groups.has(key));
+    if (sameShape) {
+      for (const [key, group] of groups.entries()) existing.groups.get(key).carriers = group.carriers;
+      return existing;
+    }
+    if (existing?.meshes) {
+      for (const mesh of existing.meshes) {
+        this.layoutRoot?.remove(mesh);
+        mesh.dispose?.();
+      }
+    }
+    const meshes = [];
+    // Growable per-geometry pools: the car count is fixed per level, but a
+    // rebuild keeps this correct for level switches.
+    for (const [key, group] of groups.entries()) {
+      const capacity = Math.max(16, group.carriers.length);
+      const mesh = new THREE.InstancedMesh(group.geometry, group.material, capacity);
+      mesh.name = `Instanced Vehicle Shadows ${key.slice(0, 8)}`;
+      mesh.count = 0;
+      mesh.frustumCulled = false;
+      mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+      mesh.matrixAutoUpdate = false;
+      mesh.renderOrder = group.carriers[0]?.renderOrder ?? 0;
+      this.layoutRoot.add(mesh);
+      meshes.push(mesh);
+      group.mesh = mesh;
+    }
+    this.vehicleShadowBatch = {
+      groups,
+      meshes,
+      scratch: new THREE.Matrix4()
+    };
+    return this.vehicleShadowBatch;
+  }
+
+  applyVehicleShadowMode(instanced) {
+    this.vehicleShadowMode = instanced ? 'instanced' : 'per-object';
+    const carriers = [];
+    for (const view of this.vehicleViews?.values?.() ?? []) {
+      view.traverse((node) => {
+        if (node.isMesh && node.userData.vehicleShadowCarrier) carriers.push(node);
+      });
+    }
+    for (const carrier of carriers) carrier.visible = !instanced;
+    if (instanced) return;
+    if (this.vehicleShadowBatch?.meshes) {
+      for (const mesh of this.vehicleShadowBatch.meshes) {
+        mesh.visible = false;
+        mesh.count = 0;
+      }
+    }
+  }
+
+  syncVehicleShadowBatch() {
+    const instanced = SCENE_TUNING.vehicleShadows?.instanced !== 0;
+    if (this.vehicleShadowMode !== (instanced ? 'instanced' : 'per-object')) {
+      this.applyVehicleShadowMode(instanced);
+    }
+    if (!instanced) return;
+
+    const carriers = [];
+    for (const view of this.vehicleViews?.values?.() ?? []) {
+      view.traverse((node) => {
+        if (!node.isMesh || !node.userData.vehicleShadowCarrier) return;
+        // The carrier itself is hidden while the batch draws it, so the
+        // visibility test runs on its ancestors only.
+        for (let parent = node.parent; parent; parent = parent.parent) {
+          if (!parent.visible || parent.scale.x === 0) return;
+        }
+        carriers.push(node);
+      });
+    }
+    if (!carriers.length) return;
+
+    const batch = this.ensureVehicleShadowBatch(carriers);
+    if (!batch) return;
+    const { scratch } = batch;
+    for (const group of batch.groups.values()) {
+      const { mesh, carriers: groupCarriers } = group;
+      if (!mesh) continue;
+      const count = Math.min(groupCarriers.length, mesh.instanceMatrix.count);
+      for (let index = 0; index < count; index += 1) {
+        const carrier = groupCarriers[index];
+        carrier.updateWorldMatrix(true, false);
+        scratch.copy(carrier.matrixWorld);
+        mesh.setMatrixAt(index, scratch);
+        // Keep hiding on every frame: cars (and their shadows) are rebuilt on
+        // level switches, and a carrier created after the mode switch would
+        // otherwise draw on top of its own instance.
+        carrier.visible = false;
+      }
+      mesh.count = count;
+      mesh.instanceMatrix.needsUpdate = true;
+      mesh.visible = true;
+    }
   }
 
   upgradeSpotViews() {
@@ -6857,6 +6980,7 @@ export class SceneView {
 
   render() {
     this.updateVehicleEntrance();
+    this.syncVehicleShadowBatch();
     this.syncPassengerShadowBatch();
     this.renderer.render(this.scene, this.camera);
   }

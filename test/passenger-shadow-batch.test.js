@@ -230,3 +230,68 @@ test('the batch wraps its matrices around freshly created carriers', () => {
   board.syncPassengerShadowBatch();
   assert.equal(board.passengerShadowBatch.mesh.count, 2, 'the batch kept the old instance count');
 });
+
+// ---------------------------------------------------------------------------
+// Vehicle shadows use the same carrier pattern but group by geometry: a level
+// measured 81 shadows over 3 geometries (4/6/10 seats), i.e. 81 draw calls for
+// 3 batches' worth of work.
+// ---------------------------------------------------------------------------
+
+function makeVehicleShadowCarrier(geometryKey = 'seat4') {
+  const group = new THREE.Group();
+  const mesh = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), SHADOW_MATERIAL);
+  mesh.userData.isFakeShadow = true;
+  mesh.userData.vehicleShadowCarrier = true;
+  mesh.userData.geometryKey = geometryKey;
+  group.add(mesh);
+  return { group, mesh };
+}
+
+function makeVehicleBoard() {
+  const board = makeBoard();
+  board.vehicleViews = new Map();
+  board.vehicleShadowBatch = null;
+  board.vehicleShadowMode = null;
+  return board;
+}
+
+test('vehicle shadows batch into one instanced mesh per geometry', () => {
+  const board = makeVehicleBoard();
+  // Three seat families, uneven counts, matching the real level shape.
+  const geoA = new THREE.PlaneGeometry(1, 1);
+  const geoB = new THREE.PlaneGeometry(1.2, 1);
+  const geoC = new THREE.PlaneGeometry(1.4, 1);
+  const families = [[geoA, 3], [geoB, 2], [geoC, 1]];
+  let id = 0;
+  for (const [geometry, count] of families) {
+    for (let i = 0; i < count; i += 1) {
+      const { group, mesh } = makeVehicleShadowCarrier();
+      mesh.geometry = geometry;
+      const view = new THREE.Group();
+      view.add(group);
+      board.vehicleViews.set(id++, view);
+    }
+  }
+  board.syncVehicleShadowBatch();
+  const batch = board.vehicleShadowBatch;
+  assert.ok(batch, 'no vehicle shadow batch was created');
+  assert.equal(batch.meshes.length, 3, 'expected one batch per distinct geometry');
+  assert.equal(
+    [...batch.groups.values()].reduce((sum, g) => sum + g.mesh.count, 0),
+    6,
+    'not every vehicle shadow instance was written'
+  );
+});
+
+test('vehicle shadow carriers stop drawing once the batch owns them', () => {
+  const board = makeVehicleBoard();
+  const { group, mesh } = makeVehicleShadowCarrier();
+  const view = new THREE.Group();
+  view.add(group);
+  board.vehicleViews.set(1, view);
+
+  board.applyVehicleShadowMode(true);
+  assert.equal(mesh.visible, false, 'the carrier still draws on top of its instance');
+  board.applyVehicleShadowMode(false);
+  assert.equal(mesh.visible, true, 'switching off did not restore the per-object shadow');
+});

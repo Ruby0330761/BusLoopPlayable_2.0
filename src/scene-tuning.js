@@ -1159,6 +1159,7 @@ export const SCENE_TUNING = {
     }
   },
   "vehicleShadows": {
+    "instanced": 1,
     "y": 0.004,
     "color": 16777215,
     "opacity": 0.72,
