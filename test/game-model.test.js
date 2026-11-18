@@ -4,6 +4,7 @@ import { existsSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { gunzipSync } from 'node:zlib';
 import * as THREE from 'three';
+import { FBXLoader } from 'three/addons/loaders/FBXLoader.js';
 import { BusLoopGame } from '../src/game-model.js';
 import { ACTIVE_LEVEL } from '../src/generated-active-level.js';
 import { COLORS, LEVEL_1, setActiveLevel } from '../src/level-data.js';
@@ -21,7 +22,8 @@ import {
   DreamteckClosedBSplineCurve3,
   fitCountBoardFontSize,
   makeClosedConveyorCurve,
-  shouldHideVehicleArrow
+  shouldHideVehicleArrow,
+  SceneView
 } from '../src/scene-view.js';
 import {
   buildOutStationPoints,
@@ -35,6 +37,82 @@ import {
 
 const sceneViewSource = readFileSync(join('src', 'scene-view.js'), 'utf8');
 const gameModelSource = readFileSync(join('src', 'game-model.js'), 'utf8');
+
+test('shipped ordinary vehicle roofs use passenger paint without changing body triangles or bounds', () => {
+  const packedPassenger = readFileSync('public/assets/unity/models/Idle_boy01_vatmesh.bin');
+  const passenger = packedPassenger[0] === 31 ? gunzipSync(packedPassenger) : packedPassenger;
+  const vertexCount = passenger.readUInt32LE(8);
+  let headVertex = 0;
+  for (let i = 1; i < vertexCount; i++) {
+    if (passenger.readFloatLE(20 + i * 12) > passenger.readFloatLE(20 + headVertex * 12)) headVertex = i;
+  }
+  const headU = passenger.readFloatLE(16 + vertexCount * 24 + headVertex * 8);
+  const headV = passenger.readFloatLE(20 + vertexCount * 24 + headVertex * 8);
+  const originalLoad = THREE.TextureLoader.prototype.load;
+  THREE.TextureLoader.prototype.load = () => new THREE.Texture();
+  try {
+    for (const [seats, name] of [[4, 'Car'], [6, 'Van'], [10, 'Bus']]) {
+      const packed = readFileSync(`public/assets/unity/models/${name}_001.fbx`);
+      const bytes = packed[0] === 31 ? gunzipSync(packed) : packed;
+      const source = new FBXLoader().parse(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength), '');
+      const original = SceneView.prototype.prepareVehicleTemplate(source, seats);
+      const changed = SceneView.prototype.prepareVehicleTemplate(source, seats, { passengerRoof: true });
+      const roofs = changed.children.filter((mesh) => mesh.userData.isPassengerRoof);
+      assert.ok(roofs.length, `${name} must have a roof`);
+      assert.ok(original.userData.fittedSize.distanceTo(changed.userData.fittedSize) < 1e-8);
+      const count = (root) => root.children.reduce((sum, mesh) => sum + (mesh.geometry.index?.count ?? mesh.geometry.attributes.position.count), 0);
+      assert.equal(count(changed), count(original), `${name} must keep every triangle exactly once`);
+      for (const mesh of original.children) {
+        const body = changed.children.find((candidate) => candidate.name === mesh.name);
+        assert.deepEqual(body.geometry.attributes.uv.array, mesh.geometry.attributes.uv.array);
+        if (/wheel/i.test(mesh.name)) assert.equal(body.geometry.index?.count ?? body.geometry.attributes.position.count, mesh.geometry.attributes.position.count);
+      }
+      for (const mesh of roofs) {
+        const { uv, normal, position } = mesh.geometry.attributes;
+        const originalMesh = original.children.find((candidate) => `${candidate.name} Passenger Roof` === mesh.name);
+        const bounds = originalMesh.geometry.boundingBox;
+        const roofY = bounds.min.y + (bounds.max.y - bounds.min.y) * 0.72;
+        for (const index of mesh.geometry.index.array) {
+          assert.ok(Math.abs(uv.getX(index) - headU) < 1e-6 && Math.abs(uv.getY(index) - headV) < 1e-6,
+            `${name} roof must sample the actual passenger head, not the darker atlas base`);
+          assert.ok(position.getY(index) >= roofY);
+        }
+        assert.deepEqual(normal.array, originalMesh.geometry.attributes.normal.array);
+      }
+    }
+  } finally {
+    THREE.TextureLoader.prototype.load = originalLoad;
+  }
+});
+
+test('vehicle roof and passenger materials stay equal after targeted edits and mode switches', () => {
+  const saved = structuredClone(SCENE_TUNING.passengerMaterial);
+  const roof = new THREE.MeshStandardMaterial();
+  roof.userData = { passengerColorIndex: 4, isVehicleRoofMaterial: true };
+  const otherRoof = new THREE.MeshStandardMaterial();
+  otherRoof.userData = { passengerColorIndex: 1, isVehicleRoofMaterial: true };
+  const passenger = new THREE.MeshStandardMaterial();
+  const texture = new THREE.Texture();
+  const view = {
+    vehicleViews: new Map([[1, { userData: { roofMaterial: roof } }], [2, { userData: { roofMaterial: otherRoof } }]]),
+    passengerMaterials: [null, null, null, null, passenger], passengerColorTextures: [texture, texture, null, null, texture],
+    passengerViews: [], queuePassengerViews: [], boardingViews: []
+  };
+  try {
+    for (const mode of ['unityTexture', 'solidColor', 'unityTexture']) {
+      SCENE_TUNING.passengerMaterial.mode = mode;
+      SCENE_TUNING.passengerMaterial.brightness = 0.73;
+      SCENE_TUNING.passengerMaterial.emissionStrength = 0.35;
+      SceneView.prototype.updatePassengerMaterialTuning.call(view, { colorIndex: 4 });
+      for (const key of ['color', 'emissive']) assert.ok(roof[key].equals(passenger[key]));
+      for (const key of ['map', 'emissiveMap', 'roughness', 'metalness', 'emissiveIntensity']) assert.equal(roof[key], passenger[key]);
+      assert.ok(otherRoof.color.equals(new THREE.Color(0xffffff)), 'targeted edits must not change another colour');
+      assert.equal(roof.userData.isVehicleRoofMaterial, true);
+    }
+  } finally {
+    Object.assign(SCENE_TUNING.passengerMaterial, saved);
+  }
+});
 
 const advance = (game, seconds, step = .05) => {
   for (let time = 0; time < seconds; time += step) game.update(step);
