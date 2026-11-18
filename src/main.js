@@ -12,6 +12,7 @@ import { pruneUnknownTuning } from './tuning-migrations.js';
 import { migrateVehiclePathTuning } from './vehicle-path-config.js';
 import { isValidStoreLink, resolveStoreLink } from './store-links.js';
 import {
+  SPEED_TOGGLE_SEED_SRC,
   formatSpeedLabel,
   normalizeSpeedMultiplier,
   normalizeSpeedToggleStyle,
@@ -2718,7 +2719,15 @@ async function startRuntime() {
     speedToggleButton.setAttribute('aria-pressed', String(speedToggleBoosted));
     speedToggleButton.setAttribute('aria-label', `Playback speed ${label}`);
     if (speedToggleLabel) speedToggleLabel.textContent = label;
-    if (speedToggleIcon) speedToggleIcon.src = resolveSpeedToggleIcon(style, speedToggleBoosted);
+    if (speedToggleIcon) {
+      // The seed src is a transparent pixel, so a build can ship without the
+      // switch art at all. Only a visible switch asks for a real icon: assigning
+      // one while the button is `hidden` would fetch art the package dropped.
+      const enabled = Boolean(SCENE_TUNING.speedToggle?.enabled ?? 0);
+      speedToggleIcon.src = enabled
+        ? resolveSpeedToggleIcon(style, speedToggleBoosted)
+        : SPEED_TOGGLE_SEED_SRC;
+    }
   }
   function setSpeedToggleBoosted(boosted) {
     const enabled = Boolean(SCENE_TUNING.speedToggle?.enabled ?? 1);

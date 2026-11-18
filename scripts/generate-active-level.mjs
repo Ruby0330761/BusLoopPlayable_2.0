@@ -142,13 +142,27 @@ function completeLevelAssets(level) {
   return completeLevelAudio(completeColorAtlases(level));
 }
 
+// Unity level documents carry the belt art they were authored against
+// (`assets.loopScene` / `loopSpriteRect`), but the renderer draws the selected
+// conveyor layout instead — `getSelectedConveyorLayout()` in scene-view.js is the
+// only reader of belt art. Keeping the field in the production payload made the
+// packager inline a second belt image the ad can never draw, so it is dropped
+// here, where the level enters the build.
+function withoutAuthoredBeltArt(assets) {
+  if (!assets || (assets.loopScene === undefined && assets.loopSpriteRect === undefined)) {
+    return assets;
+  }
+  const { loopScene: _loopScene, loopSpriteRect: _loopSpriteRect, ...liveAssets } = assets;
+  return liveAssets;
+}
+
 function withSelectedBackground(sessionLevel, scene = {}) {
   const spots = { ...SCENE_TUNING.parkingSpots, ...(scene.parkingSpots ?? {}) };
   return {
     ...sessionLevel,
     vehiclePathSnapshot: resolveVehiclePathConfig(sessionLevel, SCENE_TUNING, spots),
     assets: {
-      ...sessionLevel.assets,
+      ...withoutAuthoredBeltArt(sessionLevel.assets),
       background: selectedBackground
     }
   };

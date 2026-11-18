@@ -1138,6 +1138,7 @@ export const SCENE_TUNING = {
     "boardBrightness": 1.15
   },
   "passengerShadows": {
+    "instanced": 1,
     "conveyor": {
       "offsetX": -0.05,
       "offsetZ": 0,

@@ -1,0 +1,26 @@
+[
+  {
+    "name": "Q165-level26",
+    "tuning": "artifacts/q165-timed-tuning.json",
+    "variant": { "bgm": false, "material": "Q165V1" },
+    "source": "/Users/von/wxj/试玩成品/BUS/BL-2610285-20261106-WXJ/AL/BL-2610285-Q165V1-N-N-EN-PL-WXJ-JXY-AL-N-N.html"
+  },
+  {
+    "name": "Q158V1",
+    "tuning": "artifacts/q24-christmas-tuning.json",
+    "variant": { "bgm": false, "material": "Q158V1" },
+    "source": "/Users/von/wxj/试玩成品/BUS/BL-2610295-20261102-WXJ/BL-2610295-Q158V1-N-N-EN-PL-WXJ-TJW-AL-N-N.html"
+  },
+  {
+    "name": "Q158V2",
+    "tuning": "artifacts/q24-christmas-tuning.json",
+    "variant": { "bgm": true, "material": "Q158V2" },
+    "source": "/Users/von/wxj/试玩成品/BUS/BL-2610295-20261102-WXJ/BL-2610295-Q158V2-N-N-EN-PL-WXJ-TJW-AL-N-N.html"
+  },
+  {
+    "name": "Q159",
+    "tuning": "artifacts/q159-christmas-tuning.json",
+    "variant": { "bgm": true, "material": "Q159V1" },
+    "source": "/Users/von/wxj/试玩成品/BUS/BL-2610296-20261104-WXJ/BL-2610296-Q159V1-N-N-EN-PL-WXJ-TJW-AL-35moves-N.html"
+  }
+]

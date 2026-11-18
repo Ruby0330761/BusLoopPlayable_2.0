@@ -1674,3 +1674,88 @@ Full detailed 2026-07-07 findings were archived to:
 **标定步骤**：① 取同一关两辆相邻车，算关卡坐标中心距；② 量它们在场景里的渲染 AABB 中心距；③ 两者相除得世界/关卡比例；④ 渲染盒长轴 ÷ 该比例 = 真实渲染长度。
 
 **教训**：`modelDepthBySeats` 名字看着像「模型深度」，但它乘完 `modelScale` 得到的数**不等于**屏幕上那个盒子的长度。别望文生义。
+
+## 2026-11-17 - 单文件导出包约 23% 的素材是跑不出来的
+
+**实测**（`npm run build && npm run package:applovin`，BL-42 / level15 / dualQueue3）：改前 `artifacts/applovin/index.html` = 3,389,398 B（3.23 MiB），其中资产 base64 占 68.5%。30 个「进包但不显示」的 data URI 合计 786 KB。
+
+| 浪费项 | raw | 根因 |
+|---|---|---|
+| 10 张非选中布局的传送带贴图 | 642 KB | `MECHANISM_RESOURCE_MANIFEST[ordinaryConveyor]` 无条件列 11 张 `Loop_*`，而运行时只读 `conveyorLayout.assets.loopScene` |
+| 12 张关卡没用到的色板 | 78 KB | 关卡文档 26 槽全量写路径，`scene-view.js` 一次性加载全部非空槽 |
+| 5 个倍速开关图 | 58 KB | `BASE_RUNTIME_ASSET_PATHS` 无条件带，`speedToggle.enabled=0` 时按钮是 `hidden` |
+| 关卡文档遗留 `assets.loopScene` | 56 KB | 运行时只读布局表；该图与 `Loop_02` 同字节，打包器去重后不额外占 |
+| 引导手 | 8 KB | 无条件带，但 `vehicleGuideHand.levelKey = "level36"` |
+| `count_al.png` | 1 KB | 座位板已改 canvas 程序化绘制 |
+
+**Why**：白名单按「机制类型」下发，而传送带贴图是「按布局」选的。轨道资源（`PLAYABLE_TRACK_RESOURCES`）早已按布局裁剪，传送带贴图漏了同样的处理。
+
+**已修（本日 v20261117-1519）**：包体 3.23 MiB → **2.545 MiB（−688 KB，−20.9%）**，运行时门禁 19/19 通过。
+- 新增 `CONVEYOR_LAYOUT_ART_PATHS`：从 `CONVEYOR_LAYOUTS` 派生布局→贴图，`getMechanismResourcePaths` 按 `conveyorLayouts` 入参裁剪；`ordinaryConveyor` 清单清空。多舞台会话仍带上每条可达跑道。
+- 新增 `SPEED_TOGGLE_ASSET_PATHS`，按 `speedToggle.enabled` 门控；打包器额外从 CSS 收集结果里剔除，否则 `styles.css` 的 `url()` 会把底图加回来。
+- `generate-active-level.mjs` 与 `playable-inline-assets.js` 都丢掉关卡文档的 `assets.loopScene`。
+
+**踩到的坑**：`#speed-toggle-icon` 的 HTML 初始 `src` 原本是根相对路径。素材被剔除后它变成占位字节，运行时门禁 `RUNTIME-IMAGE-001` 直接抓出破图。修法照 `#countdown-image` 的先例：用透明 1×1 GIF 作种子（`SPEED_TOGGLE_SEED_SRC`），只有开关打开时才由 JS 赋真图。**以后任何「按开关剔除素材」的改动，都要检查 HTML 里有没有硬编码的初始 `src`。**
+
+**剩余 3.3%（88 KB）**：13 张未用色板 + 引导手 + `count_al.png`。色板要真省必须把 `scene-view.js` 的 20 张一次性加载改成按 `colorIndex` 懒加载（`level-data.js` 的 `resolveColorAtlasPaths` 会回填空槽，直接裁文档无效），收益小、风险高，暂不做。引导手只有 8 KB，且被 `firstClickGuide` 和 `vehicleGuideHand` 两处共用，条件判断容易漏。
+
+**别误伤**：预卷（session `preRoll: 0` → 519 KB MP4 确实没进包）、进度条、体力、倒计时、导入跑道资源、`icon-ios.png` + `icon-android.jpg`（UA 切换双图标）都有正确的条件门控，不是浪费。
+
+**同日发现：`export:playable` 的平台静态检查跑不起来。** `deploy-tools/build-verified-playable-packages/rules/applovin.json` 里 `APL-AUD-001`（MRAID `audioVolumeChange`/`getAudioVolume`）和 `APL-AUD-002`（`viewableChange`/`visibilitychange`）缺 `stage`/`sourceClass`/`sourceVersion`/`repairHint`/`autoRepair`，规则校验器（`scripts/lib/rules.py` 的加载阶段）直接抛 `RulesetError`。HEAD 上同样如此，与素材改动无关。补齐前本地验证要走 `--skip-checks` 导出 + `scripts/check-playable-runtime.mjs` 运行时门禁。**别把这两条规则的报错当成自己的回归。**
+
+**本地验证基线（2026-11-17，AppLovin，BL + BFT）**：两版运行时门禁 19/19、无破图；品牌/商店链接/素材裁剪逐项核对正确；玩法冒烟（派车 → 占位 → 满载离场，客流 432→426）与改动前的 11-12 产物完全一致。level15 开局 81 辆车有 34 辆被挡是关卡形状，探针必须扫到最外层才找得到可点的车（id 157），否则会误判成"点了不动"。
+
+## 2026-11-17 - 试玩性能瓶颈是 draw call，不是体积也不是逻辑
+
+**实测基线**（BL42V1 / level15，81 车 + 96 乘客容量，headless Chrome + `window.__busLoop`）：
+
+```
+drawCalls 1512 | triangles 283,662 | uniqueMaterials 1064 | uniqueGeometries 29
+renderMsAvg 5.40 | updateMsAvg 0.013 | 帧间隔 p50 16.7 / p95 16.8 / 0 次 >33ms
+```
+
+**Why**：`render` 占每帧 5.40 ms，`game.update` 只占 0.013 ms —— 瓶颈完全在渲染提交。三角形 28 万不到移动端红线，体积已降到 2.55 MiB，两者都不是当前瓶颈。
+
+**最大单项是乘客影子**：480 个 mesh 吃掉 **288 draw call / 1.99 ms（占 37%）**。其次是箭头描边 LineSegments：81 条 / 0.68 ms。这两项都用隔离实验实测得出（隐藏后重测）。
+
+**关键结构事实**：60 个乘客只有 **2 个几何体**、却有 **241 个材质** —— 几何复用早已做好，只是没走 instancing。
+
+**最重要的发现**：`src/scene-view.js:2573` 的 `isSpatialOptimizationEnabled` 第一个条件是 `this.activeSpatialConveyor`，而 `SCENE_TUNING.spatialConveyor.optimizations` 里已写好 12 项优化（`instancedPassengers`/`instancedShadows`/`frustumCulling` 等，默认全开）。**结果是只有导入的 3D 空间跑道关卡用得上，`dualQueue3` 这类普通贴图传送带（项目绝大多数关卡）一个都用不上。** 把 instancing 从 spatial 绑定解绑是收益最大的一步，预计 draw call 再降 ~470。
+
+**被证伪的方向（别浪费时间）**：共享材质**无效** —— 把 81 辆车的 per-vehicle material clone 换成共享实例后，draw call 仍是 1512、渲染耗时 +0.05 ms。three.js 已按「材质+几何」批次提交，clone 不是 draw call 来源。
+
+**How to apply**：方案与分档收益见 `docs/project/playable-performance-plan.md`。推荐顺序：像素比分级（零风险）→ 箭头描边降级 + 影子合并 → 解绑 instancing。判定门槛：drawCalls 降 ≥40%、renderMsAvg 降 ≥30%、p95 不超 16.8 ms、运行时门禁保持 19/19。
+
+## 2026-11-17 - 乘客影子合并为单次实例化绘制（draw call 1512 → 890）
+
+**做法**：`createPassengerVisual` 仍然给每个小人挂影子对象，但影子 mesh 设为 `visible = false` 当纯变换载体；`render()` 里 `syncPassengerShadowBatch()` 把 312 个载体的世界矩阵写进一个 `InstancedMesh`。开关 `SCENE_TUNING.passengerShadows.instanced`（默认 1），设 0 即回退到逐个小人绘制。
+
+**实测收益**（BL42V1 / level15）：
+- draw call **1512 → 890（−622，−41%）**
+- 实例化数 1，三角形不变（283,662），包体 +1.7 KB
+- 帧间隔 p50/p95 仍 16.7/16.8，0 次 >33ms
+
+**Why 能省这么多**：影子模板是**单个 6 顶点四边形**，材质和几何完全一致，312 个影子本来是 312 次提交。合并后 1 次。
+
+**正确性验证（关键，别只看截图）**：逐实例把 instance matrix 分解后与载体世界矩阵比对：
+```
+maxPositionError 2.5e-7 | maxScaleError 1e-8 | maxRotationError 0
+geometrySameAsTemplate true | materialSameAsShadowMaterial true
+```
+即批次画的和原来逐个画的**是同一个几何对象、同一个材质对象、同一个变换**（位置误差 2.5e-7 属 float32 精度极限，不是视觉差异）。
+
+**截图 A/B 不可靠的坑**：我一开始用「同页面切换开关再截图」对比，得到 0.5%~2% 的像素差异，包括 footer 的 CTA 按钮区。原因是 DOM 的 CTA 脉冲动画和截图时机不受 rAF 冻结控制 —— **不能用截图 A/B 判断这类渲染改动**，要用矩阵/几何/材质的对象级等价性验证。另外两个不同构建的包做像素对比也会混入乘客动画相位差（实测 4.75% → 冻结时钟后 0.39%）。
+
+**踩到的坑**：
+1. 一开始把 `visible = false` 设在影子 mesh 上，导致 `syncPassengerShadowBatch` 的可见性检查把它们全跳过 —— 可见性判断必须从 `child.parent` 往上走，跳过载体自身。
+2. `ensurePassengerShadowBatch` 首次调用时 `passengerViews` 可能还没建好，容量会算小 —— 改成按 `requiredCount` 需要时自动重建扩容。
+3. `matrixAutoUpdate = false` 是必须的：实例矩阵已经是世界空间，批次自身不能再带变换（实测批次世界矩阵为单位阵，无双重变换）。
+
+**剩余空间**：890 draw call 里还有 ~490 来自车辆（81 × 6 mesh）、~81 来自箭头描边 LineSegments。车辆 instancing 是下一步最大项，但车辆有 arrow/outline/hidden 等分支，比影子复杂得多。
+
+## 2026-11-18 - 项目审查：并发保存与影子合批边界
+
+- 已复现：同关卡并发 PUT 共用 `.${levelId}.${process.pid}.tmp`，revision 检查也未串行化；连续四轮出现成功响应与落盘内容不一致。仅随机化临时文件名不足以解决冲突。
+- 修正上文“设 0 即回退”：影子实例化开关运行中关闭会保留旧批次且不恢复逐人 mesh；默认合批也未收集 `boardingViews`，上车乘客原影子隐藏后没有替代绘制。矩阵等价只能证明已收集实例的位置，不能证明所有乘客都被收集。
+- 本轮 761 项测试、游戏端/远程编辑器隔离编译通过，现有 AppLovin 包 runtime 19/19；正式规则仍被 `APL-AUD-001 缺少字段 stage` 阻断。以上缺陷尚未修复。
+- 完整范围、复现、源码位置与建议见 `docs/architecture/bl/project-review-2026-11-18.md`；本轮仅记录审查结果，未修改业务代码或原交付包。

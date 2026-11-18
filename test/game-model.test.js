@@ -1640,7 +1640,11 @@ test('editor sizing, source background ratio, and passenger shadow anchor stay w
   assert.equal(SCENE_TUNING.vehicleGuideHand.farScale, 1.14);
   assert.equal('conveyorScale' in SCENE_TUNING.passengers, false);
   assert.equal('queueScale' in SCENE_TUNING.passengers, false);
-  assert.deepEqual(Object.keys(SCENE_TUNING.passengerShadows), ['conveyor', 'leftQueue', 'rightQueue']);
+  // `instanced` is the draw-call switch for the shadow batch, not a shadow
+  // anchor; the three kind anchors keep their keys so the editor fields and
+  // `updatePassengerShadowObject` keep resolving.
+  assert.deepEqual(Object.keys(SCENE_TUNING.passengerShadows), ['instanced', 'conveyor', 'leftQueue', 'rightQueue']);
+  assert.equal(SCENE_TUNING.passengerShadows.instanced, 1);
   assert.ok(publicAssetExists('/assets/icon-android.jpg'));
   assert.ok(publicAssetExists('/assets/icon-ios.png'));
   assert.ok(publicAssetExists('/assets/icon-crowd.jpg'));

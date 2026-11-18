@@ -1,3 +1,5 @@
+import { CONVEYOR_LAYOUTS } from './conveyor-layouts.js';
+
 const MECHANISM_ROOT = '/assets/unity/mechanisms';
 const CHRISTMAS_ROOT = '/assets/unity/christmas';
 
@@ -31,6 +33,18 @@ export const MECHANISM_TYPE_ORDER = Object.freeze([
   MECHANISM_TYPES.vehicleTransportBelt
 ]);
 
+// Conveyor belt artwork, keyed by layout. A playable draws exactly one belt, so
+// these cannot live in the type-keyed manifest below: listing them under
+// `ordinaryConveyor` shipped all eleven images in every package even though the
+// renderer only ever reads `conveyorLayout.assets.loopScene`. Derived from the
+// layout catalog rather than hand-copied so a new layout cannot ship without its
+// art.
+export const CONVEYOR_LAYOUT_ART_PATHS = Object.freeze(Object.fromEntries(
+  Object.entries(CONVEYOR_LAYOUTS)
+    .map(([layoutId, layout]) => [layoutId, layout?.assets?.loopScene])
+    .filter(([, artPath]) => typeof artPath === 'string' && artPath)
+));
+
 // Assets owned by one imported track. Registered per layout id (not per
 // mechanism type) because a playable only ever shows its selected track, and a
 // package that inlined all four would blow the 5 MB cap.
@@ -57,19 +71,9 @@ export const PLAYABLE_TRACK_RESOURCES = Object.freeze({
 });
 
 export const MECHANISM_RESOURCE_MANIFEST = Object.freeze({
-  [MECHANISM_TYPES.ordinaryConveyor]: Object.freeze([
-    '/assets/unity/conveyors/Loop_02_q80.webp',
-    '/assets/unity/conveyors/Loop_03_q80.webp',
-    '/assets/unity/conveyors/Loop_04_q80.webp',
-    '/assets/unity/conveyors/Loop_06_q80.webp',
-    '/assets/unity/conveyors/Loop_07_q80.webp',
-    '/assets/unity/conveyors/Loop_footage2_q80.webp',
-    '/assets/unity/conveyors/Loop_footage3_q80.webp',
-    '/assets/unity/conveyors/Loop_footage4_q80.webp',
-    '/assets/unity/conveyors/Loop_footage5_q80.webp',
-    '/assets/unity/conveyors/Loop_footage6_q80.webp',
-    '/assets/unity/conveyors/Loop_footage7_q80.webp'
-  ]),
+  // Belt artwork is layout-owned (see CONVEYOR_LAYOUT_ART_PATHS above), so this
+  // family carries no unconditional assets.
+  [MECHANISM_TYPES.ordinaryConveyor]: Object.freeze([]),
   [MECHANISM_TYPES.spatialConveyor]: Object.freeze([]),
   [MECHANISM_TYPES.entryBanner]: Object.freeze([
     `${MECHANISM_ROOT}/entry-banner/sprites/Main_EntryBanner_PurpleArrows.png`,
@@ -346,20 +350,32 @@ export function getMechanismAudioConfig(types = []) {
 export const BASE_RUNTIME_ASSET_PATHS = Object.freeze([
   '/assets/applovin/icon_q75.jpg',
   '/assets/applovin/main-guide-hand_q80.webp',
-  '/assets/applovin/speed-toggle-bg_q90.webp',
-  '/assets/applovin/speed-toggle-icon-normal.png',
-  '/assets/applovin/speed-toggle-icon-boost.png',
-  // The light capsule's round badge. Both skins are always inlined because the
-  // picker only sets a look — a level exported after switching skin must not
-  // depend on which one was selected at build time.
-  '/assets/applovin/speed-toggle-icon-light-normal.png',
-  '/assets/applovin/speed-toggle-icon-light-boost.png',
   '/assets/unity/ui/Main_Prop_GreenBtn.png',
   // The failure card's Retry pill (art only — the word is a text layer so its
   // size stays tunable). It is referenced only from styles.css, so leaving it
   // out of this list would ship a packaged ad whose Retry button is a blank
   // transparent hit area.
   '/assets/unity/ui/Main_Prop_RedBtn_blank_q90.webp'
+]);
+
+// Speed switch artwork. The switch is off by default (the progress bar owns that
+// corner), so five unconditional bitmaps were ~58 KB in every delivery for a
+// button that stayed `hidden`. Both skins are still inlined together: the style
+// is a tuning value, so a build must be able to switch look without a rebuild.
+//
+// `speed-toggle-bg_q90.webp` is the default skin's pill and is addressed from
+// styles.css, not from JS. It is listed here so the packager inlines it when the
+// switch is on; a build with the switch off drops it from the CSS pass too
+// (see `stripSpeedToggleArt` in the packager).
+export const SPEED_TOGGLE_ASSET_PATHS = Object.freeze([
+  '/assets/applovin/speed-toggle-bg_q90.webp',
+  '/assets/applovin/speed-toggle-icon-normal.png',
+  '/assets/applovin/speed-toggle-icon-boost.png',
+  // The light capsule's round badge; both are the `SPEED_TOGGLE_ICON_PATHS` pair
+  // in speed-toggle.js, kept byte-identical here because the packager inlines by
+  // exact URL.
+  '/assets/applovin/speed-toggle-icon-light-normal.png',
+  '/assets/applovin/speed-toggle-icon-light-boost.png'
 ]);
 
 // Progress HUD markers. The track, bubble and pills are drawn in CSS, but the
@@ -475,6 +491,11 @@ export function getMechanismResourcePaths(types = [], { conveyorLayout = null, c
   // a collection are accepted.
   const requested = conveyorLayouts ?? (conveyorLayout ? [conveyorLayout] : []);
   for (const layoutId of requested) {
+    // The belt image is the single largest thing a conveyor layout owns, and a
+    // package only draws the layout it can reach. Both it and the imported track
+    // pairs are therefore selected by layout id, never by mechanism type.
+    const artPath = CONVEYOR_LAYOUT_ART_PATHS[layoutId];
+    if (artPath) paths.push(artPath);
     const trackPaths = PLAYABLE_TRACK_RESOURCES[layoutId];
     if (trackPaths) paths.push(...trackPaths);
   }

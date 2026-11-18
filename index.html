@@ -57,7 +57,12 @@
         </div>
         <button id="cta-button" class="cta-button" type="button" aria-label="Play Now" hidden>Play Now</button>
         <button id="speed-toggle" class="speed-toggle" type="button" aria-label="Playback speed" aria-pressed="false" hidden>
-          <img id="speed-toggle-icon" class="speed-toggle-icon" src="/assets/applovin/speed-toggle-icon-normal.png" alt="" draggable="false" />
+          <!-- Transparent seed like #countdown-image: the switch is off in most
+               deliveries, so its art is inlined only when the tuning enables it
+               and the real src is assigned from `resolveSpeedToggleIcon` at
+               runtime. A root-relative URL here would force the packager to
+               inline an image this element can never show. -->
+          <img id="speed-toggle-icon" class="speed-toggle-icon" src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7" alt="" draggable="false" />
           <span id="speed-toggle-label" class="speed-toggle-label">x1</span>
         </button>
       </main>

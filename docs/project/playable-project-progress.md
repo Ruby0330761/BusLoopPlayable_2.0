@@ -3959,3 +3959,42 @@ Full 2026-07-07 progress log was archived to:
   - 45s danger 0.82 → **56s `status: lost`, `reason: "q37-pit"`**
 - 新增测试 1 条：断言 `q37-pit` 分支存在、`readPercent` 先转后夹、以及 footage11 的 42 / 52.2 两个百分比未被破坏。
 - 仍未做：`boardedGroups` 上车逻辑在尾部队列下仍走常规槽位路径；原版 Q37 是「乘客自己走到出口再上车」，这里只是把推进与失败补上。
+
+## 2026-11-16 - catLoop「还是不行」排查（v20261116-1730）
+
+- 用户指出猫咪跑道仍不对。逐项量化后**得到一个已确认真实的 bug**，另有三项实测正常：
+  - **真 bug：槽位被单独钉住导致重叠**。`updateInitialFill` 里残留了一段「整环回拉」逻辑：所有槽 `progress -= clamp`，唯独被钉在入口的那个槽不参与回拉。结果该槽与邻居的间距从 0.246 塌到 **0.02**（几乎重合），画面上像挤成一坨。这段与 `limitAdvanceToWaitingEntrance()` 功能重复，且后者是更正确的前置截停，直接移除。
+  - 修复后实测：catLoop `minGap = 0.0167 = ideal`，**11 条原有轨道全部 `minGap` 精确等于 `ideal`**（此前 catLoop 差 12 倍）。
+  - 正常项：曲线 27 控制点；`entryPercents [0.957, 0.555]`；乘客横向 4 人一排、宽 0.48；曲线 60 采样点 **57/60 落在画出来的路面上**（其余 3 点在贴图透明边缘）；填充完成后皮带持续流动（progress 0.92→0.99→绕回 0.02）。
+- 未能复现的部分：用户截图是 **level99 / 6 个车位 / 橙色背景 / 6 色乘客 / 轨道上边缘被手机框裁切**；我本地能加载到的是 level34（4 车位、草地、2 色乘客），且猫咪完整可见。`artifacts/web-levels/` 里只有 `level999`（key `level999`，名「测试（原）」），关卡列表 46 项里没有 `level99`。因此「视野裁切」和「配色」两项**无法同口径对比**，需要用户指认具体症状。
+- 新增测试 1 条：断言 `initialFillClamp` 已移除、槽位不得被相对拖回、`limitAdvanceToWaitingEntrance` 是唯一节流机制。
+
+## 2026-11-17 - 导出包瘦身：3.23 MiB → 2.545 MiB（v20261117-1519）
+
+- 起因：分析「进包但不会显示」的素材。实测 30 个 data URI 共 786 KB 是死重，占包体 23%。
+- 改动（4 处）：
+  - `src/mechanism-resources.js` 新增 `CONVEYOR_LAYOUT_ART_PATHS`（从 `CONVEYOR_LAYOUTS` 派生布局→贴图），`getMechanismResourcePaths` 按 `conveyorLayouts` 裁剪；`ordinaryConveyor` 白名单清空。省 642 KB。
+  - 同文件新增 `SPEED_TOGGLE_ASSET_PATHS`，按 `speedToggle.enabled` 门控；`scripts/package-applovin-single-html.mjs` 额外从 CSS 收集结果里剔除，否则 `styles.css` 的 `url()` 会把底图加回来。省 58 KB。
+  - `scripts/generate-active-level.mjs` 的 `withoutAuthoredBeltArt` + `src/playable-inline-assets.js` 同步丢弃关卡文档里运行时不再读取的 `assets.loopScene`。
+  - `index.html` + `src/speed-toggle.js`（`SPEED_TOGGLE_SEED_SRC`）+ `src/main.js`：倍速图标改为透明占位起始，开关关闭时不再请求被剔除的图。
+- 验证：`npm test` 757/757 通过；`npm run build` + `npm run package:applovin` 产出 2,668,941 B；运行时门禁 19/19 通过（`brokenImages: []`）；`check:applovin` 仅剩 2 条改动前就存在的既有失败（`no root-relative asset URLs`、`unselected branding Icon omitted`，已用 stash 对照验证同基线）。
+- 剩余 3.3%（88 KB）：13 张未用色板（需改 `scene-view.js` 懒加载才省得掉，风险高）、引导手 8 KB、`count_al.png` 1 KB。
+- 未做：色板懒加载（P3）；真实设备上传验证。
+- 本地验证（2026-11-17，`artifacts/playable-exports/verify-20261117/`，AppLovin，BL + BFT 各一版）：
+  - 体积：BL 2,668,687 B / BFT 2,538,821 B（BFT 小 130 KB 是因为少内联 Bus 的 iOS 图标）。
+  - 浏览器运行时门禁：两版均 **19/19 通过**，`brokenImages: []`。
+  - 品牌核对：BL 内联 bus 双端图标 + Bus 双商店链接、无 crowd 素材；BFT 内联 crowd 图标 + Bus Crowd 链接、无 bus 图标。截图确认 CTA/Logo/底部标题按店铺切换。
+  - 素材裁剪核对：10 张非选中传送带贴图与 5 张倍速开关图在两版中均不存在；选中布局的 `Loop_03` 在位；传送带画面正常。
+  - 玩法冒烟（`window.__busLoop` 驱动）：找到可派车 → 派到车位 → 25 秒内完成上车并离场（`parked 80 / done 1`、客流 432→426 正好 6 人 = 6 座满载）。与改动前的 11-12 产物逐项一致，行为无回归。
+  - 备注：level15 的 81 辆车里 34 辆开局被挡是关卡本身形状，不是缺陷；探针需扫到最外层才能找到可点的车（id 157）。
+- 已知阻塞：`export:playable` 的平台静态检查跑不通 —— `deploy-tools/.../rules/applovin.json` 的 `APL-AUD-001`/`APL-AUD-002` 缺 `stage`/`sourceClass`/`sourceVersion`/`repairHint`/`autoRepair`，HEAD 上就存在，规则校验器直接抛错。本批包用 `--skip-checks` 导出 + 项目自带运行时门禁替代验证。
+
+## 2026-11-17 - 渲染性能：乘客影子实例化（v20261117-1803）
+
+- 实测基线：draw call 1512 / render 5.40ms/帧 / update 0.013ms/帧，瓶颈在渲染提交而非逻辑或体积。
+- 改动：`scene-view.js` 新增 `ensurePassengerShadowBatch` / `syncPassengerShadowBatch`，`render()` 每帧同步；`scene-tuning.js` 加 `passengerShadows.instanced`（默认 1，设 0 回退）。
+- 收益：**draw call 1512 → 890（−41%）**，实例化 312 个影子由 288 次提交变 1 次。
+- 正确性：逐实例矩阵分解比对载体世界矩阵，位置误差 2.5e-7、缩放 1e-8、旋转 0，几何与材质为同一对象。
+- 验证：`npm test` 757/757；运行时门禁 19/19；BL/BFT 两版导出到 `artifacts/playable-exports/verify-20261117b/`。
+- 文档：方案与剩余项见 `docs/project/playable-performance-plan.md`；截图 A/B 不可靠的教训见 `findings.md`。
+- 下一步：车辆 instancing（~490 call）、箭头描边合并（~81 call）。

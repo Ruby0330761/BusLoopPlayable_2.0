@@ -1654,6 +1654,10 @@ export class SceneView {
     this.luxurySeatCountBoardTexture = null;
     this.vatTimeUniform = { value: 0 };
     this.boardingViews = [];
+    // Which shadow path is currently applied ('instanced' | 'per-object').
+    // Seeded empty so the first `syncPassengerShadowBatch` runs the enter pass
+    // and hides the per-object meshes before anything draws.
+    this.passengerShadowMode = null;
     this.pendingBoardingSounds = [];
     this.initialEntryPathStates = new Map();
     this.queueEntryPathStates = new Map();
@@ -4447,7 +4451,14 @@ export class SceneView {
     shadow.scale.set(width * tuning.scaleX, 1, depth * tuning.scaleZ / 1.26);
     setMaterial(shadow, this.shadowMaterial);
     shadow.traverse((object) => {
-      if (object.isMesh) object.userData.isFakeShadow = true;
+      if (!object.isMesh) return;
+      object.userData.isFakeShadow = true;
+      // Tag every shadow mesh as a batch carrier. The batch hides it while
+      // drawing (otherwise the shadow paints twice), and `applyPassengerShadowMode`
+      // restores it when the instanced path is switched off at runtime. The
+      // visibility itself is owned by the mode, not decided here, so a carrier
+      // created while the batch is active cannot start out drawn.
+      object.userData.passengerShadowCarrier = true;
     });
     shadow.rotation.y = deg(SCENE_TUNING.facing.passengerShadowYawDegrees);
     shadow.position.set(tuning.offsetX, SCENE_TUNING.shadows.y, tuning.offsetZ);
@@ -4456,6 +4467,142 @@ export class SceneView {
     shadow.userData.shadowBaseDepth = depth;
     this.updatePassengerShadowObject(shadow);
     return shadow;
+  }
+
+  // Every root that can own a passenger shadow. Belt slots and queue lanes hold
+  // their visual per group member; boarding passengers live in their own list and
+  // were missed by the first version of the batch, which made the shadow vanish
+  // for the whole boarding walk.
+  collectPassengerShadowRoots() {
+    const roots = [];
+    const pushSlots = (view) => {
+      for (const slot of view?.userData?.personSlots ?? []) {
+        const visual = slot?.userData?.visualRoot;
+        if (visual) roots.push(visual);
+      }
+    };
+    for (const view of this.passengerViews ?? []) pushSlots(view);
+    for (const lane of this.queuePassengerViews ?? []) for (const view of lane ?? []) pushSlots(view);
+    for (const entry of this.boardingViews ?? []) if (entry?.root) roots.push(entry.root);
+    return roots;
+  }
+
+  // Shadow carriers under one passenger root. A descendant walk (not just
+  // `visual.children`) is required: the luxury passenger keeps its shadow inside
+  // `visualOffsetRoot`, so a one-level scan silently dropped it.
+  collectShadowCarriers(roots) {
+    const carriers = [];
+    for (const root of roots) {
+      root.traverse((node) => {
+        if (!node.isMesh || !node.userData.passengerShadowCarrier) return;
+        // The carrier mesh itself is hidden while the batch draws it, so the
+        // visibility test runs on the ancestors only.
+        for (let parent = node.parent; parent; parent = parent.parent) {
+          if (!parent.visible || parent.scale.x === 0) return;
+        }
+        carriers.push(node);
+      });
+    }
+    return carriers;
+  }
+
+  // Enters or leaves the instanced shadow path. Both directions have to clean up:
+  // entering hides the per-object meshes (or every shadow draws twice), leaving
+  // restores them and parks the batch (otherwise the last frame's instances keep
+  // rendering forever). `syncPassengerShadowBatch` calls this on a mode change, so
+  // flipping `SCENE_TUNING.passengerShadows.instanced` at runtime works.
+  applyPassengerShadowMode(instanced) {
+    this.passengerShadowMode = instanced ? 'instanced' : 'per-object';
+    const carriers = this.collectShadowCarriers(this.collectPassengerShadowRoots());
+    for (const carrier of carriers) carrier.visible = !instanced;
+    if (instanced) return;
+    if (this.passengerShadowBatch?.mesh) {
+      this.passengerShadowBatch.mesh.visible = false;
+      this.passengerShadowBatch.mesh.count = 0;
+    }
+  }
+
+  // Passenger shadows are one flat quad each (the template is a single 6-vertex
+  // mesh), so hundreds of them were hundreds of draw calls for identical
+  // geometry, identical material and a per-instance transform. They are drawn
+  // from one InstancedMesh instead: the per-slot `makeShadow` objects stay in the
+  // graph as transform carriers (their mesh is hidden, they draw nothing) and
+  // their world matrices are copied into the instance buffer once per frame.
+  //
+  // Opt-out through `SCENE_TUNING.passengerShadows.instanced`; the switch is
+  // honoured at runtime, see `applyPassengerShadowMode`.
+  ensurePassengerShadowBatch(requiredCount = null) {
+    if (SCENE_TUNING.passengerShadows?.instanced === 0) return null;
+    const existing = this.passengerShadowBatch;
+    if (existing && (requiredCount == null || existing.capacity >= requiredCount)) return existing;
+    if (!this.shadowTemplate || !this.shadowMaterial) return null;
+    let source = null;
+    this.shadowTemplate.traverse((mesh) => {
+      if (!source && mesh.isMesh) source = mesh;
+    });
+    if (!source) return null;
+    if (existing?.mesh) {
+      this.layoutRoot?.remove(existing.mesh);
+      existing.mesh.dispose?.();
+    }
+    // The pool is sized from the live view counts plus boarding headroom;
+    // `syncPassengerShadowBatch` asks for a bigger batch when a level outgrows it.
+    const capacity = Math.max(64, requiredCount ?? 0, (
+      (this.passengerViews?.length ?? 0) * 4
+        + (this.queuePassengerViews ?? []).reduce((sum, lane) => sum + (lane?.length ?? 0) * 4, 0)
+        + (this.boardingViews?.length ?? 0)
+        + 64
+    ));
+    const mesh = new THREE.InstancedMesh(source.geometry, this.shadowMaterial, capacity);
+    mesh.name = 'Instanced Passenger Shadows';
+    mesh.count = 0;
+    mesh.frustumCulled = false;
+    mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+    // Instance matrices are world-space, so the batch must not inherit a
+    // transform of its own.
+    mesh.matrixAutoUpdate = false;
+    mesh.renderOrder = source.renderOrder;
+    this.layoutRoot.add(mesh);
+    const scratch = new THREE.Matrix4();
+    this.passengerShadowBatch = { mesh, capacity, scratch, carriers: [] };
+    return this.passengerShadowBatch;
+  }
+
+  // Gathers every passenger-shadow carrier's world matrix into the instance
+  // buffer. Called from `render()` after the passenger transforms for the frame
+  // are written, so nothing goes stale behind the render tick.
+  syncPassengerShadowBatch() {
+    const instanced = SCENE_TUNING.passengerShadows?.instanced !== 0;
+    // A runtime switch has to re-apply the drawing mode before the batch runs:
+    // leaving needs the per-object meshes restored, entering needs them hidden.
+    if (this.passengerShadowMode !== (instanced ? 'instanced' : 'per-object')) {
+      this.applyPassengerShadowMode(instanced);
+    }
+    if (!instanced) return;
+
+    const roots = this.collectPassengerShadowRoots();
+    const carriers = this.collectShadowCarriers(roots);
+
+    const batch = this.ensurePassengerShadowBatch(carriers.length);
+    if (!batch) return;
+    const { mesh, scratch } = batch;
+    const count = Math.min(carriers.length, batch.capacity);
+    for (let index = 0; index < count; index += 1) {
+      const carrier = carriers[index];
+      carrier.updateWorldMatrix(true, false);
+      scratch.copy(carrier.matrixWorld);
+      mesh.setMatrixAt(index, scratch);
+      // Keep the carrier invisible on every frame, not only on the mode-switch
+      // frame: passengers (and therefore shadows) are created lazily during
+      // play, so a carrier made after the switch would otherwise draw on top of
+      // its own instance and hand back the draw calls the batch saves.
+      carrier.visible = false;
+    }
+    mesh.count = count;
+    mesh.instanceMatrix.needsUpdate = true;
+    // Passengers can be toggled off in tuning; the batch follows the same flag.
+    mesh.visible = Boolean(SCENE_TUNING.visibility?.passengers ?? 1);
+    batch.carriers = carriers;
   }
 
   updatePassengerShadowObject(shadow) {
@@ -6710,6 +6857,7 @@ export class SceneView {
 
   render() {
     this.updateVehicleEntrance();
+    this.syncPassengerShadowBatch();
     this.renderer.render(this.scene, this.camera);
   }
 }

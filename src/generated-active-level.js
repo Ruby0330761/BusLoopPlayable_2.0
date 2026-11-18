@@ -3318,15 +3318,6 @@ const STAGE_1_LEVEL = Object.freeze({
     ]
   ],
   "assets": {
-    "loopScene": "/assets/applovin/Loop_02_q80.webp",
-    "loopSpriteRect": {
-      "x": 0,
-      "y": 57,
-      "width": 2100,
-      "height": 1243,
-      "imageWidth": 2100,
-      "imageHeight": 1300
-    },
     "background": "/assets/applovin/textures/BG01_split01_q60.jpg",
     "audio": {
       "bus_hit": {

@@ -4,7 +4,7 @@ import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 
 import { SCENE_TUNING } from '../src/scene-tuning.js';
-import { BASE_RUNTIME_ASSET_PATHS } from '../src/mechanism-resources.js';
+import { BASE_RUNTIME_ASSET_PATHS, SPEED_TOGGLE_ASSET_PATHS } from '../src/mechanism-resources.js';
 import { BusLoopGame } from '../src/game-model.js';
 import { LEVEL_1 } from '../src/level-data.js';
 import {
@@ -99,8 +99,14 @@ test('speed toggle tuning keeps its top-right geometry and a valid multiplier', 
   assert.ok(tuning.x > 1080 * 0.8, `speedToggle.x ${tuning.x} is not in the right-hand column`);
   assert.ok(tuning.y < 2160 * 0.1, `speedToggle.y ${tuning.y} is not in the top band`);
   for (const path of SPEED_TOGGLE_ASSETS) {
-    assert.ok(BASE_RUNTIME_ASSET_PATHS.includes(path), `${path} must be in the export whitelist`);
+    assert.ok(SPEED_TOGGLE_ASSET_PATHS.includes(path), `${path} must be in the switch's export whitelist`);
     assert.equal(existsSync(new URL(`../public${path}`, import.meta.url)), true, `${path} is missing`);
+  }
+  // The switch owns its own opt-in list. Keeping it out of the unconditional base
+  // list is what stops a delivery that never shows the button from paying ~58 KB.
+  for (const path of SPEED_TOGGLE_ASSETS) {
+    assert.ok(!BASE_RUNTIME_ASSET_PATHS.includes(path),
+      `${path} must not be in the unconditional base runtime assets`);
   }
 });
 
@@ -127,7 +133,12 @@ test('the playable renders the speed button and wires it to the simulation clock
   ]);
 
   assert.match(html, /id="speed-toggle"/u);
-  assert.match(html, /speed-toggle-icon-normal\.png/u);
+  // The badge starts from a transparent pixel, not a root-relative URL: a build
+  // with the switch disabled ships no badge art, and a real src here would make
+  // the packager inline (or omit) an image the element can never show.
+  assert.match(html, /id="speed-toggle-icon"[^>]*src="data:image\/gif;base64,R0lGOD/u);
+  assert.doesNotMatch(html, /speed-toggle-icon-normal\.png/u);
+  assert.match(mainSource, /SPEED_TOGGLE_SEED_SRC/u);
   assert.match(html, /id="speed-toggle-label"[^>]*>x1</u);
   assert.match(mainSource, /resolveTimeScale\(\{/u);
   assert.match(mainSource, /delta \* getTimeScale\(\)/u);

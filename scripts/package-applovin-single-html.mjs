@@ -239,6 +239,7 @@ function stripEditorMount(html) {
 
 async function main() {
   const [{ PLAYABLE_STAGES, PLAYABLE_STAGE_CHOICES, PLAYABLE_ALL_LEVELS, ACTIVE_PLAYABLE_SESSION }, { SCENE_TUNING }, {
+    SPEED_TOGGLE_ASSET_PATHS,
     getMechanismTypesForLevels
   }, { collectAssetUrls, collectPlayableInlineAssetUrls }] = await Promise.all([
     import('../src/generated-active-level.js'),
@@ -297,6 +298,14 @@ async function main() {
   });
   collectAssetUrls(html, realAssetUrls);
   collectAssetUrls(packagedCssSource, realAssetUrls);
+  // The default speed skin's pill is addressed from styles.css, so the CSS pass
+  // above re-adds it even when the shared inline set dropped it. Drop it again
+  // here, otherwise a build with the switch off still pays for the five switch
+  // bitmaps. The button is `hidden` in that case, so the CSS url() resolves to
+  // the omitted placeholder exactly like every other unused asset.
+  if (!Boolean(Number(SCENE_TUNING.speedToggle?.enabled ?? 0))) {
+    for (const asset of SPEED_TOGGLE_ASSET_PATHS) realAssetUrls.delete(asset);
+  }
   realAssetUrls.delete(jsPath);
   realAssetUrls.delete(cssPath);
 

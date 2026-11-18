@@ -4,6 +4,7 @@ import { readFile } from 'node:fs/promises';
 
 import { SCENE_TUNING } from '../src/scene-tuning.js';
 import { LEVEL_1 } from '../src/level-data.js';
+import { SPEED_TOGGLE_ASSET_PATHS } from '../src/mechanism-resources.js';
 import { collectPlayableInlineAssetUrls } from '../src/playable-inline-assets.js';
 
 const read = (relative) => readFile(new URL(`../${relative}`, import.meta.url), 'utf8');
@@ -17,8 +18,9 @@ const baseOptions = () => ({
 
 test('the inline asset set always carries the runtime shell and the level assets', () => {
   const urls = collectPlayableInlineAssetUrls(baseOptions());
-  // The four UI bitmaps every build needs, without which the packaged ad ships
-  // blank buttons.
+  // The UI bitmaps every build needs, without which the packaged ad ships blank
+  // buttons. The speed switch art is deliberately absent: it follows
+  // `speedToggle.enabled`, which is off in the shipped tuning.
   for (const required of [
     '/assets/applovin/icon_q75.jpg',
     '/assets/applovin/main-guide-hand_q80.webp',
@@ -28,11 +30,55 @@ test('the inline asset set always carries the runtime shell and the level assets
     assert.ok(urls.has(required), `missing base runtime asset ${required}`);
   }
   // Level documents are walked wholesale: an art path a level stops naming is
-  // one the package silently loses.
-  assert.ok(urls.has(LEVEL_1.assets.loopScene), 'level loop scene art is missing');
+  // one the package silently loses. `assets.loopScene` is the exception — the
+  // renderer draws belt art from the conveyor layout, so the level's own copy is
+  // dead weight; the selected layout's image is asserted below instead.
+  assert.ok(!urls.has(LEVEL_1.assets.loopScene), 'the level\'s authored belt art is dead weight');
+  assert.ok(urls.has('/assets/unity/conveyors/Loop_03_q80.webp'), 'the selected layout\'s belt art is missing');
   assert.ok(urls.has(LEVEL_1.assets.background), 'level background is missing');
   assert.ok(urls.has(LEVEL_1.assets.colorTextures[0]), 'level colour atlas is missing');
   assert.ok(urls.has(LEVEL_1.assets.audio.bus_hit.clips[0]), 'level audio clip is missing');
+});
+
+test('belt art follows the reachable layouts, not the whole catalog', () => {
+  const one = collectPlayableInlineAssetUrls(baseOptions());
+  // dualQueue3 is the shipped selection; the other ten belts are ~642 KB of art
+  // the package can never draw.
+  for (const unselected of [
+    '/assets/unity/conveyors/Loop_02_q80.webp',
+    '/assets/unity/conveyors/Loop_04_q80.webp',
+    '/assets/unity/conveyors/Loop_06_q80.webp',
+    '/assets/unity/conveyors/Loop_07_q80.webp',
+    '/assets/unity/conveyors/Loop_footage2_q80.webp'
+  ]) {
+    assert.ok(!one.has(unselected), `unselected belt art ${unselected} was inlined`);
+  }
+  // A stitched session that can switch belts must carry every belt it can show.
+  const stitched = collectPlayableInlineAssetUrls({
+    ...baseOptions(),
+    conveyorLayouts: ['dualQueue3', 'starLoop']
+  });
+  assert.ok(stitched.has('/assets/unity/conveyors/Loop_03_q80.webp'));
+  assert.ok(stitched.has('/assets/unity/conveyors/Loop_07_q80.webp'));
+  assert.ok(!stitched.has('/assets/unity/conveyors/Loop_04_q80.webp'));
+});
+
+test('speed switch art is inlined only when the switch is enabled', () => {
+  const off = baseOptions();
+  off.tuning.speedToggle.enabled = 0;
+  const withoutSwitch = collectPlayableInlineAssetUrls(off);
+  for (const asset of SPEED_TOGGLE_ASSET_PATHS) {
+    assert.ok(!withoutSwitch.has(asset), `${asset} was inlined with the switch off`);
+  }
+
+  const on = baseOptions();
+  on.tuning.speedToggle.enabled = 1;
+  const withSwitch = collectPlayableInlineAssetUrls(on);
+  // Both skins ship together: the style is a tuning value, so switching look
+  // must not need a rebuild.
+  for (const asset of SPEED_TOGGLE_ASSET_PATHS) {
+    assert.ok(withSwitch.has(asset), `${asset} is missing with the switch on`);
+  }
 });
 
 test('opt-in layers only join the inline set when they are enabled', () => {

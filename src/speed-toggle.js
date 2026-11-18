@@ -12,6 +12,13 @@ export const SPEED_TOGGLE_STYLES = Object.freeze([
   { value: 'light', label: '浅色胶囊（蓝色圆徽）' }
 ]);
 
+// The seed `src` for the switch badge. A delivery whose tuning leaves the switch
+// off ships no badge art at all, so the element starts from a transparent pixel
+// (same value #countdown-image uses) and only asks for a real icon once the
+// switch is enabled. A root-relative seed in index.html would make the packager
+// inline art the ad can never show.
+export const SPEED_TOGGLE_SEED_SRC = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7';
+
 export const SPEED_TOGGLE_ICON_PATHS = Object.freeze({
   default: Object.freeze({
     normal: '/assets/applovin/speed-toggle-icon-normal.png',

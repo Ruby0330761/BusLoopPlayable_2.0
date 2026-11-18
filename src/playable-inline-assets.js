@@ -2,6 +2,7 @@ import {
   BASE_RUNTIME_ASSET_PATHS,
   PRE_ROLL_ASSET_PATHS,
   PROGRESS_HUD_ASSET_PATHS,
+  SPEED_TOGGLE_ASSET_PATHS,
   getMechanismResourcePaths,
   getMechanismTypesForLevels
 } from './mechanism-resources.js';
@@ -30,6 +31,18 @@ export function collectAssetUrls(value, output = new Set()) {
     Object.values(value).forEach((entry) => collectAssetUrls(entry, output));
   }
   return output;
+}
+
+// Unity level documents carry `assets.loopScene` from the catalog extraction, but
+// nothing reads it any more: the renderer draws the belt from
+// `conveyorLayout.assets.loopScene` (see `getSelectedConveyorLayout`). Walking it
+// inlined a second belt image in every package — and for a level authored on one
+// layout but exported on another, a belt the ad can never draw. The selected
+// layout's art is added from `CONVEYOR_LAYOUT_ART_PATHS` instead.
+function withoutDeadLevelArt(level) {
+  if (!level?.assets || level.assets.loopScene === undefined) return level;
+  const { loopScene: _loopScene, ...liveAssets } = level.assets;
+  return { ...level, assets: liveAssets };
 }
 
 // Which assets a single-file playable actually inlines. The export packager
@@ -67,6 +80,12 @@ export function collectPlayableInlineAssetUrls({
     urls.add(COUNTDOWN_SIREN_ASSET);
   }
   for (const asset of getStaminaAssetPaths(tuning.stamina)) urls.add(asset);
+  // The x1/x2 switch is off in most deliveries, and its five bitmaps were ~58 KB
+  // of dead weight in every one of them. `enabled` is the same flag the runtime
+  // reads to hide the button, so the art follows it.
+  if (Boolean(Number(tuning.speedToggle?.enabled ?? 0))) {
+    for (const asset of SPEED_TOGGLE_ASSET_PATHS) urls.add(asset);
+  }
   // A session can disable the pre-roll, and the runtime applies that by zeroing
   // the tuning flag. Reading the raw `tuning.preRoll.enabled` here inlined a
   // 519 KB MP4 the runtime never played, so the session has to be consulted in
@@ -78,7 +97,7 @@ export function collectPlayableInlineAssetUrls({
   )) {
     urls.add(selectedPreRollAsset);
   }
-  for (const level of levels) collectAssetUrls(level, urls);
+  for (const level of levels) collectAssetUrls(withoutDeadLevelArt(level), urls);
   // The BGM is addressed from tuning, not from a level document, so the plain
   // URL collection above never sees it. Missing it ships a silently dead loop:
   // the runtime requests a root-relative path that does not exist in the

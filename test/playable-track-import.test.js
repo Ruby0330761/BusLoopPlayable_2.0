@@ -230,6 +230,22 @@ test('a hidden entrance lane is removed for the model, not just the renderer', (
   }
 });
 
+test('a filled belt keeps its slots evenly spaced (no clumping)', () => {
+  // A per-slot rewind used to pull every slot back except the one held at an
+  // entrance, closing that gap to almost nothing. Two passengers ended up drawn
+  // on top of each other, which on a looping track like catLoop reads as a clump
+  // in the middle of the artwork. The advance is capped up front instead, so the
+  // rigid loop keeps its spacing.
+  const source = fs.readFileSync(path.join(ROOT, 'src/game-model.js'), 'utf8');
+  assert.doesNotMatch(source, /initialFillClamp/, 'the per-slot rewind must be gone');
+  assert.doesNotMatch(
+    source,
+    /slot\.progress = wrap01\(slot\.progress - /,
+    'slots must never be dragged backwards relative to each other'
+  );
+  assert.match(source, /limitAdvanceToWaitingEntrance/, 'the cap must be the only pacing mechanism');
+});
+
 test('the Q37 pit is a real fail condition, not decoration', () => {
   // footage11's whole point is that the passenger column creeps into the pit and
   // the run fails there. Two separate mistakes are guarded here: shipping the pit
