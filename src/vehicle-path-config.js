@@ -1,6 +1,8 @@
 import { createVehicleAreaTransform, displayVehicleSize } from './vehicle-area-transform.js';
 import { UNITY_VEHICLE_MOTION, forwardFromYaw } from './vehicle-motion.js';
 
+const VEHICLE_PATH_CONFIG_VERSION = 3;
+
 // These are the old editor defaults, not a second set of automatic bounds.
 // Old profiles with different bounds remain manual until the author opts in.
 export const LEGACY_VEHICLE_PATH_BOUNDS = Object.freeze({ minX: -3, maxX: 2.95, minZ: -3.22, maxZ: 2.82 });
@@ -56,6 +58,7 @@ export function createVehicleRouteTransform(level, area, capturedOffset = null) 
 // Only route inputs enter this key: HUD edits must not invalidate geometry.
 export function vehiclePathInputKey(level, tuning, parkingSpots = tuning.parkingSpots) {
   const source = JSON.stringify([
+    VEHICLE_PATH_CONFIG_VERSION,
     level.key, level.mapScale, level.vehicleMotion, level.vehicleSize, level.vehicles, level.containers,
     tuning.vehicleArea, parkingSpots, tuning.facing?.parkingSpotYawDegrees,
     tuning.vehiclePath, tuning.vehicleDeparturePath
@@ -70,7 +73,8 @@ export function vehiclePathInputKey(level, tuning, parkingSpots = tuning.parking
 
 export function resolveVehiclePathConfig(level, tuning, parkingSpots = tuning.parkingSpots) {
   const inputKey = vehiclePathInputKey(level, tuning, parkingSpots);
-  if (level.vehiclePathSnapshot?.inputKey === inputKey) {
+  if (level.vehiclePathSnapshot?.version === VEHICLE_PATH_CONFIG_VERSION
+    && level.vehiclePathSnapshot.inputKey === inputKey) {
     return freezeTree(structuredClone(level.vehiclePathSnapshot));
   }
   const native = level.vehicleMotion ?? {};
@@ -107,13 +111,22 @@ export function resolveVehiclePathConfig(level, tuning, parkingSpots = tuning.pa
       approachX: approach.x, approachZ: approach.z, visualApproachX, visualApproachZ };
   });
   const station = { ...UNITY_VEHICLE_MOTION, ...path };
+  const padding = Math.max(0, path.boundsPadding ?? 0.1);
+  station.sideEntryTurnRadius = Math.min(station.turnRadius, padding);
   const vertices = [];
   let movingRadius = 0;
+  let movingHalfWidth = 0;
+  let occupiedSpotHalfZ = 0;
+  const spotForward = forwardFromYaw(sourceYaw);
   for (const vehicle of level.vehicles ?? []) {
     const size = displayVehicleSize(vehicle, area);
     const width = Math.max(size.width / scale, vehicle.collisionSize?.width ?? level.vehicleSize?.width ?? 0.27);
     const depth = Math.max(size.length / scale, vehicle.collisionSize?.length ?? level.vehicleSize?.length ?? 0.68);
     movingRadius = Math.max(movingRadius, Math.hypot(width, depth) / 2);
+    movingHalfWidth = Math.max(movingHalfWidth, width / 2);
+    const stationScale = UNITY_VEHICLE_MOTION.stationScaleBySeats[vehicle.seats] ?? 1;
+    occupiedSpotHalfZ = Math.max(occupiedSpotHalfZ,
+      (Math.abs(spotForward.x) * width + Math.abs(spotForward.z) * depth) * stationScale / 2);
     const f = forwardFromYaw(vehicle.yaw ?? 0);
     for (const sx of [-1, 1]) for (const sz of [-1, 1]) vertices.push({
       x: vehicle.x + f.z * width / 2 * sx + f.x * depth / 2 * sz,
@@ -131,22 +144,31 @@ export function resolveVehiclePathConfig(level, tuning, parkingSpots = tuning.pa
     });
   }
   if (Number(path.autoBounds ?? 1) && vertices.length) {
-    // Keep the rounded inside corner AND the moving body outside the field.
-    const margin = movingRadius + station.turnRadius + Math.max(0, path.boundsPadding ?? 0.1);
+    const tightMargin = movingHalfWidth + padding;
+    const topClearance = movingRadius + station.turnRadius + padding;
     const xs = vertices.map((p) => p.x), zs = vertices.map((p) => p.z);
-    const bounds = { minX: Math.min(...xs) - margin, maxX: Math.max(...xs) + margin,
-      minZ: Math.min(...zs) - margin, maxZ: Math.max(...zs) + margin };
-    // Use the parking row's approach lane when there is room between it and
-    // the field; moving the row must change the shared joining lane as well.
-    const approachZ = Math.min(...spots.map((p) => p.approachZ));
-    if (approachZ > bounds.maxZ) bounds.maxZ = approachZ;
+    const fieldTop = Math.max(...zs);
+    const bayWidth = (parkingSpots?.modelWidth ?? 0) * (parkingSpots?.scaleX ?? 1) / scale;
+    const bayDepth = (parkingSpots?.modelDepth ?? 0) * (parkingSpots?.scaleZ ?? 1) / scale;
+    const bayHalfZ = (Math.abs(spotForward.x) * bayWidth + Math.abs(spotForward.z) * bayDepth) / 2;
+    const rowNearEdge = Math.min(...spots.map((spot) => spot.z)) - Math.max(occupiedSpotHalfZ, bayHalfZ);
+    const freeGap = rowNearEdge - fieldTop;
+    // Split a short joining gap between the cars and the occupied parking row.
+    // With ample room, keep a full turning margin above the field instead of
+    // pushing the joining lane all the way up to the parking approach points.
+    const topMargin = freeGap > 0 ? Math.min(topClearance, freeGap / 2) : topClearance;
+    const bounds = { minX: Math.min(...xs) - tightMargin, maxX: Math.max(...xs) + tightMargin,
+      minZ: Math.min(...zs) - tightMargin, maxZ: fieldTop + topMargin };
+    station.bottomTurnRadius = station.sideEntryTurnRadius;
+    station.topTurnRadius = Math.min(station.turnRadius,
+      Math.max(0, Math.min(topMargin, rowNearEdge - bounds.maxZ) - movingHalfWidth));
     station.parkingBounds = bounds;
   } else station.parkingBounds = path.parkingBounds ?? UNITY_VEHICLE_MOTION.parkingBounds;
   const b = station.parkingBounds;
   if (![b.minX, b.maxX, b.minZ, b.maxZ].every(Number.isFinite) || b.minX >= b.maxX || b.minZ >= b.maxZ) {
     throw new TypeError('车辆路径边界无效，请检查自动边界或手动边界');
   }
-  return freezeTree({ version: 1, inputKey, levelKey: level.key, vehicleArea: area, transformOffset: transform.offset,
+  return freezeTree({ version: VEHICLE_PATH_CONFIG_VERSION, inputKey, levelKey: level.key, vehicleArea: area, transformOffset: transform.offset,
     parkingSpots: { ...parkingSpots, count, spacing, startX, z }, visualYaw, spots,
     station, departure });
 }

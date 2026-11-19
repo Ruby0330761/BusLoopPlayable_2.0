@@ -152,12 +152,26 @@ export function buildToStationPoints(vehicle, spot, motion = UNITY_VEHICLE_MOTIO
   const direction = normalize(forwardFromYaw(vehicle.yaw));
   const hit = rayBox(start, direction, bounds);
   const boxStart = hit?.point ?? start;
+  if ((hit?.edge === 2 || hit?.edge === 3) && Number.isFinite(motion.sideEntryTurnRadius)) {
+    // A compact side lane needs a later, tighter first turn so the rear clears
+    // neighbouring parked cars before the car joins the perimeter.
+    boxStart.turnRadius = motion.sideEntryTurnRadius;
+  }
   const boxTL = point(bounds.minX, bounds.maxZ);
   const boxTR = point(bounds.maxX, bounds.maxZ);
   const boxBL = point(bounds.minX, bounds.minZ);
   const boxBR = point(bounds.maxX, bounds.minZ);
+  if (Number.isFinite(motion.bottomTurnRadius)) {
+    boxBL.turnRadius = boxBR.turnRadius = motion.bottomTurnRadius;
+    if (hit?.edge === 1) boxStart.turnRadius = motion.bottomTurnRadius;
+  }
+  if (Number.isFinite(motion.topTurnRadius)) {
+    boxTL.turnRadius = boxTR.turnRadius = motion.topTurnRadius;
+    if (hit?.edge === 0) boxStart.turnRadius = motion.topTurnRadius;
+  }
   const spotDirection = normalize(forwardFromYaw(spot.yaw ?? 180));
   const outBound = lineIntersection(boxTL, point(1, 0), spot, spotDirection);
+  if (Number.isFinite(motion.topTurnRadius)) outBound.turnRadius = motion.topTurnRadius;
   const points = [];
   appendDistinct(points, start);
   appendDistinct(points, boxStart);
@@ -228,7 +242,12 @@ export function buildRoundedPath(points, motion = UNITY_VEHICLE_MOTION) {
     if (inLength < EPSILON || outLength < EPSILON) continue;
     const inDirection = mul(inVector, 1 / inLength);
     const outDirection = mul(outVector, 1 / outLength);
-    const radius = Math.min(inLength, motion.turnRadius ?? UNITY_VEHICLE_MOTION.turnRadius, outLength * .5);
+    const radius = Math.min(inLength, turn.turnRadius ?? motion.turnRadius ?? UNITY_VEHICLE_MOTION.turnRadius, outLength * .5);
+    if (radius <= EPSILON) {
+      addLine(start, turn);
+      start = turn;
+      continue;
+    }
     const turnStart = add(turn, mul(inDirection, radius));
     const turnEnd = add(turn, mul(outDirection, radius));
     addLine(start, turnStart);

@@ -1679,7 +1679,7 @@ test('editor sizing, source background ratio, and passenger shadow anchor stay w
     appearSpeed: 1.45
   });
   assert.deepEqual(SCENE_TUNING.installGate, {
-    enabled: 1,
+    enabled: 0,
     customThresholdEnabled: 0,
     successfulOperationThreshold: 64
   });
@@ -2239,8 +2239,9 @@ test('station approach follows the Unity parking-area rectangle before entering 
 });
 
 test('vehicle path preview and shape controls are wired to scene tuning', () => {
-  assert.equal(SCENE_TUNING.vehiclePath.enabled, 0);
-  assert.deepEqual(SCENE_TUNING.vehiclePath.parkingBounds, { minX: -3, maxX: 2.95, minZ: -3.22, maxZ: 2.82 });
+  assert.equal(SCENE_TUNING.vehiclePath.enabled, 1);
+  assert.equal(SCENE_TUNING.vehiclePath.autoBounds, 1);
+  assert.deepEqual(SCENE_TUNING.vehiclePath.parkingBounds, { minX: -2.6, maxX: 2.6, minZ: -3.22, maxZ: 3.28 });
   const game = new BusLoopGame();
   const target = game.getSpotPosition(0);
   const vehicle = game.getVehicle(LEVEL12_DISPATCH_ID);
@@ -3012,6 +3013,8 @@ test('successful operation store redirect uses the baked threshold and remains e
   const editorSource = readFileSync(join('src', 'scene-editor.js'), 'utf8');
 
   assert.equal(SCENE_TUNING.installGate.successfulOperationThreshold, 64);
+  // The early jump is opt-in: the shipped default clears the board first.
+  assert.equal(SCENE_TUNING.installGate.enabled, 0);
   assert.match(editorSource, /installGate\.successfulOperationThreshold/);
   assert.match(mainSource, /SCENE_TUNING\.installGate\?\.successfulOperationThreshold/);
   assert.match(mainSource, /^\s*if \(result\?\.ok\) \{\r?\n\s*startBackgroundMusic\(\);\r?\n\s*if \(markInstallVehicle\(vehicleId\)\) InstallFullGame\(\);/m);

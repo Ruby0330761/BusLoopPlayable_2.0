@@ -199,7 +199,9 @@ test('runtime keeps the conveyor fixed and moves only Level7 vehicles in from be
   assert.match(mainSource, /initializeGameQueues\(\{ resetSlots: true \}\)/);
   // A final-session win reports the solved challenge before the overlay, and the
   // overlay must not fall back to the failure branch of the challenge funnel.
-  assert.match(mainSource, /platformBridge\?\.challengeSolved\?\.\(\);[\s\S]*?showResultOverlay\('You Win!', \{ failed: false \}\);/);
+  // With the successful-operation gate off (the default) the win instead opens
+  // the store outright, so the card only exists for the turned-on threshold.
+  assert.match(mainSource, /platformBridge\?\.challengeSolved\?\.\(\);[\s\S]*?if \(!isInstallGateEnabled\(SCENE_TUNING\.installGate\)\)[\s\S]*?showResultOverlay\('You Win!', \{ failed: false \}\);/);
   // The 3D track root joined this call: imported tracks render their own mesh
   // instead of the flat loop plane, so both roots must be mounted.
   assert.match(viewSource, /this\.layoutRoot\.add\(\s*this\.loopPlane,\s*this\.spatialConveyorRoot,\s*this\.threeDimensionalTrackRoot\s*\)/);

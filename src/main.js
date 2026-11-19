@@ -76,6 +76,7 @@ const LEVEL36_VEHICLE_SCALE_MIGRATION_KEY = 'bus-loop-level36-vehicle-scale-v1';
 const LEVEL36_VEHICLE_COMPACTION_MIGRATION_KEY = 'bus-loop-level36-vehicle-compaction-v1';
 const LEVEL36_TIMED_GUIDE_MIGRATION_KEY = 'bus-loop-level36-timed-guide-v1';
 const SPEED_TOGGLE_HIDDEN_MIGRATION_KEY = 'bus-loop-speed-toggle-hidden-v1';
+const INSTALL_GATE_DEFAULT_OFF_MIGRATION_KEY = 'bus-loop-install-gate-default-off-v1';
 const PREVIEW_LOCALE_MIGRATION_KEY = 'bus-loop-preview-locale-en-v1';
 const CUSTOM_BACKGROUND_ASSET_PREFIX = '/assets/editor-backgrounds/';
 // Horizons measured in the browser for backgrounds that shipped without the
@@ -504,6 +505,40 @@ function migrateSpeedToggleHiddenProfiles() {
   return changed;
 }
 
+// The early jump used to be the shipped default, so every saved profile carries
+// `installGate.enabled: 1` even when nobody chose it. It is now off by default
+// (clear the board, then jump), and leaving the cached 1 in place would keep the
+// old early jump for every level that already has a profile. Only the untouched
+// default is flipped: `steps: "N"` with an auto threshold. A real steps value, a
+// hand-set threshold, or the empty draft that appears when an operator turns the
+// switch on all mean "this delivery counts moves" and keep their setting.
+function applyInstallGateDefaultOffMigration(source) {
+  const gate = source?.installGate;
+  if (!gate || Number(gate.enabled) !== 1) return false;
+  if (Number(gate.customThresholdEnabled) === 1) return false;
+  const steps = String(source?.exportNaming?.steps ?? '').trim().toUpperCase();
+  if (steps !== 'N') return false;
+  gate.enabled = 0;
+  return true;
+}
+
+function migrateInstallGateDefaultOffTuning(source) {
+  if (localStorage.getItem(INSTALL_GATE_DEFAULT_OFF_MIGRATION_KEY) === '1') return false;
+  return applyInstallGateDefaultOffMigration(source);
+}
+
+function migrateInstallGateDefaultOffProfiles() {
+  if (localStorage.getItem(INSTALL_GATE_DEFAULT_OFF_MIGRATION_KEY) === '1') return false;
+  const profiles = readLevelTuningProfiles();
+  let changed = false;
+  for (const profile of Object.values(profiles)) {
+    if (!isLevelTuningProfile(profile)) continue;
+    if (applyInstallGateDefaultOffMigration(profile.tuning)) changed = true;
+  }
+  if (changed) writeLevelTuningProfiles(profiles);
+  return changed;
+}
+
 function migrateCtaScreenPositionTuning(source) {
   const cta = source?.cta;
   if (!cta) return false;
@@ -824,6 +859,7 @@ function loadSavedTuning() {
       const seatCountBoardTextScaleMigrated = migrateSeatCountBoardTextScaleTuning(savedTuning);
       const footageConveyorArtMigrated = migrateFootageConveyorArtTuning(savedTuning);
       const previewLocaleMigrated = migratePreviewLocaleTuning(savedTuning);
+      const installGateDefaultOffMigrated = migrateInstallGateDefaultOffTuning(savedTuning);
       const luxuryPassengerRotationRemoved = delete savedTuning.luxuryPassengerRotation;
       const luxuryPassengerOffsetRemoved = delete savedTuning.luxuryPassengerOffset;
       const luxuryMaterialDebugRemoved = delete savedTuning.luxuryMaterialDebug;
@@ -857,6 +893,7 @@ function loadSavedTuning() {
         || seatCountBoardTextScaleMigrated
         || footageConveyorArtMigrated
         || previewLocaleMigrated
+        || installGateDefaultOffMigrated
         || luxuryPassengerRotationRemoved
         || luxuryPassengerOffsetRemoved
         || luxuryMaterialDebugRemoved
@@ -893,6 +930,7 @@ function loadSavedTuning() {
     migrateAboardSoundOffsetTuning(legacy);
     migrateDepartureRouteHeightTuning(legacy);
     migrateSeatCountBoardTextScaleTuning(legacy);
+    migrateInstallGateDefaultOffTuning(legacy);
     migrateLegacyPackageTuning(legacy);
     delete legacy.luxuryMaterialDebug;
     delete legacy.luxuryMaterial;
@@ -991,11 +1029,13 @@ function restoreSelectedLevelTuning() {
   migrateFootageConveyorArtProfiles();
   migrateGameOverRetryPositionProfiles();
   migratePreviewLocaleProfiles();
+  migrateInstallGateDefaultOffProfiles();
   // Run the profile pass before the marker is written: both paths above skip
   // everything once the marker exists, so the marker has to be the last step.
   migrateSpeedToggleHiddenProfiles();
   localStorage.setItem(SPEED_TOGGLE_HIDDEN_MIGRATION_KEY, '1');
   localStorage.setItem(PREVIEW_LOCALE_MIGRATION_KEY, '1');
+  localStorage.setItem(INSTALL_GATE_DEFAULT_OFF_MIGRATION_KEY, '1');
   // Clean every stored profile, not only the selected one: switching levels
   // later would otherwise reload the same stale keys and break the export then.
   const storedProfiles = readLevelTuningProfiles();
@@ -2212,6 +2252,9 @@ async function startRuntime() {
   // flag stops the still-running game loop from scheduling a second swap.
   let stageAdvancePending = false;
   let stageChoiceVisible = false;
+  // The all-clear ending opens the store straight from the win state. Guard it
+  // so the still-running win emissions cannot report a second CTA click.
+  let allClearStoreJumped = false;
   const gameOverTimers = new Set();
   const INSTALL_GATE_VEHICLE_STATES = new Set(['at-spot', 'boarding-final', 'departing', 'done']);
 
@@ -2225,6 +2268,10 @@ async function startRuntime() {
   updateLoadingProgress(0);
   const markInstallVehicle = (vehicleId) => {
     const gateEnabled = isInstallGateEnabled(SCENE_TUNING.installGate);
+    // Off (the default) keeps counting cleared vehicles for progress, but the
+    // gate itself never latches: the ad ends on the win path once the whole
+    // board is cleared, which also survives picker sessions whose final stage is
+    // only appended after the player picks a map.
     const threshold = gateEnabled
       ? Math.max(1, getSuccessfulOperationThreshold())
       : Math.max(1, sessionLevels.reduce((total, level) => total + (level.vehicles?.length ?? 0), 0));
@@ -3328,12 +3375,23 @@ async function startRuntime() {
         return;
       }
       platformBridge?.challengeSolved?.();
+      // Gate off (the default) means the jump belongs to the all-clear moment:
+      // the board is finished, so the ad opens the store itself instead of
+      // parking the player on a win card they would only tap through.
+      if (!isInstallGateEnabled(SCENE_TUNING.installGate)) {
+        if (!allClearStoreJumped) {
+          allClearStoreJumped = true;
+          InstallFullGame();
+        }
+        return;
+      }
       showResultOverlay('You Win!', { failed: false });
     }
   }
 
   function advanceToLevel(nextLevel) {
     unsubscribeGame();
+    allClearStoreJumped = false;
     setActiveLevel(nextLevel);
     game = new BusLoopGame(nextLevel);
     staminaView.reset(SCENE_TUNING.stamina, { playIntro: false });
@@ -3464,6 +3522,7 @@ async function startRuntime() {
     hideGameOver();
     hideStageChoice();
     stageAdvancePending = false;
+    allClearStoreJumped = false;
     unsubscribeGame();
     // A picked map is appended to the play order, so a retry has to drop it
     // again or the next run would start with a stale final stage.

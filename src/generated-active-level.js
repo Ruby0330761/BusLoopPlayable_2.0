@@ -3722,8 +3722,8 @@ const STAGE_1_LEVEL = Object.freeze({
     }
   },
   "vehiclePathSnapshot": {
-    "version": 1,
-    "inputKey": "12756:1935303329:3586926345",
+    "version": 3,
+    "inputKey": "12759:3158907815:3493070101",
     "levelKey": "level15",
     "vehicleArea": {
       "unityToWorldScale": 2,
@@ -3849,10 +3849,10 @@ const STAGE_1_LEVEL = Object.freeze({
       "turnInController": 0.1,
       "turnOutController": 0.25,
       "parkingBounds": {
-        "minX": -3.3628154461961066,
-        "maxX": 3.384039664269329,
-        "minZ": -3.7733856030167683,
-        "maxZ": 3.5428571428571427
+        "minX": -2.645486899993974,
+        "maxX": 2.6667111180671963,
+        "minZ": -3.0560570568146357,
+        "maxZ": 2.661844481390603
       },
       "stationScaleBySeats": {
         "4": 1.15,
@@ -3866,12 +3866,15 @@ const STAGE_1_LEVEL = Object.freeze({
       "hitDuration": 0.5,
       "autoBounds": 1,
       "boundsPadding": 0.1,
-      "enabled": 0,
+      "enabled": 1,
       "showBlocked": 1,
       "y": 0.145,
       "color": 2160383,
       "opacity": 0.88,
-      "lineWidth": 3
+      "lineWidth": 3,
+      "sideEntryTurnRadius": 0.1,
+      "bottomTurnRadius": 0.1,
+      "topTurnRadius": 0.5
     },
     "departure": {
       "enabled": 0,

@@ -8,6 +8,9 @@ import { resolvePlayableSession } from '../src/playable-session-config.js';
 function fixture() {
   const tuning = structuredClone(SCENE_TUNING);
   tuning.stamina.enabled = 1;
+  // A steps list only exists when the operator opted into the early jump; the
+  // shipped default is the all-clear ending with `enabled: 0`.
+  tuning.installGate.enabled = 1;
   tuning.exportNaming.version = '3/5/10';
   tuning.exportNaming.steps = '10/20';
   return tuning;

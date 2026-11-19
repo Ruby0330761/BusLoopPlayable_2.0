@@ -167,7 +167,7 @@ export const SCENE_TUNING = {
     "multiplier": 2
   },
   "installGate": {
-    "enabled": 1,
+    "enabled": 0,
     "customThresholdEnabled": 0,
     "successfulOperationThreshold": 64
   },
@@ -826,7 +826,7 @@ export const SCENE_TUNING = {
   "vehiclePath": {
     "autoBounds": 1,
     "boundsPadding": 0.1,
-    "enabled": 0,
+    "enabled": 1,
     "showBlocked": 1,
     "y": 0.145,
     "color": 2160383,
@@ -836,10 +836,10 @@ export const SCENE_TUNING = {
     "turnInController": 0.1,
     "turnOutController": 0.25,
     "parkingBounds": {
-      "minX": -3,
-      "maxX": 2.95,
+      "minX": -2.6,
+      "maxX": 2.6,
       "minZ": -3.22,
-      "maxZ": 2.82
+      "maxZ": 3.28
     }
   },
   "vehicleDeparturePath": {
@@ -1186,6 +1186,8 @@ export const SCENE_TUNING = {
     }
   },
   "vehicleArrow": {
+    "instancedShells": 1,
+    "outlineEdgesEnabled": 0,
     "offsetX": 0,
     "offsetY": 0.04,
     "offsetZ": 0,

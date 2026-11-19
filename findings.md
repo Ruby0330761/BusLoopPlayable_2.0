@@ -5,6 +5,14 @@
 - 旧排序按各队列原长度回填，因此 368/0 永远不会均分；10 月的 `distributeQueuesAcrossLanes` 只负责运行时队列数与可见通道数不一致，已有 `[非空队列, []]` 会原样返回。
 - 现在仅在用户主动点击一键排序时按总人数均分现有队列（奇数余数先给队列 0），仍按「各列前 8 人 → 各列剩余」回填车辆深度序列。保留颜色总量和队列数；导入、保存和运行时不会自动改写已有编排。
 
+## 2026-11-19 商店跳转：关闭 ≠ 不跳，而是回到「消除全部车辆」口径
+
+- `installGate.enabled` 现在默认 0。关闭时不再把 installReady 当提前跳的闸门，而是走原来的整盘清空逻辑：终局 `won` 分支直接 `InstallFullGame()`，`allClearStoreJumped` 只负责防重复 CTA；计数仍照常累加上报 `challengeProgress`，但阈值传 `Infinity`，所以 `installReady` 恒为 false、`shouldOpenStore()` 不参与。
+- 打开时保持原语义：达到 `successfulOperationThreshold` 即 `challengeSolved` + `InstallFullGame()`，且只有这条路径会画 `You Win!` 卡。两条路径都走 `InstallFullGame`，MRAID CTA/end/倒计时收尾没有分叉。
+- 旧缓存迁移只翻「`customThresholdEnabled=0` 且 `exportNaming.steps` 为 `N`」的 profile；按步数交付的关卡（例如远端 level33 是 `steps:"67"`、`customThresholdEnabled:1`）必须保留开启，否则会把别人的交付悄悄改成整盘清空。
+- 编辑器侧 `isInstallGateEnabled` 一改，`exportNaming.steps` 输入、阈值滑条和「安装门槛」预检都联动；关闭态必须让预检显示整盘清空，而不是对休眠阈值报「永远触发不了」。
+- 验证口径：不能只看开关 DOM。有效做法是读 `window.__busLoop.exportTuning()` 的 `installGate`，再用 `setTuning` + 把所有车置 `done` + 覆盖 `HTMLAnchorElement.prototype.click` 观察 `_blank` 跳转；localStorage 里已有 profile 的关卡不会体现新默认值。
+
 ## 2026-11-18 车顶与小人颜色一致性
 
 - `Idle_boy01_vatmesh.bin` 最高顶点的UV为(0.036364831,0.442264944)，蓝色源图该处为#4190FF；图集大块底色(0.1,0.9)是#0061E8，不能当作小人可见主色。仅复制材质参数不能证明画面同色，必须核对实际纹理输入与最终像素。
@@ -1769,3 +1777,15 @@ geometrySameAsTemplate true | materialSameAsShadowMaterial true
 - 修正上文“设 0 即回退”：影子实例化开关运行中关闭会保留旧批次且不恢复逐人 mesh；默认合批也未收集 `boardingViews`，上车乘客原影子隐藏后没有替代绘制。矩阵等价只能证明已收集实例的位置，不能证明所有乘客都被收集。
 - 本轮 761 项测试、游戏端/远程编辑器隔离编译通过，现有 AppLovin 包 runtime 19/19；正式规则仍被 `APL-AUD-001 缺少字段 stage` 阻断。以上缺陷尚未修复。
 - 完整范围、复现、源码位置与建议见 `docs/architecture/bl/project-review-2026-11-18.md`；本轮仅记录审查结果，未修改业务代码或原交付包。
+
+## 2026-11-18 - 车辆进站路径左右范围收紧
+
+- 左右自动边界按车身半宽 + 留白生成；上下保留原来的车身对角半径 + 转弯半径 + 留白。侧面接入的首弯同步延后并缩小，原有 level33 逐车碰撞采样可检测到缺少此配套调整时的擦碰。
+- 路径算法变化必须使旧烘焙快照失效：本次配置版本升为 2，版本进入 inputKey，读取快照也检查版本；避免生成文件里的旧宽边界继续生效。
+- level15 总绕行宽度减少 21.3%，真实导出包在 390×844 下车心不再越界；360×800 下仍有 3.64 px 车心越界和部分车身裁边。当前收紧不等于跨所有屏幕的全车身可见保障，后续如需该保障须单独引入视口约束/适配取舍。
+
+## 2026-11-19 - 默认边界校验采用非对称留白
+
+- 用户确认的方向是上方为进站留较大空间，下、左、右尽量贴合车阵；因此默认重新启用自动边界，固定四边只作为手动预设保留。
+- 自动边界基于完整旋转车身轮廓，而非车心。顶部以车阵外缘与候车位近端之间的空隙计算，候车位近端同时考虑车位模型和车辆到站放大后的尺寸；空隙较小时均分，充足时保留完整转弯余量，不再直接顶到 approachZ。
+- 下边界收紧时必须同步缩小下方转角，上方转角也受接入间距约束；只收边界而保留统一大圆角会把转弯切进车阵。快照版本升为 3，旧版本不能复用。

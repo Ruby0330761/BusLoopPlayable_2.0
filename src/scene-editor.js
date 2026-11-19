@@ -2291,6 +2291,12 @@ export function createSceneEditor(root, {
       help.textContent = '关闭重试按钮后，icon落版出现即可点击试玩画面任意位置跳转商店。';
       section.append(help);
     }
+    if (group.fields.some(([, path]) => path === 'installGate.enabled')) {
+      const help = document.createElement('p');
+      help.className = 'editor-camera-status';
+      help.textContent = '关闭（默认）：消除全部车辆后跳商店；打开：达到下方「成功操作次数」就提前跳。';
+      section.append(help);
+    }
     fieldsRoot.append(section);
   }
 
@@ -4393,10 +4399,13 @@ export function createSceneEditor(root, {
       }
 
       // The store gate counts cleared vehicles; a custom threshold above the
-      // level's fleet can never be reached, so the ad runs out of cars with the
-      // CTA still inert.
+      // level's fleet can never be reached, so the ad would run out of cars with
+      // the store jump still pending. Off means the all-clear rule, which is
+      // always reachable, so the check only applies while the gate is on.
+      const gateEnabled = isInstallGateEnabled(tuning.installGate);
       const threshold = Number(tuning.installGate?.successfulOperationThreshold);
-      const gateUnreachable = Number.isFinite(threshold) && vehicles.length > 0 && threshold > vehicles.length;
+      const gateUnreachable = gateEnabled
+        && Number.isFinite(threshold) && vehicles.length > 0 && threshold > vehicles.length;
 
       const checks = [
         {
@@ -4438,7 +4447,9 @@ export function createSceneEditor(root, {
           title: '安装门槛',
           note: gateUnreachable
             ? `门槛 ${threshold} 大于本关 ${vehicles.length} 辆车，永远触发不了`
-            : `${Number.isFinite(threshold) ? threshold : '自动'} 次操作后跳商店`,
+            : gateEnabled
+              ? `${Number.isFinite(threshold) ? threshold : '自动'} 次操作后跳商店`
+              : '消除全部车辆后跳商店',
           path: gateUnreachable ? 'installGate.successfulOperationThreshold' : ''
         },
         {
