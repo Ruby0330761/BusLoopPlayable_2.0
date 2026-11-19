@@ -561,6 +561,44 @@ test('sorts passenger blocks by vehicle depth in dual-queue playback order', () 
     [...queues[0].slice(0, 8), ...queues[1].slice(0, 8), ...queues[0].slice(8), ...queues[1].slice(8)],
     [5, 5, 5, 5, 4, 4, 4, 4, 4, 4, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 6, 6, 6, 6, 3, 3, 3, 3]
   );
+  document.passengerQueues = [document.passengerQueues.flat(), []];
+  assert.deepEqual(sortPassengerQueuesByVehicleDepth(document, 8), queues);
+});
+
+test('one-click passenger sorting balances 368 passengers and preserves colors, export and undo', () => {
+  const passengers = [[1, 96], [3, 22], [4, 60], [5, 186], [11, 4]]
+    .flatMap(([color, count]) => Array(count).fill(color));
+  const model = new LevelEditorModel({ ...makeDocument(), passengerQueues: [passengers, []] });
+  const before = model.snapshot();
+
+  model.sortPassengerQueuesByDepth();
+  const balanced = model.snapshot();
+  assert.deepEqual(balanced.passengerQueues.map((queue) => queue.length), [184, 184]);
+  assert.deepEqual(balanced.passengerQueues.flat().sort((a, b) => a - b), [...passengers].sort((a, b) => a - b));
+  assert.deepEqual(levelDocumentToRuntime(balanced).passengerQueues, balanced.passengerQueues);
+  assert.equal(model.undo(), true);
+  assert.deepEqual(model.document, before);
+  assert.equal(model.redo(), true);
+  assert.deepEqual(model.document, balanced);
+});
+
+test('passenger sorting balances odd and short queues while preserving the queue count', () => {
+  for (const [passengerQueues, expectedLengths] of [
+    [[Array(300).fill(1), Array(68).fill(5)], [184, 184]],
+    [[[], Array(367).fill(1)], [184, 183]],
+    [[[5, 4, 3, 1, 0], []], [3, 2]],
+    [[[], [5]], [1, 0]],
+    [[[1, 3, 5], [], []], [1, 1, 1]],
+    [[[1, 3, 5]], [3]],
+    [[[], []], [0, 0]],
+    [[], []]
+  ]) {
+    const document = createLevelDocument({ passengerQueues });
+    const queues = sortPassengerQueuesByVehicleDepth(document, 8);
+    assert.deepEqual(queues.map((queue) => queue.length), expectedLengths);
+    assert.deepEqual(queues.flatMap((queue) => queue.slice(0, 8)).concat(queues.flatMap((queue) => queue.slice(8))), passengerQueues.flat());
+    assert.deepEqual(document.passengerQueues, passengerQueues);
+  }
 });
 
 test('one-click passenger sorting rebuilds current depths and remains undoable', () => {

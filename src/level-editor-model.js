@@ -912,8 +912,11 @@ function buildVehicleDepthGraph(document) {
 }
 
 export function sortPassengerQueuesByVehicleDepth(document, initialCount = 8) {
-  const queueLengths = document.passengerQueues.map((queue) => queue.length);
   const sourcePassengers = document.passengerQueues.flat();
+  const queueCount = document.passengerQueues.length;
+  const queueLengths = document.passengerQueues.map((_, queueId) => (
+    Math.floor(sourcePassengers.length / queueCount) + (queueId < sourcePassengers.length % queueCount ? 1 : 0)
+  ));
   const remainingByColor = new Map();
   sourcePassengers.forEach((color) => remainingByColor.set(color, (remainingByColor.get(color) ?? 0) + 1));
 
