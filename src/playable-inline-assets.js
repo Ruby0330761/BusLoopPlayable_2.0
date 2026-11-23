@@ -2,7 +2,9 @@ import {
   BASE_RUNTIME_ASSET_PATHS,
   PRE_ROLL_ASSET_PATHS,
   PROGRESS_HUD_ASSET_PATHS,
+  RETRY_BUTTON_ASSET_PATH,
   SPEED_TOGGLE_ASSET_PATHS,
+  SPEED_TOGGLE_BACKGROUND_ASSET_PATH,
   getMechanismResourcePaths,
   getMechanismTypesForLevels
 } from './mechanism-resources.js';
@@ -10,6 +12,7 @@ import { COUNTDOWN_SIREN_ASSET, COUNTDOWN_TIMER_ASSET } from './countdown.js';
 import { getStaminaAssetPaths } from './stamina.js';
 import { LEVEL_AUDIO_CONFIG } from './level-audio-config.js';
 import { isPreRollAssetPath, resolvePreRollAsset } from './pre-roll.js';
+import { normalizeSpeedToggleStyle, resolveSpeedToggleIcon } from './speed-toggle.js';
 
 const ASSET_URL_PATTERN = /\/assets\/[^\s"'`<>)]*/gu;
 
@@ -80,12 +83,6 @@ export function collectPlayableInlineAssetUrls({
     urls.add(COUNTDOWN_SIREN_ASSET);
   }
   for (const asset of getStaminaAssetPaths(tuning.stamina)) urls.add(asset);
-  // The x1/x2 switch is off in most deliveries, and its five bitmaps were ~58 KB
-  // of dead weight in every one of them. `enabled` is the same flag the runtime
-  // reads to hide the button, so the art follows it.
-  if (Boolean(Number(tuning.speedToggle?.enabled ?? 0))) {
-    for (const asset of SPEED_TOGGLE_ASSET_PATHS) urls.add(asset);
-  }
   // A session can disable the pre-roll, and the runtime applies that by zeroing
   // the tuning flag. Reading the raw `tuning.preRoll.enabled` here inlined a
   // 519 KB MP4 the runtime never played, so the session has to be consulted in
@@ -156,5 +153,23 @@ export function collectPlayableInlineAssetUrls({
   }
   for (const url of extraUrls) {
     if (typeof url === 'string' && url) urls.add(url);
-  }  return urls;
+  }
+  // Apply optional UI rules last: level/shell/CSS scans must not re-add art
+  // that the exported tuning cannot show. Match the runtime's toggle defaults.
+  if (Boolean(tuning.gameOver?.retryEnabled ?? 0)) urls.add(RETRY_BUTTON_ASSET_PATH);
+  else urls.delete(RETRY_BUTTON_ASSET_PATH);
+
+  const speedStyle = normalizeSpeedToggleStyle(tuning.speedToggle?.style);
+  const speedAssets = new Set(Boolean(tuning.speedToggle?.enabled ?? 0)
+    ? [
+        resolveSpeedToggleIcon(speedStyle, false),
+        resolveSpeedToggleIcon(speedStyle, true),
+        ...(speedStyle === 'default' ? [SPEED_TOGGLE_BACKGROUND_ASSET_PATH] : [])
+      ]
+    : []);
+  for (const asset of SPEED_TOGGLE_ASSET_PATHS) {
+    if (speedAssets.has(asset)) urls.add(asset);
+    else urls.delete(asset);
+  }
+  return urls;
 }

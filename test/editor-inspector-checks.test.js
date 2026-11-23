@@ -4,7 +4,8 @@ import { readFile } from 'node:fs/promises';
 
 import { SCENE_TUNING } from '../src/scene-tuning.js';
 import { LEVEL_1 } from '../src/level-data.js';
-import { SPEED_TOGGLE_ASSET_PATHS } from '../src/mechanism-resources.js';
+import { RETRY_BUTTON_ASSET_PATH, SPEED_TOGGLE_ASSET_PATHS, SPEED_TOGGLE_BACKGROUND_ASSET_PATH } from '../src/mechanism-resources.js';
+import { SPEED_TOGGLE_ICON_PATHS } from '../src/speed-toggle.js';
 import { collectPlayableInlineAssetUrls } from '../src/playable-inline-assets.js';
 
 const read = (relative) => readFile(new URL(`../${relative}`, import.meta.url), 'utf8');
@@ -24,8 +25,7 @@ test('the inline asset set always carries the runtime shell and the level assets
   for (const required of [
     '/assets/applovin/icon_q75.jpg',
     '/assets/applovin/main-guide-hand_q80.webp',
-    '/assets/unity/ui/Main_Prop_GreenBtn.png',
-    '/assets/unity/ui/Main_Prop_RedBtn_blank_q90.webp'
+    '/assets/unity/ui/Main_Prop_GreenBtn.png'
   ]) {
     assert.ok(urls.has(required), `missing base runtime asset ${required}`);
   }
@@ -63,21 +63,37 @@ test('belt art follows the reachable layouts, not the whole catalog', () => {
   assert.ok(!stitched.has('/assets/unity/conveyors/Loop_04_q80.webp'));
 });
 
-test('speed switch art is inlined only when the switch is enabled', () => {
+test('retry art follows the retry toggle even when CSS references it', () => {
+  for (const enabled of [0, 1, false, true, undefined]) {
+    const options = baseOptions();
+    options.tuning.gameOver.retryEnabled = enabled;
+    options.extraUrls = [RETRY_BUTTON_ASSET_PATH];
+    const urls = collectPlayableInlineAssetUrls(options);
+    assert.equal(urls.has(RETRY_BUTTON_ASSET_PATH), Boolean(enabled));
+  }
+});
+
+test('speed switch art is omitted when disabled even when CSS references it', () => {
   const off = baseOptions();
   off.tuning.speedToggle.enabled = 0;
+  off.extraUrls = SPEED_TOGGLE_ASSET_PATHS;
   const withoutSwitch = collectPlayableInlineAssetUrls(off);
   for (const asset of SPEED_TOGGLE_ASSET_PATHS) {
     assert.ok(!withoutSwitch.has(asset), `${asset} was inlined with the switch off`);
   }
+});
 
-  const on = baseOptions();
-  on.tuning.speedToggle.enabled = 1;
-  const withSwitch = collectPlayableInlineAssetUrls(on);
-  // Both skins ship together: the style is a tuning value, so switching look
-  // must not need a rebuild.
-  for (const asset of SPEED_TOGGLE_ASSET_PATHS) {
-    assert.ok(withSwitch.has(asset), `${asset} is missing with the switch on`);
+test('speed switch exports only the selected skin, including normal and boosted icons', () => {
+  for (const style of ['default', 'light', ' LIGHT ', 'unknown', undefined]) {
+    const options = baseOptions();
+    options.tuning.speedToggle = { ...options.tuning.speedToggle, enabled: 1, style };
+    // Simulate shell/CSS references to both skins. Final selection must win.
+    options.extraUrls = SPEED_TOGGLE_ASSET_PATHS;
+    const urls = collectPlayableInlineAssetUrls(options);
+    const selected = style?.trim().toLowerCase() === 'light' ? 'light' : 'default';
+    const expected = new Set(Object.values(SPEED_TOGGLE_ICON_PATHS[selected]));
+    if (selected === 'default') expected.add(SPEED_TOGGLE_BACKGROUND_ASSET_PATH);
+    assert.deepEqual(new Set(SPEED_TOGGLE_ASSET_PATHS.filter(asset => urls.has(asset))), expected);
   }
 });
 
