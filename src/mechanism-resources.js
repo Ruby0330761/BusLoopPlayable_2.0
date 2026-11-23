@@ -350,25 +350,20 @@ export function getMechanismAudioConfig(types = []) {
 export const BASE_RUNTIME_ASSET_PATHS = Object.freeze([
   '/assets/applovin/icon_q75.jpg',
   '/assets/applovin/main-guide-hand_q80.webp',
-  '/assets/unity/ui/Main_Prop_GreenBtn.png',
-  // The failure card's Retry pill (art only — the word is a text layer so its
-  // size stays tunable). It is referenced only from styles.css, so leaving it
-  // out of this list would ship a packaged ad whose Retry button is a blank
-  // transparent hit area.
-  '/assets/unity/ui/Main_Prop_RedBtn_blank_q90.webp'
+  '/assets/unity/ui/Main_Prop_GreenBtn.png'
 ]);
+
+// CSS references these even when the corresponding UI cannot be shown. The
+// shared inline collector applies the exported tuning after scanning CSS.
+export const RETRY_BUTTON_ASSET_PATH = '/assets/unity/ui/Main_Prop_RedBtn_blank_q90.webp';
+export const SPEED_TOGGLE_BACKGROUND_ASSET_PATH = '/assets/applovin/speed-toggle-bg_q90.webp';
 
 // Speed switch artwork. The switch is off by default (the progress bar owns that
 // corner), so five unconditional bitmaps were ~58 KB in every delivery for a
-// button that stayed `hidden`. Both skins are still inlined together: the style
-// is a tuning value, so a build must be able to switch look without a rebuild.
-//
-// `speed-toggle-bg_q90.webp` is the default skin's pill and is addressed from
-// styles.css, not from JS. It is listed here so the packager inlines it when the
-// switch is on; a build with the switch off drops it from the CSS pass too
-// (see `stripSpeedToggleArt` in the packager).
+// button that stayed `hidden`. This lists every skin for discovery; the shared
+// collector ships only the selected skin's normal/boost icons and background.
 export const SPEED_TOGGLE_ASSET_PATHS = Object.freeze([
-  '/assets/applovin/speed-toggle-bg_q90.webp',
+  SPEED_TOGGLE_BACKGROUND_ASSET_PATH,
   '/assets/applovin/speed-toggle-icon-normal.png',
   '/assets/applovin/speed-toggle-icon-boost.png',
   // The light capsule's round badge; both are the `SPEED_TOGGLE_ICON_PATHS` pair

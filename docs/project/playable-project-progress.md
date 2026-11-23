@@ -1,5 +1,11 @@
 # Playable Project Progress
 
+## Completed Locally On 2026-11-23 - 导出按 Retry 开关与倍速皮肤裁剪资源（v20261123-1958）
+
+- Retry 关闭时排除重试底图；倍速关闭时排除全部倍速图，开启时只保留所选皮肤的常速/加速图标，默认皮肤额外保留底图。未知皮肤按运行时规则回退 default。编辑器体积预估与打包共用 `playable-inline-assets.js`，HTML/CSS 引用先汇入该清单，防止补回已禁用资源；本地编辑器仍可自由切换皮肤。
+- 77 项定向测试通过。以当前 level33、同配置分别真实构建前后 AppLovin 包：Retry 关/倍速关 `3,384,126 → 3,339,024 B`；Retry 关/light `3,442,878 → 3,361,232 B`；Retry 开/default `3,442,880 → 3,420,670 B`。逐字节核对六张目标图片的保留/排除结果全部正确；数字为最终整包净变化。
+- 三包 Android 宿主模拟运行门禁各 19/19 PASS。390×844 Chrome 实测两套皮肤常速/加速图片解码成功、1→2→1 倍速切换、Retry 关闭隐藏及开启后图片解码与重开通过。证据 `/var/folders/80/djtjtk3n6fx7q6yr72cwc30r0000gn/T/bl-ui-export-after-uH1fc8/`（`results.json`、`*-runtime.json`、`ui-results.json`、`*-ui.png`）；原交付包未覆盖。未部署共享编辑器或执行广告平台上传/真机验收。
+
 ## Completed Locally On 2026-11-19 - 汇总本地未提交改动（v20261119-1547）
 
 - 按用户要求同步所有剩余改动：车辆路径 v3 与默认参数、商店跳转默认关闭及缓存迁移、箭头外轮廓实例化与线框显示开关、现有关卡选择、生成快照、AppLovin 产物及配套测试和文档。

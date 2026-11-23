@@ -632,7 +632,8 @@ test('platform packaging strips the development font resource and preserves syst
   assert.match(styles, /'Poppins Branding', Arial, sans-serif/);
   assert.match(inliner, /function stripBundledFontFaces\(css\)/);
   assert.match(inliner, /const packagedCssSource = stripBundledFontFaces\(cssSource\)/);
-  assert.match(inliner, /collectAssetUrls\(packagedCssSource, realAssetUrls\)/);
+  assert.match(inliner, /collectAssetUrls\(packagedCssSource, shellAssetUrls\)/);
+  assert.match(inliner, /extraUrls: shellAssetUrls/);
   assert.equal(BASE_RUNTIME_ASSET_PATHS.some((asset) => /\.(?:eot|otf|ttf|woff2?)$/i.test(asset)), false);
   assert.match(checker, /no (?:bundled|external) font/i);
 });
