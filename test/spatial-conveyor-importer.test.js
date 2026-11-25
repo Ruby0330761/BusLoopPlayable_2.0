@@ -22,6 +22,7 @@ import {
   getSpatialConveyorId as getGeneratedSpatialConveyorId
 } from '../scripts/generate-active-spatial-conveyor.mjs';
 import { SCENE_TUNING } from '../src/scene-tuning.js';
+import { validateSpatialJsonImport } from '../src/spatial-conveyor-json.js';
 
 const TEMPLATE_GUID = 'e5a3779fb659c934bbca7df9e4f50681';
 
@@ -72,6 +73,24 @@ test('standalone spatial conveyor import packages effective 3D spline data and e
   assert.deepEqual(packageData.visual.exitSprite.size, { x: 2.14, y: 0.89 });
   assert.match(packageData.visual.material.loopTextureDataUrl, /^data:image\/png;base64,/);
   assert.match(packageData.visual.material.exitTextureDataUrl, /^data:image\/png;base64,/);
+});
+
+test('JSON import accepts native packages without changing editor metadata and rejects unusable packages', async () => {
+  const data = await buildSpatialConveyorPackage({ filename: 'JsonShape.prefab', source: makeVariantSource() });
+  data.path.editorPivot = { x: 1, y: 0, z: 2 };
+  const before = structuredClone(data);
+  validateSpatialJsonImport(data);
+  assert.deepEqual(data, before);
+  for (const change of [
+    (p) => { p.schemaVersion = 2; }, (p) => { p.kind = 'planar'; }, (p) => { p.id = '../bad'; },
+    (p) => { p.path.points[0].position.x = null; }, (p) => { p.path.points[1].id = p.path.points[0].id; },
+    (p) => { p.visual.channel.indices[0] = -1; }, (p) => { p.visual.channel.count = 1e8; },
+    (p) => { p.visual.material.loopTextureDataUrl = 'not a PNG'; }, (p) => { p.exit.startPercent = 2; }
+  ]) {
+    const invalid = structuredClone(data);
+    change(invalid);
+    assert.throws(() => validateSpatialJsonImport(invalid));
+  }
 });
 
 test('spatial conveyor output uses the prefab basename and can be removed as one JSON package', async () => {
@@ -499,7 +518,6 @@ test('HTML editor, renderer, Vite service, and production build expose selectabl
   assert.match(editorSource, /section\.dataset\.spatialImportAnchor = 'true'/);
   assert.match(editorSource, /section\.dataset\.spatialOnly = 'true'/);
   assert.match(editorSource, /section\.hidden = !isSpatialConveyorSelection\(selected\)/);
-  const passengerMaterialIndex = editorSource.indexOf("title: 'Passenger Material'");
   const conveyorSelectionIndex = editorSource.indexOf("title: '\\u4f20\\u9001\\u5e26\\u9009\\u62e9'");
   const spatialTransformIndex = editorSource.indexOf(
     "title: '\\u7acb\\u4f53\\u8f68\\u9053\\u4f4d\\u7f6e\\u4e0e\\u7f29\\u653e'"
@@ -511,7 +529,7 @@ test('HTML editor, renderer, Vite service, and production build expose selectabl
     "title: '\\u7acb\\u4f53\\u8f68\\u9053\\u6027\\u80fd\\u4f18\\u5316'"
   );
   const ordinaryConveyorGroupsIndex = editorSource.indexOf('...CONVEYOR_LAYOUT_FIELD_GROUPS');
-  assert.ok(passengerMaterialIndex < conveyorSelectionIndex);
+  assert.ok(conveyorSelectionIndex >= 0);
   assert.ok(conveyorSelectionIndex < spatialTransformIndex);
   assert.ok(spatialTransformIndex < spatialQueueIndex);
   assert.ok(spatialQueueIndex < spatialOptimizationIndex);

@@ -11,6 +11,10 @@
       <main id="stage" class="stage">
         <canvas id="game-canvas" aria-label="Bus Fever Party!"></canvas>
         <div id="progress-hud" class="progress-hud" hidden></div>
+        <div id="bus-combo" aria-hidden="true" hidden>
+          <span class="combo-meter"><img alt="" draggable="false"><span class="combo-track"><img alt="" draggable="false"><span class="combo-fill"><img alt="" draggable="false"></span></span></span>
+          <span class="combo-label"></span>
+        </div>
         <div id="countdown" class="countdown" role="timer" aria-live="off" hidden>
           <img id="countdown-image" alt="" aria-hidden="true" draggable="false" src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7" />
           <span id="countdown-value" class="countdown-value">00:30</span>
@@ -30,11 +34,13 @@
         </div>
         <div id="branding-overlay" class="branding-overlay" aria-label="Icon, logo, and text overlay">
           <img id="branding-icon" class="branding-item" src="/assets/icon-android.jpg" alt="Bus Fever Party! icon" draggable="false" />
+          <span id="branding-icon-frame" class="branding-item branding-frame" aria-hidden="true" hidden></span>
           <img id="branding-logo" class="branding-item" src="/assets/main-loading-icon-small.png" alt="Bus Fever Party! logo" draggable="false" />
+          <span id="branding-logo-frame" class="branding-item branding-frame" aria-hidden="true" hidden></span>
           <div id="branding-text" class="branding-item branding-text">Bus Fever Party!</div>
         </div>
         <div id="loading-screen" class="loading-screen" role="status" aria-live="polite">
-          <img id="loading-icon" src="/assets/applovin/icon_q75.jpg" alt="Bus Fever Party! icon" />
+          <img id="loading-icon" alt="Bus Fever Party! icon" />
           <h1 id="loading-title">Bus Fever Party!</h1>
           <div class="loading-progress" role="progressbar" aria-label="Loading progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
             <div id="loading-progress-bar" class="loading-progress-bar"></div>

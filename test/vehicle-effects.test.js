@@ -2,7 +2,59 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import * as THREE from 'three';
 import { LEVEL_1 } from '../src/level-data.js';
+import { SCENE_TUNING } from '../src/scene-tuning.js';
 import { UNITY_EFFECTS, VehicleEffects } from '../src/vehicle-effects.js';
+import { collectPlayableInlineAssetUrls } from '../src/playable-inline-assets.js';
+import { DEPARTURE_STAR_TEXTURE, DEPARTURE_TRAIL_TEXTURE, SMOKE_TRAIL_ANIMATION } from '../src/vehicle-effect-assets.js';
+
+test('the full-car option switches driving smoke to stars on departure and clears a disabled trail', () => {
+  const car = new THREE.Group();
+  const texture = new THREE.Texture();
+  const tuning = { departureStars: { enabled: 0 } };
+  const effects = new VehicleEffects({
+    scene: new THREE.Group(), vehicleViews: new Map([[1, car]]), spotRoots: [],
+    camera: new THREE.PerspectiveCamera(), effectsTuning: tuning,
+    textures: { smokeTrail: texture, departureStar: texture, departureTrail: texture }
+  });
+  const vehicle = { id: 1, seats: 4, state: 'departing' };
+  const step = time => {
+    car.position.x = time * 10;
+    effects.update({ time, vehicles: [vehicle], spots: [] });
+  };
+  const has = kind => effects.particles.some(particle => particle.effectKind === kind);
+  step(0);
+  step(0.1);
+  assert.ok(has('driving-smoke'));
+  assert.equal(has('departure-star'), false);
+  tuning.departureStars.enabled = 1;
+  step(0.2);
+  step(0.3);
+  assert.ok(has('departure-star'));
+  assert.equal(has('driving-smoke'), false);
+  assert.equal(effects.departureStars.trails.size, 1);
+  tuning.departureStars.enabled = 0;
+  step(0.4);
+  assert.equal(has('departure-star'), false);
+  assert.equal(effects.departureStars.trails.size, 0);
+  tuning.departureStars.enabled = 1;
+  vehicle.surplusReleased = true;
+  step(0.5);
+  step(0.6);
+  assert.ok(has('driving-smoke'));
+  assert.equal(has('departure-star'), false);
+  effects.clear();
+});
+
+test('the exported file includes star art only for the enabled option, including legacy levels', () => {
+  for (const enabled of [0, 1]) {
+    const urls = collectPlayableInlineAssetUrls({
+      tuning: { effects: { departureStars: { enabled } } }, levels: [{ assets: {} }]
+    });
+    assert.equal(urls.has(DEPARTURE_STAR_TEXTURE), Boolean(enabled));
+    assert.equal(urls.has(DEPARTURE_TRAIL_TEXTURE), Boolean(enabled));
+    assert.ok(urls.has(SMOKE_TRAIL_ANIMATION.texture));
+  }
+});
 
 test('Unity vehicle effect assets and prefab parameters stay explicit', () => {
   assert.deepEqual(LEVEL_1.assets.textures.effects, {
@@ -12,7 +64,9 @@ test('Unity vehicle effect assets and prefab parameters stay explicit', () => {
     hitCircle: '/assets/unity/effects/Circle_01.png',
     hitRound2: '/assets/applovin/effects/Round_02_q80.webp',
     hitRound1: '/assets/unity/effects/Round_01.png',
-    smokeTrail: '/assets/unity/effects/Round_01.png'
+    smokeTrail: '/assets/unity/effects/DrivingSmoke_6x5.png',
+    departureStar: '/assets/unity/effects/DepartureStar.png',
+    departureTrail: '/assets/unity/effects/DepartureTrail.png'
   });
   assert.deepEqual(UNITY_EFFECTS.aboardSmoke.localPosition, [0, 0.05, -0.25]);
   assert.equal(UNITY_EFFECTS.aboardSmoke.burst, 20);
@@ -28,7 +82,7 @@ test('Unity vehicle effect assets and prefab parameters stay explicit', () => {
   assert.equal(UNITY_EFFECTS.hit.emitters[1].material, 'Round_02_Add');
   assert.equal(UNITY_EFFECTS.hit.emitters[2].material, 'Round_01_Add');
   assert.equal(UNITY_EFFECTS.hit.emitters[2].coneDegrees, 50);
-  assert.equal(UNITY_EFFECTS.smokeTrail.material, 'Round_01_Alp');
+  assert.equal(UNITY_EFFECTS.smokeTrail.material, 'DrivingSmoke_Alp');
   assert.equal(UNITY_EFFECTS.smokeTrail.rateOverTime, 25);
   assert.deepEqual(UNITY_EFFECTS.smokeTrail.lifetime, [0.2, 0.3]);
 });
@@ -36,13 +90,13 @@ test('ribbon fires once when an occupied parking spot becomes empty', () => {
   const effects = new VehicleEffects({
     scene: new THREE.Group(),
     vehicleViews: new Map(),
-    spotRoots: [],
-    textures: {}
+    spotRoots: [new THREE.Group()],
+    textures: { ribbon: new THREE.Texture() }
   });
   const calls = [];
   effects.spawnRibbon = (index) => calls.push(index);
   effects.update({ time: 0, spots: [{ vehicleId: 84 }, { vehicleId: null }] });
-  effects.update({ time: 0.1, spots: [{ vehicleId: null }, { vehicleId: null }] });
+  effects.update({ time: 0.1, vehicles: [{ id: 84, state: 'departing' }], spots: [{ vehicleId: null }, { vehicleId: null }] });
   effects.update({ time: 0.2, spots: [{ vehicleId: null }, { vehicleId: null }] });
   assert.deepEqual(calls, [0]);
 });
@@ -192,7 +246,10 @@ test('Effect_Hit spawns the three Unity-authored child particle systems once per
   effects.update(snapshot);
   effects.update(snapshot);
   assert.ok(effects.particles.length >= 13 && effects.particles.length <= 14);
-  assert.equal(scene.children.length, effects.particles.length);
+  assert.equal(effects.hitLayer.parent, scene);
+  assert.equal(effects.hitLayer.children.length, effects.particles.length);
+  assert.ok(effects.hitLayer.renderOrder > 1000);
+  assert.ok(effects.particles.every(({ material }) => !material.depthTest && !material.depthWrite));
   assert.ok(effects.particles.some((particle) => particle.delay === 0.03));
   assert.ok(effects.particles.some((particle) => particle.material.blending === THREE.AdditiveBlending));
 });
@@ -315,6 +372,12 @@ test('Effect_Hit particle size reads scene editor tuning', () => {
 });
 
 test('Effect_SmokeTrail emits while vehicles move and stops when they park', () => {
+  assert.deepEqual(SCENE_TUNING.effects.smokeTrail, {
+    rateOverTime: 70, lifetimeMin: 0.15, lifetimeMax: 0.30,
+    sizeMin: 0.36, sizeMax: 0.72, sizeRandomness: 100, speedScale: 1,
+    offsetZ: -0.46, offsetY: 0.08, spread: 2.25,
+    rotationSpeed: 130, rotationRandomness: 56, gravity: -0.50, opacity: 1
+  });
   const scene = new THREE.Group();
   const vehicle = new THREE.Group();
   const effects = new VehicleEffects({
@@ -325,8 +388,13 @@ test('Effect_SmokeTrail emits while vehicles move and stops when they park', () 
   });
   effects.update({ time: 0, spots: [], vehicles: [{ id: 84, state: 'moving-to-spot' }], lastEvent: { type: 'reset' } });
   effects.update({ time: 0.1, spots: [], vehicles: [{ id: 84, state: 'moving-to-spot' }], lastEvent: { type: 'reset' } });
-  assert.equal(effects.particles.length, 2);
-  assert.ok(effects.particles.every((particle) => particle.gravity === UNITY_EFFECTS.smokeTrail.gravity));
+  assert.equal(effects.particles.length, 7);
+  for (const particle of effects.particles) {
+    assert.ok(particle.initialSize >= 0.36 && particle.initialSize <= 0.72);
+    assert.ok(particle.lifetime >= 0.15 && particle.lifetime <= 0.30);
+    assert.notEqual(particle.spin, 0);
+    assert.equal(particle.gravity, -0.50);
+  }
   effects.update({ time: 0.2, spots: [], vehicles: [{ id: 84, state: 'parked' }], lastEvent: { type: 'reset' } });
   const countAfterPark = effects.particles.length;
   effects.update({ time: 0.3, spots: [], vehicles: [{ id: 84, state: 'parked' }], lastEvent: { type: 'reset' } });

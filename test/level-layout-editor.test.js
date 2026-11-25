@@ -2,6 +2,13 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 
+test('layout save validates the document without requiring a clear departure path', () => {
+  const workspace = readFileSync('src/level-layout-editor.js', 'utf8');
+  const save = workspace.match(/async function save\(\) \{([\s\S]+?)\n  \}/)[1];
+  assert.match(save, /validateLevelDocument\(model\.document\)/);
+  assert.doesNotMatch(save, /checkDepartures|checkLayoutDriveOut|exitCheck/);
+});
+
 test('scene editor and main runtime expose the full level layout workspace', () => {
   const sceneEditor = readFileSync('src/scene-editor.js', 'utf8');
   const main = readFileSync('src/main.js', 'utf8');
@@ -125,7 +132,7 @@ test('scene editor and main runtime expose the full level layout workspace', () 
   assert.match(workspace, /vehicleCabinProfile/);
   assert.match(workspace, /drawVehicleSeatBadge/);
   assert.match(workspace, /function roundedRectPath/);
-  assert.match(workspace, /function shadeHexColor/);
+  assert.match(workspace, /const regions = resolveVehiclePaint\(vehicle\)/);
   assert.doesNotMatch(workspace, /context\.fillRect\(-size\.width \* scale \/ 2/);
   assert.match(workspace, /SCENE_TUNING\.vehicleArea\?\.sourceCube/);
   assert.match(workspace, /model\.activeContainerId === 0/);
@@ -152,12 +159,14 @@ test('scene editor and main runtime expose the full level layout workspace', () 
   assert.match(workspace, /isSpecialVehicle/);
   assert.match(workspace, /选区包含特殊车辆，颜色编辑已禁用/);
   assert.match(workspace, /特殊车辆使用专属颜色，不需要手动选择/);
-  assert.match(workspace, /颜色（同步小人）/);
+  assert.match(workspace, /预设颜色/);
   assert.match(workspace, /组合颜色（同步小人）/);
   assert.match(workspace, /isVehicleBatch/);
-  assert.match(workspace, /统一调节颜色区域/);
+  assert.match(workspace, /自定义颜色/);
   assert.match(workspace, /reset-vehicle-colors/);
-  assert.match(workspace, /PASSENGER_QUEUE_COLORS/);
+  assert.match(workspace, /resolvePassengerBodyColor/);
+  assert.doesNotMatch(workspace, /小人颜色微调|data-passenger-color-region/);
+  assert.match(workspace, /vehiclePaintFields\(selectedVehicles\)/);
   assert.match(workspace, /data-passenger-action="repair"/);
   assert.match(workspace, /data-passenger-action="sort-by-depth"/);
   assert.match(workspace, /model\.sortPassengerQueuesByDepth\(DEFAULT_INITIAL_PASSENGER_COUNT\)/);

@@ -1,6 +1,10 @@
 import { mkdir, readFile, readdir, stat, writeFile } from 'node:fs/promises';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { build as bundleWithEsbuild } from 'esbuild';
 import { transformWithEsbuild } from 'vite';
+import { SPEED_TOGGLE_SEED_SRC } from '../src/speed-toggle.js';
+import { BASE_RUNTIME_ASSET_PATHS, GUIDE_HAND_ART } from '../src/mechanism-resources.js';
 
 const ROOT = process.cwd();
 const DIST_DIR = path.resolve(process.env.PLAYABLE_DIST_DIR || path.join(ROOT, 'dist'));
@@ -85,6 +89,20 @@ function toDistUrl(filePath) {
 }
 
 const OMITTED_ASSET_DATA_URI = 'data:application/octet-stream;base64,AA==';
+const FBX_TEXTURE_PIXEL = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=';
+
+export function auditEmbeddedAssets(html, approvedDataUris) {
+  const allowed = new Set([OMITTED_ASSET_DATA_URI, FBX_TEXTURE_PIXEL, SPEED_TOGGLE_SEED_SRC, ...approvedDataUris]);
+  const embedded = new Set();
+  for (const [uri] of html.matchAll(/data:[\w.+/-]+;base64,[A-Za-z0-9+/]+=*/gu)) {
+    if (!allowed.has(uri)) throw new Error(`导出包含清单外的内联素材（${uri.slice(5, uri.indexOf(';'))}）。`);
+    if (embedded.has(uri) && uri.length - uri.indexOf(',') - 1 >= 4 * Math.ceil(4096 / 3)) {
+      throw new Error('导出包含重复内联的大素材，请检查素材复用。');
+    }
+    embedded.add(uri);
+  }
+  return embedded;
+}
 
 function collectAssetUrls(value, output = new Set()) {
   if (typeof value === 'string') {
@@ -113,13 +131,13 @@ async function createAssetMap(realAssetUrls, excludedUrls = new Set()) {
       url,
       bytes
         ? `data:${mimeFor(filePath)};base64,${bytes.toString('base64')}`
-        : OMITTED_ASSET_DATA_URI
+        : url === GUIDE_HAND_ART ? SPEED_TOGGLE_SEED_SRC : OMITTED_ASSET_DATA_URI
     ];
   }));
   return new Map(entries.filter(Boolean).sort((a, b) => b[0].length - a[0].length));
 }
 
-function replaceAssetUrls(content, assetMap) {
+export function replaceAssetUrls(content, assetMap) {
   let next = content;
   for (const [url, dataUri] of assetMap) {
     next = next.split(url).join(dataUri);
@@ -164,7 +182,7 @@ function reuseDocumentImageAsset(html, js, assetMap, elementId) {
   const imageTag = html.match(new RegExp(`<img\\b(?=[^>]*\\bid=["']${escapedId}["'])[^>]*>`, 'iu'))?.[0];
   const sourceUrl = imageTag?.match(/\bsrc=["']([^"']+)["']/iu)?.[1];
   const dataUri = sourceUrl ? assetMap.get(sourceUrl) : null;
-  if (!dataUri) return js;
+  if (!dataUri || dataUri === SPEED_TOGGLE_SEED_SRC || dataUri === OMITTED_ASSET_DATA_URI) return js;
 
   const expression = `document.getElementById(${JSON.stringify(elementId)}).src`;
   const literals = [JSON.stringify(dataUri), `'${dataUri}'`];
@@ -180,7 +198,7 @@ function normalizeLineEndings(content) {
 function dedupeEmbeddedAssetLiterals(source, assetMap) {
   let next = source;
   const declarations = [];
-  const dataUris = [...new Set(assetMap.values())].filter((value) => value.length >= 4096);
+  const dataUris = [...new Set(assetMap.values())].filter((value) => value.length >= 256);
   for (const dataUri of dataUris) {
     const literal = JSON.stringify(dataUri);
     const occurrences = next.split(literal).length - 1;
@@ -214,17 +232,39 @@ function inlineCss(html, css, cssPath) {
   return html.replace(pattern, () => `\n    <style>\n${css}\n    </style>\n`);
 }
 
-async function inlineModule(html, js, jsPath, assetMap) {
-  if (!OFFLINE_REQUEST_PLATFORMS.has(PLAYABLE_PLATFORM)) {
-    throw new Error(`Unsupported offline playable platform: ${PLAYABLE_PLATFORM}`);
+export async function inlineModule(html, js, jsPath, assetMap, platform = PLAYABLE_PLATFORM) {
+  if (!OFFLINE_REQUEST_PLATFORMS.has(platform)) {
+    throw new Error(`Unsupported offline playable platform: ${platform}`);
   }
-  const transformed = await transformWithEsbuild(js, 'playable-runtime.js', {
-    define: { fetch: '__playableDataRequest' },
+  const options = {
+    define: { fetch: '__playableDataRequest', 'import.meta.env.DEV': 'false' },
     format: 'esm',
     minify: true,
     target: 'es2020'
-  });
-  const dedupedJs = dedupeEmbeddedAssetLiterals(transformed.code, assetMap);
+  };
+  let code;
+  if (process.env.PLAYABLE_EXPORT_SHARED_CORE === '1') {
+    const bridgePath = platform === 'applovin'
+      ? path.join(ROOT, 'src', 'platform-bridge.js')
+      : path.join(ROOT, 'src', 'platform-bridges', `${platform}.js`);
+    const result = await bundleWithEsbuild({
+      ...options,
+      stdin: { contents: js, sourcefile: 'playable-runtime.js', resolveDir: ROOT },
+      bundle: true,
+      write: false,
+      logLevel: 'silent',
+      plugins: [{
+        name: 'playable-export-platform-bridge',
+        setup(build) {
+          build.onResolve({ filter: /^__playable_export_platform_bridge__$/ }, () => ({ path: bridgePath }));
+        }
+      }]
+    });
+    code = result.outputFiles[0].text;
+  } else {
+    code = (await transformWithEsbuild(js, 'playable-runtime.js', options)).code;
+  }
+  const dedupedJs = dedupeEmbeddedAssetLiterals(code, assetMap);
   const safeJs = `${DATA_URL_ONLY_REQUEST_SCRIPT}${dedupedJs}`.replaceAll('</script', '<\\/script');
   const escapedPath = jsPath.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&');
   const pattern = new RegExp(`\\s*<script\\b(?=[^>]*src="${escapedPath}")[^>]*><\\/script>\\s*`, 'u');
@@ -239,8 +279,9 @@ function stripEditorMount(html) {
 
 async function main() {
   const [{ PLAYABLE_STAGES, PLAYABLE_STAGE_CHOICES, PLAYABLE_ALL_LEVELS, ACTIVE_PLAYABLE_SESSION }, { SCENE_TUNING }, {
+    SPEED_TOGGLE_ASSET_PATHS,
     getMechanismTypesForLevels
-  }, { collectAssetUrls, collectPlayableInlineAssetUrls }] = await Promise.all([
+  }, { collectAssetUrls, collectPlayableInlineAssetUrls, getReachableStageArt }] = await Promise.all([
     import('../src/generated-active-level.js'),
     import('../src/scene-tuning.js'),
     import('../src/mechanism-resources.js'),
@@ -262,44 +303,30 @@ async function main() {
   const spatialSelection = SCENE_TUNING.conveyorLayout?.selected;
   // Every layout a reachable stage can select, so a stitched session that
   // switches tracks still ships the art for each one it can show.
-  const collectSelectedTrackLayouts = () => [...new Set([
-    spatialSelection,
-    ...PLAYABLE_STAGES.map((stage) => stage?.scene?.conveyorLayout),
-    ...PLAYABLE_STAGE_CHOICES.flatMap((choice) => (
-      (choice?.options ?? []).map((option) => option?.scene?.conveyorLayout)
-    ))
-  ].filter(Boolean))];
-  const choiceOptions = PLAYABLE_STAGE_CHOICES.flatMap((choice) => choice?.options ?? []);
-  const stageBannerEnabled = PLAYABLE_STAGES.some((stage) => stage?.opening?.entryBanner?.enabled);
-  const choiceBannerEnabled = PLAYABLE_STAGE_CHOICES.some((choice) => (
-    choice?.options?.some((option) => option.opening?.entryBanner?.enabled)
-  ));
+  const stageArt = getReachableStageArt(SCENE_TUNING, PLAYABLE_STAGES, PLAYABLE_STAGE_CHOICES);
   const mechanismTypes = getMechanismTypesForLevels(PLAYABLE_ALL_LEVELS, {
     spatialSelection,
-    entryBannerEnabled: Boolean(
-      SCENE_TUNING.entryBanner?.enabled || stageBannerEnabled || choiceBannerEnabled
-    )
+    entryBannerEnabled: stageArt.entryBanners.length > 0
   });
   // The inline set is shared with the editor's preflight (src/playable-inline-
   // assets.js) so the size it shows is the size this build produces. Only the
   // HTML/CSS-derived URLs are packager-only: they are read from the built
   // bundle, which the editor cannot see.
-  const shellAssetUrls = collectAssetUrls(html);
-  collectAssetUrls(packagedCssSource, shellAssetUrls);
   const realAssetUrls = collectPlayableInlineAssetUrls({
     tuning: SCENE_TUNING,
     levels: PLAYABLE_ALL_LEVELS,
     activeSession: ACTIVE_PLAYABLE_SESSION,
     spatialSelection,
-    entryBannerEnabled: Boolean(
-      SCENE_TUNING.entryBanner?.enabled || stageBannerEnabled || choiceBannerEnabled
-    ),
-    conveyorLayouts: collectSelectedTrackLayouts(),
-    choiceOptionImages: choiceOptions.map((option) => option.image),
-    extraUrls: shellAssetUrls
+    ...stageArt
   });
-  realAssetUrls.delete(jsPath);
-  realAssetUrls.delete(cssPath);
+  const runtimeCss = stripEditorCss(packagedCssSource);
+  const shellReferences = collectAssetUrls([html, runtimeCss]);
+  const optionalShellArt = new Set([...BASE_RUNTIME_ASSET_PATHS, ...SPEED_TOGGLE_ASSET_PATHS]);
+  for (const url of shellReferences) {
+    if (url !== jsPath && url !== cssPath && !realAssetUrls.has(url) && !optionalShellArt.has(url)) {
+      throw new Error(`导出模板引用了清单外素材：${url}`);
+    }
+  }
 
   const assetMap = await createAssetMap(realAssetUrls, new Set([jsPath, cssPath]));
   const availableUrls = new Set(assetMap.keys());
@@ -308,19 +335,25 @@ async function main() {
   }
   const jsWithAssets = replaceAssetUrls(replaceBundledDynamicAssetUrls(jsSource, assetMap), assetMap);
   // These images are already inlined in the document; re-embedding the same
-  // base64 blob in the tuning literal doubles the package size. The loading
-  // icon is compared against the element's own src at runtime, so reading it
-  // back from the document keeps that comparison equal.
+  // base64 blob in the tuning literal doubles the package size. The loader
+  // selects the branding icon at runtime and has no embedded image of its own.
   // `stage-choice-hand` is the same sprite as the 3D guide hand's texture, so its
   // data URI would otherwise appear twice (once in the document, once in the
   // runtime constant) and the payload scan rejects the package.
-  const js = ['branding-icon', 'branding-logo', 'loading-icon', 'stage-choice-hand']
+  const js = ['branding-icon', 'branding-logo', 'stage-choice-hand']
     .reduce((source, elementId) => reuseDocumentImageAsset(html, source, assetMap, elementId), jsWithAssets);
-  const css = stripEditorCss(replaceAssetUrls(packagedCssSource, assetMap));
+  const css = replaceAssetUrls(runtimeCss, assetMap);
 
   let output = inlineCss(html, css, cssPath);
   output = await inlineModule(output, js, jsPath, assetMap);
   output = replaceAssetUrls(output, assetMap);
+
+  const { ACTIVE_SPATIAL_CONVEYOR_PACKAGE } = await import('../src/generated-active-spatial-conveyor.js');
+  const material = ACTIVE_SPATIAL_CONVEYOR_PACKAGE?.visual?.material;
+  const embedded = auditEmbeddedAssets(output, [
+    ...Array.from(realAssetUrls, url => assetMap.get(url)),
+    material?.loopTextureDataUrl, material?.exitTextureDataUrl
+  ]);
 
   await mkdir(OUTPUT_DIR, { recursive: true });
   await writeFile(OUTPUT_FILE, normalizeLineEndings(output), 'utf8');
@@ -335,7 +368,7 @@ async function main() {
     platform: PLAYABLE_PLATFORM,
     bytes: size,
     assets: [...assetMap.entries()]
-      .filter(([url]) => realAssetUrls.has(url))
+      .filter(([url, dataUri]) => realAssetUrls.has(url) && embedded.has(dataUri))
       .map(([url, dataUri]) => ({ url, bytes: dataUri.length }))
       .sort((first, second) => second.bytes - first.bytes)
   }, null, 2)}\n`, 'utf8');
@@ -344,7 +377,9 @@ async function main() {
   console.log(`Wrote ${path.relative(ROOT, OUTPUT_FILE)} (${size} bytes, ${sizeMiB.toFixed(3)} MiB).`);
 }
 
-main().catch((error) => {
-  console.error(error);
-  process.exitCode = 1;
-});
+if (path.resolve(process.argv[1] ?? '') === fileURLToPath(import.meta.url)) {
+  main().catch((error) => {
+    console.error(error);
+    process.exitCode = 1;
+  });
+}

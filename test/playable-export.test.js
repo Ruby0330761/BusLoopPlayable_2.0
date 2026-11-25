@@ -30,7 +30,17 @@ import {
   validateTuning
 } from '../scripts/export-playable-package.mjs';
 import { BASE_RUNTIME_ASSET_PATHS } from '../src/mechanism-resources.js';
+import { buildExportReviewRows } from '../src/export-review.js';
 import { isValidStoreLink, resolveStoreLink } from '../src/store-links.js';
+import { auditEmbeddedAssets, inlineModule, replaceAssetUrls } from '../scripts/package-applovin-single-html.mjs';
+
+test('export rejects an unregistered embedded payload even without a file path', () => {
+  const art = 'data:image/jpeg;base64,aGVsbG8=';
+  assert.ok(auditEmbeddedAssets(`<img src="${art}">`, [art]).has(art));
+  assert.throws(() => auditEmbeddedAssets(`<script>const unused="${art}"</script>`, []), /清单外/);
+  const large = 'data:image/png;base64,' + Buffer.alloc(4096).toString('base64');
+  assert.throws(() => auditEmbeddedAssets(`"${large}" "${large}"`, [large]), /重复内联/);
+});
 
 const STORE_LINKS = Object.freeze({
   android: 'https://play.google.com/store/apps/details?id=gridplus.busjam.carpuzzle',
@@ -56,6 +66,51 @@ const EXPORT_NAMING = Object.freeze({
   }),
 });
 
+test('review covers every exported stage, channel and branding image from the selected set', () => {
+  for (const brandingSet of ['bus', 'crowd']) {
+    const tuning = { level: { selected: 'level9' }, parkingSpots: { count: 6 }, exportNaming: EXPORT_NAMING,
+      branding: { logo: { asset: '/wrong.png', enabled: 0 }, icon: { enabled: 1 } } };
+    const options = { brandingSet, brandingSetLabel: brandingSet, platforms: [['applovin', 'AppLovin'], ['meta', 'Meta']], variantCount: 3 };
+    const rows = buildExportReviewRows(tuning, options);
+    const row = label => rows.find(item => item.label === label);
+    assert.equal(row('关卡'), undefined);
+    for (const key of ['level9', 'level7']) assert.equal(row(key + ' 车位数量').value, '6 个');
+    assert.deepEqual(rows.filter(item => item.label === '投放渠道').map(item => item.value), ['AppLovin (AL)', 'Meta (FB)']);
+    assert.equal(row('导出数量').value, '3 个版本，共 6 份');
+    const [art] = PLAYABLE_BRANDING_SETS[brandingSet];
+    assert.deepEqual([row('Logo').asset, row('Android Icon').asset, row('iOS Icon').asset], [art.logoAsset, art.iconAssets.android, art.iconAssets.ios]);
+    assert.equal(row('Logo').value, '隐藏');
+    assert.equal(row('iOS Icon').value, '显示');
+    assert.ok(buildExportReviewRows({ ...tuning, parkingSpots: { count: 0 } }, options).some(item => item.invalid));
+  }
+});
+
+test('review only adds checks for active playable scenes and their enabled children', () => {
+  const base = { level: { selected: 'level12' }, parkingSpots: { count: 5 }, cta: { enabled: 0 }, exportNaming: EXPORT_NAMING };
+  const options = { brandingSet: 'bus', brandingSetLabel: 'BL', platforms: [['applovin', 'AppLovin']], variantCount: 1 };
+  const labels = tuning => buildExportReviewRows({ ...base, ...tuning }, options).map(row => row.label);
+  const basic = labels({});
+  const added = tuning => labels(tuning).filter(label => !basic.includes(label));
+  assert.equal(basic.length, 16);
+  assert.deepEqual(added({
+    firstClickGuide: { enabled: 0, durationSeconds: 3, maskEnabled: 1 },
+    stamina: { enabled: 0, introEnabled: 1 }, vehicleGuideHand: { enabled: 1, levelKey: 'level7' }
+  }), []);
+  const guide = { enabled: 1, vehicleId: 17, durationSeconds: 3, maskEnabled: 1 };
+  assert.deepEqual(added({ firstClickGuide: { ...guide, durationSeconds: 0 } }), []);
+  assert.deepEqual(added({ firstClickGuide: { ...guide, maskEnabled: 0 } }), ['开局指引']);
+  assert.deepEqual(added({ firstClickGuide: { ...guide, maskOpacity: 0 } }), ['开局指引']);
+  assert.deepEqual(added({ firstClickGuide: guide, progressHud: { enabled: 1 }, cta: { enabled: 1 } }),
+    ['开局指引', '开局置灰', '进度条', 'Play Now 弹窗']);
+  assert.deepEqual(added({ stamina: { enabled: 1, introEnabled: 0 } }), ['体力条']);
+  assert.deepEqual(added({ stamina: { enabled: 1 }, gameOver: { retryEnabled: 1 } }),
+    ['体力条', '开场体力说明弹窗', '失败弹窗重试按钮']);
+  assert.deepEqual(added({ entryBanner: { enabled: 1 }, combo: { mode: 'timed' }, countdown: { enabled: 1 } }),
+    ['入场横幅', '倒计时', '连击提示']);
+  const chained = labels({ level: { selected: 'level9' }, vehicleGuideHand: { enabled: 1, levelKey: 'level7' } });
+  assert.equal(chained.filter(label => label === '小手提示').length, 1);
+});
+
 // Resolve a dotted tuning path such as `exportNaming.channels.applovin`, the
 // same shape the scene editor's field table uses.
 function hasPath(root, dottedPath) {
@@ -71,6 +126,25 @@ test('export is package-only and does not opt into resource optimization', () =>
   assert.equal(EXPORT_RESOURCE_MODE, 'package-only');
 });
 
+test('inlining the ordinary models preserves editor paint selection for each seat count', async () => {
+  const models = {
+    4: '/assets/unity/models/Car_001.fbx',
+    6: '/assets/unity/models/Van_001.fbx',
+    10: '/assets/unity/models/Bus_001.fbx'
+  };
+  const assetMap = new Map(Object.values(models).map(url => [
+    url, 'data:application/octet-stream;base64,' + Buffer.from(url).toString('base64')
+  ]));
+  const editor = await import('../src/color-atlases.js');
+  const source = await readFile(new URL('../src/color-atlases.js', import.meta.url), 'utf8');
+  const packaged = await import('data:text/javascript;base64,' + Buffer.from(replaceAssetUrls(source, assetMap)).toString('base64'));
+  for (const [seats, path] of Object.entries(models)) {
+    assert.ok(editor.usesShippedVehicleMesh(path, seats));
+    assert.ok(packaged.usesShippedVehicleMesh(assetMap.get(path), seats));
+    assert.equal(packaged.usesShippedVehicleMesh('data:application/octet-stream;base64,Y3VzdG9t', seats), false);
+  }
+});
+
 test('exporter exposes every supported delivery platform', () => {
   assert.deepEqual(SUPPORTED_PLATFORMS, [
     'applovin',
@@ -81,6 +155,49 @@ test('exporter exposes every supported delivery platform', () => {
     'moloco',
     'tiktok'
   ]);
+});
+
+test('shared gameplay bundles keep each channel native bridge and CTA', async (t) => {
+  const previous = process.env.PLAYABLE_EXPORT_SHARED_CORE;
+  process.env.PLAYABLE_EXPORT_SHARED_CORE = '1';
+  t.after(() => {
+    if (previous === undefined) delete process.env.PLAYABLE_EXPORT_SHARED_CORE;
+    else process.env.PLAYABLE_EXPORT_SHARED_CORE = previous;
+  });
+  for (const platform of SUPPORTED_PLATFORMS.filter((value) => value !== 'mintegral')) {
+    const calls = [];
+    const html = await inlineModule(
+      '<html><head><script type="module" src="/assets/runtime.js"></script></head></html>',
+      'import { createPlatformBridge } from "__playable_export_platform_bridge__"; globalThis.testCreate = createPlatformBridge;',
+      '/assets/runtime.js', new Map(), platform
+    );
+    assert.doesNotMatch(html, /__playable_export_platform_bridge__/);
+    const sandbox = {
+      console,
+      navigator: { userAgent: 'TikTok Android' },
+      setTimeout: (callback) => { callback(); return 0; },
+      window: {
+        mraid: {
+          getState: () => 'default', isViewable: () => true,
+          addEventListener() {}, open: () => calls.push('mraid')
+        },
+        ALPlayableAnalytics: { trackEvent() {} },
+        ExitApi: { exit: () => calls.push('ExitApi') },
+        FbPlayableAd: { onCTAClick: () => calls.push('FbPlayableAd') },
+        playableSDK: { openAppStore: () => calls.push('playableSDK') }
+      }
+    };
+    runInNewContext(html.match(/<script type="module">([\s\S]*?)<\/script>/)[1], sandbox);
+    const bridge = sandbox.testCreate({ onStart() {} });
+    assert.equal(bridge.platform, platform);
+    bridge.initialize();
+    bridge.ready();
+    bridge.openStore(STORE_LINKS);
+    assert.deepEqual(calls, [{
+      applovin: 'mraid', 'google-ads': 'ExitApi', meta: 'FbPlayableAd',
+      unityads: 'mraid', moloco: 'FbPlayableAd', tiktok: 'playableSDK'
+    }[platform]], platform);
+  }
 });
 
 test('artifact names follow the playable request naming rule for every platform', () => {
@@ -374,7 +491,7 @@ test('Crowd exports one shared Android/iOS package with its own icon and logo', 
   assert.match(exporter, /const deliveryFolder = buildDeliveryFolderName\(/);
   assert.match(exporter, /`\$\{deliveryFolder\}\.zip`/);
   assert.match(exporter, /const label = packageLabel \|\|/);
-  assert.match(exporter, /logoAsset: '\/assets\/main-loading-icon-crowd\.webp'/);
+  assert.equal(PLAYABLE_BRANDING_SETS.crowd[0].logoAsset, '/assets/main-loading-icon-crowd.webp');
   assert.match(vite, /PLAYABLE_BRANDING_SETS = new Set\(\['bus', 'crowd'\]\)/);
   assert.match(vite, /brandingSet,/);
   assert.match(editor, /editor-export-set-select/);
@@ -566,7 +683,7 @@ test('inliner reuses the initial branding image instead of embedding it again in
   // runtime, so its literal has to come from the document as well.
   // `stage-choice-hand` is the same sprite the 3D guide hand loads by URL, so it
   // has to reuse the document copy too or the payload scan sees the blob twice.
-  assert.match(inliner, /\['branding-icon', 'branding-logo', 'loading-icon', 'stage-choice-hand'\]/);
+  assert.match(inliner, /\['branding-icon', 'branding-logo', 'stage-choice-hand'\]/);
   assert.match(inliner, /reuseDocumentImageAsset\(html, source, assetMap, elementId\)/);
 });
 
@@ -580,10 +697,9 @@ test('packaging and checks include EntryBanner resources only when the tuning or
   // A later stage can enable the banner while the global toggle stays off. Both
   // consumers must consider every request source: the fixed stage sequence, the
   // map picker, and the global toggle.
-  assert.match(inliner, /const stageBannerEnabled = PLAYABLE_STAGES\.some\(/u);
-  assert.match(inliner, /const choiceBannerEnabled = PLAYABLE_STAGE_CHOICES\.some\(/u);
-  assert.match(inliner, /SCENE_TUNING\.entryBanner\?\.enabled \|\| stageBannerEnabled \|\| choiceBannerEnabled/u);
-  assert.match(checker, /PLAYABLE_STAGE_CHOICES/);
+  for (const source of [inliner, checker]) {
+    assert.match(source, /getReachableStageArt\(SCENE_TUNING, PLAYABLE_STAGES, PLAYABLE_STAGE_CHOICES\)/);
+  }
   // Assets follow the reachable set, not just the fixed order, or a picked map
   // would ship with placeholder bytes.
   assert.match(inliner, /PLAYABLE_STAGE_CHOICES, PLAYABLE_ALL_LEVELS/);
@@ -632,8 +748,7 @@ test('platform packaging strips the development font resource and preserves syst
   assert.match(styles, /'Poppins Branding', Arial, sans-serif/);
   assert.match(inliner, /function stripBundledFontFaces\(css\)/);
   assert.match(inliner, /const packagedCssSource = stripBundledFontFaces\(cssSource\)/);
-  assert.match(inliner, /collectAssetUrls\(packagedCssSource, shellAssetUrls\)/);
-  assert.match(inliner, /extraUrls: shellAssetUrls/);
+  assert.match(inliner, /collectAssetUrls\(\[html, runtimeCss\]\)/);
   assert.equal(BASE_RUNTIME_ASSET_PATHS.some((asset) => /\.(?:eot|otf|ttf|woff2?)$/i.test(asset)), false);
   assert.match(checker, /no (?:bundled|external) font/i);
 });
@@ -703,7 +818,7 @@ test('editor and server expose production-only single-platform and all-platform 
   assert.match(exporter, /process\.kill\(-child\.pid, killSignal\)/);
   assert.match(exporter, /mapWithConcurrency\([\s\S]*?platforms[\s\S]*?getExportConcurrency\(platforms\.length\)/);
   assert.match(exporter, /generateWorkspaceSources\(workspace\.workRoot, signal, useSelectedLevel\)/);
-  assert.match(exporter, /prepareWorkspace\(resolvedRoot, safeTuning, levelDocument, useSelectedLevel\)/);
+  assert.match(exporter, /prepareWorkspace\(resolvedRoot, safeTuning, levelDocument, useSelectedLevel, stageArt, preRollEnabled\)/);
   assert.match(exporter, /JSON\.stringify\(levelDocument\)/);
   assert.match(exporter, /PLAYABLE_DIST_DIR: distRoot/);
   assert.match(exporter, /PLAYABLE_INLINE_OUTPUT_FILE: outputPath/);
@@ -823,6 +938,12 @@ test('applying export tuning rewrites only tuning data and leaves runtime helper
       readFile(new URL('../src/scene-view.js', import.meta.url), 'utf8')
     ]);
     await writeFile(path.join(root, 'src', 'scene-tuning.js'), tuningSource, 'utf8');
+    await writeFile(path.join(root, 'src', 'speed-toggle.js'),
+      await readFile(new URL('../src/speed-toggle.js', import.meta.url)));
+    await writeFile(path.join(root, 'src', 'branding-image-frame.js'),
+      await readFile(new URL('../src/branding-image-frame.js', import.meta.url)));
+    await writeFile(path.join(root, 'src', 'vehicle-effect-assets.js'),
+      await readFile(new URL('../src/vehicle-effect-assets.js', import.meta.url)));
     await writeFile(path.join(root, 'scripts', 'apply-scene-tuning.mjs'), applyScript, 'utf8');
     await writeFile(path.join(root, 'artifacts', 'scene-tuning.json'), '{ "level": { "selected": "level9" } }\n', 'utf8');
 
@@ -844,6 +965,8 @@ test('applying export tuning rewrites only tuning data and leaves runtime helper
     const { getVehicleAreaPivot } = await import('../src/vehicle-area.js');
     const pivot = getVehicleAreaPivot(rewrittenModule.SCENE_TUNING.vehicleArea);
     assert.equal(rewrittenModule.SCENE_TUNING.level.selected, 'level9');
+    const { SMOKE_TRAIL_DEFAULTS } = await import('../src/vehicle-effect-assets.js');
+    assert.deepEqual(rewrittenModule.SCENE_TUNING.effects.smokeTrail, SMOKE_TRAIL_DEFAULTS);
     assert.equal(typeof pivot.x, 'number');
     assert.equal(typeof pivot.z, 'number');
   } finally {
@@ -1068,9 +1191,8 @@ test('a fixed stage sequence that enables the entry banner still ships its art',
   // checking only one of them shipped the six banner sprites as 1-byte
   // octet-stream placeholders, so the banner collapsed to a line of text.
   assert.match(packager, /PLAYABLE_STAGES, PLAYABLE_STAGE_CHOICES, PLAYABLE_ALL_LEVELS/u);
-  assert.match(packager, /PLAYABLE_STAGES\.some\(\(stage\) => stage\?\.opening\?\.entryBanner\?\.enabled\)/u);
-  assert.match(packager, /PLAYABLE_STAGE_CHOICES\.some\(/u);
-  assert.match(packager, /SCENE_TUNING\.entryBanner\?\.enabled \|\| stageBannerEnabled \|\| choiceBannerEnabled/u);
+  assert.match(packager, /getReachableStageArt\(SCENE_TUNING, PLAYABLE_STAGES, PLAYABLE_STAGE_CHOICES\)/);
+  assert.match(packager, /entryBannerEnabled: stageArt\.entryBanners\.length > 0/);
 });
 
 test('delivery variants are told apart by material code, and pre-roll by the trailing tag', async () => {

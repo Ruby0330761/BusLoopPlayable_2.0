@@ -16,6 +16,7 @@ import {
   MAX_QUEUE_CAPACITY
 } from '../src/conveyor-layouts.js';
 import { SCENE_TUNING } from '../src/scene-tuning.js';
+import { createRoofArrowOutline, roofArrowStrokeRatio, updateRoofArrowOutline } from '../src/roof-arrow-outline.js';
 import { getVehicleAreaPivot } from '../src/vehicle-area.js';
 import { GameAudioController } from '../src/audio-controller.js';
 import {
@@ -30,6 +31,7 @@ import {
   buildRoundedPath,
   buildToStationPoints,
   chooseHitClip,
+  getHitDirection,
   evaluatePath,
   evaluateUnityCurve,
   sampleHitClip
@@ -38,16 +40,7 @@ import {
 const sceneViewSource = readFileSync(join('src', 'scene-view.js'), 'utf8');
 const gameModelSource = readFileSync(join('src', 'game-model.js'), 'utf8');
 
-test('shipped ordinary vehicle roofs use passenger paint without changing body triangles or bounds', () => {
-  const packedPassenger = readFileSync('public/assets/unity/models/Idle_boy01_vatmesh.bin');
-  const passenger = packedPassenger[0] === 31 ? gunzipSync(packedPassenger) : packedPassenger;
-  const vertexCount = passenger.readUInt32LE(8);
-  let headVertex = 0;
-  for (let i = 1; i < vertexCount; i++) {
-    if (passenger.readFloatLE(20 + i * 12) > passenger.readFloatLE(20 + headVertex * 12)) headVertex = i;
-  }
-  const headU = passenger.readFloatLE(16 + vertexCount * 24 + headVertex * 8);
-  const headV = passenger.readFloatLE(20 + vertexCount * 24 + headVertex * 8);
+test('ordinary roof surfaces keep their original triangles and bounds', () => {
   const originalLoad = THREE.TextureLoader.prototype.load;
   THREE.TextureLoader.prototype.load = () => new THREE.Texture();
   try {
@@ -56,7 +49,7 @@ test('shipped ordinary vehicle roofs use passenger paint without changing body t
       const bytes = packed[0] === 31 ? gunzipSync(packed) : packed;
       const source = new FBXLoader().parse(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength), '');
       const original = SceneView.prototype.prepareVehicleTemplate(source, seats);
-      const changed = SceneView.prototype.prepareVehicleTemplate(source, seats, { passengerRoof: true });
+      const changed = SceneView.prototype.prepareVehicleTemplate(source, seats, { passengerRoof: true, proceduralPaint: true });
       const roofs = changed.children.filter((mesh) => mesh.userData.isPassengerRoof);
       assert.ok(roofs.length, `${name} must have a roof`);
       assert.ok(original.userData.fittedSize.distanceTo(changed.userData.fittedSize) < 1e-8);
@@ -65,6 +58,14 @@ test('shipped ordinary vehicle roofs use passenger paint without changing body t
       for (const mesh of original.children) {
         const body = changed.children.find((candidate) => candidate.name === mesh.name);
         assert.deepEqual(body.geometry.attributes.uv.array, mesh.geometry.attributes.uv.array);
+        const swatch = body.geometry.getAttribute('vehicleSwatch');
+        assert.equal(swatch.count, mesh.geometry.attributes.uv.count);
+        const usedVertices = body.geometry.index?.count ?? swatch.count;
+        for (let i = 0; i < usedVertices; i += 3) {
+          const indices = [i, i + 1, i + 2].map(j => body.geometry.index?.getX(j) ?? j);
+          const ids = indices.map(j => swatch.getX(j));
+          assert.ok(ids.every(id => id === ids[0] && id < 16), `${body.name} triangle spans paint swatches`);
+        }
         if (/wheel/i.test(mesh.name)) assert.equal(body.geometry.index?.count ?? body.geometry.attributes.position.count, mesh.geometry.attributes.position.count);
       }
       for (const mesh of roofs) {
@@ -72,9 +73,8 @@ test('shipped ordinary vehicle roofs use passenger paint without changing body t
         const originalMesh = original.children.find((candidate) => `${candidate.name} Passenger Roof` === mesh.name);
         const bounds = originalMesh.geometry.boundingBox;
         const roofY = bounds.min.y + (bounds.max.y - bounds.min.y) * 0.72;
+        assert.deepEqual(uv.array, originalMesh.geometry.attributes.uv.array);
         for (const index of mesh.geometry.index.array) {
-          assert.ok(Math.abs(uv.getX(index) - headU) < 1e-6 && Math.abs(uv.getY(index) - headV) < 1e-6,
-            `${name} roof must sample the actual passenger head, not the darker atlas base`);
           assert.ok(position.getY(index) >= roofY);
         }
         assert.deepEqual(normal.array, originalMesh.geometry.attributes.normal.array);
@@ -85,33 +85,15 @@ test('shipped ordinary vehicle roofs use passenger paint without changing body t
   }
 });
 
-test('vehicle roof and passenger materials stay equal after targeted edits and mode switches', () => {
-  const saved = structuredClone(SCENE_TUNING.passengerMaterial);
-  const roof = new THREE.MeshStandardMaterial();
-  roof.userData = { passengerColorIndex: 4, isVehicleRoofMaterial: true };
-  const otherRoof = new THREE.MeshStandardMaterial();
-  otherRoof.userData = { passengerColorIndex: 1, isVehicleRoofMaterial: true };
-  const passenger = new THREE.MeshStandardMaterial();
-  const texture = new THREE.Texture();
+test('passenger material changes leave the vehicle roof at its authored colour', () => {
+  const roof = new THREE.MeshBasicMaterial({ color: '#868d98', toneMapped: false });
   const view = {
-    vehicleViews: new Map([[1, { userData: { roofMaterial: roof } }], [2, { userData: { roofMaterial: otherRoof } }]]),
-    passengerMaterials: [null, null, null, null, passenger], passengerColorTextures: [texture, texture, null, null, texture],
-    passengerViews: [], queuePassengerViews: [], boardingViews: []
+    vehicleViews: new Map([[1, { userData: { roofMaterial: roof } }]]),
+    passengerMaterials: [], passengerViews: [], queuePassengerViews: [], boardingViews: []
   };
-  try {
-    for (const mode of ['unityTexture', 'solidColor', 'unityTexture']) {
-      SCENE_TUNING.passengerMaterial.mode = mode;
-      SCENE_TUNING.passengerMaterial.brightness = 0.73;
-      SCENE_TUNING.passengerMaterial.emissionStrength = 0.35;
-      SceneView.prototype.updatePassengerMaterialTuning.call(view, { colorIndex: 4 });
-      for (const key of ['color', 'emissive']) assert.ok(roof[key].equals(passenger[key]));
-      for (const key of ['map', 'emissiveMap', 'roughness', 'metalness', 'emissiveIntensity']) assert.equal(roof[key], passenger[key]);
-      assert.ok(otherRoof.color.equals(new THREE.Color(0xffffff)), 'targeted edits must not change another colour');
-      assert.equal(roof.userData.isVehicleRoofMaterial, true);
-    }
-  } finally {
-    Object.assign(SCENE_TUNING.passengerMaterial, saved);
-  }
+  SceneView.prototype.updatePassengerMaterialTuning.call(view, { colorIndex: 0 });
+  assert.equal(roof.color.getHexString(), '868d98');
+  assert.equal(roof.map, null);
 });
 
 const advance = (game, seconds, step = .05) => {
@@ -604,10 +586,13 @@ test('hidden vehicle remains an obstacle until unblocked, then reveals before di
   assert.equal(hidden.hiddenReveal.duration, SCENE_TUNING.hiddenVehicleReveal.durationSeconds);
   assert.deepEqual(game.clickVehicle(hidden.id), { ok: false, reason: 'unavailable' });
 
+  const events = [];
+  const unsubscribe = game.subscribe(state => events.push(state.lastEvent));
   advance(game, 1.1);
+  unsubscribe();
   assert.equal(hidden.hiddenReveal, null);
   assert.equal(hidden.hiddenRevealed, true);
-  assert.equal(game.lastEvent.type, 'hidden-vehicle-revealed');
+  assert.ok(events.some(event => event.type === 'hidden-vehicle-revealed' && event.vehicleId === hidden.id));
   assert.equal(game.clickVehicle(hidden.id).ok, true);
 });
 
@@ -1456,12 +1441,47 @@ test('turn vehicles use the dedicated Unity arrow and normal parking orientation
   assert.match(viewSource, /function makeCenteredArrow\(template\)/);
   assert.match(viewSource, /const arrow = makeCenteredArrow\(arrowTemplate\)/);
   assert.match(viewSource, /arrow\.scale\.multiplyScalar\(TURN_ARROW_SCALE\)/);
-  assert.match(viewSource, /markerDepth = \(arrow\.userData\.fittedSize\?\.z \?\? 0\.56\) \* \(isTurnVehicle \? TURN_ARROW_SCALE : 1\)/);
-  assert.match(viewSource, /maxForwardOffset = Math\.max\(0, \(size\.z - markerDepth\) \* 0\.5\)/);
-  assert.match(viewSource, /arrow\.position\.set\(\s*tuning\.offsetX,\s*size\.y \+ tuning\.offsetY,\s*tuning\.offsetZ \+ forwardOffset/);
   assert.match(viewSource, /arrow\.rotation\.y = deg\(vehicle\.isTurnVehicle \? 0 : SCENE_TUNING\.facing\.arrowYawDegrees\)/);
   assert.match(viewSource, /view\.rotation\.y = deg\(SCENE_TUNING\.facing\.parkingSpotYawDegrees \+ 180\) \+ vehicleYawOffset/);
   assert.doesNotMatch(viewSource, /view\.rotation\.y = vehicle\.isTurnVehicle\s*\?/);
+});
+
+test('a roof arrow stroke grows equally along its sides and ends', () => {
+  const source = new THREE.PlaneGeometry(0.2, 0.6).rotateX(-Math.PI / 2).toNonIndexed();
+  const shell = createRoofArrowOutline(source);
+  for (const scale of [1.05, 1.62, 1]) {
+    updateRoofArrowOutline(shell, scale);
+    const delta = shell.boundingBox.getSize(new THREE.Vector3()).sub(source.boundingBox.getSize(new THREE.Vector3()));
+    assert.ok(Math.abs(delta.x - delta.z) < 1e-6);
+    assert.ok(Math.abs(delta.x - 1.2 * roofArrowStrokeRatio(scale)) < 1e-6);
+  }
+});
+
+test('roof offsets keep the complete outlined marker on each vehicle size', () => {
+  const tuning = SCENE_TUNING.vehicleArrow;
+  const saved = { ...tuning };
+  const arrow = new THREE.Group();
+  arrow.userData.fittedSize = new THREE.Vector3(0.24, 0.001, 0.56);
+  try {
+    for (const [width, depth] of [[0.57, 1.05], [0.86, 1.23], [0.69, 1.48]]) {
+      const size = new THREE.Vector3(width, 0.64, depth);
+      for (const options of [{}, { isTurnVehicle: true }, { isHiddenQuestionMark: true }]) {
+        const scale = options.isTurnVehicle ? 0.8 : 1;
+        for (const [x, z] of [[0, 0], [0.54, -0.27], [-0.8, -0.8], [0.8, 0.8]]) {
+          Object.assign(tuning, { offsetX: x, offsetY: 0, offsetZ: z, outlineScale: 1.62 });
+          SceneView.prototype.applyVehicleArrowTuning(arrow, size, options);
+          const stroke = 0.56 * roofArrowStrokeRatio(1.62);
+          const halfX = options.isHiddenQuestionMark ? 0.12 * 1.62 : 0.12 + stroke;
+          const halfZ = options.isHiddenQuestionMark ? 0.28 * 1.62 : 0.28 + stroke;
+          assert.ok(Math.abs(arrow.position.x) + halfX * scale <= width / 2);
+          assert.ok(Math.abs(arrow.position.z) + halfZ * scale <= depth / 2);
+          assert.ok(arrow.position.y > size.y);
+          assert.equal(Math.sign(arrow.position.x), Math.sign(x));
+          if (!options.isTurnVehicle && !options.isHiddenQuestionMark) assert.equal(Math.sign(arrow.position.z), Math.sign(z));
+        }
+      }
+    }
+  } finally { Object.assign(tuning, saved); }
 });
 
 test('vehicle arrows hide after entering a parking spot', () => {
@@ -1649,15 +1669,7 @@ test('editor sizing, source background ratio, and passenger shadow anchor stay w
   assert.equal(SCENE_TUNING.facing.passengerShadowYawDegrees, 90);
   assert.equal(SCENE_TUNING.passengers.modelScale, 1.25);
   assert.equal(SCENE_TUNING.passengers.groupSpacing, 0.16);
-  assert.equal(SCENE_TUNING.passengerMaterial.baseColorStrength, 1.1);
-  assert.equal(SCENE_TUNING.passengerMaterial.emissionStrength, 0.6);
-  assert.equal(SCENE_TUNING.passengerMaterial.brightness, 0.99);
-  assert.equal(SCENE_TUNING.passengerMaterial.roughness, 0.83);
-  assert.equal(SCENE_TUNING.passengerMaterial.mode, 'unityTexture');
-  assert.equal(SCENE_TUNING.passengerMaterial.solidColors.length, 11);
-  assert.equal(SCENE_TUNING.passengerMaterial.solidColors[0], 0x88f0);
-  assert.equal(SCENE_TUNING.passengerMaterial.colors.length, 11);
-  assert.deepEqual(SCENE_TUNING.passengerMaterial.colors[0], { emissionColor: 0x36a6ff, baseColor: 0xdbedff });
+  assert.equal(SCENE_TUNING.passengerMaterial, undefined);
   assert.deepEqual(SCENE_TUNING.luxuryMaterial, {
     vehicleBrightness: 2.55,
     passengerBrightness: 1.9,
@@ -1707,7 +1719,7 @@ test('editor sizing, source background ratio, and passenger shadow anchor stay w
   });
   assert.deepEqual(LEVEL_1.passengerQueue, { spacing: 0.4, screenEdgeOffsetSpacing: 4 });
   assert.equal(LEVEL_1.conveyorPathLength, 4.591284809513923);
-  assert.equal('vehicleBoardingPulse' in SCENE_TUNING, false);
+  assert.deepEqual(SCENE_TUNING.vehicleBoardingPulse, { scale: 1.09, speed: 11.7 });
   assert.equal(SCENE_TUNING.vehicleArea.sizeMultiplier, 1);
   assert.equal(SCENE_TUNING.vehicleGuideHand.enabled, 1);
   assert.equal(SCENE_TUNING.vehicleGuideHand.levelKey, 'level36');
@@ -1804,22 +1816,9 @@ test('editor sizing, source background ratio, and passenger shadow anchor stay w
   assert.match(editorSource, /sourceCrop\.offsetY/);
   assert.match(editorSource, /passengers\.modelScale/);
   assert.match(editorSource, /passengers\.groupSpacing/);
-  assert.match(editorSource, /Passenger Material/);
-  assert.match(editorSource, /passengerMaterial\.mode/);
-  assert.match(editorSource, /solidColor/);
-  assert.match(editorSource, /passengerMaterial\.baseColorStrength/);
-  assert.match(editorSource, /passengerMaterial\.emissionStrength/);
-  assert.match(editorSource, /passengerMaterial\.brightness/);
-  assert.match(editorSource, /passengerMaterial\.roughness/);
-  assert.match(editorSource, /passengerMaterial\.solidColors\.0/);
-  assert.match(editorSource, /passengerMaterial\.solidColors\.10/);
-  assert.match(editorSource, /passengerMaterial\.colors\.0\.baseColor/);
-  assert.match(editorSource, /passengerMaterial\.colors\.10\.emissionColor/);
+  assert.doesNotMatch(editorSource, /passengerMaterial\.|Passenger Material/);
   assert.doesNotMatch(editorSource, /luxuryMaterialDebug|富豪材质调试/);
   assert.match(editorSource, /editor-select/);
-  assert.match(editorSource, /updatePassengerMaterialVisibility/);
-  assert.match(editorSource, /path\.startsWith\('passengerMaterial\.solidColors\.'/);
-  assert.match(editorSource, /\^passengerMaterial\\\.solidColors\\\.\\d\+\$/);
   assert.match(editorSource, /rangeMarkup = isColor/);
   assert.match(editorSource, /setTuning\(next, \{ path \}\)/);
   assert.match(editorSource, /color\?\.addEventListener\('change'/);
@@ -1912,25 +1911,8 @@ test('editor sizing, source background ratio, and passenger shadow anchor stay w
   assert.match(viewSource, /SCENE_TUNING\.vehicleShadows\.color/);
   assert.match(viewSource, /material\.color\.setHex\(SCENE_TUNING\.vehicleShadows\.color/);
   assert.match(viewSource, /seats === '10' \? 0\.8/);
-  assert.match(viewSource, /this\.vehicleColorTextures = colorTextures\.map\(\(texture\) => \(/);
-  assert.match(viewSource, /texture \? configureColorTexture\(texture\) : null/);
-  assert.match(viewSource, /this\.passengerColorTextures = this\.vehicleColorTextures/);
-  assert.match(viewSource, /PASSENGER_DEFAULT_MATERIAL_COLORS/);
-  assert.match(viewSource, /setPassengerMaterialMaps/);
-  assert.match(viewSource, /if \(mapChanged\) material\.needsUpdate = true/);
-  assert.match(viewSource, /applyPassengerUnityMaterial/);
-  assert.match(viewSource, /applyPassengerSolidMaterial/);
-  assert.match(viewSource, /applyPassengerMaterial/);
-  assert.match(viewSource, /mode === 'solidColor'/);
-  assert.match(viewSource, /SCENE_TUNING\.passengerMaterial/);
-  assert.match(viewSource, /material\.color\.setRGB/);
-  assert.match(viewSource, /setPassengerMaterialMaps\(material, map, map\)/);
-  assert.match(viewSource, /setPassengerMaterialMaps\(material, null, null\)/);
-  assert.match(viewSource, /material\.emissiveIntensity = emissionStrength/);
-  assert.match(viewSource, /updatePassengerMaterialTuning\(\{ colorIndex: changedColorIndex = null \} = \{\}\)/);
-  assert.match(viewSource, /shouldUpdateColor/);
-  assert.match(viewSource, /mode === 'passengerMaterial'/);
-  assert.match(viewSource, /\(this\.vehicleMaterials\[vehicle\.colorIndex\] \?\? this\.vehicleMaterials\[0\]\)\.clone\(\)/);
+  assert.doesNotMatch(viewSource, /passengerColorTextures|assets\.colorTextures|tintVehicleTexture/);
+  assert.match(viewSource, /createVehiclePaintMaterial\(paint\.surfaces\)/);
   assert.match(viewSource, /applyArrowOutlineTuning/);
   assert.match(viewSource, /outlineBaseScale/);
   assert.match(viewSource, /new THREE\.EdgesGeometry/);
@@ -1966,7 +1948,7 @@ test('editor sizing, source background ratio, and passenger shadow anchor stay w
   assert.match(viewSource, /loadVatGeometry\(modelPaths\.passengerVatMesh, this\.loadingManager\)/);
   assert.match(viewSource, /getConveyorPathLength/);
   assert.match(viewSource, /item\.distanceFromHead/);
-  assert.doesNotMatch(viewSource, /i \* this\.getQueueSpacing\(\)/);
+  assert.doesNotMatch(viewSource, /getQueueProgressAtDistance\(curve, i \* this\.getQueueSpacing\(\)/);
   assert.doesNotMatch(viewSource, /getVisibleQueueCapacity/);
   assert.doesNotMatch(viewSource, /visibleCapacity/);
   assert.match(viewSource, /this\.camera\.updateMatrixWorld\(true\)/);
@@ -2032,7 +2014,7 @@ test('fallback colors remain available before Unity color textures finish loadin
   assert.equal(COLORS[12].hex, 0xb10f11);
   assert.equal(COLORS[14].hex, 0xffd8c8);
   assert.equal(COLORS[15].hex, 0xd7b477);
-  assert.match(sceneViewSource, /const color = COLORS\[vehicle\.colorIndex\] \?\? COLORS\[0\]/);
+  assert.match(sceneViewSource, /color: resolveVehiclePaint\(vehicle\)\.body/);
 });
 
 test('scene view keeps luxury vehicles and passengers on their dedicated visual path', () => {
@@ -2162,6 +2144,75 @@ test('blocked click uses Unity collision advance, contact hit, and return phases
   assert.equal(attacker.collision, null);
 });
 
+test('side impacts flash on the struck panel in the bumper lane, including off-centre hits', () => {
+  const scene = Object.create(SceneView.prototype);
+  scene.staticVehicleTransforms = new Map();
+  scene.vehicleViews = new Map();
+  const field = new THREE.Group();
+  field.position.z = 0.7;
+  function place(id, x, z, yaw) {
+    const pose = scene.getStaticVehicleTransform({ id, x, z, yaw });
+    const view = new THREE.Group();
+    view.position.copy(pose.position);
+    view.rotation.y = pose.yaw;
+    field.add(view);
+    scene.vehicleViews.set(id, view);
+    return view;
+  }
+  const target = place(1, 0, 0, 0);
+  target.userData.templateSize = new THREE.Vector3(0.6, 0.5, 1.8);
+  target.scale.setScalar(1.2);
+  for (const [id, sign] of [[2, 1], [3, -1]]) {
+    const z = sign * 0.23;
+    const attacker = place(id, -sign, z, sign * 90);
+    const flash = scene.resolveHitContact(id, { targetId: 1, contactPosition: { x: -sign * 0.18, z } });
+    const forward = attacker.getWorldDirection(new THREE.Vector3());
+    const toFlash = flash.clone().sub(attacker.getWorldPosition(new THREE.Vector3()));
+    assert.ok(toFlash.clone().cross(forward).length() < 1e-8, 'burst stays in this bumper lane');
+    const fromCenter = flash.clone().sub(target.getWorldPosition(new THREE.Vector3()));
+    assert.ok(Math.abs(fromCenter.dot(forward) + 0.36) < 1e-8, 'burst lands on the incoming side');
+  }
+});
+
+test('a struck body leans and slides with the impact, rebounds, then settles', () => {
+  const { vehicleArea, facing } = SCENE_TUNING;
+  const original = [vehicleArea.mirrorZ, vehicleArea.rotationDegrees, facing.vehicleYawOffsetDegrees];
+  try {
+    for (const mirror of [true, false]) {
+      for (const offset of [0, 90]) {
+        [vehicleArea.mirrorZ, vehicleArea.rotationDegrees, facing.vehicleYawOffsetDegrees] = [mirror, 32, offset];
+        for (const [sourceYaw, targetYaw] of [[90, 0], [-90, 180], [0, 90], [180, -90], [45, 45], [45, 225]]) {
+          const scene = Object.create(SceneView.prototype);
+          scene.staticVehicleTransforms = new Map();
+          const yaw = scene.getStaticVehicleTransform({ id: 1, x: 0, z: 0, yaw: targetYaw }).yaw;
+          const travelYaw = THREE.MathUtils.degToRad((mirror ? 180 - sourceYaw : sourceYaw) - 32);
+          const travel = new THREE.Vector3(Math.sin(travelYaw), 0, Math.cos(travelYaw));
+          const body = new THREE.Group();
+          const view = new THREE.Group();
+          view.rotation.y = yaw;
+          view.add(body);
+          view.userData.hitMeshes = [body];
+          body.userData.hitBasePosition = body.position.clone();
+          body.userData.hitBaseRotation = body.rotation.clone();
+          const hit = { startedAt: 0, ...getHitDirection({ yaw: sourceYaw }, { yaw: targetYaw }) };
+          for (const [time, sign] of [[0.05, 1], [0.18, -1]]) {
+            scene.applyVehicleHit(view, { hit }, time);
+            const up = new THREE.Vector3(0, 1, 0).applyQuaternion(body.getWorldQuaternion(new THREE.Quaternion()));
+            assert.ok(up.dot(travel) * sign > 0.01, 'roof tilts in the expected direction');
+            assert.ok(body.getWorldPosition(new THREE.Vector3()).dot(travel) * sign > 0, 'body shifts with the roof');
+          }
+          scene.applyVehicleHit(view, { hit }, 0.5);
+          assert.equal(body.position.length(), 0);
+          assert.equal(body.rotation.x, 0);
+          assert.equal(body.rotation.z, 0);
+        }
+      }
+    }
+  } finally {
+    [vehicleArea.mirrorZ, vehicleArea.rotationDegrees, facing.vehicleYawOffsetDegrees] = original;
+  }
+});
+
 test('every blocked tap animates a visible bump, even when the gap is zero', () => {
   // Diagonal neighbours can sit flush against the nose, so the geometric gap is
   // 0. Without a floor the bump collapsed to `getCollisionMotion`'s 1 ms minimum
@@ -2265,7 +2316,7 @@ test('vehicle path preview and shape controls are wired to scene tuning', () => 
   assert.match(editorSource, /vehiclePath\.parkingBounds\.maxZ/);
   assert.match(editorSource, /vehicleDeparturePath\.enabled/);
   assert.match(editorSource, /vehicleDeparturePath\.fullLoadDelay/);
-  assert.match(editorSource, /vehicleDeparturePath\.exitTargetX/);
+  assert.match(editorSource, /vehicleDeparturePath\.exitDistance/);
   assert.match(editorSource, /vehicleDeparturePath\.backwardSpeed/);
   assert.match(editorSource, /vehicleDeparturePath\.forwardSpeed/);
   const viewSource = readFileSync(join('src', 'scene-view.js'), 'utf8');
@@ -2273,25 +2324,13 @@ test('vehicle path preview and shape controls are wired to scene tuning', () => 
   assert.match(viewSource, /updateVehicleDeparturePathPreview/);
   assert.match(viewSource, /buildToStationPoints\(vehicle, target, tuning\)/);
   assert.match(viewSource, /buildOutStationPoints\(target, tuning\)/);
-  // `vehicleDeparturePath.y` is the authored height of the departure route: the
-  // line sits lower on screen (on the road lane), so the departing car must
-  // ride that same height to stay on the line. It is not just a preview value.
-  assert.match(viewSource, /const departureY = data\.routeConfig\?\.departure\.y \?\? SCENE_TUNING\.vehicleDeparturePath\?\.y \?\? SCENE_TUNING\.vehicleArea\.y;/);
   assert.match(viewSource, /mapMotionPoint\(sample\.position, departureY, data\.routeConfig\)/);
 });
 
-test('departing cars ride the authored departure line height, not the vehicle layer', () => {
-  // The line is authored below the parking row so it lies on the road lane.
-  // Raising it to the vehicle layer moves it off that lane; substituting the
-  // vehicle layer for the car instead makes the car leave the line.
-  assert.equal(SCENE_TUNING.vehicleDeparturePath.y, -1);
-  assert.notEqual(SCENE_TUNING.vehicleDeparturePath.y, SCENE_TUNING.vehicleArea.y);
-  const mainSource = readFileSync(join('src', 'main.js'), 'utf8');
-  // Caches written by the build that raised the line must be put back, or the
-  // stale value keeps overriding the authored one on every load.
-  assert.match(mainSource, /migrateDepartureRouteHeightTuning/);
-  assert.match(mainSource, /migrateDepartureRouteHeightProfiles\(\)/);
-  assert.match(mainSource, /Math\.abs\(Number\(departure\.y\) - vehicleY\) > 1e-9/);
+test('departing cars and both route previews share the road height', () => {
+  const config = new BusLoopGame().getVehiclePathConfig();
+  assert.equal(config.departure.y, config.vehicleArea.y);
+  assert.equal(config.station.y, config.departure.y);
 });
 
 test('Unity bus hit clips retain their authored directional keys', () => {
@@ -2460,8 +2499,7 @@ test('full vehicle backs out below the parking spot before leaving', () => {
 test('vehicle departure path and full-load delay are scene-tunable', () => {
   const original = { ...SCENE_TUNING.vehicleDeparturePath };
   SCENE_TUNING.vehicleDeparturePath.fullLoadDelay = 0.25;
-  SCENE_TUNING.vehicleDeparturePath.exitTargetX = 5.5;
-  SCENE_TUNING.vehicleDeparturePath.exitTargetZOffset = 0.75;
+  SCENE_TUNING.vehicleDeparturePath.exitDistance = 5.5;
   SCENE_TUNING.vehicleDeparturePath.exitTurnOffsetX = -0.9;
   try {
     const game = new BusLoopGame();
@@ -2477,11 +2515,8 @@ test('vehicle departure path and full-load delay are scene-tunable', () => {
     advance(game, 0.3);
     assert.equal(vehicle.state, 'departing');
     const forwardSegment = vehicle.motionData.forwardPath.segments.at(-1);
-    assert.equal(forwardSegment.p1.x, 5.5);
-    // Positive exitTargetZOffset must send the car further down the screen.
-    // Source-space Z is mirrored, so the endpoint Z decreases for a positive
-    // visual offset; the player-visible direction is what the editor field means.
-    assert.ok(Math.abs(forwardSegment.p1.z - (forwardSegment.p0.z - 0.75)) < 1e-6);
+    assert.ok(Math.abs(forwardSegment.p1.x - forwardSegment.p0.x - 5.5) < 1e-6);
+    assert.equal(forwardSegment.p1.z, vehicle.motionData.routeConfig.station.parkingBounds.maxZ);
   } finally {
     Object.assign(SCENE_TUNING.vehicleDeparturePath, original);
   }
@@ -2635,9 +2670,7 @@ test('parking outline size is fixed at the authored size and never follows the c
 
 test('parking outlines stay under every car, including cars on the departure lane', () => {
   const viewSource = readFileSync(join('src', 'scene-view.js'), 'utf8');
-  // A departing car rides `vehicleDeparturePath.y` (below the bay), so depth
-  // testing let the painted line cover it. The bay is ground art: it must
-  // disable depth testing and draw before the vehicles instead.
+  // Bay paint must render under a car crossing the parking row.
   assert.match(viewSource, /material\.depthTest = false/);
   assert.match(viewSource, /material\.depthWrite = false/);
   // Opaque cutout, not a transparent decal: transparent meshes are drawn after
@@ -2674,8 +2707,8 @@ test('boarding passengers are cleared once their car has left the bay', () => {
   const viewSource = readFileSync(join('src', 'scene-view.js'), 'utf8');
   // A car that already departed cannot still receive passengers; otherwise the
   // last group keeps walking to the empty spot and stands there.
-  assert.match(viewSource, /\['departing', 'done'\]\.includes\(vehicle\.state\)/);
-  assert.match(viewSource, /if \(vehicleGone\) \{/);
+  assert.match(viewSource, /\['departing', 'revive-departing', 'done'\]\.includes\(vehicle\.state\)/);
+  assert.match(viewSource, /if \(vehicleGone && entry\.contactStartedAt === undefined\) \{/);
 });
 
 test('main thread saves and restores scene tuning from localStorage', () => {
@@ -2748,20 +2781,15 @@ test('main thread saves and restores scene tuning from localStorage', () => {
   assert.match(sceneEditorSource, /resetTuning\.level\.selected = selectedLevel/);
   assert.match(mainSource, /LEVEL_TUNING_STORAGE_KEY = 'bus-loop-level-tuning-v1'/);
   assert.match(mainSource, /function saveLevelTuningProfile\(value\)/);
-  assert.match(mainSource, /function activateLevelTuning\(levelKey\)/);
-  assert.match(mainSource, /activateLevelTuning\(selectedLevelKey\)/);
-  assert.match(mainSource, /isPassengerMaterialTuningPath/);
-  assert.match(mainSource, /PASSENGER_MATERIAL_TUNING_PREFIX = 'passengerMaterial\.'/);
-  assert.match(mainSource, /PASSENGER_MATERIAL_COLOR_INDEX_PATTERN/);
-  assert.match(mainSource, /getPassengerMaterialColorIndex/);
-  assert.match(mainSource, /startsWith\(PASSENGER_MATERIAL_TUNING_PREFIX\)/);
+  assert.match(mainSource, /function activateLevelTuning\(levelKey, savedTuning\)/);
+  assert.match(mainSource, /activateLevelTuning\(selectedLevelKey, webEntry\?\.document\?\.tuning\)/);
+  assert.match(mainSource, /profile\?\.tuning\?\.speedToggle \?\? savedTuning\?\.speedToggle/);
+  assert.match(mainSource, /profile\?\.tuning\?\.combo \?\? savedTuning\?\.combo/);
   assert.doesNotMatch(mainSource, /LUXURY_MATERIAL_DEBUG_TUNING_PREFIX|isLuxuryMaterialDebugTuningPath|luxuryMaterialDebugOnly/);
-  assert.match(mainSource, /mode: materialOnly \? 'passengerMaterial' : 'full', colorIndex/);
   assert.match(mainSource, /delete savedTuning\.luxuryMaterialDebug/);
   assert.match(mainSource, /savedLuxuryMaterial\.vehicleBrightness !== SCENE_TUNING\.luxuryMaterial\.vehicleBrightness/);
   assert.match(mainSource, /setTimeout\(flushTuningSave, 150\)/);
   assert.match(mainSource, /if \(EDITOR_ENABLED\) window\.addEventListener\('beforeunload', flushTuningSave\)/);
-  assert.match(mainSource, /if \(!materialOnly\) \{/);
   assert.match(mainSource, /function initializeGameQueues/);
   assert.match(mainSource, /view\.getConveyorConfig\(\)/);
   assert.match(mainSource, /path === 'conveyorLayout\.selected'/);
@@ -2774,7 +2802,7 @@ test('main thread saves and restores scene tuning from localStorage', () => {
   assert.match(mainSource, /createGameAudioController\(\{[\s\S]*allSessionLevels\.map\(\(level\) => level\.assets\?\.audio \?\? \{\}\)[\s\S]*getMechanismAudioConfig\(mechanismTypes\)[\s\S]*\}\)/);
   // Every sound-relevant event of the frame must be played, not only lastEvent:
   // a frame can both depart a vehicle and board a group.
-  assert.match(mainSource, /for \(const event of state\.frameAudioEvents \?\? \[\]\) audio\.handleGameEvent\(event, state\.time\)/);
+  assert.match(mainSource, /for \(const event of state\.frameAudioEvents \?\? \[\]\) \{\s*audio\.handleGameEvent\(event, state\.time\);\s*combo\.contact\(event\);/);
   assert.match(mainSource, /audio\.handleGameEvent\(state\.lastEvent, state\.time\)/);
   assert.match(mainSource, /audio\.playPassengerUp\(\)/);
   assert.match(mainSource, /audio\.unlock\(\)/);
@@ -2790,7 +2818,7 @@ test('main thread saves and restores scene tuning from localStorage', () => {
   assert.equal(SCENE_TUNING.storeLinks.ios, 'https://apps.apple.com/us/app/bus-fever-party/id6746743297');
   assert.match(mainSource, /const DEFAULT_STORE_LINKS = \{ \.\.\.SCENE_TUNING\.storeLinks \}/);
   assert.match(mainSource, /function refreshDefaultStoreLinks\(\)/);
-  assert.match(mainSource, /resolveStoreLink\(platform, SCENE_TUNING\.storeLinks\?\.\[platform\], DEFAULT_STORE_LINKS\[platform\]\)/);
+  assert.match(mainSource, /resolveStoreLink\(platform, links\?\.\[platform\], DEFAULT_STORE_LINKS\[platform\]\)/);
   assert.doesNotMatch(mainSource, /const STORE_URL\s*=/);
   assert.doesNotMatch(mainSource, /itms-apps:\/\/itunes\.apple\.com/);
   assert.match(mainSource, /STORE_OPEN_COOLDOWN_MS = 800/);
@@ -2863,7 +2891,7 @@ test('main thread saves and restores scene tuning from localStorage', () => {
   const packageSource = readFileSync(join('scripts', 'package-applovin-single-html.mjs'), 'utf8');
   assert.match(packageSource, /DATA_URL_ONLY_REQUEST_SCRIPT/);
   assert.match(packageSource, /function __playableDataRequest/);
-  assert.match(packageSource, /define: \{ fetch: '__playableDataRequest' \}/);
+  assert.match(packageSource, /define: \{ fetch: '__playableDataRequest'/);
   assert.match(packageSource, /new Response\(bytes/);
   assert.match(packageSource, /url\.slice\(0, 5\)\.toLowerCase\(\) === 'data:'/);
   assert.match(packageSource, /application\/octet-stream/);
@@ -2921,11 +2949,12 @@ test('Icon, Logo, and text overlays expose independent responsive editor control
     }
   }
   assert.equal(SCENE_TUNING.branding.icon.asset, '/assets/icon-android.jpg');
-  // The store icon is square art in a wider box. Its radius is authored in
-  // design units and applied to the painted square, which only works if the
-  // default tuning carries the key (the exporter validates against it).
-  assert.equal(Number.isFinite(SCENE_TUNING.branding.icon.radius), true);
-  assert.equal(SCENE_TUNING.branding.icon.radius >= 0, true);
+  for (const [key, radius, enabled, width] of [['icon', 16, 1, 5.5], ['logo', 0, 0, 4]]) {
+    const config = SCENE_TUNING.branding[key];
+    assert.equal(config.cornerRadius, radius);
+    assert.deepEqual(config.stroke, { enabled, color: 0xffffff, width, opacity: 1 });
+    assert.deepEqual(config.shadow, { enabled, color: 0, opacity: .35, blur: 12, offsetX: 0, offsetY: 6 });
+  }
   assert.equal(SCENE_TUNING.branding.logo.asset, '/assets/main-loading-icon-small.png');
   assert.equal(typeof SCENE_TUNING.branding.text.content, 'string');
   assert.equal(existsSync(join('public', 'assets', 'icon-crowd.jpg')), true);
@@ -2937,7 +2966,7 @@ test('Icon, Logo, and text overlays expose independent responsive editor control
   for (const path of [
     'branding.icon.asset', 'branding.icon.enabled', 'branding.icon.locked', 'branding.icon.x', 'branding.icon.y',
     'branding.icon.width', 'branding.icon.height',
-    'branding.icon.radius', 'branding.logo.asset', 'branding.logo.enabled', 'branding.logo.locked',
+    'branding.logo.asset', 'branding.logo.enabled', 'branding.logo.locked',
     'branding.logo.x', 'branding.logo.y', 'branding.logo.width', 'branding.logo.height',
     'branding.text.enabled', 'branding.text.locked', 'branding.text.content', 'branding.text.x',
     'branding.text.y', 'branding.text.width', 'branding.text.height'
@@ -2959,7 +2988,8 @@ test('Icon, Logo, and text overlays expose independent responsive editor control
   assert.match(mainSource, /key === 'icon' \|\| key === 'logo'/);
   assert.match(mainSource, /if \(key === 'logo' && gameOverLogo\) gameOverLogo\.src = element\.src/);
   assert.match(mainSource, /function applyLoadingBranding\(\)/);
-  assert.match(mainSource, /branding\?\.loading/);
+  assert.match(mainSource, /resolveBrandingIconAsset\(visibleBranding\(\)\?\.icon\)/);
+  assert.doesNotMatch(indexSource, /<img[^>]*id="loading-icon"[^>]*\bsrc=/);
   assert.match(indexSource, /id="loading-icon"/);
   assert.match(indexSource, /id="loading-title"/);
   assert.match(mainSource, /function fitBrandingText/);
@@ -2974,11 +3004,7 @@ test('Icon, Logo, and text overlays expose independent responsive editor control
   assert.match(mainSource, /element\.textContent = content/);
   assert.match(mainSource, /element\.style\.left = `\$\{renderedCenterX\}px`/);
   assert.match(mainSource, /element\.style\.top = `\$\{y \* metrics\.positionScaleY\}px`/);
-  // The icon radius is authored in design units and clipped against the painted
-  // square, so the box has to shrink to that square first.
-  assert.match(mainSource, /const squareIcon = key === 'icon'/);
-  assert.match(mainSource, /element\.style\.borderRadius = renderedRadius > 0/);
-  assert.match(mainSource, /context\.roundRect\(centerX - side \/ 2, centerY - side \/ 2, side, side, radius\)/);
+  assert.match(mainSource, /drawFramedBrandingImage\(context, image, centerX, centerY, frame\)/);
   assert.match(mainSource, /const x = localX \/ metrics\.positionScaleX/);
   assert.match(mainSource, /const y = localY \/ metrics\.positionScaleY/);
   assert.match(mainSource, /setPointerCapture/);

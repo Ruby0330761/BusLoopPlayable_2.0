@@ -1,4 +1,5 @@
 import { copyFile, mkdir, readFile, writeFile } from 'node:fs/promises';
+import { withVehicleEffectAssets } from '../src/vehicle-effect-assets.js';
 import { existsSync } from 'node:fs';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -139,7 +140,7 @@ function completeLevelAudio(level) {
 }
 
 function completeLevelAssets(level) {
-  return completeLevelAudio(completeColorAtlases(level));
+  return withVehicleEffectAssets(completeLevelAudio(completeColorAtlases(level)));
 }
 
 // Unity level documents carry the belt art they were authored against

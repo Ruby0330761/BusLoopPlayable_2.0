@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { BusLoopGame } from '../src/game-model.js';
+import { checkLayoutDriveOut } from '../src/level-drive-out.js';
 import {
   findCollisionContact,
   getVehicleCollisionSize,
@@ -134,6 +135,31 @@ test('runtime collision graph uses current geometry instead of legacy depth chai
   assert.deepEqual(game.getBlockers(1), [2]);
   game.getVehicle(2).state = 'moving-to-spot';
   assert.deepEqual(game.getBlockers(1), []);
+});
+
+test('a touching rear bumper lets the leading car leave and clears the following car in order', () => {
+  const level = createLevel();
+  level.vehicles = level.vehicles.slice(0, 2).map((car, i) =>
+    ({ ...car, x: 0, z: i ? -0.25 : 0, yaw: 0, containerType: 1 }));
+  const game = new BusLoopGame(level);
+  assert.deepEqual(game.getBlockers(1), []);
+  assert.deepEqual(game.getBlockers(2), [1]);
+  assert.equal(checkLayoutDriveOut(level).status, 'clear');
+  assert.equal(game.clickVehicle(1).ok, true);
+  assert.equal(game.clickVehicle(2).ok, true);
+});
+
+test('opposing noses block, while resizing to clear a side gap frees the layout and the live graph', () => {
+  const level = createLevel();
+  level.collisionVehicleArea = { modelScale: 0.64, sizeMultiplier: 1 };
+  level.vehicles = level.vehicles.slice(0, 2).map((car, i) =>
+    ({ ...car, x: i ? 0.27 : 0, z: i ? 1 : 0, yaw: i ? 180 : 0, containerType: 1 }));
+  const game = new BusLoopGame(level);
+  assert.deepEqual(game.getBlockers(1), [2]);
+  assert.deepEqual(checkLayoutDriveOut(level, level.collisionVehicleArea), { status: 'blocked', ids: [1, 2] });
+  level.collisionVehicleArea.sizeMultiplier = 0.5;
+  assert.deepEqual(game.getBlockers(1), []);
+  assert.deepEqual(checkLayoutDriveOut(level, level.collisionVehicleArea), { status: 'clear', ids: [] });
 });
 
 test('reset rebuilds collision decisions from restored parked state', () => {

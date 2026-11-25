@@ -6,6 +6,9 @@ import os from 'node:os';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { defineConfig } from 'vite';
+import { matchesSmokeMigration } from './scripts/migrate-all-levels-smoke.mjs';
+import { checkLayoutDriveOut } from './src/level-drive-out.js';
+import { MAX_SPATIAL_PACKAGE_BYTES, validateSpatialJsonImport } from './src/spatial-conveyor-json.js';
 import {
   DEFAULT_OUTPUT_ROOT,
   importSpatialConveyorPrefab
@@ -107,9 +110,10 @@ const PLAYABLE_ASSET_SIZE_ROOTS = Object.freeze([
 ]);
 
 const MAX_PREFAB_BYTES = 12 * 1024 * 1024;
-const MAX_SPATIAL_PACKAGE_BYTES = 4 * 1024 * 1024;
+const activeSpatialWrites = new Set();
 const SPATIAL_BACKUP_ROOT = path.resolve('artifacts', 'spatial-conveyor-backups');
 const PLAYABLE_BUILD_PLATFORM = process.env.PLAYABLE_PLATFORM || 'applovin';
+const PLAYABLE_EXPORT_SHARED_CORE = process.env.PLAYABLE_EXPORT_SHARED_CORE === '1';
 const PLAYABLE_REMOTE_EDITOR = process.env.PLAYABLE_REMOTE_EDITOR === '1';
 const LEVEL_CATALOG_ALIAS = process.env.PLAYABLE_LEVEL_CATALOG_PATH
   ? [{
@@ -704,6 +708,7 @@ async function buildLevelThumbnails() {
       items.push({
         ...item,
         ...summarizeLevel(document),
+        driveOut: checkLayoutDriveOut(document),
         conveyorBeltName: document.conveyorBeltName ?? '',
         mapScale: document.mapScale ?? null,
         svg: renderLevelSvg(document, { width: 240, height: 176, className: 'level-thumb' })
@@ -1462,12 +1467,14 @@ async function listSpatialConveyors() {
     .filter((entry) => entry.isFile() && entry.name.toLowerCase().endsWith('.json'))
     .map(async (entry) => {
       try {
-        const packageData = JSON.parse(await readFile(path.join(DEFAULT_OUTPUT_ROOT, entry.name), 'utf8'));
+        const source = await readFile(path.join(DEFAULT_OUTPUT_ROOT, entry.name), 'utf8');
+        const packageData = JSON.parse(source);
         if (packageData?.kind !== 'spatial' || typeof packageData.id !== 'string') return null;
         return {
           id: packageData.id,
           label: packageData.label || packageData.id,
           value: `spatial:${packageData.id}`,
+          revision: spatialRevision(source),
           filename: entry.name,
           sourceFilename: packageData.source?.filename ?? null,
           pointCount: packageData.path?.points?.length ?? 0
@@ -1515,7 +1522,17 @@ function validateSpatialPackageData(packageData, packageId) {
   }
 }
 
-async function saveSpatialConveyorPackage({ packageData, baseRevision }) {
+async function withSpatialWrite(packageId, write) {
+  if (activeSpatialWrites.has(packageId)) {
+    throw Object.assign(new Error('轨道正在保存，请刷新后重试'), { statusCode: 409 });
+  }
+  activeSpatialWrites.add(packageId);
+  try { return await write(); }
+  finally { activeSpatialWrites.delete(packageId); }
+}
+
+async function saveSpatialConveyorPackage({ packageData, baseRevision, importJson }) {
+  if (importJson) validateSpatialJsonImport(packageData);
   const packageId = validateSpatialPackageId(packageData?.id);
   validateSpatialPackageData(packageData, packageId);
   await mkdir(DEFAULT_OUTPUT_ROOT, { recursive: true });
@@ -1707,12 +1724,18 @@ export default defineConfig({
     : undefined,
   build: {
     modulePreload: { polyfill: PLAYABLE_BUILD_PLATFORM !== 'mintegral' },
-    outDir: PLAYABLE_REMOTE_EDITOR ? 'server-dist' : 'dist'
+    outDir: PLAYABLE_REMOTE_EDITOR ? 'server-dist' : 'dist',
+    rollupOptions: PLAYABLE_EXPORT_SHARED_CORE
+      ? { external: ['__playable_export_platform_bridge__'] }
+      : undefined
   },
   resolve: {
     alias: [
       ...LEVEL_CATALOG_ALIAS,
-      ...(PLAYABLE_BUILD_PLATFORM === 'applovin' ? [] : [{
+      ...(PLAYABLE_EXPORT_SHARED_CORE ? [{
+          find: './platform-bridge.js',
+          replacement: '__playable_export_platform_bridge__'
+        }] : PLAYABLE_BUILD_PLATFORM === 'applovin' ? [] : [{
           find: './platform-bridge.js',
           replacement: path.resolve('src', 'platform-bridges', `${PLAYABLE_BUILD_PLATFORM}.js`)
         }])
@@ -2285,7 +2308,14 @@ export default defineConfig({
         }
         const webLevelMatch = pathname.match(/^\/__level-authoring\/(level[1-9]\d*)$/);
         if (webLevelMatch && request.method === 'GET') {
-          try { sendJson(response, 200, await readWebLevelDocument(webLevelMatch[1])); }
+          try {
+            const entry = await readWebLevelDocument(webLevelMatch[1]);
+            const draftRevision = requestUrl.searchParams.get('draftBase');
+            if (draftRevision && await matchesSmokeMigration('artifacts', webLevelMatch[1], draftRevision, entry.revision)) {
+              entry.migratedDraftBase = draftRevision;
+            }
+            sendJson(response, 200, entry);
+          }
           catch (error) { sendJson(response, error.code === 'ENOENT' ? 404 : 400, { error: error.message }); }
           return;
         }
@@ -2514,9 +2544,9 @@ export default defineConfig({
         if (packageMatch && request.method === 'PUT') {
           try {
             const packageId = decodeURIComponent(packageMatch[1]);
-            const body = JSON.parse(await readRequestBody(request, MAX_SPATIAL_PACKAGE_BYTES));
+            const body = JSON.parse(await readRequestBody(request, MAX_SPATIAL_PACKAGE_BYTES + 1024, '轨道 JSON'));
             if (body.packageData?.id !== packageId) throw new Error('Package URL and payload id do not match.');
-            const result = await saveSpatialConveyorPackage(body);
+            const result = await withSpatialWrite(packageId, () => saveSpatialConveyorPackage(body));
             sendJson(response, 200, {
               packageData: result.packageData,
               revision: result.revision,
@@ -2532,7 +2562,8 @@ export default defineConfig({
         try {
           const filename = decodePrefabFilename(request);
           const source = await readRequestBody(request, MAX_PREFAB_BYTES);
-          const result = await importSpatialConveyorPrefab({ filename, source });
+          const result = await withSpatialWrite(path.parse(filename).name.trim(),
+            () => importSpatialConveyorPrefab({ filename, source }));
           sendJson(response, 201, {
             item: {
               id: result.conveyorPackage.id,

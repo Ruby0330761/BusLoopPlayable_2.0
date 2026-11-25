@@ -62,3 +62,25 @@ export function isColorAtlasTableComplete(colorTextures) {
     fallback == null || (typeof colorTextures[index] === 'string' && colorTextures[index])
   ));
 }
+
+// Keep complete asset URLs here so single-file exports inline the same model
+// identity in this lookup and in the level's vehicleBySeats table.
+const PAINTED_MODELS = Object.freeze({
+  4: '/assets/unity/models/Car_001.fbx',
+  6: '/assets/unity/models/Van_001.fbx',
+  10: '/assets/unity/models/Bus_001.fbx'
+});
+
+export function usesShippedVehicleMesh(path, seats) {
+  return typeof path === 'string' && path === PAINTED_MODELS[seats];
+}
+
+export function getSessionColorIndices(levels) {
+  const indices = new Set([0]);
+  for (const level of levels) {
+    for (const queue of level.passengerQueues ?? [level.passengerSequence ?? []]) {
+      for (const color of queue) indices.add(color);
+    }
+  }
+  return indices;
+}

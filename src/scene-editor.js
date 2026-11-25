@@ -1,4 +1,5 @@
 import { LEVEL_OPTIONS } from './level-catalog.js';
+import { importSpatialConveyorJson } from './spatial-conveyor-json-import.js';
 import {
   isSpatialConveyorSelection,
   refreshSpatialConveyorPackages
@@ -11,6 +12,9 @@ import { LEVEL_1 } from './level-data.js';
 import { isValidStoreLink } from './store-links.js';
 import { detectPlayfieldHorizon, resolveBackgroundHorizon } from './background-alignment.js';
 import { BUILD_VERSION } from './build-version.js';
+import { brandingBottomInset } from './branding-image-frame.js';
+import { createBrandingVariantTuning } from './export-branding.js';
+import { buildExportReviewRows, confirmPlayableExport } from './export-review.js';
 import { BUILD_CHANGELOG, changelogVersions } from './build-changelog.js';
 import { COUNTDOWN_SIREN_ASSET, COUNTDOWN_TIMER_ASSET, normalizeCountdownConfig } from './countdown.js';
 import { BRANDING_LOCALE_OPTIONS, STOREFRONT_PREVIEW_OPTIONS, normalizeStorefrontPreview } from './branding-localization.js';
@@ -24,13 +28,10 @@ import {
   getMechanismTypesForLevels
 } from './mechanism-resources.js';
 import { LEVEL_AUDIO_CONFIG } from './level-audio-config.js';
-import { collectPlayableInlineAssetUrls } from './playable-inline-assets.js';
+import { collectPlayableInlineAssetUrls, getReachableStageArt } from './playable-inline-assets.js';
 import { resolveVehiclePathConfig } from './vehicle-path-config.js';
 import {
-  ACTIVE_PLAYABLE_SESSION,
-  PLAYABLE_ALL_LEVELS,
-  PLAYABLE_STAGES,
-  PLAYABLE_STAGE_CHOICES
+  PLAYABLE_ALL_LEVELS
 } from './generated-active-level.js';
 import {
   isForeignLevelOwner,
@@ -127,11 +128,8 @@ const BACKGROUND_OPTIONS = [
   ['/assets/applovin/textures/BG01_split01_Grassland_q60.jpg', 'BG01 \u8349\u5730']
 ];
 
-// `entryBanner.style === 'custom'` plates. Both shipped plates ride with the
-// mechanism; the editor appends every uploaded banner from its own library, so
-// this list only seeds the picker before the first fetch resolves. The empty
-// entry is what the delete action lands on — the runtime then draws the shipped
-// storm plate rather than an empty overlay.
+// Seed the picker before the upload library loads. An empty custom selection
+// uses the built-in storm plate.
 const BANNER_OPTIONS = [
   ['', '\uff08\u672a\u9009\uff0c\u4f7f\u7528\u5185\u7f6e\u98ce\u66b4\u56fe\uff09'],
   ['/assets/unity/mechanisms/entry-banner/sprites/Main_EntryBanner_Storm.webp', '\u98ce\u66b4\u8b66\u544a\uff08\u81ea\u5e26\u6587\u6848\uff09'],
@@ -216,8 +214,8 @@ const IMAGE_UPLOAD_MAX_EDGES = [1600, 1280, 1024, 800, 640];
 function formatKilobytes(bytes) {
   const value = Number(bytes) || 0;
   return value >= 1024 * 1024
-    ? `${(value / 1024 / 1024).toFixed(2)} MB`
-    : `${Math.max(1, Math.round(value / 1024))} KB`;
+    ? `${(value / 1024 / 1024).toFixed(2)} MiB`
+    : `${Math.max(0, Math.round(value / 1024))} KiB`;
 }
 
 const EDITOR_CATEGORIES = [
@@ -613,6 +611,23 @@ function makeEntryBannerComponentFields(label, component) {
   ];
 }
 
+function brandingFrameFields(key, label) {
+  const base = 'branding.' + key + '.';
+  return [
+    [label + ' 圆角 (%)', base + 'cornerRadius', 0, 50, 1],
+    [label + ' 描边', base + 'stroke.enabled', 0, 1, 1, null, 'toggle'],
+    ['描边颜色', base + 'stroke.color', 0, 16777215, 1],
+    ['描边粗细', base + 'stroke.width', 0, 40, 0.5],
+    ['描边透明度', base + 'stroke.opacity', 0, 1, 0.01],
+    [label + ' 阴影', base + 'shadow.enabled', 0, 1, 1, null, 'toggle'],
+    ['阴影颜色', base + 'shadow.color', 0, 16777215, 1],
+    ['阴影透明度', base + 'shadow.opacity', 0, 1, 0.01],
+    ['阴影模糊', base + 'shadow.blur', 0, 100, 1],
+    ['阴影 X 偏移', base + 'shadow.offsetX', -100, 100, 1],
+    ['阴影 Y 偏移', base + 'shadow.offsetY', -100, 100, 1]
+  ];
+}
+
 const FIELD_GROUPS = [
   {
     title: '\u5bfc\u51fa\u547d\u540d',
@@ -661,7 +676,7 @@ const FIELD_GROUPS = [
       ['Icon Y', 'branding.icon.y', 0, 4320, 1],
       ['Icon \u5bbd\u5ea6', 'branding.icon.width', 16, 2160, 1],
       ['Icon \u9ad8\u5ea6', 'branding.icon.height', 16, 2160, 1],
-      ['Icon \u5706\u89d2', 'branding.icon.radius', 0, 120, 1],
+      ...brandingFrameFields('icon', 'Icon'),
       ['Logo \u7248\u672c', 'branding.logo.asset', 0, 0, 1, BRANDING_LOGO_OPTIONS],
       ['Logo \u663e\u793a', 'branding.logo.enabled', 0, 1, 1, null, 'toggle'],
       ['Logo \u9501\u5b9a', 'branding.logo.locked', 0, 1, 1, null, 'toggle'],
@@ -669,6 +684,7 @@ const FIELD_GROUPS = [
       ['Logo Y', 'branding.logo.y', 0, 4320, 1],
       ['Logo \u5bbd\u5ea6', 'branding.logo.width', 16, 2160, 1],
       ['Logo \u9ad8\u5ea6', 'branding.logo.height', 16, 2160, 1],
+      ...brandingFrameFields('logo', 'Logo'),
       ['\u6587\u672c\u663e\u793a', 'branding.text.enabled', 0, 1, 1, null, 'toggle'],
       ['\u6587\u672c\u9501\u5b9a', 'branding.text.locked', 0, 1, 1, null, 'toggle'],
       ['\u6587\u672c\u5185\u5bb9', 'branding.text.content', 0, 0, 1, null, 'text'],
@@ -705,6 +721,7 @@ const FIELD_GROUPS = [
   {
     title: '\u76f8\u673a',
     fields: [
+      ['\u6c34\u5e73\u65cb\u8f6c', 'camera.azimuthDegrees', -180, 180, 1],
       ['\u4fef\u89d2', 'camera.elevationDegrees', 25, 80, 1],
       ['\u900f\u89c6 FOV', 'camera.fovDegrees', 1, 40, 0.1],
       ['\u76ee\u6807 X', 'camera.targetX', -10, 10, 0.05],
@@ -773,6 +790,15 @@ const FIELD_GROUPS = [
       ['Pulse Scale', 'cta.pulseScale', 1, 1.35, 0.01],
       ['Pulse Speed', 'cta.pulseSpeed', 0.1, 3, 0.01],
       ['Appear Speed', 'cta.appearSpeed', 0.1, 5, 0.01]
+    ]
+  },
+  {
+    title: 'COMBO 连击',
+    category: 'guide',
+    fields: [
+      ['连击样式', 'combo.mode', 0, 0, 1, [['off', '关闭'], ['gold', '金色 COMBO'], ['timed', '倒计时读条']]],
+      ['连击间隔（秒，0 为不限）', 'combo.goldSeconds', 0, 120, 0.1],
+      ['连击间隔（秒）', 'combo.timedSeconds', 0.1, 120, 0.1]
     ]
   },
   {
@@ -925,57 +951,11 @@ const FIELD_GROUPS = [
     ]
   },
   {
-    title: 'Passenger Material',
-    fields: [
-      ['Mode', 'passengerMaterial.mode', 0, 0, 1, [
-        ['unityTexture', 'Unity Texture'],
-        ['solidColor', 'Solid Color']
-      ]],
-      ['Base Strength', 'passengerMaterial.baseColorStrength', 0, 2, 0.01],
-      ['Emission Strength', 'passengerMaterial.emissionStrength', 0, 5, 0.01],
-      ['Brightness', 'passengerMaterial.brightness', 0, 3, 0.01],
-      ['Roughness', 'passengerMaterial.roughness', 0, 1, 0.01],
-      ['Metalness', 'passengerMaterial.metalness', 0, 1, 0.01],
-      ['Blue Color', 'passengerMaterial.solidColors.0', 0, 16777215, 1],
-      ['Green Color', 'passengerMaterial.solidColors.1', 0, 16777215, 1],
-      ['Pink Color', 'passengerMaterial.solidColors.2', 0, 16777215, 1],
-      ['Purple Color', 'passengerMaterial.solidColors.3', 0, 16777215, 1],
-      ['Red Color', 'passengerMaterial.solidColors.4', 0, 16777215, 1],
-      ['Yellow Color', 'passengerMaterial.solidColors.5', 0, 16777215, 1],
-      ['Orange Color', 'passengerMaterial.solidColors.6', 0, 16777215, 1],
-      ['LightBlue Color', 'passengerMaterial.solidColors.7', 0, 16777215, 1],
-      ['Brown Color', 'passengerMaterial.solidColors.8', 0, 16777215, 1],
-      ['DarkGreen Color', 'passengerMaterial.solidColors.9', 0, 16777215, 1],
-      ['DarkBlue Color', 'passengerMaterial.solidColors.10', 0, 16777215, 1],
-      ['Blue Base', 'passengerMaterial.colors.0.baseColor', 0, 16777215, 1],
-      ['Blue Emission', 'passengerMaterial.colors.0.emissionColor', 0, 16777215, 1],
-      ['Green Base', 'passengerMaterial.colors.1.baseColor', 0, 16777215, 1],
-      ['Green Emission', 'passengerMaterial.colors.1.emissionColor', 0, 16777215, 1],
-      ['Pink Base', 'passengerMaterial.colors.2.baseColor', 0, 16777215, 1],
-      ['Pink Emission', 'passengerMaterial.colors.2.emissionColor', 0, 16777215, 1],
-      ['Purple Base', 'passengerMaterial.colors.3.baseColor', 0, 16777215, 1],
-      ['Purple Emission', 'passengerMaterial.colors.3.emissionColor', 0, 16777215, 1],
-      ['Red Base', 'passengerMaterial.colors.4.baseColor', 0, 16777215, 1],
-      ['Red Emission', 'passengerMaterial.colors.4.emissionColor', 0, 16777215, 1],
-      ['Yellow Base', 'passengerMaterial.colors.5.baseColor', 0, 16777215, 1],
-      ['Yellow Emission', 'passengerMaterial.colors.5.emissionColor', 0, 16777215, 1],
-      ['Orange Base', 'passengerMaterial.colors.6.baseColor', 0, 16777215, 1],
-      ['Orange Emission', 'passengerMaterial.colors.6.emissionColor', 0, 16777215, 1],
-      ['LightBlue Base', 'passengerMaterial.colors.7.baseColor', 0, 16777215, 1],
-      ['LightBlue Emission', 'passengerMaterial.colors.7.emissionColor', 0, 16777215, 1],
-      ['Brown Base', 'passengerMaterial.colors.8.baseColor', 0, 16777215, 1],
-      ['Brown Emission', 'passengerMaterial.colors.8.emissionColor', 0, 16777215, 1],
-      ['DarkGreen Base', 'passengerMaterial.colors.9.baseColor', 0, 16777215, 1],
-      ['DarkGreen Emission', 'passengerMaterial.colors.9.emissionColor', 0, 16777215, 1],
-      ['DarkBlue Base', 'passengerMaterial.colors.10.baseColor', 0, 16777215, 1],
-      ['DarkBlue Emission', 'passengerMaterial.colors.10.emissionColor', 0, 16777215, 1]
-    ]
-  },
-  {
     title: '\u4f20\u9001\u5e26\u9009\u62e9',
     spatialImportAnchor: true,
     fields: [
-      ['Prefab', 'conveyorLayout.selected', 0, 0, 1, CONVEYOR_LAYOUT_OPTIONS]
+      ['Prefab', 'conveyorLayout.selected', 0, 0, 1, CONVEYOR_LAYOUT_OPTIONS],
+      ['小人跑动速度倍率', 'conveyorLayout.passengerSpeedMultiplier', 0.1, 5, 0.05]
     ]
   },
   {
@@ -1092,7 +1072,12 @@ const FIELD_GROUPS = [
       ['\u8ba1\u6570\u677f\u9ad8', 'seatCountBoard.depth', 0.1, 1.2, 0.01],
       ['\u6570\u5b57\u5927\u5c0f', 'seatCountBoard.textScale', 0.3, 2.5, 0.01],
       ['X \u5c3a\u5bf8', 'parkingSpots.scaleX', 0.25, 3, 0.05],
-      ['Z \u5c3a\u5bf8', 'parkingSpots.scaleZ', 0.25, 3, 0.05]
+      ['Z \u5c3a\u5bf8', 'parkingSpots.scaleZ', 0.25, 3, 0.05],
+      ['车位透明度', 'parkingSpots.opacity', 0, 1, 0.01],
+      ['底色', 'parkingSpots.fillColor', 0, 16777215, 1],
+      ['底色透明度', 'parkingSpots.fillOpacity', 0, 1, 0.01],
+      ['投影距离', 'parkingSpots.shadowDistance', 0, 0.5, 0.005],
+      ['投影透明度', 'parkingSpots.shadowOpacity', 0, 1, 0.01]
     ]
   },
   {
@@ -1102,7 +1087,7 @@ const FIELD_GROUPS = [
       ['自动路径边界', 'vehiclePath.autoBounds', 0, 1, 1, null, 'toggle'],
       ['自动边界留白', 'vehiclePath.boundsPadding', 0, 2, 0.01],
       ['\u663e\u793a\u88ab\u6321\u8f66', 'vehiclePath.showBlocked', 0, 1, 1],
-      ['\u7ebf\u6761\u9ad8\u5ea6', 'vehiclePath.y', 0.02, 0.5, 0.005],
+      ['行驶高度（车辆与路径）', 'vehicleArea.y', -3, 0.5, 0.005],
       ['\u7ebf\u6761\u900f\u660e\u5ea6', 'vehiclePath.opacity', 0.1, 1, 0.01],
       ['\u7ebf\u6761\u7c97\u7ec6', 'vehiclePath.lineWidth', 1, 12, 1],
       ['\u8f6c\u5f2f\u534a\u5f84', 'vehiclePath.turnRadius', 0.05, 1.5, 0.01],
@@ -1111,7 +1096,7 @@ const FIELD_GROUPS = [
       ['\u8fb9\u754c\u5de6 X', 'vehiclePath.parkingBounds.minX', -12, 0, 0.01],
       ['\u8fb9\u754c\u53f3 X', 'vehiclePath.parkingBounds.maxX', 0, 12, 0.01],
       ['\u8fb9\u754c\u4e0b Z', 'vehiclePath.parkingBounds.minZ', -12, 0, 0.01],
-      ['\u8fb9\u754c\u4e0a Z', 'vehiclePath.parkingBounds.maxZ', 0, 12, 0.01]
+      ['上边界 / 驶出线 Z', 'vehiclePath.parkingBounds.maxZ', 0, 12, 0.01]
     ]
   },
   {
@@ -1119,13 +1104,10 @@ const FIELD_GROUPS = [
     fields: [
       ['\u663e\u793a\u8def\u5f84', 'vehicleDeparturePath.enabled', 0, 1, 1],
       ['\u6ee1\u8f7d\u505c\u987f', 'vehicleDeparturePath.fullLoadDelay', 0, 4, 0.05],
-      ['\u79bb\u573a\u9ad8\u5ea6\uff08\u7ebf\u4e0e\u8f66\uff09', 'vehicleDeparturePath.y', -3, 0.5, 0.005],
       ['\u7ebf\u6761\u900f\u660e\u5ea6', 'vehicleDeparturePath.opacity', 0.1, 1, 0.01],
       ['\u7ebf\u6761\u7c97\u7ec6', 'vehicleDeparturePath.lineWidth', 1, 12, 1],
-      ['\u5012\u8f66\u8ddd\u79bb', 'vehicleDeparturePath.backDistance', 0, 2, 0.01],
       ['\u6a2a\u5411\u62d0\u70b9 X', 'vehicleDeparturePath.exitTurnOffsetX', -2, 2, 0.01],
-      ['\u79bb\u573a\u7ec8\u70b9 X', 'vehicleDeparturePath.exitTargetX', -1, 8, 0.05],
-      ['\u79bb\u573a\u7ec8\u70b9 Z \u504f\u79fb', 'vehicleDeparturePath.exitTargetZOffset', -3, 3, 0.05],
+      ['驶出距离', 'vehicleDeparturePath.exitDistance', 0.1, 20, 0.05],
       ['\u5012\u8f66\u901f\u5ea6', 'vehicleDeparturePath.backwardSpeed', 0.5, 8, 0.05],
       ['\u79bb\u573a\u901f\u5ea6', 'vehicleDeparturePath.forwardSpeed', 1, 18, 0.05],
       ['\u8f6c\u5f2f\u534a\u5f84', 'vehicleDeparturePath.turnRadius', 0.05, 1.5, 0.01],
@@ -1146,9 +1128,11 @@ const FIELD_GROUPS = [
       // returns to the authored model size, so the route/spot framing never
       // changes with this slider.
       ['\u8f66\u8f86\u5927\u5c0f\u500d\u6570', 'vehicleArea.sizeMultiplier', 0.5, 2.5, 0.01],
-      ['\u7bad\u5934 X', 'vehicleArrow.offsetX', -0.8, 0.8, 0.01],
-      ['\u7bad\u5934\u9ad8\u5ea6', 'vehicleArrow.offsetY', 0, 0.8, 0.01],
-      ['\u7bad\u5934 Z', 'vehicleArrow.offsetZ', -0.8, 0.8, 0.01],
+      ['上车放大倍率', 'vehicleBoardingPulse.scale', 1, 2, 0.01],
+      ['上车缩放速度', 'vehicleBoardingPulse.speed', 0, 20, 0.1],
+      ['箭头横向（0 居中）', 'vehicleArrow.offsetX', -0.8, 0.8, 0.01],
+      ['箭头离车顶高度', 'vehicleArrow.offsetY', 0, 0.8, 0.01],
+      ['箭头前后（正值靠车头）', 'vehicleArrow.offsetZ', -0.8, 0.8, 0.01],
       ['\u7bad\u5934\u63cf\u8fb9\u8272', 'vehicleArrow.outlineColor', 0, 16777215, 1],
       ['\u7bad\u5934\u63cf\u8fb9\u7c97\u7ec6', 'vehicleArrow.outlineScale', 1, 1.8, 0.01],
       ['\u7bad\u5934\u63cf\u8fb9\u6df1\u5ea6\u6d4b\u8bd5', 'vehicleArrow.outlineDepthTest', 0, 1, 1]
@@ -1277,6 +1261,34 @@ const FIELD_GROUPS = [
     ]
   },
   {
+    title: '满员离场 · 星星粒子',
+    fields: [
+      ['启用星星尾气', 'effects.departureStars.enabled', 0, 1, 1, null, 'toggle'],
+      ['颜色叠加', 'effects.departureStars.color', 0, 16777215, 1],
+      ['发射密度倍率', 'effects.departureStars.rateScale', 0, 4, 0.05],
+      ['星星大小倍率', 'effects.departureStars.sizeScale', 0, 4, 0.01],
+      ['生命周期倍率', 'effects.departureStars.lifetimeScale', 0.1, 4, 0.05],
+      ['漂移速度倍率', 'effects.departureStars.speedScale', 0, 4, 0.05],
+      ['散开倍率', 'effects.departureStars.spreadScale', 0, 4, 0.05],
+      ['不透明度', 'effects.departureStars.opacity', 0, 1, 0.01],
+      ['X偏移', 'effects.departureStars.offsetX', -1.5, 1.5, 0.01],
+      ['Y偏移', 'effects.departureStars.offsetY', -1.5, 1.5, 0.01],
+      ['Z偏移', 'effects.departureStars.offsetZ', -1.5, 1.5, 0.01]
+    ]
+  },
+  {
+    title: '满员离场 · 连续拖尾',
+    fields: [
+      ['颜色叠加', 'effects.departureTrail.color', 0, 16777215, 1],
+      ['透明度', 'effects.departureTrail.opacity', 0, 1, 0.01],
+      ['宽度倍率', 'effects.departureTrail.widthScale', 0, 4, 0.05],
+      ['生命周期倍率', 'effects.departureTrail.lifetimeScale', 0.1, 4, 0.05],
+      ['X偏移', 'effects.departureTrail.offsetX', -1.5, 1.5, 0.01],
+      ['Y偏移', 'effects.departureTrail.offsetY', -1.5, 1.5, 0.01],
+      ['Z偏移', 'effects.departureTrail.offsetZ', -1.5, 1.5, 0.01]
+    ]
+  },
+  {
     title: '\u884c\u9a76\u5c3e\u70df ParticleTrail',
     fields: [
       ['\u6bcf\u79d2\u7c92\u5b50\u6570', 'effects.smokeTrail.rateOverTime', 0, 120, 1],
@@ -1284,10 +1296,13 @@ const FIELD_GROUPS = [
       ['\u5bff\u547d\u4e0a\u9650', 'effects.smokeTrail.lifetimeMax', 0.05, 2, 0.01],
       ['\u521d\u59cb\u5927\u5c0f\u4e0b\u9650', 'effects.smokeTrail.sizeMin', 0.01, 1, 0.01],
       ['\u521d\u59cb\u5927\u5c0f\u4e0a\u9650', 'effects.smokeTrail.sizeMax', 0.01, 1, 0.01],
+      ['粒子大小随机（%）', 'effects.smokeTrail.sizeRandomness', 0, 100, 1],
       ['\u6f02\u79fb\u901f\u5ea6\u500d\u6570', 'effects.smokeTrail.speedScale', 0, 4, 0.05],
       ['\u5c3e\u90e8 Z \u504f\u79fb', 'effects.smokeTrail.offsetZ', -1.5, 1.5, 0.01],
       ['\u9ad8\u5ea6 Y \u504f\u79fb', 'effects.smokeTrail.offsetY', -0.5, 1, 0.01],
       ['\u6563\u5f00\u500d\u6570', 'effects.smokeTrail.spread', 0, 4, 0.05],
+      ['粒子旋转速率（°/秒）', 'effects.smokeTrail.rotationSpeed', -720, 720, 5],
+      ['粒子旋转随机（%）', 'effects.smokeTrail.rotationRandomness', 0, 100, 1],
       ['\u91cd\u529b', 'effects.smokeTrail.gravity', -10, 2, 0.05],
       ['\u4e0d\u900f\u660e\u5ea6', 'effects.smokeTrail.opacity', 0, 1, 0.01]
     ]
@@ -1502,6 +1517,9 @@ function renderExportSection() {
             )).join('')}
           </select>
         </label>
+        <label class="editor-safe-guide-toggle" title="按检测平台的渠道规则显示，仅供预览">
+          <input type="checkbox" checked />显示平台安全区
+        </label>
         <div class="editor-export-actions">
           <button class="editor-export-button" type="button">\u5bfc\u51fa\u5f53\u524d\u5e73\u53f0</button>
           <button class="editor-export-all-button" type="button">\u4e00\u952e\u5bfc\u51fa\u5168\u90e8</button>
@@ -1543,9 +1561,9 @@ const SHELL_PANELS = [
   { id: 'level', label: '\u5173\u5361', icon: 'M5 21V4M5 5h9l-1.2 2.6L14 10H5M5 14h7l-1 2.2L12 18H5', match: /^level\./ },
   { id: 'scene', label: '\u573a\u666f', icon: 'M12 3v2M12 19v2M3 12h2M19 12h2M5.6 5.6 7 7M17 17l1.4 1.4M18.4 5.6 17 7M7 17l-1.4 1.4', match: /^(?:camera|lighting|sourceCrop|background|visibility|preview)\./ },
   { id: 'track', label: '\u8f68\u9053', icon: 'M4 6h16v12H4zM8 6v12M16 6v12', match: /^(?:conveyorLayout|conveyorLayouts|spatialConveyor|queueCurves|passengerShadows|effects)\./ },
-  { id: 'cars', label: '\u8f66\u8f86', icon: 'M4 15v-2.5l1.8-3.2A2 2 0 0 1 7.5 8h9a2 2 0 0 1 1.7 1.3L20 12.5V15M4 15h16v2.5H4z', match: /^(?:parkingSpots|vehiclePath|vehicleDeparturePath|vehicleArea|passengerMaterial|passengers)\./ },
+  { id: 'cars', label: '\u8f66\u8f86', icon: 'M4 15v-2.5l1.8-3.2A2 2 0 0 1 7.5 8h9a2 2 0 0 1 1.7 1.3L20 12.5V15M4 15h16v2.5H4z', match: /^(?:parkingSpots|vehiclePath|vehicleDeparturePath|vehicleArea|passengers)\./ },
   { id: 'guide', label: '\u5f15\u5bfc', icon: 'M9 11V5.5a1.5 1.5 0 0 1 3 0V10M12 10V7.5a1.5 1.5 0 0 1 3 0V12M15 12v-1a1.5 1.5 0 0 1 3 0v4.5A5.5 5.5 0 0 1 12.5 21h-1A5.5 5.5 0 0 1 6 15.5V13a1.5 1.5 0 0 1 3 0v1', match: /^(?:vehicleGuideHand|firstClickGuide|entryBanner|countdown|weatherEffect|freeAssets|preRoll|gameOver|installGate|stamina)\./ },
-  { id: 'ui', label: '\u754c\u9762', icon: 'M4 5h16v14H4zM4 9h16M9 9v10', match: /^(?:branding|cta|speedToggle|progressHud)\./ },
+  { id: 'ui', label: '\u754c\u9762', icon: 'M4 5h16v14H4zM4 9h16M9 9v10', match: /^(?:branding|cta|speedToggle|progressHud|combo)\./ },
   { id: 'audio', label: '\u58f0\u97f3', icon: 'M5 9.5h3L12.5 6v12L8 14.5H5zM16 9a4.2 4.2 0 0 1 0 6', match: /^audio\./ },
   { id: 'export', label: '\u5bfc\u51fa', icon: 'M12 16V4M7.5 8.5 12 4l4.5 4.5M4 16v3h16v-3', match: /^exportNaming\./ },
 ];
@@ -1561,7 +1579,7 @@ const SHELL_SUBGROUPS = {
   ],
   cars: [
     ['\u8f66\u8f86\u4e0e\u8f66\u4f4d', /^(?:parkingSpots|vehiclePath|vehicleDeparturePath|vehicleArea)\./],
-    ['\u5c0f\u4eba', /^(?:passengers|passengerMaterial)\./],
+    ['\u5c0f\u4eba', /^passengers\./],
   ],
   guide: [
     ['\u5f00\u573a\u5f15\u5bfc', /^(?:vehicleGuideHand|firstClickGuide|entryBanner)\./],
@@ -1574,7 +1592,7 @@ const SHELL_SUBGROUPS = {
   ],
   ui: [
     ['\u54c1\u724c', /^branding\./],
-    ['\u63a7\u4ef6', /^(?:cta|speedToggle|progressHud)\./],
+    ['\u63a7\u4ef6', /^(?:cta|speedToggle|progressHud|combo)\./],
   ],
   export: [['\u547d\u540d', /^exportNaming\./]],
 };
@@ -1635,6 +1653,7 @@ export function createSceneEditor(root, {
   defaultTuning = getTuning(),
   setTuning,
   getPlayableExportPayload = () => ({ tuning: getTuning() }),
+  previewExportBranding = () => {},
   clearSavedTuning = () => {},
   saveImportedLevelTuning = () => false,
   captureScreenshot = async () => { throw new Error('\u622a\u56fe\u529f\u80fd\u4e0d\u53ef\u7528'); },
@@ -1655,6 +1674,37 @@ export function createSceneEditor(root, {
   const exportSetSelect = root.querySelector('.editor-export-set-select');
   const exportSetNote = root.querySelector('.editor-export-set-note');
   const exportSelect = root.querySelector('.editor-export-select');
+  let previewExportSet = false;
+  function refreshExportBranding() {
+    const { branding, storeLinks, preview } = getTuning();
+    previewExportBranding(previewExportSet
+      ? createBrandingVariantTuning({ branding, storeLinks, preview }, exportSetSelect.value)
+      : null, exportSelect.value);
+  }
+  const guideToggle = root.querySelector('.editor-safe-guide-toggle input');
+  const safeGuide = document.createElement('div');
+  safeGuide.className = 'editor-safe-guide';
+  safeGuide.setAttribute('aria-hidden', 'true');
+  safeGuide.innerHTML = '<span></span><span></span>';
+  document.getElementById('stage').append(safeGuide);
+  const guidePreference = 'bus-loop-editor-safe-guide-v1';
+  try { guideToggle.checked = localStorage.getItem(guidePreference) !== 'off'; } catch { /* private mode */ }
+  function updateSafeGuide() {
+    const [platform, label] = PLAYABLE_EXPORT_PLATFORMS.find(([id]) => id === exportSelect.value);
+    safeGuide.dataset.platform = platform;
+    safeGuide.style.setProperty('--safe-bottom', brandingBottomInset(platform, false) + 'px');
+    safeGuide.style.setProperty('--wide-bottom', brandingBottomInset(platform, true) + 'px');
+    safeGuide.hidden = !guideToggle.checked;
+    safeGuide.firstElementChild.textContent = label + ' 顶部保留区';
+    safeGuide.lastElementChild.textContent = label + ' 底部操作区';
+  }
+  exportSelect.addEventListener('change', updateSafeGuide);
+  exportSelect.addEventListener('change', refreshExportBranding);
+  guideToggle.addEventListener('change', () => {
+    updateSafeGuide();
+    try { localStorage.setItem(guidePreference, guideToggle.checked ? 'on' : 'off'); } catch { /* private mode */ }
+  });
+  updateSafeGuide();
   const exportButton = root.querySelector('.editor-export-button');
   const exportAllButton = root.querySelector('.editor-export-all-button');
   const exportStatus = root.querySelector('.editor-export-status');
@@ -1672,6 +1722,11 @@ export function createSceneEditor(root, {
   const MAX_TUNING_HISTORY = 50;
   let restoringHistory = false;
   let playableExportBusy = false;
+  let exportStepsDraft = '';
+
+  function withExportStepsDraft(tuning) {
+    return { ...tuning, exportNaming: { ...tuning.exportNaming, steps: exportStepsDraft.trim() } };
+  }
 
   function updateCountdownControls() {
     const countdown = normalizeCountdownConfig(getTuning().countdown);
@@ -1718,16 +1773,13 @@ export function createSceneEditor(root, {
 
   function updateExportVariantControls() {
     const tuning = getTuning();
-    for (const [path, enabled] of [
-      ['exportNaming.version', Number(tuning.stamina?.enabled) === 1],
-      ['exportNaming.steps', isInstallGateEnabled(tuning.installGate)]
-    ]) {
-      const controls = inputs.get(path);
-      if (!controls) continue;
-      controls.row.classList.toggle('is-readonly', !enabled);
-      controls.textInput.disabled = !enabled;
-      if (!enabled) controls.textInput.value = 'N';
-      controls.updateValidity();
+    const versionControls = inputs.get('exportNaming.version');
+    if (versionControls) {
+      const enabled = Number(tuning.stamina?.enabled) === 1;
+      versionControls.row.classList.toggle('is-readonly', !enabled);
+      versionControls.textInput.disabled = !enabled;
+      if (!enabled) versionControls.textInput.value = 'N';
+      versionControls.updateValidity();
     }
     const gateControls = inputs.get('installGate.successfulOperationThreshold');
     if (gateControls) {
@@ -1738,8 +1790,8 @@ export function createSceneEditor(root, {
     }
     let valid = true;
     try {
-      const plan = getExportVariantPlan(tuning);
-      exportVariantsStatus.textContent = `${plan.count}个版本；当前渠道 ${plan.count} 份，全部渠道 ${plan.count * 7} 份。多值用 / 分隔，预览使用第一个值。`;
+      const plan = getExportVariantPlan(withExportStepsDraft(tuning));
+      exportVariantsStatus.textContent = `${plan.count} 个版本，当前渠道 ${plan.count} 份，全部渠道 ${plan.count * 7} 份。多值用 / 分隔，体力预览使用第一个值。`;
     } catch (error) {
       valid = false;
       exportVariantsStatus.textContent = error.message;
@@ -1761,13 +1813,14 @@ export function createSceneEditor(root, {
       : tuning.vehiclePath?.parkingBounds;
     for (const edge of ['minX', 'maxX', 'minZ', 'maxZ']) {
       const controls = inputs.get(`vehiclePath.parkingBounds.${edge}`);
-      controls?.row?.classList.toggle('is-readonly', automatic);
+      const readOnly = automatic && edge !== 'maxZ';
+      controls?.row?.classList.toggle('is-readonly', readOnly);
       if (controls?.range) {
-        controls.range.disabled = automatic;
+        controls.range.disabled = readOnly;
         controls.range.value = String(bounds?.[edge]);
       }
       if (controls?.number) {
-        controls.number.disabled = automatic;
+        controls.number.disabled = readOnly;
         controls.number.value = formatValue(bounds?.[edge], controls.step);
       }
     }
@@ -1818,6 +1871,10 @@ export function createSceneEditor(root, {
   function setEditorCategory(category, { focus = false } = {}) {
     if (!EDITOR_CATEGORIES.some(([id]) => id === category)) return;
     root.dataset.editorCategory = category;
+    if (!shellLayout) {
+      previewExportSet = category === 'export';
+      refreshExportBranding();
+    }
     for (const tab of categoryTabs) {
       const selected = tab.dataset.editorCategoryTab === category;
       tab.setAttribute('aria-selected', String(selected));
@@ -1844,6 +1901,8 @@ export function createSceneEditor(root, {
   });
 
   exportSetSelect.addEventListener('change', () => {
+    refreshExportBranding();
+    shellRefresh?.();
     const crowd = exportSetSelect.value === 'crowd';
     if (exportSetNote) {
       exportSetNote.textContent = crowd
@@ -1853,6 +1912,7 @@ export function createSceneEditor(root, {
   });
 
   async function exportPlayable({ all = false } = {}) {
+    if (playableExportBusy || root.querySelector('.editor-export-confirm[open]')) return;
     if (!updateExportVariantControls()) {
       [...inputs.values()].find(controls => controls.isVariant && !controls.updateValidity())?.textInput.reportValidity();
       return;
@@ -1881,8 +1941,17 @@ export function createSceneEditor(root, {
     const platformLabel = all
       ? `\u5168\u90e8 7 \u4e2a\u5e73\u53f0 \u00d7 ${brandingSetLabel}`
       : `${PLAYABLE_EXPORT_PLATFORMS.find(([id]) => id === platform)?.[1] ?? platform}\uff08${brandingSetLabel}\uff09`;
-    const variantCount = getExportVariantPlan(getTuning()).count;
+    const source = getPlayableExportPayload() ?? { tuning: getTuning() };
+    const snapshot = withExportStepsDraft(source.tuning);
+    const exportPayload = { ...source, tuning: snapshot };
+    const variantCount = getExportVariantPlan(snapshot).count;
     const exportLabel = `${platformLabel}，${variantCount}个版本 / ${variantCount * (all ? 7 : 1)}份`;
+    const naming = snapshot.exportNaming;
+    const platforms = all ? PLAYABLE_EXPORT_PLATFORMS : PLAYABLE_EXPORT_PLATFORMS.filter(([id]) => id === platform);
+    const confirmed = await confirmPlayableExport(root, buildExportReviewRows(snapshot, {
+      brandingSet, brandingSetLabel, platforms, variantCount
+    }));
+    if (!confirmed) return;
     playableExportBusy = true;
     exportSetSelect.disabled = true;
     exportSelect.disabled = true;
@@ -1892,8 +1961,8 @@ export function createSceneEditor(root, {
     exportAllButton.setAttribute('aria-busy', 'true');
     exportStatus.dataset.state = 'busy';
     exportStatus.textContent = `\u6b63\u5728\u6253\u5305 ${exportLabel}...`;
-    // The first export of a setup rebuilds every platform (about two minutes
-    // on the one-CPU server) while a repeat of the same setup is much faster.
+    // The first export builds the shared runtime and Mintegral compatibility
+    // runtime; a repeat of the same setup can reuse those packaged sources.
     // A live counter keeps that wait legible instead of looking hung.
     const exportStartedAt = Date.now();
     const exportElapsedTimer = setInterval(() => {
@@ -1901,7 +1970,6 @@ export function createSceneEditor(root, {
       exportStatus.textContent = `\u6b63\u5728\u6253\u5305 ${exportLabel}...（已用 ${seconds} 秒）`;
     }, 1000);
     try {
-      const exportPayload = getPlayableExportPayload() ?? { tuning: getTuning() };
       const response = await fetch(all ? '/__playable-export-all' : '/__playable-export', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -1940,6 +2008,10 @@ export function createSceneEditor(root, {
       link.remove();
       setTimeout(() => URL.revokeObjectURL(objectUrl), 0);
 
+      if (exportStepsDraft && exportStepsDraft.trim() === naming.steps) {
+        exportStepsDraft = '';
+        sync();
+      }
       const check = response.headers.get('X-Playable-Check');
       const serverMs = Number(response.headers.get('X-Playable-Export-Duration-Ms'));
       const totalSeconds = Math.max(1, Math.round((Date.now() - exportStartedAt) / 1000));
@@ -2015,7 +2087,7 @@ export function createSceneEditor(root, {
       const options = control === 'vehicle-id-select'
         ? getVehicleIdOptions(LEVEL_1.vehicles)
         : configuredOptions;
-      const isColor = /color$/i.test(path) || /^passengerMaterial\.solidColors\.\d+$/.test(path);
+      const isColor = /color$/i.test(path);
       const isToggle = control === 'toggle';
       const isCountdownNumber = control === 'countdown-number';
       const isFilename = control === 'filename';
@@ -2060,7 +2132,7 @@ export function createSceneEditor(root, {
       if (isVariant) {
         textInput.maxLength = 256;
         textInput.spellcheck = false;
-        textInput.placeholder = path.endsWith('.version') ? '如 3/5/10' : '如 10/20';
+        textInput.placeholder = path.endsWith('.version') ? '如 3/5/10' : '留空为 N';
       }
       if (control === 'stamina-number') {
         range.setAttribute('aria-label', `${group.title} ${label}滑条`);
@@ -2154,9 +2226,10 @@ export function createSceneEditor(root, {
       if (isText) {
         const updateValidity = () => {
           if (isVariant) {
-            const enabled = path.endsWith('.version') ? Number(getTuning().stamina?.enabled) === 1 : isInstallGateEnabled(getTuning().installGate);
+            const stamina = path === 'exportNaming.version';
+            const enabled = !stamina || Number(getTuning().stamina?.enabled) === 1;
             let message = '';
-            try { parseExportVariantValues(textInput.value, path.endsWith('.version') ? 'stamina' : 'steps', enabled); }
+            try { parseExportVariantValues(textInput.value, stamina ? 'stamina' : 'steps', enabled); }
             catch (error) { message = error.message; }
             textInput.setAttribute('aria-invalid', String(Boolean(message)));
             textInput.setCustomValidity(message);
@@ -2170,6 +2243,12 @@ export function createSceneEditor(root, {
         };
         textInput.addEventListener('input', () => {
           updateValidity();
+          if (path === 'exportNaming.steps') {
+            exportStepsDraft = textInput.value;
+            updateExportVariantControls();
+            shellRefresh?.();
+            return;
+          }
           const next = structuredClone(getTuning());
           setAtPath(next, path, textInput.value);
           commitTuning(next, { path, merge: true });
@@ -2265,6 +2344,7 @@ export function createSceneEditor(root, {
         if (!Number.isFinite(value)) return;
         const next = structuredClone(getTuning());
         setAtPath(next, path, value);
+        if (path === 'installGate.successfulOperationThreshold') next.installGate.customThresholdEnabled = 1;
         commitTuning(next, { path, merge: true });
         if (range) range.value = String(value);
         number.value = formatValue(value, step);
@@ -2272,7 +2352,7 @@ export function createSceneEditor(root, {
         if (path === 'installGate.successfulOperationThreshold') sync();
       };
       range?.addEventListener('input', () => commit(range.value));
-      number.addEventListener(isColor ? 'change' : 'input', () => commit(number.value));
+      number.addEventListener(isColor || path.startsWith('combo.') ? 'change' : 'input', () => commit(number.value));
       color?.addEventListener('change', () => commit(parseInt(color.value.slice(1), 16)));
       inputs.set(path, { row, range, number, color, step });
       section.append(row);
@@ -2300,7 +2380,43 @@ export function createSceneEditor(root, {
     fieldsRoot.append(section);
   }
 
+  const speedPositionRow = inputs.get('speedToggle.y')?.row;
+  if (speedPositionRow) {
+    const actions = document.createElement('div');
+    actions.className = 'editor-camera-actions';
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.textContent = '默认位置和宽度';
+    const { x, y, width, height } = defaults.speedToggle;
+    button.title = `X ${x}，Y ${y}，宽 ${width}，高 ${height}`;
+    button.addEventListener('click', () => {
+      const next = structuredClone(getTuning());
+      Object.assign(next.speedToggle, { x, y, width, height });
+      commitTuning(next, { path: 'speedToggle.bounds' });
+      sync();
+    });
+    actions.append(button);
+    speedPositionRow.after(actions);
+  }
   const cameraControls = inputs.get('camera.fitWidth');
+  const arrowControls = inputs.get('vehicleArrow.offsetX');
+  if (arrowControls) {
+    const actions = document.createElement('div');
+    actions.className = 'editor-camera-actions';
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.textContent = '套用车顶参考样式';
+    button.addEventListener('click', () => {
+      const next = structuredClone(getTuning());
+      for (const field of ['offsetX', 'offsetY', 'offsetZ', 'outlineColor', 'outlineScale', 'outlineDepthTest']) {
+        next.vehicleArrow[field] = defaults.vehicleArrow[field];
+      }
+      commitTuning(next, { path: 'vehicleArrow' });
+      sync();
+    });
+    actions.append(button);
+    arrowControls.row.closest('.editor-section')?.append(actions);
+  }
   const cameraSection = cameraControls?.row.closest('.editor-section');
   const cameraTools = document.createElement('div');
   cameraTools.className = 'editor-camera-tools';
@@ -3668,18 +3784,22 @@ export function createSceneEditor(root, {
   spatialSection.innerHTML = `
     <summary class="editor-section-summary"><h3>\u7acb\u4f53\u8f68\u9053\u7f16\u8f91</h3></summary>
     <div class="editor-spatial-actions">
+      <button class="editor-spatial-json-import" type="button">导入 JSON</button>
       <button class="editor-spatial-import" type="button">\u5bfc\u5165 Prefab</button>
       <button class="editor-spatial-refresh" type="button">\u5237\u65b0\u5217\u8868</button>
       <button class="editor-spatial-edit-points" type="button">\u7f16\u8f91\u8f68\u9053\u70b9\u4f4d</button>
       <button class="editor-spatial-open-folder" type="button">\u6253\u5f00\u5b58\u50a8\u6587\u4ef6\u5939</button>
     </div>
     <input class="editor-spatial-file" type="file" accept=".prefab" hidden>
+    <input class="editor-spatial-json-file" type="file" accept=".json,application/json" hidden>
     <p class="editor-spatial-status" aria-live="polite">\u6b63\u5728\u8bfb\u53d6...</p>
   `;
   const spatialImportAnchor = fieldsRoot.querySelector('[data-spatial-import-anchor]');
   spatialImportAnchor.before(spatialSection);
 
   const spatialImportButton = spatialSection.querySelector('.editor-spatial-import');
+  const spatialJsonButton = spatialSection.querySelector('.editor-spatial-json-import');
+  const spatialJsonFile = spatialSection.querySelector('.editor-spatial-json-file');
   const spatialRefreshButton = spatialSection.querySelector('.editor-spatial-refresh');
   const spatialEditPointsButton = spatialSection.querySelector('.editor-spatial-edit-points');
   const spatialOpenFolderButton = spatialSection.querySelector('.editor-spatial-open-folder');
@@ -3688,6 +3808,7 @@ export function createSceneEditor(root, {
 
   function setSpatialBusy(busy) {
     spatialImportButton.disabled = busy;
+    spatialJsonButton.disabled = busy;
     spatialRefreshButton.disabled = busy;
     spatialEditPointsButton.disabled = busy || !isSpatialConveyorSelection(getTuning().conveyorLayout?.selected);
     spatialOpenFolderButton.disabled = busy;
@@ -3740,6 +3861,29 @@ export function createSceneEditor(root, {
   }
 
   spatialImportButton.addEventListener('click', () => spatialFileInput.click());
+  spatialJsonButton.addEventListener('click', () => spatialJsonFile.click());
+  spatialJsonFile.addEventListener('change', async () => {
+    const [file] = spatialJsonFile.files ?? [];
+    if (!file) return;
+    setSpatialBusy(true);
+    let saved;
+    try {
+      spatialStatus.textContent = '正在校验轨道 JSON...';
+      saved = await importSpatialConveyorJson(file);
+      if (!saved) {
+        spatialStatus.textContent = '已取消导入';
+        return;
+      }
+      await refreshSpatialConveyorOptions();
+      if (getTuning().conveyorLayout?.selected === 'spatial:' + saved.id) reloadSelectedSpatialConveyor();
+      spatialStatus.textContent = (saved.replaced ? '已替换 ' : '已新增 ') + saved.id;
+    } catch (error) {
+      spatialStatus.textContent = (saved ? '轨道已保存，刷新列表失败：' : '导入失败：') + error.message;
+    } finally {
+      spatialJsonFile.value = '';
+      setSpatialBusy(false);
+    }
+  });
   spatialEditPointsButton.addEventListener('click', async () => {
     setSpatialBusy(true);
     spatialStatus.textContent = '\u6b63\u5728\u6253\u5f00\u70b9\u4f4d\u7f16\u8f91\u5668...';
@@ -3793,19 +3937,6 @@ export function createSceneEditor(root, {
     }
   });
 
-  function updatePassengerMaterialVisibility(tuning) {
-    const mode = tuning.passengerMaterial?.mode ?? 'unityTexture';
-    for (const [path, controls] of inputs) {
-      if (path.startsWith('passengerMaterial.colors.')) {
-        controls.row.hidden = mode === 'solidColor';
-      } else if (path.startsWith('passengerMaterial.solidColors.')) {
-        controls.row.hidden = mode !== 'solidColor';
-      } else if (path === 'passengerMaterial.baseColorStrength') {
-        controls.row.hidden = mode === 'solidColor';
-      }
-    }
-  }
-
   function updateConveyorLayoutVisibility(tuning) {
     const selected = tuning.conveyorLayout?.selected ?? 'dualQueue2';
     for (const section of fieldsRoot.querySelectorAll('[data-conveyor-layout]')) {
@@ -3820,7 +3951,10 @@ export function createSceneEditor(root, {
 
   function sync({ resetCountdownDrafts = false } = {}) {
     const tuning = getTuning();
+    if (previewExportSet) refreshExportBranding();
     for (const [path, controls] of inputs) {
+      if (path === 'combo.goldSeconds') controls.row.hidden = tuning.combo?.mode !== 'gold';
+      if (path === 'combo.timedSeconds') controls.row.hidden = tuning.combo?.mode !== 'timed';
       // A profile saved before the skin existed has no `speedToggle.style`, and a
       // hand-edited one may carry a value this build dropped. Either way the
       // select must land on a real option instead of going blank.
@@ -3851,7 +3985,7 @@ export function createSceneEditor(root, {
         continue;
       }
       if (controls.textInput) {
-        controls.textInput.value = value ?? '';
+        controls.textInput.value = path === 'exportNaming.steps' ? exportStepsDraft : value ?? '';
         controls.updateValidity?.();
         continue;
       }
@@ -3864,7 +3998,6 @@ export function createSceneEditor(root, {
       controls.number.value = formatValue(value, controls.step);
       if (controls.color) controls.color.value = formatColor(value);
     }
-    updatePassengerMaterialVisibility(tuning);
     updateConveyorLayoutVisibility(tuning);
     updateCountdownControls();
     updateStaminaControls();
@@ -3934,7 +4067,7 @@ export function createSceneEditor(root, {
     function panelFor(section) {
       if (section.classList.contains('editor-screenshot')) return 'export';
       if (section.classList.contains('editor-playable-export')) return 'export';
-      if (section.dataset.conveyorLayout || section.dataset.spatialOnly) return 'track';
+      if (section.dataset.conveyorLayout || section.dataset.spatialOnly || section.classList.contains('editor-spatial-conveyor')) return 'track';
       // The free-asset layers section is built by a custom panel and owns no
       // tuning rows at all, so it cannot vote.
       if (section.querySelector('.editor-free-asset-panel')) return 'guide';
@@ -3974,7 +4107,6 @@ export function createSceneEditor(root, {
     // they would sit outside every panel host and stay visible in all nine.
     const ORPHAN_PANELS = new Map([
       ['editor-level-tools', 'level'],
-      ['editor-spatial-conveyor', 'track'],
     ]);
     function panelForNode(node) {
       if (node.classList.contains('editor-section')) return panelFor(node);
@@ -4086,6 +4218,8 @@ export function createSceneEditor(root, {
 
     function setActivePanel(panelId, { focus = false } = {}) {
       activePanel = panelId;
+      previewExportSet = panelId === 'export';
+      refreshExportBranding();
       for (const button of railButtons) {
         const on = button.dataset.shellPanel === panelId;
         button.classList.toggle('is-active', on);
@@ -4217,10 +4351,8 @@ export function createSceneEditor(root, {
     // what catches a 900 KB upload before a two-minute export fails.
     const PLAYABLE_PAYLOAD_BUDGET_BYTES = 5 * 1024 * 1024;
     const PLAYABLE_PAYLOAD_WARN_BYTES = Math.round(PLAYABLE_PAYLOAD_BUDGET_BYTES * 0.8);
-    // The single-file shell (runtime JS + CSS + markup) measured ~0.95 MB on the
-    // shipped Bus build; it is reported separately so the note never pretends
-    // the asset sum is the artifact size.
-    const PLAYABLE_SHELL_BYTES = 950 * 1024;
+    // Measured on the online AppLovin HTML, excluding its embedded data URIs.
+    const PLAYABLE_SHELL_BYTES = 1_102_551;
     const perAssetCaps = [
       ['/assets/editor-backgrounds/', CUSTOM_BACKGROUND_MAX_OUTPUT_BYTES, '背景图'],
       [CUSTOM_PRE_ROLL_ASSET_PREFIX, 2 * 1024 * 1024, '前贴视频'],
@@ -4238,7 +4370,7 @@ export function createSceneEditor(root, {
     let payloadStatsTimer = 0;
 
     function inlineAssetUrls() {
-      const tuning = getTuning();
+      const tuning = createBrandingVariantTuning(getTuning(), exportSetSelect.value);
       // The editor preview always runs one stage built from the selected level
       // (plus Level7 for the Level9 handoff). The baked catalogue entry is a
       // stale twin of that same stage slot, so shipping it in the estimate
@@ -4248,24 +4380,11 @@ export function createSceneEditor(root, {
         const handoff = PLAYABLE_ALL_LEVELS.find((level) => level?.key === 'level7');
         if (handoff) levels.push(handoff);
       }
-      const conveyorLayouts = [...new Set([
-        tuning.conveyorLayout?.selected,
-        ...PLAYABLE_STAGES.map((stage) => stage?.scene?.conveyorLayout),
-        ...PLAYABLE_STAGE_CHOICES.flatMap((choice) => (
-          (choice?.options ?? []).map((option) => option?.scene?.conveyorLayout)
-        ))
-      ].filter(Boolean))];
       return collectPlayableInlineAssetUrls({
         tuning,
         levels,
-        activeSession: ACTIVE_PLAYABLE_SESSION,
         spatialSelection: tuning.conveyorLayout?.selected,
-        entryBannerEnabled: Boolean(Number(tuning.entryBanner?.enabled)),
-        conveyorLayouts,
-        choiceOptionImages: PLAYABLE_STAGE_CHOICES
-          .flatMap((choice) => choice?.options ?? [])
-          .map((option) => option?.image)
-          .filter(Boolean)
+        ...getReachableStageArt(tuning, levels.map(level => ({ level })))
       });
     }
 
@@ -4526,7 +4645,7 @@ export function createSceneEditor(root, {
       }, {
         state: sizeState,
         title: '单包体积（估算）',
-        note: `素材 base64 ${formatKilobytes(base64Bytes)} + 壳约 ${formatKilobytes(PLAYABLE_SHELL_BYTES)}，上限 5 MB`,
+        note: `预计 ${formatKilobytes(estimatedBytes)}（Base64 素材 ${formatKilobytes(base64Bytes)} + 运行代码等约 ${formatKilobytes(PLAYABLE_SHELL_BYTES)}），上限 5 MiB`,
         path: ''
       }];
     }

@@ -2,6 +2,7 @@ import { readFile, stat } from 'node:fs/promises';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { validateStoreLink } from '../src/store-links.js';
+import { getReachableStageArt } from '../src/playable-inline-assets.js';
 
 const ROOT = process.cwd();
 const PACKAGE_FILE = path.join(ROOT, 'artifacts', 'applovin', 'index.html');
@@ -63,7 +64,7 @@ async function assetDataUri(asset) {
 }
 
 async function main() {
-  const [{ PLAYABLE_STAGE_CHOICES, PLAYABLE_ALL_LEVELS, ACTIVE_PLAYABLE_SESSION }, {
+  const [{ PLAYABLE_STAGES, PLAYABLE_STAGE_CHOICES, PLAYABLE_ALL_LEVELS, ACTIVE_PLAYABLE_SESSION }, {
     MECHANISM_RESOURCE_MANIFEST,
     PLAYABLE_TRACK_RESOURCES,
     PRE_ROLL_ASSET_PATHS,
@@ -97,20 +98,14 @@ async function main() {
   const selectedSpatialPackage = selectedSpatialId
     ? JSON.parse(await readFile(path.join(SPATIAL_PACKAGE_ROOT, `${selectedSpatialId}.json`), 'utf8'))
     : null;
+  const stageArt = getReachableStageArt(SCENE_TUNING, PLAYABLE_STAGES, PLAYABLE_STAGE_CHOICES);
   const mechanismTypes = getMechanismTypesForLevels(PLAYABLE_ALL_LEVELS, {
     spatialSelection: selectedConveyor,
     // A later stage can show the banner even when the global toggle is off, so
     // the assets must be present whenever any stage asks for it.
-    entryBannerEnabled: Boolean(
-      SCENE_TUNING.entryBanner?.enabled
-      || PLAYABLE_STAGE_CHOICES.some((choice) => (
-        choice?.options?.some((option) => option.opening?.entryBanner?.enabled)
-      ))
-    )
+    entryBannerEnabled: stageArt.entryBanners.length > 0
   });
-  const selectedMechanismUrls = getMechanismResourcePaths(mechanismTypes, {
-    conveyorLayouts: [selectedConveyor].filter(Boolean)
-  });
+  const selectedMechanismUrls = getMechanismResourcePaths(mechanismTypes, stageArt);
   const allMechanismUrls = getMechanismResourcePaths(Object.keys(MECHANISM_RESOURCE_MANIFEST), {
     conveyorLayouts: Object.keys(PLAYABLE_TRACK_RESOURCES)
   });

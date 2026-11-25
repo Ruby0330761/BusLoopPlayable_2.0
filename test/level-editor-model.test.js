@@ -105,31 +105,20 @@ test('preserves valid per-vehicle colour-region overrides in runtime conversion'
   assert.deepEqual(model.document.vehicles[0].colorOverrides, {});
 });
 
-test('keeps passenger colour-region overrides bound to matching vehicle colours', () => {
-  const document = createLevelDocument({
-    vehicles: [{ id: 1, seats: 4, colorIndex: 6, colorOverrides: { body: '#9a431a' } }],
-    passengerQueues: [[6, 6, 6, 6]]
-  });
-  assert.deepEqual(document.passengerColorOverrides, { '6': { body: '#9a431a' } });
-  const model = new LevelEditorModel(document);
+test('ordinary passengers follow vehicle paint across edit, reset and export of legacy levels', () => {
+  const legacy = { vehicles: [{ id: 1, seats: 4, colorIndex: 6, colorOverrides: { body: '#9a431a' } },
+    { id: 2, seats: 4, colorIndex: 6 }], passengerQueues: [[6, 6]],
+    passengerColorOverrides: { 6: { body: '#123456' } } };
+  const model = new LevelEditorModel(legacy);
+  for (const vehicle of model.document.vehicles) assert.equal(vehicle.colorOverrides.body, '#9a431a');
   model.select('vehicle:1');
-  assert.equal(model.setPassengerColorOverride(6, 'highlight', '#f2b36a'), true);
-  assert.equal(model.document.passengerColorOverrides['6'].highlight, '#f2b36a');
-  assert.equal(model.document.vehicles[0].colorOverrides.highlight, '#f2b36a');
-  const runtime = levelDocumentToRuntime(model.document);
-  assert.equal(runtime.passengerColorOverrides['6'].highlight, '#f2b36a');
-  assert.equal(validateLevelDocument(model.document).valid, true);
-});
-
-test('vehicle body colour edits update the matching passenger override', () => {
-  const model = new LevelEditorModel(createLevelDocument({
-    vehicles: [{ id: 1, seats: 4, colorIndex: 6 }, { id: 2, seats: 4, colorIndex: 6 }],
-    passengerQueues: [[6, 6, 6, 6, 6, 6, 6, 6]]
-  }));
-  model.select('vehicle:1');
-  model.setSelectedField('colorOverrides.body', '#9a431a');
-  assert.equal(model.document.passengerColorOverrides['6'].body, '#9a431a');
-  assert.equal(model.document.vehicles[1].colorOverrides.body, '#9a431a');
+  model.setSelectedField('colorOverrides.body', '#abcdef');
+  const runtime = levelDocumentToRuntime(model.document, legacy);
+  assert.equal(runtime.passengerColorOverrides, undefined);
+  assert.deepEqual(runtime.vehicles.map(v => v.colorOverrides.body), ['#abcdef', '#abcdef']);
+  model.resetSelectedVehicleColors();
+  assert.ok(model.document.vehicles.every(v => !v.colorOverrides.body));
+  assert.deepEqual(model.document.passengerQueues, [[6, 6]]);
 });
 
 test('retargets an imported JSON document to the current level identity', () => {

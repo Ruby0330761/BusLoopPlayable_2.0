@@ -82,7 +82,7 @@ test('scaled substeps advance the game twice as far as real time at x2', () => {
   assert.equal(run(2), 2);
 });
 
-test('speed toggle tuning keeps its top-right geometry and a valid multiplier', () => {
+test('speed toggle matches the reference capsule position and size', () => {
   const tuning = SCENE_TUNING.speedToggle;
   // The switch is off by default: the progress-bar delivery owns the top-right
   // corner and the button crowded the bar. The geometry and multiplier stay
@@ -93,11 +93,8 @@ test('speed toggle tuning keeps its top-right geometry and a valid multiplier', 
   // default has to name a real option or the editor select starts blank.
   assert.ok(SPEED_TOGGLE_STYLES.some((style) => style.value === tuning.style),
     `speedToggle.style ${tuning.style} is not a known skin`);
-  assert.ok(tuning.width > 0 && tuning.height > 0);
-  // Design space is 1080x2160, so the button's centre sits far right and near
-  // the top rather than at the old 84%/14% default.
-  assert.ok(tuning.x > 1080 * 0.8, `speedToggle.x ${tuning.x} is not in the right-hand column`);
-  assert.ok(tuning.y < 2160 * 0.1, `speedToggle.y ${tuning.y} is not in the top band`);
+  assert.equal(tuning.style, 'light');
+  assert.deepEqual([tuning.x, tuning.y, tuning.width, tuning.height], [968, 244, 204, 106]);
   for (const path of SPEED_TOGGLE_ASSETS) {
     assert.ok(SPEED_TOGGLE_ASSET_PATHS.includes(path), `${path} must be in the switch's export whitelist`);
     assert.equal(existsSync(new URL(`../public${path}`, import.meta.url)), true, `${path} is missing`);
@@ -110,18 +107,13 @@ test('speed toggle tuning keeps its top-right geometry and a valid multiplier', 
   }
 });
 
-test('a missing speedToggle.enabled stays hidden and stale caches are migrated', async () => {
+test('existing switches keep their enabled flag and legacy skin when defaults change', async () => {
   const mainSource = await readFile(new URL('../src/main.js', import.meta.url), 'utf8');
   // A tuning object without the flag (an older level file, a hand-written
   // profile) must not resurrect the button.
   assert.match(mainSource, /const enabled = Boolean\(config\.enabled \?\? 0\)/u);
-  // Every save used to write enabled: 1 as the default, so cached profiles keep
-  // it even though the operator never touched the switch. One marker-guarded
-  // pass clears both the global cache and every per-level profile.
-  assert.match(mainSource, /const SPEED_TOGGLE_HIDDEN_MIGRATION_KEY = 'bus-loop-speed-toggle-hidden-v1'/u);
-  assert.match(mainSource, /function migrateSpeedToggleHiddenProfiles\(\)/u);
-  assert.match(mainSource, /function applySpeedToggleHiddenMigration\(source\)/u);
-  assert.match(mainSource, /migrateSpeedToggleHiddenProfiles\(\);[\s\S]*SPEED_TOGGLE_HIDDEN_MIGRATION_KEY, '1'/u);
+  assert.doesNotMatch(mainSource, /applySpeedToggleHiddenMigration/u);
+  assert.match(mainSource, /target\.style = saved\.style \?\? 'default'/u);
 });
 
 test('the playable renders the speed button and wires it to the simulation clock', async () => {

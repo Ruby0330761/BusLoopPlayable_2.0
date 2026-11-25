@@ -13,7 +13,9 @@
       "id": 1,
       "seats": 10,
       "colorIndex": 3,
-      "colorOverrides": {},
+      "colorOverrides": {
+        "body": "#868d98"
+      },
       "x": -0.81,
       "z": 0.27,
       "yaw": 0,
@@ -105,7 +107,9 @@
       "id": 5,
       "seats": 10,
       "colorIndex": 3,
-      "colorOverrides": {},
+      "colorOverrides": {
+        "body": "#868d98"
+      },
       "x": -0.5154246794871795,
       "z": 0.8502103365384616,
       "yaw": 90,
@@ -127,8 +131,10 @@
     {
       "id": 6,
       "seats": 10,
-      "colorIndex": 3,
-      "colorOverrides": {},
+      "colorIndex": 0,
+      "colorOverrides": {
+        "body": "#868d98"
+      },
       "x": 0.5531350160256412,
       "z": 0.8297275641025642,
       "yaw": 90,
@@ -358,16 +364,16 @@
       3,
       3,
       3,
-      3,
-      3,
-      3,
-      3,
-      3,
-      3,
-      3,
-      3,
-      3,
-      3
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0
     ],
     [
       1,
@@ -432,7 +438,14 @@
       1
     ]
   ],
-  "passengerColorOverrides": {},
+  "passengerColorOverrides": {
+    "0": {
+      "body": "#868d98"
+    },
+    "3": {
+      "body": "#868d98"
+    }
+  },
   "vehicleDepthes": {},
   "tuning": {
     "level": {},
@@ -1302,17 +1315,20 @@
         "speedEnd": 0.72
       },
       "smokeTrail": {
-        "rateOverTime": 25,
-        "lifetimeMin": 0.2,
+        "rateOverTime": 70,
+        "lifetimeMin": 0.15,
         "lifetimeMax": 0.3,
-        "sizeMin": 0.06,
-        "sizeMax": 0.15,
+        "sizeMin": 0.36,
+        "sizeMax": 0.72,
         "speedScale": 1,
         "offsetZ": -0.46,
         "offsetY": 0.08,
-        "spread": 1,
+        "spread": 2.25,
         "gravity": -0.5,
-        "opacity": 1
+        "opacity": 1,
+        "sizeRandomness": 100,
+        "rotationSpeed": 130,
+        "rotationRandomness": 56
       },
       "hit": {
         "sizeScale": 2,

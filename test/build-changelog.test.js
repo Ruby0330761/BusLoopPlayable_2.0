@@ -104,3 +104,8 @@ test('the about panel is styled as a modal overlay', () => {
   // Long histories scroll inside the dialog instead of growing the panel.
   assert.match(styleSource, /\.editor-about-list \{[^}]*overflow-y: auto/u);
 });
+
+test('opening About suppresses preview guides without changing the operator preference', () => {
+  assert.match(editorSource, /root\.classList\.toggle\('is-about-open', open\)/);
+  assert.match(styleSource, /\.editor-safe-guide\[hidden\],\s*#app:has\(> \.scene-editor\.is-about-open\) \.editor-safe-guide\s*\{\s*display: none;/);
+});

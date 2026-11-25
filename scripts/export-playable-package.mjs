@@ -14,7 +14,11 @@ import { validateStoreLink } from '../src/store-links.js';
 import { validateCountdownConfig } from '../src/countdown.js';
 import { validateStaminaConfig } from '../src/stamina.js';
 import { validateFreeAssetConfig } from '../src/free-asset-layers.js';
+import { getReachableStageArt } from '../src/playable-inline-assets.js';
+import { getEntryBannerArt } from '../src/mechanism-resources.js';
+import { resolvePreRollEnabled } from '../src/pre-roll.js';
 import { migrateVehiclePathTuning } from '../src/vehicle-path-config.js';
+import { migrateBrandingIconRadius } from '../src/branding-image-frame.js';
 import {
   PRE_ROLL_COMPRESSION_VERSION,
   compressPreRollFile
@@ -45,89 +49,10 @@ export const PLAYABLE_NAMING_PATTERN = 'requirement-material-iteration-N-languag
 // every artifact name. It used to print as `bus`, so the download container and
 // the check reports disagreed with the packaged files they described.
 export const BUS_BRANDING_LABEL = 'BL';
-export const PLAYABLE_BRANDING_VARIANTS = Object.freeze([
-  // One BL package serves both stores. The icon is not baked per variant any
-  // more: both art files ship inside the single build and the runtime picks one
-  // from the device UA, exactly like it already picks the store link. Splitting
-  // Android and iOS into separate downloads doubled the upload work for files
-  // that differed by one image, and a wrong-device preview of either half
-  // showed the other store's icon.
-  Object.freeze({
-    id: 'bus',
-    suffix: '',
-    iconAsset: '/assets/icon-android.jpg',
-    iconAssets: Object.freeze({
-      android: '/assets/icon-android.jpg',
-      ios: '/assets/icon-ios.png'
-    }),
-    // BL and BFT are different games: a BL package must never carry the BFT
-    // wordmark just because the editor preview was left on the other brand.
-    logoAsset: '/assets/main-loading-icon-small.png',
-    // Both UAs must pass: the same file is uploaded to both stores.
-    runtimeDevices: Object.freeze(['android', 'ios'])
-  })
-]);
-// Bus Fever ships a separate Android and iOS icon; the Crowd playable is one
-// build shared by both stores, so it keeps a single variant with its own art.
-// The Crowd playable also advertises its own store listings: the editor tuning
-// still carries the Bus Fever links, and a Crowd package that kept them would
-// send players to the wrong game.
-export const CROWD_STORE_LINKS = Object.freeze({
-  android: validateStoreLink(
-    'android',
-    'https://play.google.com/store/apps/details?id=busflow.traffic.puzzle&hl=en_SG',
-    'Crowd Android store link'
-  ),
-  ios: validateStoreLink(
-    'ios',
-    'https://apps.apple.com/us/app/bus-crowd-traffic-jam/id6754059516',
-    'Crowd iOS store link'
-  )
-});
-export const PLAYABLE_BRANDING_SETS = Object.freeze({
-  bus: Object.freeze([...PLAYABLE_BRANDING_VARIANTS]),
-  crowd: Object.freeze([
-    Object.freeze({
-      id: 'crowd',
-      iconAsset: '/assets/icon-crowd.jpg',
-      // Both store slots point at the same art. This is not cosmetic: the base
-      // tuning carries Bus's per-device icons, and the workspace applies tuning by
-      // deep-merging, which cannot remove a key. Without an explicit override a
-      // Crowd build kept the Bus icon and the runtime picked it by user agent.
-      iconAssets: Object.freeze({
-        android: '/assets/icon-crowd.jpg',
-        ios: '/assets/icon-crowd.jpg'
-      }),
-      logoAsset: '/assets/main-loading-icon-crowd.webp',
-      storeLinks: CROWD_STORE_LINKS,
-      runtimeDevices: Object.freeze(['android', 'ios']),
-      // BFT names its packages exactly like BL does; the requirement code
-      // (`BFT-2610293`), requester and step tag all come from the tuning the
-      // operator exported. This set must not invent `BFT`/`ZZN`, or a delivery
-      // is renamed into a different requirement than the one being worked on.
-      //
-      // The two store listings are worded differently — `Bus Crowd` on Google
-      // Play, `Bus Crowd - Traffic Jam` on the App Store — so the pair travels in
-      // `branding.storeTitles` and the runtime caption follows the same storefront
-      // as the icon and the store link. `textContent` stays the fuller name so a
-      // build that somehow reaches neither branch still reads as the long title.
-      // Every name this set has ever shipped counts as untouched, so a session
-      // saved before the split is not mistaken for hand-written copy.
-      textContent: 'Bus Crowd - Traffic Jam',
-      defaultTextContent: ['Bus Fever Party!', 'Bus Crowd'],
-      storeTitles: Object.freeze({
-        google: 'Bus Crowd',
-        ios: 'Bus Crowd - Traffic Jam'
-      }),
-      // The Crowd wordmark under the CTA has to sit dead centre. The editor
-      // stores a draggable x, and a saved session can leave it a few pixels off
-      // (a 534 instead of 540 shipped once), so the Crowd set pins the text to
-      // the design centre instead of trusting whatever the tuning carries.
-      centerText: true,
-      loadingTitle: 'Bus Crowd - Traffic Jam'
-    })
-  ])
-});
+import { PLAYABLE_BRANDING_SETS, createBrandingVariantTuning } from '../src/export-branding.js';
+import { createEditorExportSession } from '../src/playable-session-config.js';
+export { createEditorExportSession };
+export { PLAYABLE_BRANDING_SETS, PLAYABLE_BRANDING_VARIANTS, CROWD_STORE_LINKS, createBrandingVariantTuning } from '../src/export-branding.js';
 export const DEFAULT_PLAYABLE_BRANDING_SET = 'bus';
 
 export function resolveBrandingSetVariants(brandingSet = DEFAULT_PLAYABLE_BRANDING_SET) {
@@ -144,7 +69,7 @@ const MAX_EXPORT_NAME_LENGTH = 180;
 const DEFAULT_EXPORT_CONCURRENCY = 2;
 const EDITOR_BACKGROUND_PREFIX = '/assets/editor-backgrounds/';
 const EDITOR_PRE_ROLL_PREFIX = '/assets/editor-prerolls/';
-const EXPORT_SOURCE_CACHE_VERSION = 'v3';
+const EXPORT_SOURCE_CACHE_VERSION = 'v4';
 const EXPORT_SOURCE_CACHE_LIMIT = 2;
 const exportSourceCache = new Map();
 
@@ -299,71 +224,6 @@ function buildPlayableArtifactNames(tuning, platforms, suffix = '', options) {
   return names;
 }
 
-// A saved level keeps whatever caption it last exported with, so every wording
-// a set has ever shipped counts as "untouched". Without that, re-exporting a
-// session authored against the old short name would pin it forever while a
-// fresh session got the new one.
-function isVariantDefaultText(current, variant) {
-  const defaults = [variant.defaultTextContent ?? []].flat();
-  return defaults.some((value) => value && current === value);
-}
-
-export function createBrandingVariantTuning(tuning, variantId) {
-  const variant = Object.values(PLAYABLE_BRANDING_SETS)
-    .flat()
-    .find(({ id }) => id === variantId);
-  if (!variant) throw new TypeError(`Unsupported playable branding variant: ${variantId ?? '<missing>'}.`);
-  const output = structuredClone(tuning ?? {});
-  output.branding ??= {};
-  output.branding.icon ??= {};
-  output.branding.icon.asset = variant.iconAsset;
-  if (variant.iconAssets) {
-    output.branding.icon.deviceAssets = { ...variant.iconAssets };
-  } else {
-    // A set with one icon for every device must clear whatever per-device map the
-    // tuning carried, or Crowd would keep rendering the Bus/Play badge the
-    // operator happened to have selected.
-    delete output.branding.icon.deviceAssets;
-  }
-  if (variant.logoAsset) {
-    output.branding.logo ??= {};
-    output.branding.logo.asset = variant.logoAsset;
-  }
-  if (variant.storeLinks) {
-    output.storeLinks = { ...variant.storeLinks };
-  }
-  if (variant.textContent) {
-    output.branding.text ??= {};
-    const current = String(output.branding.text.content ?? '').trim();
-    if (!current || isVariantDefaultText(current, variant)) {
-      output.branding.text.content = variant.textContent;
-    }
-  }
-  if (variant.centerText) {
-    output.branding.text ??= {};
-    // Preview size is the authoring canvas the editor's x is expressed in, so
-    // its half width is the horizontal centre for every rendered ad size.
-    const designWidth = Number(output.preview?.width) > 0 ? Number(output.preview.width) : 1080;
-    output.branding.text.x = designWidth / 2;
-  }
-  if (variant.loadingTitle) {
-    output.branding.loading ??= {};
-    output.branding.loading.icon = '';
-    output.branding.loading.title = variant.loadingTitle;
-  }
-  // Per-storefront brand names. Written unconditionally, including the empty Bus
-  // pair: the workspace deep-merges tuning and cannot delete a key, so a Bus
-  // export started from a Crowd session would otherwise keep Crowd's names. An
-  // empty pair is what tells the runtime to use the per-market title tables.
-  output.branding.storeTitles = variant.storeTitles
-    ? { ...variant.storeTitles }
-    : { google: '', ios: '' };
-  if (variant.exportNaming) {
-    output.exportNaming ??= {};
-    Object.assign(output.exportNaming, variant.exportNaming);
-  }
-  return output;
-}
 
 // The HTML shell carries one brand's placeholder copy: the document title, the
 // canvas label, the image alt text, and the initial loader/caption strings. The
@@ -512,6 +372,11 @@ function isPlainObject(value) {
 }
 
 export function validateTuning(tuning, template, location = 'tuning') {
+  if (location === 'tuning.branding.loading.icon' && typeof tuning === 'string') return '';
+  if (location === 'tuning.branding.icon' && isPlainObject(tuning) && Object.hasOwn(tuning, 'radius')) {
+    tuning = { ...tuning };
+    migrateBrandingIconRadius(tuning);
+  }
   // The template keeps `freeAssets.layers` empty so the editor does not inherit
   // a phantom layer; the layer schema therefore lives with the feature instead
   // of in the template.
@@ -530,6 +395,11 @@ export function validateTuning(tuning, template, location = 'tuning') {
     if (!isPlainObject(tuning)) throw new TypeError(`${location} must be an object.`);
     const output = {};
     for (const [key, value] of Object.entries(tuning)) {
+      if (location === 'tuning' && key === 'passengerMaterial') continue;
+      // Older saved levels carried separate preview heights and an absolute exit endpoint.
+      if (location === 'tuning.vehiclePath' && key === 'y') continue;
+      if (location === 'tuning.vehicleDeparturePath'
+        && ['y', 'backDistance', 'exitTargetX', 'exitTargetZOffset'].includes(key)) continue;
       if (key === '__proto__' || key === 'prototype' || key === 'constructor' || !(key in template)) {
         throw new TypeError(`${location}.${key} is not supported.`);
       }
@@ -708,20 +578,22 @@ const GUIDE_ASSET_SOURCES = Object.freeze({
   '/assets/editor-banners/': { dir: 'editor-banners', extensions: ['.png', '.webp'] }
 });
 
-function guideAssetReferences(tuning) {
+function guideAssetReferences(tuning, stageArt) {
   const values = [];
   const push = (value) => {
     if (typeof value === 'string' && value) values.push(value);
   };
-  push(tuning?.audio?.bgm?.asset);
-  push(tuning?.weatherEffect?.sprite);
-  push(tuning?.entryBanner?.customAsset);
-  for (const layer of tuning?.freeAssets?.layers ?? []) push(layer?.asset);
-  return values;
+  if (Number(tuning?.audio?.bgm?.enabled)) push(tuning.audio.bgm.asset);
+  if (Number(tuning?.weatherEffect?.enabled)) push(tuning.weatherEffect.sprite);
+  for (const banner of stageArt.entryBanners) push(getEntryBannerArt(banner).card);
+  for (const layer of tuning?.freeAssets?.layers ?? []) {
+    if (Number(layer?.visible ?? 1) === 1) push(layer?.asset);
+  }
+  return new Set(values);
 }
 
-async function copySelectedGuideAssets(projectRoot, workRoot, tuning) {
-  for (const reference of guideAssetReferences(tuning)) {
+async function copySelectedGuideAssets(projectRoot, workRoot, tuning, stageArt) {
+  for (const reference of guideAssetReferences(tuning, stageArt)) {
     for (const [prefix, spec] of Object.entries(GUIDE_ASSET_SOURCES)) {
       if (!reference.startsWith(prefix)) continue;
       const filename = path.basename(reference);
@@ -790,22 +662,7 @@ async function applyWorkspaceBranding(workRoot, tuning) {
   await writeFile(indexPath, source, 'utf8');
 }
 
-export function createEditorExportSession(tuning) {
-  const levelKey = tuning?.level?.selected;
-  if (!/^level[1-9]\d*$/u.test(levelKey ?? '')) throw new TypeError('编辑器导出缺少有效的当前关卡');
-  return {
-    format: 'bus-loop-playable-session-v1',
-    active: 'editor-current-level',
-    sessions: {
-      'editor-current-level': {
-        stages: (levelKey === 'level9' ? ['level9', 'level7'] : [levelKey])
-          .map(key => ({ id: key, levelKey: key }))
-      }
-    }
-  };
-}
-
-async function prepareWorkspace(projectRoot, tuning, levelDocument = null, useSelectedLevel = false) {
+async function prepareWorkspace(projectRoot, tuning, levelDocument, useSelectedLevel, stageArt, preRollEnabled) {
   const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'bus-loop-playable-export-'));
   const workRoot = path.join(tempRoot, 'project');
   await mkdir(workRoot, { recursive: true });
@@ -843,9 +700,11 @@ async function prepareWorkspace(projectRoot, tuning, levelDocument = null, useSe
     // sessions and the author's original session document remain independent.
     await writeFile(path.join(workRoot, 'artifacts', 'playable-session.json'), `${JSON.stringify(createEditorExportSession(tuning))}\n`, 'utf8');
   }
-  await copySelectedEditorBackground(projectRoot, workRoot, tuning);
-  await copySelectedEditorPreRoll(projectRoot, workRoot, tuning);
-  await copySelectedGuideAssets(projectRoot, workRoot, tuning);
+  for (const asset of new Set([tuning.background?.asset, ...stageArt.backgrounds])) {
+    await copySelectedEditorBackground(projectRoot, workRoot, { background: { asset } });
+  }
+  if (preRollEnabled) await copySelectedEditorPreRoll(projectRoot, workRoot, tuning);
+  await copySelectedGuideAssets(projectRoot, workRoot, tuning, stageArt);
   // `applyWorkspaceBranding` supersedes the icon-only variant: it rewrites the
   // shell title/labels as well as the icons. Keep the branch's Windows junction
   // handling so a Windows checkout can still symlink node_modules.
@@ -970,21 +829,35 @@ async function generateWorkspaceSources(workRoot, signal, useSelectedLevel = fal
   ]);
 }
 
-async function buildUniversalHtml(workRoot, platform, signal) {
+async function buildUniversalHtml(workRoot, platform, signal, sharedBuild = null) {
   const buildRoot = path.join(workRoot, 'artifacts', 'export-builds', platform);
-  const distRoot = path.join(buildRoot, 'dist');
+  const sharedCore = sharedBuild !== null && platform !== 'mintegral';
+  const distRoot = path.join(sharedCore
+    ? path.join(workRoot, 'artifacts', 'export-builds', 'shared-core')
+    : buildRoot, 'dist');
   const outputPath = path.join(buildRoot, 'index.html');
   const vite = path.join(workRoot, 'node_modules', 'vite', 'bin', 'vite.js');
-  await run(process.execPath, [vite, 'build', '--outDir', distRoot, '--emptyOutDir'], {
+  const build = () => run(process.execPath, [vite, 'build', '--outDir', distRoot, '--emptyOutDir'], {
     cwd: workRoot,
-    env: { NODE_ENV: 'production', PLAYABLE_PLATFORM: platform, PLAYABLE_REMOTE_EDITOR: '0' },
+    env: {
+      NODE_ENV: 'production',
+      PLAYABLE_PLATFORM: sharedCore ? 'applovin' : platform,
+      PLAYABLE_REMOTE_EDITOR: '0',
+      PLAYABLE_EXPORT_SHARED_CORE: sharedCore ? '1' : '0'
+    },
     signal,
-    label: `Build ${platform}`
+    label: sharedCore ? 'Build shared playable core' : `Build ${platform}`
   });
+  if (sharedCore) {
+    await (sharedBuild.promise ??= build());
+  } else {
+    await build();
+  }
   await run(process.execPath, ['scripts/package-applovin-single-html.mjs'], {
     cwd: workRoot,
     env: {
       PLAYABLE_PLATFORM: platform,
+      PLAYABLE_EXPORT_SHARED_CORE: sharedCore ? '1' : '0',
       PLAYABLE_DIST_DIR: distRoot,
       PLAYABLE_INLINE_OUTPUT_FILE: outputPath
     },
@@ -1571,7 +1444,7 @@ async function readPlayableSessionConfig(projectRoot) {
   return { key, session, config };
 }
 
-async function exportInputFingerprint(projectRoot, tuning, levelDocument = null, variants = null, platforms = null, useSelectedLevel = false) {
+async function exportInputFingerprint(projectRoot, tuning, levelDocument, variants, platforms, useSelectedLevel, stageArt) {
   const candidates = [
     path.join(projectRoot, 'artifacts', 'selected-level.txt'),
     path.join(projectRoot, 'artifacts', 'level-catalog.js'),
@@ -1592,6 +1465,13 @@ async function exportInputFingerprint(projectRoot, tuning, levelDocument = null,
   const preRoll = tuning?.preRoll?.asset;
   if (isEditorPreRollAsset(preRoll)) {
     candidates.push(path.join(projectRoot, 'artifacts', 'editor-prerolls', path.basename(preRoll)));
+  }
+  for (const asset of stageArt.backgrounds.filter(isEditorBackgroundAsset)) {
+    candidates.push(path.join(projectRoot, 'artifacts', 'editor-backgrounds', path.basename(asset)));
+  }
+  for (const asset of guideAssetReferences(tuning, stageArt)) {
+    const source = Object.entries(GUIDE_ASSET_SOURCES).find(([prefix]) => asset.startsWith(prefix));
+    if (source) candidates.push(path.join(projectRoot, 'artifacts', source[1].dir, path.basename(asset)));
   }
   const artifactStates = await Promise.all(candidates.map(async (candidate) => {
     try {
@@ -1703,11 +1583,16 @@ async function exportPlatforms({ projectRoot, tuning, levelDocument = null, plat
     throw error;
   }
   const skill = await resolveSkillTools();
-  const sourceCacheKey = variants ? await exportInputFingerprint(resolvedRoot, safeTuning, levelDocument, variants, platforms, useSelectedLevel) : null;
+  const stages = sessionConfig?.session?.stages ?? [];
+  const stageArt = getReachableStageArt(safeTuning, stages, stages.map(stage => stage.choice));
+  const preRollEnabled = resolvePreRollEnabled(safeTuning.preRoll, {
+    preRollEnabled: Number(sessionConfig?.session?.preRoll ?? 1) !== 0
+  });
+  const sourceCacheKey = variants ? await exportInputFingerprint(resolvedRoot, safeTuning, levelDocument, variants, platforms, useSelectedLevel, stageArt) : null;
   const cachedSources = sourceCacheKey ? getCachedExportSources(sourceCacheKey) : null;
   const workspace = cachedSources
     ? { tempRoot: await mkdtemp(path.join(os.tmpdir(), 'bus-loop-playable-export-')), workRoot: null }
-    : await prepareWorkspace(resolvedRoot, safeTuning, levelDocument, useSelectedLevel);
+    : await prepareWorkspace(resolvedRoot, safeTuning, levelDocument, useSelectedLevel, stageArt, preRollEnabled);
   const stageRoot = path.join(workspace.tempRoot, 'delivery');
   await mkdir(stageRoot, { recursive: true });
   const zipTimestamp = new Date().toISOString();
@@ -1724,6 +1609,8 @@ async function exportPlatforms({ projectRoot, tuning, levelDocument = null, plat
       runtimeDevices: resolveBrandingSetVariants(DEFAULT_PLAYABLE_BRANDING_SET)[0]?.runtimeDevices ?? []
     }];
     const reusableSources = variants ? new Map(cachedSources?.sources ?? []) : null;
+    // Mintegral still builds with its own loader and syntax compatibility pass.
+    const sharedBuild = platforms.length > 1 ? { promise: null } : null;
     const cachedBackupImagePath = skipChecks
       ? path.join(resolvedRoot, 'artifacts', 'google-ads-backup.jpg')
       : variants && process.env.PLAYABLE_EXPORT_REMOTE_FAST === '1'
@@ -1775,7 +1662,7 @@ async function exportPlatforms({ projectRoot, tuning, levelDocument = null, plat
             sourceHtml = cachedSource.html;
             payloadAssets = cachedSource.payloadAssets;
           } else {
-            const built = await buildUniversalHtml(workspace.workRoot, platform, signal);
+            const built = await buildUniversalHtml(workspace.workRoot, platform, signal, sharedBuild);
             sourceHtml = built.html;
             payloadAssets = built.payloadAssets;
             reusableSources?.set(platform, built);

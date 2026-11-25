@@ -148,12 +148,12 @@ test('the editor serves a list/import/rename/delete library per kind', () => {
 test('the exporter copies only the guide assets a level references', () => {
   assert.match(exporterSource, /copySelectedGuideAssets/);
   assert.match(exporterSource, /GUIDE_ASSET_SOURCES/);
-  assert.match(exporterSource, /tuning\?\.audio\?\.bgm\?\.asset/);
-  assert.match(exporterSource, /tuning\?\.weatherEffect\?\.sprite/);
+  assert.match(exporterSource, /tuning\.audio\.bgm\.asset/);
+  assert.match(exporterSource, /tuning\.weatherEffect\.sprite/);
   assert.match(exporterSource, /tuning\?\.freeAssets\?\.layers/);
   // A custom entry-banner plate lives in its own library and must be staged with
   // the other tuning-addressed media.
-  assert.match(exporterSource, /tuning\?\.entryBanner\?\.customAsset/);
+  assert.match(exporterSource, /getEntryBannerArt\(banner\)\.card/);
   // A referenced-but-missing file has to fail loudly instead of shipping a
   // package that silently loses its artwork.
   assert.match(exporterSource, /Guide asset is referenced but missing from the editor volume/);

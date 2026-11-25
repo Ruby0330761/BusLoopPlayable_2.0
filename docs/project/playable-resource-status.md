@@ -37,7 +37,7 @@ The eight passenger PNGs are the same 512x512 atlas layout as the shipped `color
 | --- | --- | --- |
 | `artifacts/color-supplement-sources/*.png` | source | The eight supplied textures, kept verbatim as the durable input. `gray`, `mintgreen` and `white` are byte-identical (`sha256:ea6088ee…`); `darkred` ships none, and its prefab references the same texture as `gray`/`white`, so it reuses that shared neutral source. |
 | `public/assets/unity/textures/color_17..25_*.png` | derived | Produced by `node scripts/generate-color-variant-textures.mjs`. Non-body pixels (face, skin, eyes, detail) are the supplied art untouched; body pixels take highlight/shadow shading from a shipped atlas whose palette is re-hued to the variant colour, because a vehicle samples the body family and the supplied body is a flat tint placeholder. `black` ships exactly as supplied. |
-| `public/assets/applovin/textures/color_17..25_*_q85.webp` | wired/packed | Delivery derivatives from the same script; referenced by every level's `assets.colorTextures[17..25]` and all nine are inlined by the AppLovin packager. |
+| `public/assets/applovin/textures/color_*_q85.webp` | 配色参考 | 普通车型的 20 套原图用于离线取色与视觉对照。运行时和导出使用色值，普通乘客从同组车身取色，VAT 动画资源独立打包。 |
 
 ## Conveyor layouts
 

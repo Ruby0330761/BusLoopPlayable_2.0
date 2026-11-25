@@ -8,13 +8,15 @@ import { SceneView } from './scene-view.js';
 import { setActiveStageScene } from './stage-scene.js';
 import { calculateAutoCameraFit, clampCenteredRectX, clampCenteredRectY } from './scene-layout.js';
 import { SCENE_TUNING } from './scene-tuning.js';
-import { pruneUnknownTuning } from './tuning-migrations.js';
+import { drawFramedBrandingImage, migrateBrandingIconRadius, resolveBrandingImageFrame, safeBrandingCenterY } from './branding-image-frame.js';
+import { migrateSmokeTrailCaches, pruneUnknownTuning } from './tuning-migrations.js';
 import { migrateVehiclePathTuning } from './vehicle-path-config.js';
 import { isValidStoreLink, resolveStoreLink } from './store-links.js';
 import {
   SPEED_TOGGLE_SEED_SRC,
   formatSpeedLabel,
   normalizeSpeedMultiplier,
+  DEFAULT_SPEED_TOGGLE_BOUNDS,
   normalizeSpeedToggleStyle,
   resolveSpeedToggleIcon,
   resolveTimeScale
@@ -35,6 +37,7 @@ import { createStaminaView } from './stamina-view.js';
 import { isInstallGateEnabled, syncExportVariantTuning } from './export-variants.js';
 import { drawStageOverlays } from './screenshot-overlay.js';
 import { createGameAudioController } from './audio-controller.js';
+import { COMBO_COIN, createComboHud, normalizeCombo } from './combo-hud.js';
 import { resolveLevelAudioConfig } from './level-audio-config.js';
 import { createPreRollController } from './pre-roll.js';
 import {
@@ -75,7 +78,6 @@ const INSTALL_THRESHOLD_CUSTOM_STORAGE_KEY = 'bus-loop-install-threshold-custom-
 const LEVEL36_VEHICLE_SCALE_MIGRATION_KEY = 'bus-loop-level36-vehicle-scale-v1';
 const LEVEL36_VEHICLE_COMPACTION_MIGRATION_KEY = 'bus-loop-level36-vehicle-compaction-v1';
 const LEVEL36_TIMED_GUIDE_MIGRATION_KEY = 'bus-loop-level36-timed-guide-v1';
-const SPEED_TOGGLE_HIDDEN_MIGRATION_KEY = 'bus-loop-speed-toggle-hidden-v1';
 const INSTALL_GATE_DEFAULT_OFF_MIGRATION_KEY = 'bus-loop-install-gate-default-off-v1';
 const PREVIEW_LOCALE_MIGRATION_KEY = 'bus-loop-preview-locale-en-v1';
 const CUSTOM_BACKGROUND_ASSET_PREFIX = '/assets/editor-backgrounds/';
@@ -126,16 +128,11 @@ const brandingItems = {
   text: $('#branding-text')
 };
 if (gameOverLogo && brandingItems.logo?.src) gameOverLogo.src = brandingItems.logo.src;
+const brandingFrames = { icon: $('#branding-icon-frame'), logo: $('#branding-logo-frame') };
+for (const key of Object.keys(brandingFrames)) {
+  brandingItems[key]?.addEventListener('load', () => applyBrandingFrame(key, getBrandingStageMetrics()));
+}
 const sceneEditorRoot = $('#scene-editor');
-const PASSENGER_MATERIAL_TUNING_PREFIX = 'passengerMaterial.';
-const PASSENGER_MATERIAL_COLOR_INDEX_PATTERN = /^passengerMaterial\.(?:solidColors|colors)\.(\d+)(?:\.|$)/;
-const isPassengerMaterialTuningPath = (path) => path?.startsWith(PASSENGER_MATERIAL_TUNING_PREFIX);
-const getPassengerMaterialColorIndex = (path) => {
-  const match = path?.match(PASSENGER_MATERIAL_COLOR_INDEX_PATTERN);
-  if (!match) return null;
-  const colorIndex = Number(match[1]);
-  return Number.isInteger(colorIndex) ? colorIndex : null;
-};
 
 function createEditorFallbackView(level, initializationError = null) {
   const queueCount = Math.max(1, Number(level?.queueCount) || 2);
@@ -474,35 +471,16 @@ function migrateSpatialSpeedTuning(source) {
   return changed;
 }
 
-// The speed switch used to be on by default, so every save wrote enabled: 1
-// whether the operator touched it or not. It is now off by default; leaving the
-// cached 1 in place would keep showing the button on every level that already
-// has a profile. One marker guards the whole pass so an operator who enables a
-// level afterwards is not flipped back off on the next reload.
-function applySpeedToggleHiddenMigration(source) {
-  const toggle = source?.speedToggle;
-  if (!toggle || Number(toggle.enabled) !== 1) return false;
-  toggle.enabled = 0;
-  return true;
-}
+let cachedSpeedToggle;
+let cachedCombo;
 
-function migrateSpeedToggleHiddenTuning(source) {
-  if (localStorage.getItem(SPEED_TOGGLE_HIDDEN_MIGRATION_KEY) === '1') return false;
-  // Set the marker only after every cache has been handled below, otherwise the
-  // first profile would consume it and the rest would keep the stale value.
-  return applySpeedToggleHiddenMigration(source);
-}
-
-function migrateSpeedToggleHiddenProfiles() {
-  if (localStorage.getItem(SPEED_TOGGLE_HIDDEN_MIGRATION_KEY) === '1') return false;
-  const profiles = readLevelTuningProfiles();
-  let changed = false;
-  for (const profile of Object.values(profiles)) {
-    if (!isLevelTuningProfile(profile)) continue;
-    if (applySpeedToggleHiddenMigration(profile.tuning)) changed = true;
+// A switch saved before skin selection used the dark artwork.
+function restoreSpeedToggle(target, saved) {
+  if (!saved) return;
+  for (const key of Object.keys(target)) {
+    if (saved[key] !== undefined) target[key] = saved[key];
   }
-  if (changed) writeLevelTuningProfiles(profiles);
-  return changed;
+  target.style = saved.style ?? 'default';
 }
 
 // The early jump used to be the shipped default, so every saved profile carries
@@ -676,34 +654,6 @@ function migrateAboardSoundOffsetProfiles() {
   return changed;
 }
 
-function migrateDepartureRouteHeightProfiles() {
-  // Per-level profiles snapshot the whole tuning object and are merged back
-  // over the global cache, so a profile written by the raised-route build would
-  // otherwise keep the car off the line for that level.
-  const profiles = readLevelTuningProfiles();
-  let changed = false;
-  for (const profile of Object.values(profiles)) {
-    if (!isLevelTuningProfile(profile)) continue;
-    if (migrateDepartureRouteHeightTuning(profile.tuning)) changed = true;
-  }
-  if (changed) writeLevelTuningProfiles(profiles);
-  return changed;
-}
-
-function migrateDepartureRouteHeightTuning(source) {
-  // A previous build of this same day drove departing cars at vehicleArea.y
-  // instead of the authored departure height, and saved that value into the
-  // caches. The authored height is what places the route on the road lane, so
-  // anything still equal to the vehicle layer is put back. Values an operator
-  // set themselves are left alone.
-  const departure = source?.vehicleDeparturePath;
-  if (!departure || typeof departure !== 'object') return false;
-  const vehicleY = Number(source?.vehicleArea?.y);
-  if (!Number.isFinite(vehicleY) || Math.abs(Number(departure.y) - vehicleY) > 1e-9) return false;
-  departure.y = SCENE_TUNING.vehicleDeparturePath.y;
-  return true;
-}
-
 function migrateSeatCountBoardTextScaleTuning(source) {
   // The digits used to be a billboard scaled 1.47x over a 0.42 x 0.26 sprite.
   // They now lie in the card's plane and textScale multiplies the card box, so
@@ -837,9 +787,14 @@ function refreshDefaultStoreLinks() {
 function loadSavedTuning() {
   if (!EDITOR_ENABLED) return;
   try {
+    migrateSmokeTrailCaches(localStorage, {
+      current: TUNING_STORAGE_KEY, legacy: LEGACY_TUNING_STORAGE_KEY,
+      profiles: LEVEL_TUNING_STORAGE_KEY, preview: LEVEL_EDITOR_PREVIEW_STORAGE_KEY
+    });
     const saved = localStorage.getItem(TUNING_STORAGE_KEY);
     if (saved) {
       const savedTuning = JSON.parse(saved);
+      const iconRadiusMigrated = migrateBrandingIconRadius(savedTuning.branding?.icon);
       const vehiclePathMigrated = migrateVehiclePathTuning(savedTuning);
       const guideHandMotionMigrated = migrateGuideHandMotionTuning(savedTuning);
       const level33EnhancementMigrated = migrateLevel33EnhancementTuning(savedTuning);
@@ -849,13 +804,13 @@ function loadSavedTuning() {
       const firstClickGuideScopeMigrated = migrateFirstClickGuideScope(savedTuning);
       const firstClickGuideMaskMigrated = migrateFirstClickGuideMaskTuning(savedTuning);
       const spatialSpeedMigrated = migrateSpatialSpeedTuning(savedTuning);
-      const speedToggleHiddenMigrated = migrateSpeedToggleHiddenTuning(savedTuning);
+      cachedSpeedToggle = savedTuning.speedToggle;
+      cachedCombo = savedTuning.combo;
       const ctaScreenPositionMigrated = migrateCtaScreenPositionTuning(savedTuning);
       const gameOverRetryPositionMigrated = migrateGameOverRetryPositionTuning(savedTuning);
       const customBackgroundSourceMigrated = migrateCustomBackgroundSourceSize(savedTuning);
       const exportNamingMigrated = migrateExportNamingTuning(savedTuning);
       const aboardSoundOffsetMigrated = migrateAboardSoundOffsetTuning(savedTuning);
-      const departureRouteHeightMigrated = migrateDepartureRouteHeightTuning(savedTuning);
       const seatCountBoardTextScaleMigrated = migrateSeatCountBoardTextScaleTuning(savedTuning);
       const footageConveyorArtMigrated = migrateFootageConveyorArtTuning(savedTuning);
       const previewLocaleMigrated = migratePreviewLocaleTuning(savedTuning);
@@ -876,6 +831,7 @@ function loadSavedTuning() {
       if (
         guideHandMotionMigrated
         || vehiclePathMigrated
+        || iconRadiusMigrated
         || level33EnhancementMigrated
         || level36VehicleScaleMigrated
         || level36VehicleCompactionMigrated
@@ -883,13 +839,11 @@ function loadSavedTuning() {
         || firstClickGuideScopeMigrated
         || firstClickGuideMaskMigrated
         || spatialSpeedMigrated
-        || speedToggleHiddenMigrated
         || ctaScreenPositionMigrated
         || gameOverRetryPositionMigrated
         || customBackgroundSourceMigrated
         || exportNamingMigrated
         || aboardSoundOffsetMigrated
-        || departureRouteHeightMigrated
         || seatCountBoardTextScaleMigrated
         || footageConveyorArtMigrated
         || previewLocaleMigrated
@@ -913,6 +867,7 @@ function loadSavedTuning() {
       return;
     }
     const legacy = JSON.parse(legacySaved);
+    migrateBrandingIconRadius(legacy.branding?.icon);
     migrateVehiclePathTuning(legacy);
     migrateGuideHandMotionTuning(legacy);
     migrateLevel33EnhancementTuning(legacy);
@@ -922,13 +877,13 @@ function loadSavedTuning() {
     migrateFirstClickGuideScope(legacy);
     migrateFirstClickGuideMaskTuning(legacy);
     migrateSpatialSpeedTuning(legacy);
-    migrateSpeedToggleHiddenTuning(legacy);
+    cachedSpeedToggle = legacy.speedToggle;
+    cachedCombo = legacy.combo;
     migrateCtaScreenPositionTuning(legacy);
     migrateGameOverRetryPositionTuning(legacy);
     migrateCustomBackgroundSourceSize(legacy);
     migrateExportNamingTuning(legacy);
     migrateAboardSoundOffsetTuning(legacy);
-    migrateDepartureRouteHeightTuning(legacy);
     migrateSeatCountBoardTextScaleTuning(legacy);
     migrateInstallGateDefaultOffTuning(legacy);
     migrateLegacyPackageTuning(legacy);
@@ -1006,8 +961,10 @@ function saveImportedLevelTuning(levelKey, tuning) {
   if (!tuning || typeof tuning !== 'object' || Array.isArray(tuning)) return false;
   const merged = structuredClone(DEFAULT_SCENE_TUNING);
   tuning = structuredClone(tuning);
+  migrateBrandingIconRadius(tuning.branding?.icon);
   migrateVehiclePathTuning(tuning);
   deepMerge(merged, structuredClone(tuning));
+  restoreSpeedToggle(merged.speedToggle, tuning.speedToggle);
   pruneUnknownTuning(merged, DEFAULT_SCENE_TUNING);
   merged.level ??= {};
   merged.level.selected = key;
@@ -1024,16 +981,11 @@ function restoreSelectedLevelTuning() {
   if (!EDITOR_ENABLED) return;
   migrateExportNamingProfiles();
   migrateAboardSoundOffsetProfiles();
-  migrateDepartureRouteHeightProfiles();
   migrateSeatCountBoardTextScaleProfiles();
   migrateFootageConveyorArtProfiles();
   migrateGameOverRetryPositionProfiles();
   migratePreviewLocaleProfiles();
   migrateInstallGateDefaultOffProfiles();
-  // Run the profile pass before the marker is written: both paths above skip
-  // everything once the marker exists, so the marker has to be the last step.
-  migrateSpeedToggleHiddenProfiles();
-  localStorage.setItem(SPEED_TOGGLE_HIDDEN_MIGRATION_KEY, '1');
   localStorage.setItem(PREVIEW_LOCALE_MIGRATION_KEY, '1');
   localStorage.setItem(INSTALL_GATE_DEFAULT_OFF_MIGRATION_KEY, '1');
   // Clean every stored profile, not only the selected one: switching levels
@@ -1043,6 +995,7 @@ function restoreSelectedLevelTuning() {
   for (const [key, entry] of Object.entries(storedProfiles)) {
     if (!isLevelTuningProfile(entry)) continue;
     if (migrateVehiclePathTuning(entry.tuning)) profilesPruned = true;
+    if (migrateBrandingIconRadius(entry.tuning.branding?.icon)) profilesPruned = true;
     if (pruneUnknownTuning(entry.tuning, DEFAULT_SCENE_TUNING)) {
       storedProfiles[key] = entry;
       profilesPruned = true;
@@ -1054,6 +1007,8 @@ function restoreSelectedLevelTuning() {
   const profiles = profilesPruned ? readLevelTuningProfiles() : storedProfiles;
   const profile = profiles[levelKey];
   if (isLevelTuningProfile(profile)) {
+    cachedSpeedToggle = profile.tuning.speedToggle ?? cachedSpeedToggle;
+    cachedCombo = profile.tuning.combo ?? cachedCombo;
     deepMerge(SCENE_TUNING, structuredClone(profile.tuning));
     pruneUnknownTuning(SCENE_TUNING, DEFAULT_SCENE_TUNING);
     SCENE_TUNING.level.selected = levelKey;
@@ -1084,6 +1039,7 @@ function getLevelTuningForSelection(levelKey) {
   const profile = profiles[String(levelKey ?? '').trim()];
   if (isLevelTuningProfile(profile)) {
     const tuning = structuredClone(profile.tuning);
+    migrateBrandingIconRadius(tuning.branding?.icon);
     migrateVehiclePathTuning(tuning);
     pruneUnknownTuning(tuning, DEFAULT_SCENE_TUNING);
     tuning.level ??= {};
@@ -1096,12 +1052,15 @@ function getLevelTuningForSelection(levelKey) {
   return tuning;
 }
 
-function activateLevelTuning(levelKey) {
+function activateLevelTuning(levelKey, savedTuning) {
   flushTuningSave();
   writeTuning(SCENE_TUNING);
   const profiles = readLevelTuningProfiles();
   const profile = profiles[String(levelKey ?? '').trim()];
   const tuning = getLevelTuningForSelection(levelKey);
+  tuning.speedToggle ??= structuredClone(DEFAULT_SCENE_TUNING.speedToggle);
+  restoreSpeedToggle(tuning.speedToggle, profile?.tuning?.speedToggle ?? savedTuning?.speedToggle);
+  tuning.combo = normalizeCombo(profile?.tuning?.combo ?? savedTuning?.combo);
   if (profile?.installThresholdCustom) {
     localStorage.setItem(INSTALL_THRESHOLD_CUSTOM_STORAGE_KEY, '1');
   } else {
@@ -1212,11 +1171,20 @@ function resolveBrandingStorefront() {
   return isIOSDevice() ? 'ios' : 'google';
 }
 
+let exportBrandPreview = null;
+let previewBrandPlatform = 'applovin';
+function brandingPlatform() {
+  return EDITOR_ENABLED ? previewBrandPlatform : platformBridge?.platform;
+}
+function visibleBranding() {
+  return (EDITOR_ENABLED && exportBrandPreview?.branding) || SCENE_TUNING.branding;
+}
+
 function resolveBrandingCopy() {
   const localization = SCENE_TUNING.branding?.localization ?? {};
   const previewLocale = EDITOR_ENABLED ? String(localization.previewLocale ?? 'auto') : 'auto';
-  const textConfig = SCENE_TUNING.branding?.text ?? {};
-  const loadingConfig = SCENE_TUNING.branding?.loading ?? {};
+  const textConfig = visibleBranding()?.text ?? {};
+  const loadingConfig = visibleBranding()?.loading ?? {};
   return resolveLocalizedBranding({
     languages: previewLocale && previewLocale !== 'auto' ? [previewLocale] : readBrowserLanguages(),
     enabled: Boolean(localization.enabled ?? 1),
@@ -1226,7 +1194,7 @@ function resolveBrandingCopy() {
     storefront: resolveBrandingStorefront(),
     // A brand whose two listings are named differently (Crowd) carries the pair
     // in tuning; Bus leaves both slots empty and falls back to the market tables.
-    storeTitles: SCENE_TUNING.branding?.storeTitles
+    storeTitles: visibleBranding()?.storeTitles
   });
 }
 
@@ -1267,6 +1235,10 @@ function applyBrandingDocumentChrome(copy) {
 // The editor keeps its Icon 版本 picker authoritative: an operator choosing an
 // icon there is explicitly overriding the device default for the preview.
 function resolveBrandingIconAsset(config = {}) {
+  if (EDITOR_ENABLED && exportBrandPreview) {
+    const storefront = resolveBrandingStorefront();
+    return config.deviceAssets?.[storefront === 'ios' ? 'ios' : 'android'] || config.asset;
+  }
   if (!EDITOR_ENABLED) {
     const deviceAssets = config.deviceAssets;
     if (deviceAssets && typeof deviceAssets === 'object') {
@@ -1278,6 +1250,25 @@ function resolveBrandingIconAsset(config = {}) {
   return typeof config.asset === 'string' ? config.asset : '';
 }
 
+function applyBrandingFrame(key, metrics) {
+  const image = brandingItems[key];
+  const decoration = brandingFrames[key];
+  if (!image || !decoration) return;
+  const config = visibleBranding()[key];
+  const frame = resolveBrandingImageFrame(config, image, metrics.uiScale);
+  const authoredY = (config.y ?? metrics.designHeight / 2) * metrics.positionScaleY;
+  image.style.top = safeBrandingCenterY(authoredY, frame, metrics.stageWidth, metrics.stageHeight, brandingPlatform()) + 'px';
+  const size = { width: `${frame.width}px`, height: `${frame.height}px`, borderRadius: `${frame.radius}px` };
+  Object.assign(image.style, size);
+  decoration.hidden = image.hidden || (!frame.strokeWidth && !frame.shadow);
+  const shadow = frame.shadow;
+  Object.assign(decoration.style, size, {
+    left: image.style.left, top: image.style.top,
+    borderWidth: `${frame.strokeWidth}px`, borderColor: frame.strokeColor,
+    boxShadow: shadow ? `${shadow.x}px ${shadow.y}px ${shadow.blur}px ${shadow.color}` : 'none'
+  });
+}
+
 function applyBrandingTuning(backgroundBounds = null) {
   const metrics = getBrandingStageMetrics();
   const copy = resolveBrandingCopy();
@@ -1287,27 +1278,16 @@ function applyBrandingTuning(backgroundBounds = null) {
   applyBrandingDocumentChrome(copy);
   for (const [key, element] of Object.entries(brandingItems)) {
     if (!element) continue;
-    const config = SCENE_TUNING.branding?.[key] ?? {};
+    const config = visibleBranding()?.[key] ?? {};
     const enabled = Boolean(config.enabled ?? 1);
     const locked = Boolean(config.locked ?? 0);
     const x = Number.isFinite(Number(config.x)) ? Number(config.x) : metrics.designWidth / 2;
     const y = Number.isFinite(Number(config.y)) ? Number(config.y) : metrics.designHeight / 2;
     const width = Math.max(1, Number(config.width) || 180);
     const height = Math.max(1, Number(config.height) || width);
-    // The store icon is square art shown in a box that is usually wider than
-    // tall. `object-fit: contain` letterboxes it, so a radius on the box would
-    // clip empty margin and leave the artwork square. Size the icon element to
-    // the painted square so the radius lands on the art itself.
-    const squareIcon = key === 'icon';
-    const renderedWidth = squareIcon
-      ? Math.min(width, height) * metrics.uiScale
-      : width * metrics.uiScale;
-    const renderedHeight = squareIcon
-      ? renderedWidth
-      : height * metrics.uiScale;
+    const renderedWidth = width * metrics.uiScale;
+    const renderedHeight = height * metrics.uiScale;
     const authoredCenterX = x * metrics.positionScaleX;
-    // Clamp against the authored box, not the shrunken icon element, so the
-    // letterboxed-then-squared icon keeps the position the operator set.
     const renderedCenterX = key === 'text'
       ? authoredCenterX
       : clampCenteredRectX({
@@ -1342,16 +1322,8 @@ function applyBrandingTuning(backgroundBounds = null) {
     element.style.left = `${renderedCenterX}px`;
     element.style.top = `${y * metrics.positionScaleY}px`;
     element.style.width = `${renderedWidth}px`;
-    element.style.height = `${renderedHeight}px`;
-    // Icon/Logo radius is authored in design units, so it follows the same
-    // scale as the box and is capped at a half-round so a large value can never
-    // produce an invalid negative corner.
-    const authoredRadius = Math.max(0, Number(config.radius) || 0);
-    const renderedRadius = Math.min(
-      authoredRadius * metrics.uiScale,
-      Math.min(renderedWidth, renderedHeight) / 2
-    );
-    element.style.borderRadius = renderedRadius > 0 ? `${renderedRadius}px` : '';
+    if (brandingFrames[key]) applyBrandingFrame(key, metrics);
+    if (key === 'text') element.style.height = `${renderedHeight}px`;
     if (key === 'text') {
       fitBrandingText(element, renderedHeight);
       // The first fit can measure a fallback face; a webfont with wider
@@ -1373,12 +1345,7 @@ function applyBrandingTuning(backgroundBounds = null) {
 }
 
 function applyLoadingBranding() {
-  // The loading screen is not an editable overlay, but a Crowd export must not
-  // flash the Bus Fever name while it waits. An empty icon follows the overlaid
-  // branding icon instead of embedding the same bytes a second time.
-  const config = SCENE_TUNING.branding?.loading ?? {};
-  const icon = typeof config.icon === 'string' ? config.icon : '';
-  const iconSource = icon || brandingItems.icon?.getAttribute('src') || '';
+  const iconSource = resolveBrandingIconAsset(visibleBranding()?.icon);
   if (loadingIcon && iconSource && loadingIcon.getAttribute('src') !== iconSource) {
     loadingIcon.setAttribute('src', iconSource);
   }
@@ -1392,8 +1359,6 @@ function applyLoadingBranding() {
     loadingIcon?.setAttribute('alt', `${title} icon`);
   }
 }
-
-applyLoadingBranding();
 
 function bindBrandingDrag(element, key, onPositionChange) {
   if (!element || !EDITOR_ENABLED) return;
@@ -1580,6 +1545,7 @@ function captureMetrics(width, height) {
   const positionScaleX = width / designWidth;
   const positionScaleY = height / designHeight;
   return {
+    stageHeight: height,
     designWidth,
     designHeight,
     positionScaleX,
@@ -1600,53 +1566,26 @@ function drawContainImage(context, image, centerX, centerY, width, height) {
 
 async function drawScreenshotBranding(context, metrics, width) {
   for (const key of ['icon', 'logo']) {
-    const config = SCENE_TUNING.branding?.[key] ?? {};
+    const config = visibleBranding()?.[key] ?? {};
     if (!Boolean(config.enabled ?? 1)) continue;
-    const source = key === 'icon' ? config.asset : brandingItems.logo?.getAttribute('src');
+    const source = key === 'icon' ? resolveBrandingIconAsset(config) : config.asset;
     if (!source) continue;
     const image = await loadScreenshotImage(source).catch(() => null);
     if (!image) continue;
+    const frame = resolveBrandingImageFrame(config, image, metrics.uiScale);
     const boxWidth = Math.max(1, Number(config.width) || 180) * metrics.uiScale;
-    const boxHeight = Math.max(1, Number(config.height) || boxWidth) * metrics.uiScale;
-    // The icon element is sized to the painted square, so the snapshot clamps
-    // and clips against that same square.
-    const renderedWidth = key === 'icon' ? Math.min(boxWidth, boxHeight) : boxWidth;
-    const renderedHeight = key === 'icon' ? renderedWidth : boxHeight;
-    const centerX = clampConfigNumber(
-      (Number.isFinite(Number(config.x)) ? Number(config.x) : metrics.designWidth / 2) * metrics.positionScaleX,
-      renderedWidth / 2,
-      width - renderedWidth / 2,
-      width / 2
-    );
-    const centerY = (Number.isFinite(Number(config.y)) ? Number(config.y) : metrics.designHeight / 2)
-      * metrics.positionScaleY;
-    // The icon box shrinks to the painted square (see applyBrandingTuning), so
-    // the snapshot has to clip the same square or the screenshot and the stage
-    // would disagree about where the rounded corners sit.
-    if (key === 'icon') {
-      const side = renderedWidth;
-      const radius = Math.min(
-        Math.max(0, Number(config.radius) || 0) * metrics.uiScale,
-        side / 2
-      );
-      context.save();
-      context.beginPath();
-      if (radius > 0 && typeof context.roundRect === 'function') {
-        context.roundRect(centerX - side / 2, centerY - side / 2, side, side, radius);
-      } else {
-        context.rect(centerX - side / 2, centerY - side / 2, side, side);
-      }
-      context.clip();
-      drawContainImage(context, image, centerX, centerY, side, side);
-      context.restore();
-      continue;
-    }
-    drawContainImage(context, image, centerX, centerY, renderedWidth, renderedHeight);
+    const centerX = clampCenteredRectX({
+      centerX: (config.x ?? metrics.designWidth / 2) * metrics.positionScaleX,
+      width: boxWidth, left: 0, right: width
+    });
+    const authoredY = (config.y ?? metrics.designHeight / 2) * metrics.positionScaleY;
+    const centerY = safeBrandingCenterY(authoredY, frame, width, metrics.stageHeight, brandingPlatform());
+    drawFramedBrandingImage(context, image, centerX, centerY, frame);
   }
 
-  const textConfig = SCENE_TUNING.branding?.text ?? {};
+  const textConfig = visibleBranding()?.text ?? {};
   if (!Boolean(textConfig.enabled ?? 1)) return;
-  const content = String(textConfig.content ?? 'Bus Fever Party!');
+  const content = resolveBrandingCopy().title;
   const boxWidth = Math.max(1, Number(textConfig.width) || 800) * metrics.uiScale;
   const boxHeight = Math.max(1, Number(textConfig.height) || 100) * metrics.uiScale;
   const centerX = (Number.isFinite(Number(textConfig.x)) ? Number(textConfig.x) : metrics.designWidth / 2)
@@ -1849,7 +1788,8 @@ function isIOSDevice() {
 
 function getStoreTarget() {
   const platform = isIOSDevice() ? 'ios' : 'android';
-  const web = resolveStoreLink(platform, SCENE_TUNING.storeLinks?.[platform], DEFAULT_STORE_LINKS[platform]);
+  const links = (EDITOR_ENABLED && exportBrandPreview?.storeLinks) || SCENE_TUNING.storeLinks;
+  const web = resolveStoreLink(platform, links?.[platform], DEFAULT_STORE_LINKS[platform]);
   return { web, mraid: [web] };
 }
 
@@ -2037,10 +1977,19 @@ function writeLevelEditorPreviewDocument(document, mode = 'saved', baseRevision 
 }
 
 async function readSavedWebLevelEntry(levelKey) {
-  const response = await fetch(`/__level-authoring/${encodeURIComponent(levelKey)}`, { cache: 'no-store' });
+  const draft = readLevelEditorPreviewDocument();
+  const draftBase = draft?.mode === 'draft' && draft.document.key === levelKey && draft.baseRevision;
+  const query = draftBase ? '?draftBase=' + encodeURIComponent(draftBase) : '';
+  const response = await fetch(`/__level-authoring/${encodeURIComponent(levelKey)}${query}`, { cache: 'no-store' });
   if (response.status === 404) return null;
   const payload = await response.json().catch(() => ({}));
   if (!response.ok) throw new Error(payload.error || `HTTP ${response.status}`);
+  if (draftBase && payload.migratedDraftBase === draftBase) {
+    const latest = readLevelEditorPreviewDocument();
+    if (latest?.mode === 'draft' && latest.document.key === levelKey && latest.baseRevision === draftBase) {
+      writeLevelEditorPreviewDocument(latest.document, 'draft', payload.revision);
+    }
+  }
   return {
     document: payload.document ?? null,
     revision: typeof payload.revision === 'string' ? payload.revision : null
@@ -2094,6 +2043,7 @@ async function startRuntime() {
     loadSavedTuning();
     for (const key of LEGACY_LEVEL_EDITOR_PREVIEW_STORAGE_KEYS) localStorage.removeItem(key);
   }
+  applyLoadingBranding();
   let revealPlayable = () => {};
   // A session can opt out of the pre-roll. A progressive flow already has an
   // opening banner and a guide, and the video only delays the first tap.
@@ -2129,6 +2079,8 @@ async function startRuntime() {
     let selectedLevel = resolvedLevel.level;
     const previewEntry = readLevelEditorPreviewDocument();
     const savedEntry = resolvedLevel.savedEntry;
+    restoreSpeedToggle(SCENE_TUNING.speedToggle, cachedSpeedToggle ?? savedEntry?.document?.tuning?.speedToggle);
+    SCENE_TUNING.combo = normalizeCombo(cachedCombo ?? savedEntry?.document?.tuning?.combo);
     const savedRevision = savedEntry?.revision ?? null;
     const useDraft = previewEntry?.mode === 'draft'
       && previewEntry.document.key === selectedKey
@@ -2139,7 +2091,9 @@ async function startRuntime() {
       const { levelDocumentToRuntime } = await import('./level-editor-model.js');
       selectedLevel = levelDocumentToRuntime(previewDocument, selectedLevel);
     }
-    if (localStorage.getItem(INSTALL_THRESHOLD_CUSTOM_STORAGE_KEY) !== '1') {
+    if (localStorage.getItem(INSTALL_THRESHOLD_CUSTOM_STORAGE_KEY) === '1') {
+      SCENE_TUNING.installGate.customThresholdEnabled = 1;
+    } else if (Number(SCENE_TUNING.installGate.customThresholdEnabled) !== 1) {
       const vehicleCount = Math.max(1, selectedLevel.vehicles?.length ?? 0);
       SCENE_TUNING.installGate.successfulOperationThreshold = vehicleCount;
       DEFAULT_SCENE_TUNING.installGate.successfulOperationThreshold = vehicleCount;
@@ -2216,7 +2170,8 @@ async function startRuntime() {
     ...resolveLevelAudioConfig(
       Object.assign({}, ...allSessionLevels.map((level) => level.assets?.audio ?? {}))
     ),
-    ...getMechanismAudioConfig(mechanismTypes)
+    ...getMechanismAudioConfig(mechanismTypes),
+    combo_coin: { clips: [], volume: 0.52 }
   }, {
     // Per-sound delay so a hit or departure sound can be lined up with its
     // animation; the values live in the editor's sound-delay fields.
@@ -2240,6 +2195,12 @@ async function startRuntime() {
     }
   });
   audio.resetEventHistory();
+  const combo = createComboHud($('#bus-combo'), {
+    getView: () => view,
+    getGame: () => game,
+    playCoin: () => audio.play('combo_coin', COMBO_COIN)
+  });
+  combo.configure(SCENE_TUNING.combo);
   const endPanel = $('#end-panel');
   let pressTimer = 0;
   let pressed = false;
@@ -2566,6 +2527,7 @@ async function startRuntime() {
     if (result?.ok) {
       startBackgroundMusic();
       if (markInstallVehicle(vehicleId)) InstallFullGame();
+      if (game.status === 'playing') combo.dispatch(result, vehicleId);
       // A hidden reveal also returns ok, but has not dispatched a vehicle.
       if (result.spotIndex != null && game.status === 'playing'
         && !levelSession.shouldOpenStore() && !gameOverActive) {
@@ -2581,6 +2543,7 @@ async function startRuntime() {
       canvas,
       handleVehicleClick,
       {
+        stageOpening: currentStage()?.opening,
         onPassengerAboard: () => audio.playPassengerUp(),
         onLoadingProgress: updateLoadingProgress
       }
@@ -2601,6 +2564,7 @@ async function startRuntime() {
   let speedToggleBoosted = false;
   const updateCtaPosition = () => {
     view.resize();
+    combo.position();
     // One measurement for the resize pass: the CTA, branding, countdown, stamina
     // and speed switch all clamp against the same painted bounds.
     const backgroundBounds = view.getBackgroundCanvasBounds();
@@ -2686,12 +2650,12 @@ async function startRuntime() {
     const uiScale = metrics.uiScale;
     const enabled = Boolean(config.enabled ?? 0);
     const style = normalizeSpeedToggleStyle(config.style);
-    const width = Math.max(1, Number(config.width) || 105);
-    const height = Math.max(1, Number(config.height) || 69);
+    const width = Math.max(1, Number(config.width) || DEFAULT_SPEED_TOGGLE_BOUNDS.width);
+    const height = Math.max(1, Number(config.height) || DEFAULT_SPEED_TOGGLE_BOUNDS.height);
     const renderedWidth = width * uiScale;
     const renderedHeight = height * uiScale;
-    const centerX = Number.isFinite(Number(config.x)) ? Number(config.x) : metrics.designWidth * 0.84;
-    const centerY = Number.isFinite(Number(config.y)) ? Number(config.y) : metrics.designHeight * 0.14;
+    const centerX = Number.isFinite(Number(config.x)) ? Number(config.x) : DEFAULT_SPEED_TOGGLE_BOUNDS.x;
+    const centerY = Number.isFinite(Number(config.y)) ? Number(config.y) : DEFAULT_SPEED_TOGGLE_BOUNDS.y;
     speedToggleButton.hidden = !enabled;
     // The CSS owns both looks keyed off this attribute; the geometry below stays
     // shared so one position/size field row controls either skin.
@@ -2733,8 +2697,8 @@ async function startRuntime() {
     // scene only covers a centred strip. Scaling design X over the whole stage
     // therefore parked this button in that empty margin on wide screens (16:9
     // desktop preview, landscape uploads). Map the design coordinate into the
-    // painted strip instead, so 916/1080 keeps meaning "84% across the game
-    // screen" at any aspect ratio, then clamp as a safety net. Without measured
+    // painted strip to keep the same fractional position at any aspect ratio.
+    // Clamp the full button inside the visible artwork. Without measured
     // bounds both the strip and the stage are the same rectangle, so nothing
     // changes for a portrait phone.
     const boundsLeft = Number.isFinite(backgroundBounds?.left) ? backgroundBounds.left : 0;
@@ -2777,7 +2741,7 @@ async function startRuntime() {
     }
   }
   function setSpeedToggleBoosted(boosted) {
-    const enabled = Boolean(SCENE_TUNING.speedToggle?.enabled ?? 1);
+    const enabled = Boolean(SCENE_TUNING.speedToggle?.enabled ?? 0);
     speedToggleBoosted = enabled && Boolean(boosted);
     syncSpeedToggleUi();
   }
@@ -2927,6 +2891,13 @@ async function startRuntime() {
   }
 
   function applyTuningPatch(next, { path, syncEditor = false } = {}) {
+    if (path?.startsWith('combo.')) {
+      SCENE_TUNING.combo = normalizeCombo(next.combo);
+      combo.configure(SCENE_TUNING.combo);
+      saveTuning(SCENE_TUNING, { immediate: true });
+      if (syncEditor) editor.sync();
+      return SCENE_TUNING;
+    }
     if (path?.startsWith('progressHud.')) {
       const previous = normalizeProgressHudConfig(SCENE_TUNING.progressHud);
       const settings = validateProgressHudConfig(next.progressHud);
@@ -2996,7 +2967,7 @@ async function startRuntime() {
             if (!response.ok) throw new Error(`HTTP ${response.status}`);
             localStorage.removeItem(LEVEL_EDITOR_PREVIEW_STORAGE_KEY);
           }
-          activateLevelTuning(selectedLevelKey);
+          activateLevelTuning(selectedLevelKey, webEntry?.document?.tuning);
           window.location.reload();
         } catch (error) {
           console.warn('Could not load the selected playable level.', error);
@@ -3017,8 +2988,8 @@ async function startRuntime() {
       return SCENE_TUNING;
     }
     if (path?.startsWith('installGate.') || path?.startsWith('exportNaming.')) {
-      if (path === 'installGate.successfulOperationThreshold' || path === 'exportNaming.steps') {
-        setLevelInstallThresholdCustom(SCENE_TUNING.level?.selected, true);
+      if (path === 'installGate.successfulOperationThreshold') {
+        setLevelInstallThresholdCustom(SCENE_TUNING.level?.selected, Number(next.installGate.customThresholdEnabled) === 1);
       }
       deepMerge(SCENE_TUNING, next);
       saveTuning(SCENE_TUNING, { immediate: true });
@@ -3050,6 +3021,15 @@ async function startRuntime() {
       if (syncEditor) editor.sync();
       return SCENE_TUNING;
     }
+    if (path === 'conveyorLayout.passengerSpeedMultiplier' || path?.startsWith('effects.')
+      || /^parkingSpots\.(opacity|fillColor|fillOpacity|shadowDistance|shadowOpacity)$/.test(path)) {
+      deepMerge(SCENE_TUNING, next);
+      if (path.startsWith('parkingSpots.')) view.updateParkingSpotVisuals();
+      if (view.vehicleEffects) view.vehicleEffects.effectsTuning = SCENE_TUNING.effects;
+      saveTuning(SCENE_TUNING);
+      if (syncEditor) editor.sync();
+      return SCENE_TUNING;
+    }
     if (path?.startsWith('speedToggle.')) {
       deepMerge(SCENE_TUNING, next);
       // Editing X/Y in the panel has to obey the same painted-bounds clamp the
@@ -3067,31 +3047,28 @@ async function startRuntime() {
     }
     const previousCountdown = normalizeCountdownConfig(SCENE_TUNING.countdown);
     const previousStamina = normalizeStaminaConfig(SCENE_TUNING.stamina);
-    const materialOnly = isPassengerMaterialTuningPath(path);
     const restartOpeningGuide = path?.startsWith('firstClickGuide.')
       && Boolean(Number(next.firstClickGuide?.enabled));
     const restartEntryBanner = path?.startsWith('entryBanner.')
       && Boolean(Number(next.entryBanner?.enabled));
     const restartPreRoll = path?.startsWith('preRoll.');
     const restartVehicleGuide = path?.startsWith('vehicleGuideHand.');
-    const conveyorStructureChanged = !materialOnly && (
+    const conveyorStructureChanged = (
       path === 'conveyorLayout.selected'
       || path === 'spatialConveyor.capacity'
       || path === 'spatialConveyor.startFilled'
     );
     const vehicleRouteChanged = /^(vehiclePath\.(?:parkingBounds|autoBounds|boundsPadding|turn)|vehicleDeparturePath\.(?:backDistance|exit|turn)|parkingSpots\.|vehicleArea\.|facing\.parkingSpotYawDegrees)/u.test(path ?? '');
-    const colorIndex = getPassengerMaterialColorIndex(path);
-    const tuning = view.setTuning(next, { mode: materialOnly ? 'passengerMaterial' : 'full', colorIndex });
-    if (!materialOnly) {
-      if (conveyorStructureChanged || vehicleRouteChanged) game.reset();
-      initializeGameQueues({ resetSlots: conveyorStructureChanged });
-      if (!pressed && (
-        conveyorStructureChanged
-        || path === 'spatialConveyor.normalSpeedMultiplier'
-      )) applyIdleSpeedMultiplier();
-      applyPreviewFrame();
-      updateCtaPosition();
-    }
+    const tuning = view.setTuning(next);
+    combo.configure(tuning.combo);
+    if (conveyorStructureChanged || vehicleRouteChanged) game.reset();
+    initializeGameQueues({ resetSlots: conveyorStructureChanged });
+    if (!pressed && (
+      conveyorStructureChanged
+      || path === 'spatialConveyor.normalSpeedMultiplier'
+    )) applyIdleSpeedMultiplier();
+    applyPreviewFrame();
+    updateCtaPosition();
     saveTuning(tuning, { immediate: conveyorStructureChanged });
     const nextCountdown = normalizeCountdownConfig(tuning.countdown);
     const nextStamina = normalizeStaminaConfig(tuning.stamina);
@@ -3153,6 +3130,11 @@ async function startRuntime() {
         defaultTuning: DEFAULT_SCENE_TUNING,
         setTuning: applyTuningPatch,
         getPlayableExportPayload,
+        previewExportBranding: (preview, platform) => {
+          previewBrandPlatform = platform;
+          exportBrandPreview = preview;
+          applyBrandingTuning(view.getBackgroundCanvasBounds());
+        },
         clearSavedTuning,
         saveImportedLevelTuning,
         captureScreenshot: capturePlayableScreenshot,
@@ -3326,7 +3308,9 @@ async function startRuntime() {
 
   function syncHud(state) {
     paintStamina();
+    if (state.lastEvent?.type === 'reset') combo.reset();
     if (state.status !== 'playing') {
+      combo.clearStreak();
       countdown.finish(state.status);
       paintCountdown();
     }
@@ -3335,7 +3319,10 @@ async function startRuntime() {
     // have dropped the earlier sound. The final lastEvent is played as well so
     // merge-attached fields (garage release, turn, ambulance) still sound; the
     // controller de-duplicates keys shared with the frame list.
-    for (const event of state.frameAudioEvents ?? []) audio.handleGameEvent(event, state.time);
+    for (const event of state.frameAudioEvents ?? []) {
+      audio.handleGameEvent(event, state.time);
+      combo.contact(event);
+    }
     audio.handleGameEvent(state.lastEvent, state.time);
     updateInstallGate(state);
     paintProgressHud(state);
@@ -3394,6 +3381,7 @@ async function startRuntime() {
     allClearStoreJumped = false;
     setActiveLevel(nextLevel);
     game = new BusLoopGame(nextLevel);
+    combo.reset();
     staminaView.reset(SCENE_TUNING.stamina, { playIntro: false });
     paintStamina();
     countdown.reset();
@@ -3535,6 +3523,7 @@ async function startRuntime() {
     view.setStageOpening?.(currentStage()?.opening ?? null, currentStage()?.labels ?? []);
     setActiveLevel(initialLevel);
     game = new BusLoopGame(initialLevel);
+    combo.reset();
     staminaView.reset(SCENE_TUNING.stamina);
     paintStamina();
     countdown.reset();

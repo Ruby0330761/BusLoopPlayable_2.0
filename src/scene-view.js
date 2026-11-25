@@ -1,14 +1,20 @@
+import { createPassengerEntryTurn, samplePassengerEntryTurn } from './passenger-entry-motion.js';
+import { BOARDING_CONTACT_ENTRY_FRACTION, BOARDING_CONTACT_HIDE_FRAMES, getBoardingContactProgress, getBoardingPassengerOrder, getBoardingRowTiming } from './passenger-boarding-motion.js';
 import * as THREE from 'three';
 import { FBXLoader } from 'three/addons/loaders/FBXLoader.js';
 import { gunzipSync, unzlibSync } from 'three/addons/libs/fflate.module.js';
 import { clone as cloneSkeleton } from 'three/addons/utils/SkeletonUtils.js';
 import { COLORS, LEVEL_1, PASSENGER_COUNT_BOARD_COLORS } from './level-data.js';
+import { getSessionColorIndices, usesShippedVehicleMesh } from './color-atlases.js';
+import { attachVehicleSwatches, createVehiclePaintMaterial } from './vehicle-paint.js';
+import { resolvePassengerBodyColor, resolveVehiclePaint } from './vehicle-display-colors.js';
 import {
   MAX_CONVEYOR_CAPACITY,
   MAX_QUEUE_CAPACITY,
   getConveyorLayout
 } from './conveyor-layouts.js';
 import { SCENE_TUNING } from './scene-tuning.js';
+import { createRoofArrowOutline, updateRoofArrowOutline, roofArrowStrokeRatio } from './roof-arrow-outline.js';
 import { resolveBackgroundOffsetY } from './background-alignment.js';
 import { mergeStageTuning } from './playable-session-config.js';
 import {
@@ -40,19 +46,13 @@ import {
   resolvePlayableTrackBoarding,
   usesAuthoredTrackTransform
 } from './playable-track-runtime.js';
-import { MECHANISM_ASSETS } from './mechanism-resources.js';
+import { getEntryBannerArt, MECHANISM_ASSETS } from './mechanism-resources.js';
 import { GARAGE_SIZE_MULTIPLIER } from './vehicle-collision.js';
 import { VehicleEffects } from './vehicle-effects.js';
 import {
-  dominantOpaqueColor,
-  hexToRgb,
-  normalizeTintOverrides,
-  resolveTintReference,
-  tintAtlasPixels
-} from './vehicle-color-tint.js';
-import {
   calculateDesignCoverHalfHeight,
   calculateOrthographicHalfHeight,
+  calculateCameraGroundRotation,
   calculatePerspectiveDistance,
   createSceneBounds,
   evaluateDreamteckClosedBSpline,
@@ -109,9 +109,28 @@ const SPOT_OUTLINE_CLEARANCE_Y = 0.004;
 // leaving the bay ride the lower departure lane, so the decal also disables
 // depth testing entirely: a bay is ground art and must never cover a car.
 const SPOT_OUTLINE_RENDER_ORDER = -10;
+const SPOT_FILL_RENDER_ORDER = SPOT_OUTLINE_RENDER_ORDER - 1;
+const SPOT_SHADOW_RENDER_ORDER = SPOT_FILL_RENDER_ORDER - 1;
 // The seat-count badge is the same kind of ground art. It draws just above the
 // bay paint but still before every vehicle and passenger.
 const SEAT_COUNT_BOARD_RENDER_ORDER = -9;
+
+function configureParkingDecalMaterial(material, opacity) {
+  // Blend alpha while staying in the opaque draw queue, before every car.
+  // Normal transparent decals would be sorted after cars and paint over them.
+  const recompile = material.transparent || material.blending !== THREE.CustomBlending;
+  material.transparent = false;
+  material.blending = THREE.CustomBlending;
+  material.blendEquation = THREE.AddEquation;
+  material.blendSrc = THREE.SrcAlphaFactor;
+  material.blendDst = THREE.OneMinusSrcAlphaFactor;
+  material.blendSrcAlpha = THREE.OneFactor;
+  material.blendDstAlpha = THREE.OneMinusSrcAlphaFactor;
+  material.depthTest = false;
+  material.depthWrite = false;
+  material.opacity = opacity;
+  if (recompile) material.needsUpdate = true;
+}
 // Collision flashes sit this far past the bumper so the burst never overlaps
 // the car body it belongs to.
 const HIT_CONTACT_CLEARANCE = 0.04;
@@ -271,38 +290,6 @@ const LUXURY_PASSENGER_BODY_EMISSION = Object.freeze({ r: 0.6431373, g: 0.643137
 const LUXURY_PASSENGER_CLOTH_EMISSION = Object.freeze({ r: 0.78431374, g: 0.73587906, b: 0.3882353 });
 const LUXURY_PASSENGER_ANIMATION_ASSET = MECHANISM_ASSETS.luxuryVehicle.animation;
 const LUXURY_ASSETS = MECHANISM_ASSETS.luxuryVehicle;
-const PASSENGER_DEFAULT_MATERIAL_COLORS = Object.freeze([
-  { baseColor: 0xffffff, emissionColor: 0x36a6ff },
-  { baseColor: 0xffffff, emissionColor: 0xadd98a },
-  { baseColor: 0xff6331, emissionColor: 0xd445ac },
-  { baseColor: 0xffffff, emissionColor: 0xc474fd },
-  { baseColor: 0xffffff, emissionColor: 0xc57272 },
-  { baseColor: 0xffffff, emissionColor: 0xa49584 },
-  { baseColor: 0xffffff, emissionColor: 0xc09d9d },
-  { baseColor: 0xffffff, emissionColor: 0x65c1e2 },
-  { baseColor: 0xffffff, emissionColor: 0xd68c8c },
-  { baseColor: 0xffffff, emissionColor: 0x4a4a4a },
-  { baseColor: 0xffffff, emissionColor: 0x8b7caf },
-  // Indices 11-16 have no standard passenger service (special mechanism
-  // vehicles) and keep falling back to index 0.
-  null, null, null, null, null, null,
-  // Supplied colour supplement (Unity indices 17-25). `baseColor` stays white
-  // because the variant colour is already baked into the atlas body region;
-  // tinting again would double-saturate it. `emissionColor` is the supplied
-  // `passenger_<name>.prefab` m_EmissionColor.
-  { baseColor: 0xffffff, emissionColor: 0x2b2b2b },
-  { baseColor: 0xffffff, emissionColor: 0x989898 },
-  { baseColor: 0xffffff, emissionColor: 0x851911 },
-  { baseColor: 0xffffff, emissionColor: 0x675938 },
-  { baseColor: 0xffffff, emissionColor: 0x7b6a54 },
-  { baseColor: 0xffffff, emissionColor: 0x55b987 },
-  { baseColor: 0xffffff, emissionColor: 0x55b987 },
-  { baseColor: 0xffffff, emissionColor: 0xb07877 },
-  { baseColor: 0xffffff, emissionColor: 0x464545 }
-]);
-const scratchPassengerBaseColor = new THREE.Color();
-const scratchPassengerEmissionColor = new THREE.Color();
-
 function resolveCountBoardColors(vehicle) {
   const body = vehicle?.colorOverrides?.body;
   if (typeof body === 'string' && /^#[0-9a-f]{6}$/i.test(body)) {
@@ -713,98 +700,9 @@ function configureColorTexture(texture) {
   return texture;
 }
 
-const vehicleOverrideTextureCache = new Map();
-
-function tintVehicleTexture(map, colorIndex, overrides) {
-  const entries = normalizeTintOverrides(overrides);
-  if (!Object.keys(entries).length || !map?.image || typeof document === 'undefined') return map;
-  const key = `${map.uuid}:${colorIndex}:${Object.entries(entries).sort().map(([name, value]) => `${name}=${value.toLowerCase()}`).join(';')}`;
-  if (vehicleOverrideTextureCache.has(key)) return vehicleOverrideTextureCache.get(key);
-  try {
-    const image = map.image;
-    const canvas = document.createElement('canvas');
-    canvas.width = image.width || image.naturalWidth;
-    canvas.height = image.height || image.naturalHeight;
-    if (!canvas.width || !canvas.height) return map;
-    const context = canvas.getContext('2d', { willReadFrequently: true });
-    context.drawImage(image, 0, 0, canvas.width, canvas.height);
-    const pixels = context.getImageData(0, 0, canvas.width, canvas.height);
-    // Anchor the shading map on the colour the atlas actually stores. The level
-    // catalog's COLORS[slot] is not reliable: the black slot ships a #101010
-    // body while the catalog records #2d2d30, and anchoring on the catalog value
-    // made the real body pixels fall through to the window branch instead of
-    // being repainted.
-    const reference = resolveTintReference(
-      hexToRgb(COLORS[colorIndex]?.css) ?? [97, 232, 255],
-      dominantOpaqueColor(pixels.data)
-    );
-    tintAtlasPixels(pixels.data, { reference, overrides: entries });
-    context.putImageData(pixels, 0, 0);
-    const texture = new THREE.CanvasTexture(canvas);
-    texture.colorSpace = THREE.SRGBColorSpace;
-    texture.wrapS = map.wrapS;
-    texture.wrapT = map.wrapT;
-    texture.flipY = map.flipY;
-    texture.needsUpdate = true;
-    vehicleOverrideTextureCache.set(key, texture);
-    return texture;
-  } catch (error) {
-    console.warn('Vehicle colour override could not be rasterized.', error);
-    return map;
-  }
-}
-
-function applyPassengerUnityMaterial(material, colorIndex, map) {
-  const materialTuning = SCENE_TUNING.passengerMaterial ?? {};
-  const colorTuning = materialTuning.colors?.[colorIndex] ?? {};
-  const defaults = PASSENGER_DEFAULT_MATERIAL_COLORS[colorIndex] ?? PASSENGER_DEFAULT_MATERIAL_COLORS[0];
-  const baseStrength = THREE.MathUtils.clamp(materialTuning.baseColorStrength ?? 1, 0, 2);
-  const brightness = THREE.MathUtils.clamp(materialTuning.brightness ?? 1, 0, 3);
-  const emissionStrength = THREE.MathUtils.clamp(materialTuning.emissionStrength ?? 1, 0, 5);
-  scratchPassengerBaseColor.setHex(colorTuning.baseColor ?? defaults.baseColor);
-  scratchPassengerEmissionColor.setHex(colorTuning.emissionColor ?? defaults.emissionColor);
-  setPassengerMaterialMaps(material, map, map);
-  material.color.setRGB(
-    THREE.MathUtils.clamp(THREE.MathUtils.lerp(1, scratchPassengerBaseColor.r, baseStrength) * brightness, 0, 3),
-    THREE.MathUtils.clamp(THREE.MathUtils.lerp(1, scratchPassengerBaseColor.g, baseStrength) * brightness, 0, 3),
-    THREE.MathUtils.clamp(THREE.MathUtils.lerp(1, scratchPassengerBaseColor.b, baseStrength) * brightness, 0, 3)
-  );
-  material.emissive.copy(scratchPassengerEmissionColor);
-  material.emissiveIntensity = emissionStrength;
-  material.roughness = materialTuning.roughness ?? 0.58;
-  material.metalness = materialTuning.metalness ?? 0;
+function applyPassengerMaterial(material, colorIndex) {
+  material.color.set(resolvePassengerBodyColor(LEVEL_1, colorIndex));
   material.userData.passengerColorIndex = colorIndex;
-}
-
-function applyPassengerSolidMaterial(material, colorIndex) {
-  const materialTuning = SCENE_TUNING.passengerMaterial ?? {};
-  const defaults = PASSENGER_DEFAULT_MATERIAL_COLORS[colorIndex] ?? PASSENGER_DEFAULT_MATERIAL_COLORS[0];
-  const solidColor = materialTuning.solidColors?.[colorIndex] ?? defaults.emissionColor;
-  const brightness = THREE.MathUtils.clamp(materialTuning.brightness ?? 1, 0, 3);
-  const emissionStrength = THREE.MathUtils.clamp(materialTuning.emissionStrength ?? 1, 0, 5);
-  scratchPassengerBaseColor.setHex(solidColor);
-  setPassengerMaterialMaps(material, null, null);
-  material.color.setRGB(
-    THREE.MathUtils.clamp(scratchPassengerBaseColor.r * brightness, 0, 3),
-    THREE.MathUtils.clamp(scratchPassengerBaseColor.g * brightness, 0, 3),
-    THREE.MathUtils.clamp(scratchPassengerBaseColor.b * brightness, 0, 3)
-  );
-  material.emissive.copy(scratchPassengerBaseColor);
-  material.emissiveIntensity = emissionStrength;
-  material.roughness = materialTuning.roughness ?? 0.58;
-  material.metalness = materialTuning.metalness ?? 0;
-  material.userData.passengerColorIndex = colorIndex;
-}
-
-function applyPassengerMaterial(material, colorIndex, map) {
-  if (SCENE_TUNING.passengerMaterial?.mode === 'solidColor') {
-    applyPassengerSolidMaterial(material, colorIndex);
-  } else {
-    const overrides = LEVEL_1.passengerColorOverrides?.[String(colorIndex)]
-      ?? LEVEL_1.passengerColorOverrides?.[colorIndex]
-      ?? {};
-    applyPassengerUnityMaterial(material, colorIndex, tintVehicleTexture(map, colorIndex, overrides));
-  }
 }
 
 async function loadVatGeometry(url, loadingManager) {
@@ -1183,8 +1081,11 @@ function applyArrowOutlineTuning(root, { color = 0x171717, scale = ARROW_OUTLINE
       if ('linewidth' in material) material.linewidth = Math.max(1, scale);
       material.needsUpdate = true;
     }
+    if (child.isMesh && updateRoofArrowOutline(child.geometry, scale)) return;
     if (child.userData.outlineBaseScale) {
       child.scale.copy(child.userData.outlineBaseScale).multiplyScalar(scale);
+      child.position.copy(child.userData.outlineBasePosition)
+        .addScaledVector(child.userData.outlineCenterOffset, scale - 1);
     }
   });
 }
@@ -1203,6 +1104,7 @@ function addArrowOutline(root, tuning = {}) {
     depthTest: Boolean(tuning.depthTest),
     toneMapped: false
   });
+  const center = new THREE.Box3().setFromObject(root).getCenter(new THREE.Vector3());
   const outlines = [];
   root.traverse((child) => {
     if (!child.isMesh || child.userData.isArrowOutline) return;
@@ -1210,27 +1112,34 @@ function addArrowOutline(root, tuning = {}) {
     outlines.push({
       parent: child.parent,
       mesh: child,
-      shell: new THREE.Mesh(child.geometry, shellMaterial),
+      shell: new THREE.Mesh(child.material.userData.isQuestionMarkMaterial
+        ? child.geometry : createRoofArrowOutline(child.geometry), shellMaterial),
       edge
     });
   });
   for (const { parent, mesh, shell, edge } of outlines) {
     const baseScale = mesh.scale.clone();
+    const centerOffset = mesh.position.clone().sub(parent.worldToLocal(center.clone()));
+    for (const outline of [shell, edge]) {
+      outline.userData.outlineBasePosition = mesh.position.clone();
+      outline.userData.outlineCenterOffset = centerOffset.clone();
+    }
     shell.name = `${mesh.name || 'Arrow'}_OutlineShell`;
     shell.position.copy(mesh.position);
     shell.quaternion.copy(mesh.quaternion);
     shell.userData.outlineBaseScale = baseScale.clone();
-    shell.scale.copy(shell.userData.outlineBaseScale).multiplyScalar(tuning.scale ?? ARROW_OUTLINE_SCALE);
-    shell.renderOrder = mesh.renderOrder - 1;
+    shell.scale.copy(baseScale);
+    // Opaque roofs draw first, then the outline, then the white glyph.
+    shell.renderOrder = mesh.renderOrder + 1;
     shell.userData.isArrowOutline = true;
     edge.name = `${mesh.name || 'Arrow'}_OutlineEdge`;
     edge.position.copy(mesh.position);
     edge.quaternion.copy(mesh.quaternion);
-    edge.userData.outlineBaseScale = baseScale.clone();
-    edge.scale.copy(edge.userData.outlineBaseScale).multiplyScalar(tuning.scale ?? ARROW_OUTLINE_SCALE);
-    edge.renderOrder = mesh.renderOrder + 2;
+    if (mesh.material.userData.isQuestionMarkMaterial) edge.userData.outlineBaseScale = baseScale.clone();
+    edge.scale.copy(baseScale);
+    edge.renderOrder = mesh.renderOrder + 3;
     edge.userData.isArrowOutline = true;
-    mesh.renderOrder += 1;
+    mesh.renderOrder += 2;
     parent.add(shell, edge);
   }
   applyArrowOutlineTuning(root, tuning);
@@ -1346,9 +1255,8 @@ function sampleUnityQuaternionCurve(keys, time, duration, target) {
 function makeVehiclePlaceholder(vehicle) {
   const root = new THREE.Group();
   root.userData.vehicleId = vehicle.id;
-  const color = COLORS[vehicle.colorIndex] ?? COLORS[0];
   const material = new THREE.MeshStandardMaterial({
-    color: color.hex,
+    color: resolveVehiclePaint(vehicle).body,
     roughness: 0.42
   });
   const body = new THREE.Mesh(new THREE.BoxGeometry(0.62, 0.4, 1.28), material);
@@ -1605,13 +1513,11 @@ export class SceneView {
     this.passengerViews = [];
     this.queuePassengerViews = [[], []];
     this.spotRoots = [];
+    this.spotShadows = [];
+    this.spotFills = [];
     this.spotPositions = [];
     this.seatCountBoards = [];
-    this.passengerMaterials = [];
-    this.passengerColorTextures = [];
     this.unityAssetsFailed = false;
-    this.vehicleMaterials = [];
-    this.vehicleColorTextures = [];
     this.turnArrowTemplate = null;
     this.questionMarkTemplate = null;
     this.questionMarkTexture = null;
@@ -1687,6 +1593,7 @@ export class SceneView {
       finalMatrix: new THREE.Matrix4()
     };
     this.lastBoardingEventId = 0;
+    this.vehicleBoardingPulses = new Map();
     this.vehicleEffects = null;
     this.guideHand = null;
     this.guideHandMaterial = null;
@@ -1696,7 +1603,7 @@ export class SceneView {
     this.entryBannerState = null;
     // Per-stage presentation written by the playable session runner. It is
     // merged over SCENE_TUNING at read time and never persisted into tuning.
-    this.stageOpening = null;
+    this.stageOpening = hooks.stageOpening ?? null;
     this.stageLabelOverlay = null;
     this.vehiclePathLines = [];
     this.vehicleDeparturePathLines = [];
@@ -1794,9 +1701,9 @@ export class SceneView {
     }
   }
 
-  createEntryBanner() {    const parent = this.canvas.parentElement;
+  createEntryBanner() {
+    const parent = this.canvas.parentElement;
     if (!parent) return null;
-    const assets = MECHANISM_ASSETS.entryBanner;
     const root = document.createElement('div');
     root.className = 'entry-banner-overlay';
     root.hidden = true;
@@ -1814,22 +1721,21 @@ export class SceneView {
     const labelGroup = document.createElement('div');
     labelGroup.className = 'entry-banner-label-group';
 
-    const makeImage = (className, source, alt = '') => {
+    const makeImage = (className) => {
       const image = document.createElement('img');
       image.className = className;
-      image.src = source;
-      image.alt = alt;
+      image.alt = '';
       image.draggable = false;
       return image;
     };
 
-    const card = makeImage('entry-banner-card', assets.hardBackground);
+    const card = makeImage('entry-banner-card');
     const arrows = Array.from({ length: 6 }, (_, index) => {
-      const arrow = makeImage(`entry-banner-arrow entry-banner-arrow-${index + 1}`, assets.redArrows);
+      const arrow = makeImage(`entry-banner-arrow entry-banner-arrow-${index + 1}`);
       arrow.dataset.arrowIndex = String(index);
       return arrow;
     });
-    const label = makeImage('entry-banner-label', assets.hardTitle, 'HARD');
+    const label = makeImage('entry-banner-label');
     arrowGroup.append(...arrows);
     labelGroup.append(label);
     bannerGroup.append(card, arrowGroup, labelGroup);
@@ -1913,7 +1819,7 @@ export class SceneView {
     const banner = this.entryBanner;
     if (!banner) return;
     const style = this.resolveEntryBannerStyle(tuning);
-    const assets = MECHANISM_ASSETS.entryBanner;
+    const art = getEntryBannerArt(tuning);
     banner.root.classList.toggle('is-superhard', style === 'superhard');
     banner.root.classList.toggle('is-custom', style === 'custom');
     banner.mask.hidden = !Boolean(tuning.maskEnabled);
@@ -1925,17 +1831,14 @@ export class SceneView {
       // title layers stay hidden. An author who picked the style before
       // uploading anything still gets the shipped storm plate instead of a
       // broken image.
-      const source = typeof tuning.customAsset === 'string' && tuning.customAsset
-        ? tuning.customAsset
-        : assets.stormBanner;
       banner.label.alt = '';
-      this.applyEntryBannerPlateAspect(source);
+      this.applyEntryBannerPlateAspect(art.card);
     } else {
-      banner.card.src = style === 'superhard' ? assets.superHardBackground : assets.hardBackground;
+      banner.card.src = art.card;
       for (const arrow of banner.arrows) {
-        arrow.src = style === 'superhard' ? assets.purpleArrows : assets.redArrows;
+        arrow.src = art.arrows;
       }
-      banner.label.src = style === 'superhard' ? assets.superHardTitle : assets.hardTitle;
+      banner.label.src = art.label;
       banner.label.alt = style === 'superhard' ? 'SUPER HARD' : 'HARD';
       banner.bannerGroup.style.removeProperty('--entry-banner-plate-aspect');
       banner.bannerGroup.style.aspectRatio = '';
@@ -2327,6 +2230,7 @@ export class SceneView {
 
     this.backgroundPlane = this.makeArtworkPlane(getSelectedBackgroundUrl());
     this.backgroundPlane.rotation.set(0, 0, 0);
+    this.backgroundPlane.matrixAutoUpdate = false;
     this.backgroundPlane.material.depthWrite = false;
     this.backgroundPlane.renderOrder = -100;
     // The backdrop must render before the parking bays. Transparent materials
@@ -2469,6 +2373,7 @@ export class SceneView {
         : null;
       this.fullQueueCurves = [];
       this.queueCurves = [];
+      this.queueEntryTurns = [];
       this.entryPercents = [spatialPackage.entrances?.[0]?.percent ?? 0];
       if (!this.shouldUseSpatialPassengerInstancing()) {
         this.ensurePassengerViewCapacity(capacity);
@@ -2672,7 +2577,7 @@ export class SceneView {
 
   buildSpatialPassengerBatches(capacity) {
     this.disposeSpatialPassengerBatches();
-    if (!this.personTemplate || !this.shadowTemplate || !this.passengerColorTextures.length) return null;
+    if (!this.personTemplate || !this.shadowTemplate) return null;
 
     const chunkCount = SPATIAL_PASSENGER_CHUNK_COUNT;
     const maxInstancesPerChunk = Math.ceil(capacity / chunkCount) * LEVEL_1.groupSize + LEVEL_1.groupSize;
@@ -2735,14 +2640,12 @@ export class SceneView {
     );
     const useCulling = this.isSpatialOptimizationEnabled('frustumCulling');
 
-    const passengerBatches = this.passengerColorTextures.map((map, colorIndex) => {
-      // Slots without a supplied atlas keep a null batch; the render passes skip
-      // them so an unused colour costs no instanced geometry.
-      if (!map) return null;
+    const passengerBatches = [];
+    for (const colorIndex of getSessionColorIndices([LEVEL_1])) {
       const material = this.createVatMaterial(colorIndex, { instanced: true });
       this.setVatAnimation(material, 'move');
       ownedMaterials.add(material);
-      return Array.from({ length: chunkCount }, (_, chunkIndex) => {
+      passengerBatches[colorIndex] = Array.from({ length: chunkCount }, (_, chunkIndex) => {
         const meshes = personSources.map((source) => {
           const geometry = makeSharedAttributeGeometry(source.geometry);
           const phaseOffset = new THREE.InstancedBufferAttribute(
@@ -2763,7 +2666,7 @@ export class SceneView {
         });
         return { meshes, count: 0 };
       });
-    });
+    }
 
     const shadowGeometries = shadowSources.map((source) => {
       const geometry = source.geometry.clone();
@@ -3286,6 +3189,12 @@ export class SceneView {
   updateQueueCurvesForCamera() {
     const previous = this.queueCurves;
     this.queueCurves = this.fullQueueCurves.map((curve) => this.makeVisibleQueueCurve(curve));
+    this.queueEntryTurns = usesAuthoredTrackTransform(this.activeConveyorLayout ?? {}) ? [] : this.queueCurves.map((queueCurve, queueIndex) => createPassengerEntryTurn({
+      queueCurve,
+      conveyorCurve: this.curve,
+      entryPercent: this.entryPercents?.[queueIndex] ?? 0,
+      distance: this.getConveyorSlotSpacing() * 1.5
+    }));
     if (previous && this.lastSnapshot?.time === 0) this.initialEntryPathStates.clear();
   }
 
@@ -3365,12 +3274,12 @@ export class SceneView {
     this.vehicleDeparturePathLines.length = 0;
   }
 
-  makeVehiclePathLine(path, material, y = SCENE_TUNING.vehiclePath.y) {
+  makeVehiclePathLine(path, material, y, config) {
     const points = [];
     const samples = Math.max(8, Math.ceil(path.length / 0.08));
     for (let i = 0; i <= samples; i += 1) {
       const sample = evaluatePath(path, path.length * (i / samples));
-      const position = mapMotionPoint(sample.position, y);
+      const position = mapMotionPoint(sample.position, y, config);
       points.push(position);
     }
     const geometry = new THREE.BufferGeometry().setFromPoints(points);
@@ -3380,17 +3289,27 @@ export class SceneView {
     return line;
   }
 
-  // Place the collision flash on the car's silhouette, on the side of the thing
-  // it hit. The raw contact point cannot be used directly: container contacts
-  // arrive in level source space (not world), and garage/conveyor collision
-  // volumes overlap a parked car, so the mapped point can land inside the body.
-  // Direction therefore comes from the blocker itself, falling back to the
-  // engine's bump direction. Using the car's own axes for the silhouette keeps
-  // this independent of which local axis is authored as "front".
   resolveHitContact(vehicleId, { targetId = null, contactPosition = null } = {}) {
     const view = this.vehicleViews.get(vehicleId);
-    if (!view) {
-      return contactPosition ? mapMotionPoint(contactPosition, SCENE_TUNING.vehicleArea.y) : null;
+    const point = Number.isFinite(contactPosition?.x) && Number.isFinite(contactPosition?.z)
+      ? mapMotionPoint(contactPosition) : null;
+    if (point && view?.parent) view.parent.localToWorld(point);
+    if (!view) return point;
+    const target = this.vehicleViews.get(targetId);
+    if (target && point) {
+      const size = target.userData.templateSize;
+      if (!size) return point;
+      // Trace the bumper's contact lane to the visible body. Its fitted width
+      // and length can differ from the gameplay box, especially on long buses.
+      const local = target.worldToLocal(point.clone()).setY(0);
+      const half = new THREE.Vector3(size.x / 2, size.y / 2, size.z / 2);
+      const bounds = new THREE.Box3(half.clone().negate(), half);
+      const yaw = view.rotation.y - deg(SCENE_TUNING.facing.vehicleYawOffsetDegrees) - target.rotation.y;
+      const incoming = new THREE.Vector3(Math.sin(yaw), 0, Math.cos(yaw));
+      const start = local.clone().addScaledVector(incoming, -(local.length() + half.length() + 1));
+      const edge = new THREE.Ray(start, incoming).intersectBox(bounds, new THREE.Vector3())
+        ?? bounds.clampPoint(local, new THREE.Vector3());
+      return target.localToWorld(edge);
     }
     view.updateWorldMatrix(true, false);
     const origin = view.getWorldPosition(new THREE.Vector3());
@@ -3398,36 +3317,15 @@ export class SceneView {
     const halfLength = Math.max(0.05, (view.userData.templateSize?.z ?? 0.68) * scale.z * 0.5);
     const halfWidth = Math.max(0.04, (view.userData.templateSize?.x ?? 0.27) * scale.x * 0.5);
 
-    const aim = (() => {
-      const targetView = targetId != null ? this.vehicleViews.get(targetId) : null;
-      if (targetView) {
-        targetView.updateWorldMatrix(true, false);
-        return targetView.getWorldPosition(new THREE.Vector3());
-      }
-      if (contactPosition
-        && Number.isFinite(Number(contactPosition.x))
-        && Number.isFinite(Number(contactPosition.z))) {
-        return mapMotionPoint(contactPosition, SCENE_TUNING.vehicleArea.y);
-      }
-      return null;
-    })();
-
-    let direction = aim ? aim.clone().sub(origin).setY(0) : null;
+    // Garage and conveyor volumes can overlap the car. Keep their flashes on
+    // the attacking silhouette even when the contact lies inside it.
+    let direction = point ? point.clone().sub(origin).setY(0) : null;
     if (!direction || direction.lengthSq() <= 1e-8) {
       // No usable blocker position: aim along the engine's own drive-out
       // direction, expressed in world space through the same mapping.
-      const vehicle = this.lastGame?.getVehicle?.(vehicleId);
-      const yaw = Number(vehicle?.yaw);
-      if (vehicle && Number.isFinite(yaw) && Number.isFinite(vehicle.x) && Number.isFinite(vehicle.z)) {
-        const rad = yaw * Math.PI / 180;
-        const ahead = mapMotionPoint(
-          { x: vehicle.x + Math.sin(rad) * 0.5, z: vehicle.z + Math.cos(rad) * 0.5 },
-          SCENE_TUNING.vehicleArea.y
-        );
-        direction = ahead.clone().sub(origin).setY(0);
-      }
+      const yaw = view.rotation.y - deg(SCENE_TUNING.facing.vehicleYawOffsetDegrees);
+      direction = new THREE.Vector3(Math.sin(yaw), 0, Math.cos(yaw));
     }
-    if (!direction || direction.lengthSq() <= 1e-8) return null;
     direction.normalize();
 
     // Distance from the car center to its silhouette along that direction.
@@ -3442,7 +3340,8 @@ export class SceneView {
   }
 
   updateVehiclePathPreview(snapshot = this.lastSnapshot, game = this.lastGame) {
-    const tuning = game?.getVehiclePathConfig().station ?? SCENE_TUNING.vehiclePath;
+    const routeConfig = game?.getVehiclePathConfig();
+    const tuning = routeConfig?.station ?? SCENE_TUNING.vehiclePath;
     const departureTuning = SCENE_TUNING.vehicleDeparturePath;
     if (
       this.isSpatialOptimizationEnabled('skipDisabledPathPreview')
@@ -3474,7 +3373,7 @@ export class SceneView {
           if (blockers.length && !tuning.showBlocked) continue;
           const points = buildToStationPoints(vehicle, target, tuning);
           const path = buildRoundedPath(points, tuning);
-          const line = this.makeVehiclePathLine(path, baseMaterial, tuning.y);
+          const line = this.makeVehiclePathLine(path, baseMaterial, tuning.y, routeConfig);
           line.material.opacity = blockers.length ? (tuning.opacity ?? 0.88) * 0.35 : (tuning.opacity ?? 0.88);
           this.vehiclePathLines.push(line);
           this.layoutRoot.add(line);
@@ -3486,7 +3385,8 @@ export class SceneView {
   }
 
   updateVehicleDeparturePathPreview(snapshot = this.lastSnapshot, game = this.lastGame) {
-    const tuning = game?.getVehiclePathConfig().departure ?? SCENE_TUNING.vehicleDeparturePath;
+    const routeConfig = game?.getVehiclePathConfig();
+    const tuning = routeConfig?.departure ?? SCENE_TUNING.vehicleDeparturePath;
     if (!tuning?.enabled || !snapshot || !game || !Boolean(SCENE_TUNING.visibility?.vehicles ?? 1)) return;
     const baseMaterial = new THREE.LineBasicMaterial({
       color: tuning.color ?? 0xffc857,
@@ -3503,7 +3403,7 @@ export class SceneView {
       const forwardStart = backwardPath.segments.at(-1)?.p1 ?? target;
       const forwardPath = buildRoundedPath(buildDepartureForwardPoints(forwardStart, tuning), tuning);
       for (const path of [backwardPath, forwardPath]) {
-        const line = this.makeVehiclePathLine(path, baseMaterial, tuning.y);
+        const line = this.makeVehiclePathLine(path, baseMaterial, tuning.y, routeConfig);
         this.vehicleDeparturePathLines.push(line);
         this.layoutRoot.add(line);
       }
@@ -3599,6 +3499,8 @@ export class SceneView {
       const garageShadowTexturePromise = hasGarage
         ? this.textureLoader.loadAsync(GARAGE_ASSETS.shadowTexture)
         : Promise.resolve(null);
+      const loadDepartureArt = import.meta.env?.DEV || (typeof __REMOTE_EDITOR__ !== 'undefined' && __REMOTE_EDITOR__)
+        || Boolean(Number(SCENE_TUNING.effects?.departureStars?.enabled));
       const [
         passengerVatGeometry,
         passengerVatTexture,
@@ -3629,11 +3531,12 @@ export class SceneView {
         aboardSmokeTexture,
         ribbonTexture,
         ribbonSmokeTexture,
+        departureStarTexture,
+        departureTrailTexture,
         hitCircleTexture,
         hitRound2Texture,
         hitRound1Texture,
-        smokeTrailTexture,
-        ...colorTextures
+        smokeTrailTexture
       ] = await Promise.all([
         loadVatGeometry(modelPaths.passengerVatMesh, this.loadingManager),
         loadVatTexture(
@@ -3669,21 +3572,14 @@ export class SceneView {
         this.textureLoader.loadAsync(LEVEL_1.assets.textures.effects.aboardSmoke),
         this.textureLoader.loadAsync(LEVEL_1.assets.textures.effects.ribbon),
         this.textureLoader.loadAsync(LEVEL_1.assets.textures.effects.ribbonSmoke),
+        loadDepartureArt ? this.textureLoader.loadAsync(LEVEL_1.assets.textures.effects.departureStar) : null,
+        loadDepartureArt ? this.textureLoader.loadAsync(LEVEL_1.assets.textures.effects.departureTrail) : null,
         this.textureLoader.loadAsync(LEVEL_1.assets.textures.effects.hitCircle),
         this.textureLoader.loadAsync(LEVEL_1.assets.textures.effects.hitRound2),
         this.textureLoader.loadAsync(LEVEL_1.assets.textures.effects.hitRound1),
-        this.textureLoader.loadAsync(LEVEL_1.assets.textures.effects.smokeTrail),
-        ...LEVEL_1.assets.colorTextures.map((path) => (
-          path ? this.textureLoader.loadAsync(path) : Promise.resolve(null)
-        ))
+        this.textureLoader.loadAsync(LEVEL_1.assets.textures.effects.smokeTrail)
       ]);
 
-      // Slots without a supplied atlas stay null so a missing colour falls back
-      // to index 0 instead of loading an unrelated texture.
-      this.vehicleColorTextures = colorTextures.map((texture) => (
-        texture ? configureColorTexture(texture) : null
-      ));
-      this.passengerColorTextures = this.vehicleColorTextures;
       this.passengerVatTexture = passengerVatTexture;
       // Unity's question texture stores a black glyph with the glyph shape in alpha.
       // Convert it to a white-alpha texture so the browser material matches the Unity shader.
@@ -3697,19 +3593,24 @@ export class SceneView {
         aboardSmokeTexture,
         ribbonTexture,
         ribbonSmokeTexture,
+        departureStarTexture,
+        departureTrailTexture,
         hitCircleTexture,
         hitRound2Texture,
         hitRound1Texture,
         smokeTrailTexture
-      ].forEach(configureColorTexture);
+      ].filter(Boolean).forEach(configureColorTexture);
       this.vehicleEffects = new VehicleEffects({
         scene: this.layoutRoot,
+        camera: this.camera,
         vehicleViews: this.vehicleViews,
         spotRoots: this.spotRoots,
         textures: {
           aboardSmoke: aboardSmokeTexture,
           ribbon: ribbonTexture,
           ribbonSmoke: ribbonSmokeTexture,
+          departureStar: departureStarTexture,
+          departureTrail: departureTrailTexture,
           hitCircle: hitCircleTexture,
           hitRound2: hitRound2Texture,
           hitRound1: hitRound1Texture,
@@ -3721,22 +3622,6 @@ export class SceneView {
         // resolve the flash position here.
         resolveHitContact: (vehicleId, contact) => this.resolveHitContact(vehicleId, contact)
       });
-      this.passengerMaterials = this.passengerColorTextures.map((map, colorIndex) => {
-        if (!map) return null;
-        const material = new THREE.MeshStandardMaterial({
-          roughness: 0.58,
-          metalness: 0
-        });
-        applyPassengerMaterial(material, colorIndex, map);
-        return material;
-      });
-      this.vehicleMaterials = this.vehicleColorTextures.map((map) => (map
-        ? new THREE.MeshStandardMaterial({
-          map,
-          roughness: 0.58,
-          metalness: 0
-        })
-        : null));
       this.garageMaterial = garageTexture ? new THREE.MeshStandardMaterial({
         map: garageTexture,
         roughness: 0.5,
@@ -3761,9 +3646,8 @@ export class SceneView {
         6: new THREE.MeshBasicMaterial({ map: vanShadowTexture, color: SCENE_TUNING.vehicleShadows.color ?? 0xffffff, transparent: true, opacity: SCENE_TUNING.vehicleShadows.opacity, depthWrite: false, side: THREE.DoubleSide }),
         10: new THREE.MeshBasicMaterial({ map: busShadowTexture, color: SCENE_TUNING.vehicleShadows.color ?? 0xffffff, transparent: true, opacity: 0.8, depthWrite: false, side: THREE.DoubleSide })
       };
-      // The bay art is a cutout decal. It must stay in the opaque pass: a
-      // transparent material is drawn after every car and passenger, which
-      // painted the white outline across whatever stood on the bay.
+      // The bay art blends its opacity in the opaque pass so it stays below
+      // every car. Custom blending also keeps shader output alpha adjustable.
       this.parkingMaterial = new THREE.MeshStandardMaterial({
         map: parkingTexture,
         roughness: 0.68,
@@ -3779,7 +3663,9 @@ export class SceneView {
         height: SCENE_TUNING.passengers.modelHeight
       });
       this.shadowTemplate = normalizeObject(toStaticMeshGroup(shadowFbx), { width: 1, depth: 1.26 });
-      this.arrowTemplate = normalizeObject(toStaticMeshGroup(arrowFbx), { depth: 0.56 });
+      const straightArrow = toStaticMeshGroup(arrowFbx);
+      for (const mesh of straightArrow.children) mesh.geometry.scale(0.83, 1, 1);
+      this.arrowTemplate = normalizeObject(straightArrow, { depth: 0.60 });
       setMaterial(this.arrowTemplate, new THREE.MeshBasicMaterial({ color: 0xffffff, side: THREE.DoubleSide }));
       addArrowOutline(this.arrowTemplate, {
         color: SCENE_TUNING.vehicleArrow.outlineColor,
@@ -3824,9 +3710,9 @@ export class SceneView {
       setMaterial(this.parkingTemplate, this.parkingMaterial);
 
       this.vehicleTemplates = {
-        4: this.prepareVehicleTemplate(carFbx, 4, { passengerRoof: true }),
-        6: this.prepareVehicleTemplate(vanFbx, 6, { passengerRoof: true }),
-        10: this.prepareVehicleTemplate(busFbx, 10, { passengerRoof: true })
+        4: this.prepareVehicleTemplate(carFbx, 4, { passengerRoof: true, proceduralPaint: usesShippedVehicleMesh(vehiclePaths[4], 4) }),
+        6: this.prepareVehicleTemplate(vanFbx, 6, { passengerRoof: true, proceduralPaint: usesShippedVehicleMesh(vehiclePaths[6], 6) }),
+        10: this.prepareVehicleTemplate(busFbx, 10, { passengerRoof: true, proceduralPaint: usesShippedVehicleMesh(vehiclePaths[10], 10) })
       };
       this.hiddenVehicleTemplates = {
         4: hiddenCarFbx ? this.prepareVehicleTemplate(hiddenCarFbx, 4) : null,
@@ -3868,9 +3754,10 @@ export class SceneView {
     }
   }
 
-  prepareVehicleTemplate(source, seats, { passengerRoof = false } = {}) {
+  prepareVehicleTemplate(source, seats, { passengerRoof = false, proceduralPaint = false } = {}) {
     const targetDepth = SCENE_TUNING.vehicleArea.modelDepthBySeats[seats] ?? 1.2;
     const root = toStaticMeshGroup(source);
+    root.userData.proceduralPaint = proceduralPaint;
     if (passengerRoof) {
       // The shipped car/van/bus paint islands occupy the atlas's left strip.
       // Split only the upper, upward-facing paint triangles; glass, trim,
@@ -3882,6 +3769,7 @@ export class SceneView {
         const uv = geometry.attributes.uv;
         const bounds = geometry.boundingBox;
         if (!position || !normal || !uv || !bounds) continue;
+        if (proceduralPaint) attachVehicleSwatches(geometry);
         const roofY = bounds.min.y + (bounds.max.y - bounds.min.y) * 0.72;
         const roofIndices = [];
         const bodyIndices = [];
@@ -3898,12 +3786,6 @@ export class SceneView {
         const roofGeometry = geometry.clone();
         roofGeometry.setIndex(roofIndices);
         roofGeometry.clearGroups();
-        // Idle_boy01's highest head vertex samples this UV (verified against
-        // its VATM mesh). The atlas's large upper-left patch is a darker base,
-        // not the visible passenger head colour, despite sharing the same hue.
-        // Keep the roof on the actual head swatch, with its own surface normals.
-        const roofUv = roofGeometry.attributes.uv;
-        for (const index of new Set(roofIndices)) roofUv.setXY(index, 0.036364831, 0.442264944);
         geometry.setIndex(bodyIndices);
         geometry.clearGroups();
         const roof = new THREE.Mesh(roofGeometry);
@@ -4275,7 +4157,6 @@ export class SceneView {
     const vatTexture = vat?.texture ?? this.passengerVatTexture;
     const idle = animation.idle;
     const clip = new THREE.Vector4(idle.uvMin, idle.uvMax, 1 / idle.duration, 0);
-    const map = this.passengerColorTextures[colorIndex] ?? this.passengerColorTextures[0];
     const material = matcapMap
       ? new THREE.MeshMatcapMaterial({
           map: colorMap,
@@ -4297,7 +4178,7 @@ export class SceneView {
       }
       material.userData.passengerColorIndex = colorIndex;
     } else {
-      applyPassengerMaterial(material, colorIndex, map);
+      applyPassengerMaterial(material, colorIndex);
     }
     material.userData.vat = { animation, clip, clipName: null };
     material.userData.vatInstanced = instanced;
@@ -4700,26 +4581,10 @@ export class SceneView {
     }
   }
 
-  updatePassengerMaterialTuning({ colorIndex: changedColorIndex = null } = {}) {
-    const shouldUpdateColor = (colorIndex) => changedColorIndex == null || colorIndex === changedColorIndex;
-    for (const view of this.vehicleViews.values()) {
-      const material = view.userData.roofMaterial;
-      if (!material) continue;
-      const colorIndex = material.userData.passengerColorIndex;
-      if (!shouldUpdateColor(colorIndex)) continue;
-      const map = this.passengerColorTextures[colorIndex] ?? this.passengerColorTextures[0];
-      applyPassengerMaterial(material, colorIndex, map);
-    }
-    this.passengerMaterials?.forEach((material, colorIndex) => {
-      if (!material || !shouldUpdateColor(colorIndex)) return;
-      const map = this.passengerColorTextures[colorIndex] ?? this.passengerColorTextures[0];
-      applyPassengerMaterial(material, colorIndex, map);
-    });
+  updatePassengerMaterialTuning() {
     for (const material of this.spatialPassengerBatches?.ownedMaterials ?? []) {
       const colorIndex = material.userData.passengerColorIndex ?? 0;
-      if (!shouldUpdateColor(colorIndex)) continue;
-      const map = this.passengerColorTextures[colorIndex] ?? this.passengerColorTextures[0];
-      applyPassengerMaterial(material, colorIndex, map);
+      applyPassengerMaterial(material, colorIndex);
     }
 
     const roots = [
@@ -4733,9 +4598,7 @@ export class SceneView {
         && !root.userData.isLuxuryPassenger
         && !root.userData.specialPassengerType) {
         const colorIndex = root.userData.vatMaterial.userData.passengerColorIndex ?? root.userData.colorIndex ?? 0;
-        if (!shouldUpdateColor(colorIndex)) continue;
-        const map = this.passengerColorTextures[colorIndex] ?? this.passengerColorTextures[0];
-        applyPassengerMaterial(root.userData.vatMaterial, colorIndex, map);
+        applyPassengerMaterial(root.userData.vatMaterial, colorIndex);
       }
       for (const slot of root.userData.personSlots ?? []) {
         if (slot.userData.visualRoot?.userData.isAmbulancePassenger
@@ -4744,9 +4607,7 @@ export class SceneView {
         const material = slot.userData.vatMaterial;
         if (!material) continue;
         const colorIndex = material.userData.passengerColorIndex ?? root.userData.colorIndex ?? 0;
-        if (!shouldUpdateColor(colorIndex)) continue;
-        const map = this.passengerColorTextures[colorIndex] ?? this.passengerColorTextures[0];
-        applyPassengerMaterial(material, colorIndex, map);
+        applyPassengerMaterial(material, colorIndex);
       }
     }
   }
@@ -4814,6 +4675,7 @@ export class SceneView {
                 ? this.luxuryVehicleTemplate
                 : (this.vehicleTemplates[vehicle.seats] ?? this.vehicleTemplates[10])))));
       const size = template.userData.fittedSize;
+      const paint = resolveVehiclePaint(vehicle);
       const material = isAmbulance && this.ambulanceVehicleMaterial
         ? this.ambulanceVehicleMaterial.clone()
         : (isFiretruck && this.firetruckVehicleMaterial
@@ -4826,15 +4688,11 @@ export class SceneView {
                 ? (Array.isArray(this.luxuryVehicleMaterial)
                   ? this.luxuryVehicleMaterial.map((entry) => entry.clone())
                   : this.luxuryVehicleMaterial.clone())
-                : (this.vehicleMaterials[vehicle.colorIndex] ?? this.vehicleMaterials[0]).clone()))));
-      if (!isAmbulance && !isFiretruck && !isPolice && !isChristmas && !isLuxury
-        && vehicle.colorOverrides && Object.keys(vehicle.colorOverrides).length) {
-        forEachMaterial(material, (entry) => {
-          const baseMap = this.vehicleColorTextures[vehicle.colorIndex] ?? this.vehicleColorTextures[0];
-          entry.map = tintVehicleTexture(baseMap, vehicle.colorIndex, vehicle.colorOverrides);
-          entry.needsUpdate = true;
-        });
-      }
+                : template.userData.proceduralPaint
+                  ? createVehiclePaintMaterial(paint.surfaces)
+                  : new THREE.MeshStandardMaterial({ color: paint.body, roughness: 0.58 })))));
+      view.userData.ordinaryPaintMaterial?.dispose();
+      view.userData.ordinaryPaintMaterial = !isAmbulance && !isFiretruck && !isPolice && !isChristmas && !isLuxury ? material : null;
       view.userData.roofMaterial?.dispose();
       view.userData.roofMaterial = null;
       view.clear();
@@ -4844,10 +4702,8 @@ export class SceneView {
       if (!isAmbulance && !isFiretruck && !isPolice && !isChristmas && !isLuxury) {
         const roofMeshes = bodyMeshes.filter((mesh) => mesh.userData.isPassengerRoof);
         if (roofMeshes.length) {
-          const roofMaterial = new THREE.MeshStandardMaterial({ side: THREE.DoubleSide });
+          const roofMaterial = new THREE.MeshBasicMaterial({ color: paint.body, toneMapped: false, side: THREE.DoubleSide });
           roofMaterial.userData.isVehicleRoofMaterial = true;
-          const map = this.passengerColorTextures[vehicle.colorIndex] ?? this.passengerColorTextures[0];
-          applyPassengerMaterial(roofMaterial, vehicle.colorIndex, map);
           for (const mesh of roofMeshes) mesh.material = roofMaterial;
           view.userData.roofMaterial = roofMaterial;
         }
@@ -5063,18 +4919,27 @@ export class SceneView {
 
   applyVehicleArrowTuning(arrow, size, { isTurnVehicle = false, isHiddenQuestionMark = false } = {}) {
     const tuning = SCENE_TUNING.vehicleArrow;
-    const markerDepth = (arrow.userData.fittedSize?.z ?? 0.56) * (isTurnVehicle ? TURN_ARROW_SCALE : 1);
-    const maxForwardOffset = Math.max(0, (size.z - markerDepth) * 0.5);
+    const marker = arrow.userData.fittedSize;
+    const markerScale = isTurnVehicle ? TURN_ARROW_SCALE : 1;
+    const markerWidth = marker?.x ?? 0.24, markerDepth = marker?.z ?? 0.56;
+    const strokePadding = isHiddenQuestionMark ? 0 : 4 * markerDepth * roofArrowStrokeRatio(tuning.outlineScale);
+    const silhouetteScale = isHiddenQuestionMark ? Math.max(1, tuning.outlineScale) : 1;
+    // The same slider travels across each roof's usable area, including the outline.
+    const maxSideOffset = Math.max(0, (size.x * 0.9 - (markerWidth * silhouetteScale + strokePadding) * markerScale) / 2);
+    const maxForwardOffset = Math.max(0, (size.z * 0.9 - (markerDepth * silhouetteScale + strokePadding) * markerScale) / 2);
     const forwardOffset = isTurnVehicle
       ? Math.min(TURN_ARROW_FORWARD_OFFSET, maxForwardOffset)
       : 0;
     const hiddenQuestionOffset = isHiddenQuestionMark
       ? -maxForwardOffset * HIDDEN_QUESTION_MARK_FORWARD_FACTOR
       : 0;
+    const centerZ = forwardOffset + hiddenQuestionOffset;
+    const lateral = THREE.MathUtils.clamp(tuning.offsetX / 0.8, -1, 1);
+    const longitudinal = THREE.MathUtils.clamp(tuning.offsetZ / 0.8, -1, 1);
     arrow.position.set(
-      tuning.offsetX,
-      size.y + tuning.offsetY,
-      tuning.offsetZ + forwardOffset + hiddenQuestionOffset
+      lateral * maxSideOffset,
+      size.y + Math.max(0.002, tuning.offsetY),
+      centerZ + longitudinal * (maxForwardOffset - Math.sign(longitudinal) * centerZ)
     );
     applyArrowOutlineTuning(arrow, {
       color: tuning.outlineColor,
@@ -5113,6 +4978,7 @@ export class SceneView {
       if (hiddenArrow && size) {
         this.applyVehicleArrowTuning(hiddenArrow, size, { isHiddenQuestionMark: true });
         hiddenArrow.rotation.y = deg(SCENE_TUNING.facing.arrowYawDegrees);
+        hiddenArrow.userData.revealBasePosition.copy(hiddenArrow.position);
       }
       const hitRoot = view?.userData.hitMeshes?.[0];
       if (hitRoot) storeHitBase(hitRoot);
@@ -5208,18 +5074,10 @@ export class SceneView {
   // The outline *edges* (`LineSegments`) are deliberately left alone: measured
   // with them hidden the draw-call count did not move, so batching them would be
   // code without a saving.
-  ensureArrowShellBatch(requiredCount) {
+  ensureArrowShellBatch(requiredCount, source) {
     if (SCENE_TUNING.vehicleArrow?.instancedShells === 0) return null;
     const existing = this.arrowShellBatch;
-    if (existing && existing.capacity >= requiredCount) return existing;
-    let source = null;
-    for (const view of this.vehicleViews?.values?.() ?? []) {
-      view.traverse((node) => {
-        if (!source && node.isMesh && node.userData.isArrowOutline) source = node;
-      });
-      if (source) break;
-    }
-    if (!source) return null;
+    if (existing?.mesh.geometry === source.geometry && existing.capacity >= requiredCount) return existing;
     if (existing?.mesh) {
       this.layoutRoot?.remove(existing.mesh);
       existing.mesh.dispose?.();
@@ -5244,7 +5102,7 @@ export class SceneView {
     mesh.matrixAutoUpdate = false;
     mesh.renderOrder = source.renderOrder;
     this.layoutRoot.add(mesh);
-    this.arrowShellBatch = { mesh, capacity, material, scratch: new THREE.Matrix4() };
+    this.arrowShellBatch = { mesh, capacity, material, scratch: new THREE.Matrix4(), worldToBatch: new THREE.Matrix4() };
     return this.arrowShellBatch;
   }
 
@@ -5270,26 +5128,38 @@ export class SceneView {
     }
     if (!instanced) return;
 
+    const source = this.arrowTemplate?.children.find((node) => node.isMesh && node.userData.isArrowOutline);
     const carriers = [];
     for (const view of this.vehicleViews?.values?.() ?? []) {
       view.traverse((node) => {
         if (!node.isMesh || !node.userData.isArrowOutline) return;
+        // Turn arrows, question marks and fading shells need their own geometry or material.
+        if (!source || node.geometry !== source.geometry || node.renderOrder !== source.renderOrder || node.material.transparent) {
+          node.visible = true;
+          return;
+        }
         for (let parent = node.parent; parent; parent = parent.parent) {
           if (!parent.visible || parent.scale.x === 0) return;
         }
         carriers.push(node);
       });
     }
-    if (!carriers.length) return;
-    const batch = this.ensureArrowShellBatch(carriers.length);
+    if (!carriers.length) {
+      if (this.arrowShellBatch) this.arrowShellBatch.mesh.count = 0;
+      return;
+    }
+    const batch = this.ensureArrowShellBatch(carriers.length, source);
     if (!batch) return;
-    const { mesh, scratch } = batch;
+    const { mesh, scratch, worldToBatch } = batch;
+    batch.material.color.copy(carriers[0].material.color);
+    batch.material.depthTest = carriers[0].material.depthTest;
+    mesh.updateWorldMatrix(true, false);
+    worldToBatch.copy(mesh.matrixWorld).invert();
     const count = Math.min(carriers.length, batch.capacity);
     for (let index = 0; index < count; index += 1) {
       const carrier = carriers[index];
       carrier.updateWorldMatrix(true, false);
-      scratch.copy(carrier.matrixWorld);
-      mesh.setMatrixAt(index, scratch);
+      mesh.setMatrixAt(index, scratch.multiplyMatrices(worldToBatch, carrier.matrixWorld));
       // Hidden on every frame: arrows are rebuilt per level, so a carrier made
       // after the mode switch would otherwise draw on top of its instance.
       carrier.visible = false;
@@ -5450,6 +5320,8 @@ export class SceneView {
       - stageSpots.y
       - SPOT_OUTLINE_CLEARANCE_Y;
     this.spotOutlines = this.spotOutlines ?? [];
+    this.spotShadows = this.spotShadows ?? [];
+    this.spotFills = this.spotFills ?? [];
     for (let index = 0; index < this.spotRoots.length; index += 1) {
       const root = this.spotRoots[index];
       // Spots added by the editor's count slider arrive after the template
@@ -5475,13 +5347,101 @@ export class SceneView {
           material.depthWrite = false;
         }
       });
+      const shadow = this.createParkingSpotShadow(outline);
+      const fill = this.createParkingSpotFill(outline);
       root.clear();
-      root.add(outline, board);
+      root.add(shadow, fill, outline, board);
       this.spotOutlines[index] = outline;
+      this.spotShadows[index] = shadow;
+      this.spotFills[index] = fill;
       // The generic card is untextured geometry; a per-vehicle texture is
       // attached on demand for luxury cars only.
       board.userData.boardMesh.material.map = null;
       board.userData.boardMesh.material.needsUpdate = true;
+    }
+  }
+
+  createParkingSpotShadow(outline) {
+    if (!this.parkingShadowMaterial) {
+      this.parkingShadowMaterial = new THREE.MeshBasicMaterial({
+        map: this.parkingMaterial?.map ?? null,
+        color: 0x000000,
+        alphaTest: 0.02,
+        toneMapped: false
+      });
+      configureParkingDecalMaterial(this.parkingShadowMaterial, 0.35);
+    }
+    const shadow = outline.clone(true);
+    shadow.name = 'Parking spot shadow';
+    setMaterial(shadow, this.parkingShadowMaterial);
+    shadow.traverse((object) => {
+      if (object.isMesh) object.renderOrder = SPOT_SHADOW_RENDER_ORDER;
+    });
+    return shadow;
+  }
+
+  createParkingSpotFill(outline) {
+    if (!this.parkingFillMaterial) {
+      this.parkingFillMaterial = new THREE.MeshBasicMaterial({ color: 0xe8eaf2, toneMapped: false });
+      configureParkingDecalMaterial(this.parkingFillMaterial, 0.18);
+    }
+    // Measure the flattened, normalized art before it is attached to a spot.
+    // The inset keeps the fill inside the painted line, including its open end.
+    outline.updateMatrixWorld(true);
+    const bounds = new THREE.Box3().setFromObject(outline);
+    const size = bounds.getSize(new THREE.Vector3());
+    const center = bounds.getCenter(new THREE.Vector3());
+    const inset = Math.min(size.x, size.z) * 0.045;
+    const width = Math.max(0.001, size.x - inset * 2);
+    const depth = Math.max(0.001, size.z - inset * 2);
+    const x = width / 2;
+    const z = depth / 2;
+    const radius = Math.min(width, depth) * 0.09;
+    const shape = new THREE.Shape();
+    shape.moveTo(-x + radius, -z);
+    shape.lineTo(x - radius, -z);
+    shape.quadraticCurveTo(x, -z, x, -z + radius);
+    shape.lineTo(x, z - radius);
+    shape.quadraticCurveTo(x, z, x - radius, z);
+    shape.lineTo(-x + radius, z);
+    shape.quadraticCurveTo(-x, z, -x, z - radius);
+    shape.lineTo(-x, -z + radius);
+    shape.quadraticCurveTo(-x, -z, -x + radius, -z);
+    const fill = new THREE.Mesh(new THREE.ShapeGeometry(shape, 12), this.parkingFillMaterial);
+    fill.name = 'Parking spot fill';
+    fill.rotation.x = -Math.PI / 2;
+    fill.position.set(center.x, bounds.max.y - 0.0005, center.z);
+    fill.renderOrder = SPOT_FILL_RENDER_ORDER;
+    return fill;
+  }
+
+  updateParkingSpotVisuals(spots = resolveParkingSpots()) {
+    const number = (value, fallback) => Number.isFinite(Number(value)) ? Number(value) : fallback;
+    const opacity = THREE.MathUtils.clamp(number(spots.opacity, 1), 0, 1);
+    const shadowOpacity = THREE.MathUtils.clamp(number(spots.shadowOpacity, 0.35), 0, 1);
+    const shadowDistance = Math.max(0, number(spots.shadowDistance, 0.04));
+    const fillOpacity = THREE.MathUtils.clamp(number(spots.fillOpacity, 0.18), 0, 1);
+    const fillColor = Math.round(THREE.MathUtils.clamp(number(spots.fillColor, 0xe8eaf2), 0, 0xffffff));
+    if (this.parkingMaterial) configureParkingDecalMaterial(this.parkingMaterial, opacity);
+    if (this.parkingShadowMaterial) configureParkingDecalMaterial(this.parkingShadowMaterial, shadowOpacity);
+    if (this.parkingFillMaterial) {
+      configureParkingDecalMaterial(this.parkingFillMaterial, fillOpacity);
+      this.parkingFillMaterial.color.setHex(fillColor);
+    }
+    for (let index = 0; index < (this.spotOutlines?.length ?? 0); index += 1) {
+      const outline = this.spotOutlines[index];
+      const shadow = this.spotShadows?.[index];
+      if (!outline) continue;
+      outline.visible = opacity > 0;
+      const fill = this.spotFills?.[index];
+      if (fill) fill.visible = fillOpacity > 0;
+      if (!shadow) continue;
+      shadow.visible = shadowOpacity > 0;
+      shadow.position.copy(outline.position);
+      shadow.position.y -= 0.001;
+      // Offset along the bay's long axis; compensate its scale so the distance
+      // stays in scene units. Root translation and yaw move both together.
+      shadow.position.z += shadowDistance / Math.max(0.0001, Math.abs(this.spotRoots[index].scale.z));
     }
   }
 
@@ -5578,7 +5538,7 @@ export class SceneView {
     view.userData.colorIndex = colorIndex;
     if (!view.userData.modelReady) {
       for (const slot of view.userData.personSlots) {
-        slot.userData.fallback?.material.color.setHex((COLORS[colorIndex] ?? COLORS[0]).hex);
+        slot.userData.fallback?.material.color.set(resolvePassengerBodyColor(LEVEL_1, colorIndex));
       }
       return;
     }
@@ -5609,8 +5569,7 @@ export class SceneView {
         && !wantsAmbulancePassenger
         && !wantsLuxuryPassenger
         && !specialPassenger) {
-        const map = this.passengerColorTextures[colorIndex] ?? this.passengerColorTextures[0];
-        applyPassengerMaterial(material, colorIndex, map);
+        applyPassengerMaterial(material, colorIndex);
       }
     }
   }
@@ -5760,6 +5719,7 @@ export class SceneView {
         );
       }
     }
+    this.updateParkingSpotVisuals();
     this.applyVisibilityTuning();
     this.updateVehiclePathPreview();
     this.resize();
@@ -5786,23 +5746,21 @@ export class SceneView {
     this.directionalLightTarget.updateMatrixWorld();
   }
 
-  setTuning(patch, { mode = 'full', colorIndex = null } = {}) {
+  setTuning(patch) {
     deepMerge(SCENE_TUNING, patch);
-    if (mode === 'passengerMaterial') {
-      this.updatePassengerMaterialTuning({ colorIndex });
-    } else {
-      this.applyTuning();
-    }
+    this.applyTuning();
     return SCENE_TUNING;
   }
 
   replaceActiveLevel({ animate = false } = {}) {
+    this.disposeSpatialPassengerBatches();
     this.clearVehiclePathLines();
     this.clearBoardingViews();
     this.vehicleEffects?.clear();
     this.clearGarageViews();
     this.clearConveyorViews();
     for (const view of this.vehicleViews.values()) {
+      view.userData.ordinaryPaintMaterial?.dispose();
       view.userData.roofMaterial?.dispose();
       this.vehicleRoot.remove(view);
     }
@@ -5990,18 +5948,13 @@ export class SceneView {
   update(snapshot, game) {
     const previousUpdateTime = this.lastSnapshot?.time ?? snapshot.time;
     const visualDelta = Math.max(0, Math.min(snapshot.time - previousUpdateTime, 0.1));
+    const passengerSpeedMultiplier = snapshot.passengerSpeedMultiplier ?? snapshot.speedMultiplier;
     this.lastSnapshot = snapshot;
     this.lastGame = game;
     this.vatTimeUniform.value = snapshot.time;
     if (snapshot.lastEvent.type === 'reset' && snapshot.time === 0) this.clearBoardingViews();
-    const deduplicateBoardingUpdates = this.isSpatialOptimizationEnabled('deduplicateBoardingUpdates');
-    if (!deduplicateBoardingUpdates) {
-      this.processBoardingEvents(snapshot);
-      this.updateBoardingViews(
-        snapshot.time,
-        Boolean(SCENE_TUNING.visibility?.passengers ?? 1)
-      );
-    }
+    // Boarding contact must see this frame's vehicle transforms. Update it
+    // once below, after the cars and passenger queues have been positioned.
     const vehicleArea = SCENE_TUNING.vehicleArea;
     const vehiclesVisible = Boolean(SCENE_TUNING.visibility?.vehicles ?? 1);
     const passengersVisible = Boolean(SCENE_TUNING.visibility?.passengers ?? 1);
@@ -6113,11 +6066,7 @@ export class SceneView {
         const data = vehicle.motionData;
         const total = data.backwardDuration + data.forwardDuration;
         const elapsed = vehicle.motion * total;
-        // `vehicleDeparturePath.y` is the authored height of the departure
-        // route: the preview line sits lower on screen than the parking row,
-        // on the road lane. The car must ride that same height, otherwise it
-        // visibly leaves the line. Do not substitute the vehicle layer here.
-        const departureY = data.routeConfig?.departure.y ?? SCENE_TUNING.vehicleDeparturePath?.y ?? SCENE_TUNING.vehicleArea.y;
+        const departureY = data.routeConfig?.departure.y ?? vehicleArea.y;
         if (elapsed < data.backwardDuration) {
           const t = evaluateUnityCurve(UNITY_CURVES.outBackward, elapsed / data.backwardDuration);
           const sample = evaluatePath(data.backwardPath, data.backwardPath.length * t);
@@ -6134,8 +6083,9 @@ export class SceneView {
         }
       }
       const sizeMultiplier = getVehicleSizeMultiplier(vehicle);
-      if (!reuseStaticTransform) {
-        view.scale.setScalar(vehicleScale * getVehicleModelScale() * sizeMultiplier);
+      if (!reuseStaticTransform || this.vehicleBoardingPulses.has(vehicle.id)) {
+        const pulse = this.getVehicleBoardingPulseScale(vehicle.id, snapshot.time);
+        view.scale.setScalar(vehicleScale * getVehicleModelScale() * sizeMultiplier * pulse);
       }
       if (!reuseStaticTransform || activeHit || view.userData.spatialHadActiveHit) {
         this.applyVehicleHit(view, vehicle, snapshot.time);
@@ -6187,6 +6137,7 @@ export class SceneView {
       this.initialEntryPathStates.clear();
     } else {
       this.ensurePassengerViewCapacity(snapshot.slots.length);
+      const activeInitialEntryKeys = new Set();
       for (const slot of snapshot.slots) {
         const view = this.passengerViews[slot.index];
         view.visible = passengersVisible && slot.colorIndex !== null;
@@ -6196,13 +6147,14 @@ export class SceneView {
         this.sampleActiveCurve(slot.progress, point, tangent);
         point.y += this.resolveTrackSurfaceOffset(point, slot.progress) + passengerHeight;
         if (slot.entryMotion) {
+          activeInitialEntryKeys.add(this.getInitialEntryPathKey(slot));
           const entryVisual = this.getInitialEntryPathVisual(
             slot,
             point,
             tangent,
             snapshot.time,
             visualDelta,
-            snapshot.speedMultiplier,
+            passengerSpeedMultiplier,
             passengerHeight
           );
           view.position.copy(entryVisual.position);
@@ -6217,6 +6169,7 @@ export class SceneView {
       for (let index = snapshot.slots.length; index < this.passengerViews.length; index += 1) {
         this.passengerViews[index].visible = false;
       }
+      this.pruneInitialEntryPathStates(activeInitialEntryKeys);
     }
 
     const queueSnapshots = snapshot.queueItems ?? snapshot.queues.map((queue) => (
@@ -6244,13 +6197,17 @@ export class SceneView {
           point,
           tangent,
           visualDelta,
-          snapshot.speedMultiplier,
-          passengerHeight
+          passengerSpeedMultiplier,
+          passengerHeight,
+          this.getQueueAdvanceSpeed(queueIndex, snapshot),
+          Math.min(i * this.getQueueSpacing(), curve.getLength())
         );
         view.position.copy(queueVisual.position);
         view.rotation.y = Math.atan2(-queueVisual.tangent.x, -queueVisual.tangent.z) + passengerYaw;
         this.setPassengerColor(view, colorIndex);
-        this.setPassengerAnimation(view, 'idle', (i % 4) * 0.17);
+        this.setPassengerAnimation(view,
+          queueVisual.moving ? 'move' : 'idle',
+          (i % 4) * 0.17);
       }
     });
     this.pruneQueueEntryPathStates(queueSnapshots);
@@ -6599,6 +6556,103 @@ export class SceneView {
     return this.queueCurves.map((curve) => curve?.getLength?.() ?? 0);
   }
 
+  getInitialEntryPathKey(slot) {
+    return `${slot.entryMotion?.passengerId ?? slot.index}:${slot.entryMotion?.startedAt ?? 0}`;
+  }
+
+  getQueueAdvanceSpeed(queueIndex, snapshot) {
+    const passengerSpeed = LEVEL_1.passengerEntryMotion?.passengerSpeed ?? LEVEL_1.conveyorSpeed;
+    // A row advances one spacing per passing slot. Moving faster reaches the
+    // next row position early and inserts a stop before every following slot.
+    return Math.max(0.01, !snapshot.initialFillActive
+      ? LEVEL_1.conveyorSpeed
+      : passengerSpeed);
+  }
+
+  getRoundedEntryVisual(key, slot, target, targetTangent, time, delta, speedMultiplier, passengerHeight) {
+    if (this.activeConveyorLayout?.directEntrance || !this.queueCurves?.length) {
+      return { position: target, tangent: targetTangent, snapped: true };
+    }
+    const motion = LEVEL_1.passengerEntryMotion;
+    const entryPercent = this.entryPercents?.[slot.entryMotion.entryIndex] ?? 0;
+    const entryTurn = this.queueEntryTurns?.[slot.entryMotion.entryIndex] ?? null;
+    let state = this.initialEntryPathStates.get(key);
+    if (!state) {
+      const queueKey = this.getQueueItemKey(slot.entryMotion.entryIndex, {
+        id: slot.entryMotion.passengerId
+      });
+      const queueState = this.queueEntryPathStates.get(queueKey);
+      const fromQueueDistance = this.getEntryMotionQueueDistance(slot.entryMotion);
+      state = {
+        distance: entryTurn
+          ? fromQueueDistance - (queueState?.distanceFromHead ?? fromQueueDistance)
+          : Math.max(0, fromQueueDistance - (queueState?.distanceFromHead ?? 0)),
+        snapped: false
+      };
+      this.initialEntryPathStates.set(key, state);
+    }
+    if (!motion || (state.snapped && (!entryTurn || state.turnComplete))) {
+      return { position: target, tangent: targetTangent, snapped: true };
+    }
+
+    const conveyorLength = Math.max(0.0001, this.curve.getLength());
+    const targetConveyorDistance = ((slot.progress - entryPercent + 1) % 1) * conveyorLength;
+    const fromQueueDistance = this.getEntryMotionQueueDistance(slot.entryMotion);
+    const targetDistance = fromQueueDistance + targetConveyorDistance;
+    const pathScale = (Math.abs(SCENE_TUNING.path.scaleX) + Math.abs(SCENE_TUNING.path.scaleZ)) * 0.5;
+    const elapsed = Math.max(0, time - slot.entryMotion.startedAt);
+    const multiplier = Math.max(0.1, speedMultiplier);
+    const catchUpDuration = Math.max(motion.initialFillCatchUpDuration, 0.01);
+    const catchUpT = THREE.MathUtils.clamp(elapsed / catchUpDuration, 0, 1);
+    const catchUpSpeed = Math.max(0, motion.catchUpExtraSpeed * catchUpT);
+    const stepDistance = (motion.passengerSpeed + catchUpSpeed) * pathScale * multiplier * Math.max(0, delta);
+    state.distance = state.snapped
+      ? targetDistance
+      : Math.min(targetDistance, stepDistance + state.distance);
+
+    // Each approach must finish its remaining distance rather than snap
+    // over the last queue segment during the ownership handoff.
+    const snapDistance = entryTurn ? 0 : (motion.snapDistance ?? 0.02) * pathScale;
+    if (targetDistance - state.distance <= snapDistance) {
+      state.snapped = true;
+      state.distance = targetDistance;
+    }
+
+    const distanceOnConveyor = state.distance - fromQueueDistance;
+    if (entryTurn && distanceOnConveyor >= entryTurn.distance) state.turnComplete = true;
+    if (state.snapped && (!entryTurn || state.turnComplete)) {
+      return { position: target, tangent: targetTangent, snapped: true };
+    }
+
+    if (entryTurn && !state.turnComplete && distanceOnConveyor >= 0) {
+      const visual = samplePassengerEntryTurn(entryTurn, distanceOnConveyor);
+      visual.position.y += passengerHeight;
+      return { ...visual, snapped: state.snapped };
+    }
+
+    if (state.distance < fromQueueDistance) {
+      const queueCurve = this.queueCurves[slot.entryMotion.entryIndex] ?? this.queueCurves[0];
+      const queueLength = Math.max(0.0001, queueCurve.getLength());
+      const queueProgress = (fromQueueDistance - state.distance) / queueLength;
+      const position = queueCurve.getPointAt(queueProgress);
+      const tangent = queueCurve.getTangentAt(queueProgress).multiplyScalar(-1);
+      position.y += passengerHeight;
+      return { position, tangent, snapped: false };
+    }
+
+    const conveyorProgress = (entryPercent + (state.distance - fromQueueDistance) / conveyorLength) % 1;
+    const position = this.curve.getPointAt(conveyorProgress);
+    const tangent = this.curve.getTangentAt(conveyorProgress);
+    position.y += passengerHeight;
+    return { position, tangent, snapped: false };
+  }
+
+  pruneInitialEntryPathStates(activeKeys) {
+    for (const key of this.initialEntryPathStates.keys()) {
+      if (!activeKeys.has(key)) this.initialEntryPathStates.delete(key);
+    }
+  }
+
   // Walks a passenger from its queue row onto the belt.
   //
   // This used to keep its own per-passenger `distance` and advance it toward a
@@ -6615,6 +6669,9 @@ export class SceneView {
   // from the target Vector3 and the whole transition silently collapsed to the
   // queue position -- the track looked empty.
   getInitialEntryPathVisual(slot, target, targetTangent, time, delta, speedMultiplier, passengerHeight) {
+    if (this.queueEntryTurns?.[slot.entryMotion?.entryIndex]) {
+      return this.getRoundedEntryVisual(this.getInitialEntryPathKey(slot), slot, target, targetTangent, time, delta, speedMultiplier, passengerHeight);
+    }
     if (this.activeConveyorLayout?.directEntrance || !this.queueCurves?.length) {
       return { position: target, tangent: targetTangent, snapped: true };
     }
@@ -6628,7 +6685,7 @@ export class SceneView {
     const walkSeconds = Math.max(
       0.28,
       Number(motion.initialFillCatchUpDuration) || 0.2
-    ) / Math.max(1, Number(speedMultiplier) || 1);
+    ) / Math.max(0.1, Number(speedMultiplier) || 1);
     const elapsed = Math.max(0, time - (slot.entryMotion.startedAt ?? time));
     const t = THREE.MathUtils.clamp(elapsed / walkSeconds, 0, 1);
     if (t >= 1) return { position: target, tangent: targetTangent, snapped: true };
@@ -6696,7 +6753,7 @@ export class SceneView {
     return `${queueIndex}:${item.id ?? `${item.createdAt ?? 0}:${fallbackIndex}:${item.colorIndex}`}`;
   }
 
-  getQueueEntryVisual(queueIndex, item, target, targetTangent, delta, speedMultiplier, passengerHeight) {
+  getQueueEntryVisual(queueIndex, item, target, targetTangent, delta, speedMultiplier, passengerHeight, advanceSpeed = null, waitingDistance = null) {
     const curve = this.queueCurves[queueIndex] ?? this.queueCurves[0];
     const motion = LEVEL_1.passengerEntryMotion;
     if (!curve || !motion) return { position: target, tangent: targetTangent };
@@ -6704,28 +6761,41 @@ export class SceneView {
     const key = this.getQueueItemKey(queueIndex, item);
     let state = this.queueEntryPathStates.get(key);
     if (!state) {
-      const queueLength = Math.max(0.0001, curve.getLength());
       state = {
-        distanceFromHead: Math.min(queueLength, item.distanceFromHead + this.getQueueEntrySpawnDistance(queueIndex))
+        advancing: false,
+        distanceFromHead: item.distanceFromHead
       };
       this.queueEntryPathStates.set(key, state);
     }
 
-    const speed = Math.max(0.01, motion.passengerSpeed ?? LEVEL_1.conveyorSpeed);
+    const previousDistance = state.distanceFromHead;
+    // Dequeue happens after the model's queue update. Use the new row's resting
+    // position immediately so that the handoff frame cannot insert a pause.
+    const targetDistance = waitingDistance != null
+      ? waitingDistance : item.distanceFromHead;
+    const speed = Math.max(0.01, advanceSpeed ?? motion.passengerSpeed ?? LEVEL_1.conveyorSpeed);
     const step = speed * Math.max(0, delta) * Math.max(0.1, speedMultiplier);
-    state.distanceFromHead = Math.max(item.distanceFromHead, state.distanceFromHead - step);
+    // Keep one render step in reserve at the start of a refill. Slot crossings
+    // can land one frame apart because of sampling; this prevents catching the
+    // next waiting position a frame before its following vacancy is consumed.
+    const starting = state.advancing === false && !state.moving
+      && previousDistance > targetDistance && delta > 0;
+    state.distanceFromHead = starting ? previousDistance
+      : Math.max(targetDistance, state.distanceFromHead - step);
+    state.advancing = state.distanceFromHead > targetDistance;
 
-    const visualDistance = Math.max(item.distanceFromHead, state.distanceFromHead);
-    if (visualDistance - item.distanceFromHead <= (motion.snapDistance ?? 0.02)) {
-      state.distanceFromHead = item.distanceFromHead;
-      return { position: target, tangent: targetTangent };
+    const visualDistance = Math.max(targetDistance, state.distanceFromHead);
+    const moving = previousDistance - visualDistance > 0.000001;
+    state.moving = moving;
+    if (state.distanceFromHead === item.distanceFromHead) {
+      return { position: target, tangent: targetTangent, moving };
     }
 
     const t = this.getQueueProgressAtDistance(curve, visualDistance);
     const position = curve.getPointAt(t);
     const tangent = curve.getTangentAt(t);
     position.y += passengerHeight;
-    return { position, tangent, snapped: false };
+    return { position, tangent, snapped: false, moving };
   }
 
   pruneQueueEntryPathStates(queueSnapshots) {
@@ -6745,7 +6815,10 @@ export class SceneView {
       mesh.rotation.copy(mesh.userData.hitBaseRotation);
     }
     if (!vehicle.hit || time - vehicle.hit.startedAt >= UNITY_VEHICLE_MOTION.hitDuration) return;
-    const clipName = chooseHitClip(vehicle.hit);
+    const clipName = chooseHitClip(vehicle.hit, {
+      mirrorZ: SCENE_TUNING.vehicleArea.mirrorZ,
+      yawOffsetDegrees: SCENE_TUNING.facing.vehicleYawOffsetDegrees
+    });
     const sample = sampleHitClip(clipName, time - vehicle.hit.startedAt);
     const scale = view.userData.unityHitScale ?? 1;
     for (const mesh of meshes) {
@@ -6762,6 +6835,7 @@ export class SceneView {
     }
     this.boardingViews.length = 0;
     this.pendingBoardingSounds.length = 0;
+    this.vehicleBoardingPulses.clear();
     this.initialEntryPathStates.clear();
     this.queueEntryPathStates.clear();
     this.lastBoardingEventId = 0;
@@ -6800,8 +6874,7 @@ export class SceneView {
     const material = visual.userData.vatMaterial;
     if (material) {
       if (!wantsAmbulancePassenger && !wantsLuxuryPassenger && !specialPassenger) {
-        const map = this.passengerColorTextures[colorIndex] ?? this.passengerColorTextures[0];
-        applyPassengerMaterial(material, colorIndex, map);
+        applyPassengerMaterial(material, colorIndex);
       }
       this.setVatAnimation(material, 'move');
     } else if (wantsLuxuryPassenger) {
@@ -6827,6 +6900,31 @@ export class SceneView {
     disposePassengerVisual(visual);
   }
 
+  triggerVehicleBoardingPulse(vehicleId, time) {
+    const { scale, speed } = SCENE_TUNING.vehicleBoardingPulse;
+    if (scale <= 1 || speed <= 0) return;
+    const starts = this.vehicleBoardingPulses.get(vehicleId) ?? [];
+    if (starts.at(-1) !== time) starts.push(time);
+    this.vehicleBoardingPulses.set(vehicleId, starts.slice(-12));
+  }
+
+  getVehicleBoardingPulseScale(vehicleId, time) {
+    const starts = this.vehicleBoardingPulses.get(vehicleId);
+    if (!starts) return 1;
+    const { scale, speed } = SCENE_TUNING.vehicleBoardingPulse;
+    let largest = 1;
+    let active = 0;
+    for (const start of starts) {
+      const progress = (time - start) * speed;
+      if (scale <= 1 || speed <= 0 || progress < 0 || progress >= 1) continue;
+      starts[active++] = start;
+      largest = Math.max(largest, 1 + (scale - 1) * Math.sin(Math.PI * progress));
+    }
+    starts.length = active;
+    if (!active) this.vehicleBoardingPulses.delete(vehicleId);
+    return largest;
+  }
+
   processBoardingEvents(snapshot) {
     if (!this.personTemplate) return;
     for (const event of snapshot.boardingEvents ?? []) {
@@ -6834,6 +6932,55 @@ export class SceneView {
       this.spawnBoardingGroup(event);
       this.lastBoardingEventId = event.id;
     }
+  }
+
+  getBoardingBodyBounds(meshes, inverseSpace) {
+    const bounds = new THREE.Box3();
+    for (const mesh of meshes) {
+      const geometry = mesh.geometry;
+      if (!geometry) continue;
+      mesh.updateWorldMatrix(true, false);
+      if (!geometry.boundingBox) geometry.computeBoundingBox();
+      if (!geometry.boundingBox) continue;
+      const transform = new THREE.Matrix4().multiplyMatrices(inverseSpace, mesh.matrixWorld);
+      bounds.union(geometry.boundingBox.clone().applyMatrix4(transform));
+    }
+    return bounds.isEmpty() ? null : bounds;
+  }
+
+  getVehicleBoardingContactArea(vehicleId) {
+    const vehicle = this.vehicleViews?.get(vehicleId);
+    if (!vehicle) return null;
+    vehicle.updateWorldMatrix(true, true);
+    const inverseVehicle = vehicle.matrixWorld.clone().invert();
+    // Only the delivered car body participates; arrows, badges and shadows
+    // must never make an approaching passenger appear to touch the car early.
+    const bounds = this.getBoardingBodyBounds(vehicle.userData.bodyMeshes ?? [], inverseVehicle);
+    if (!bounds) return null;
+    this.layoutRoot.updateWorldMatrix(true, false);
+    return { bounds, inverseVehicle,
+      fromLayout: new THREE.Matrix4().multiplyMatrices(inverseVehicle, this.layoutRoot.matrixWorld) };
+  }
+
+  getBoardingPassengerContactProgress(entry, contact) {
+    if (!contact) return null;
+    const start = entry.start.clone().applyMatrix4(contact.fromLayout);
+    const current = entry.root.position.clone().applyMatrix4(contact.fromLayout);
+    let footprint = [];
+    if (entry.bodyBounds) {
+      entry.root.updateWorldMatrix(true, false);
+      const transform = new THREE.Matrix4().multiplyMatrices(contact.inverseVehicle, entry.root.matrixWorld);
+      const { min, max } = entry.bodyBounds;
+      // Preserve the footprint's orientation instead of enlarging its AABB;
+      // this includes body size/visual offset without phantom corner contact.
+      footprint = [[min.x, min.z], [max.x, min.z], [max.x, max.z], [min.x, max.z]]
+        .map(([x, z]) => new THREE.Vector3(x, 0, z).applyMatrix4(transform).sub(current));
+    }
+    return getBoardingContactProgress(start, current, contact.bounds, footprint);
+  }
+
+  hasBoardingPassengerContact(entry, contact) {
+    return this.getBoardingPassengerContactProgress(entry, contact) !== null;
   }
 
   spawnBoardingGroup(event) {
@@ -6852,36 +6999,53 @@ export class SceneView {
     const target = event.targetPosition ? mapMotionPoint(event.targetPosition) : spot.clone();
     target.y = SCENE_TUNING.path.groundY + SCENE_TUNING.passengers.heightAbovePath;
 
-    for (let index = 0; index < LEVEL_1.groupSize; index += 1) {
-      const visual = this.acquireBoardingVisual(event.colorIndex);
-      visual.scale.setScalar(SCENE_TUNING.passengers.modelScale);
+    const groupSize = LEVEL_1.groupSize;
+    const passengerInterval = event.passengerInterval
+      ?? getBoardingRowTiming(SCENE_TUNING.passengers, groupSize).passengerInterval;
+    const starts = Array.from({ length: groupSize }, (_, index) => {
       const rowOffset = new THREE.Vector3(
-        (index - 1.5) * SCENE_TUNING.passengers.groupSpacing * SCENE_TUNING.passengers.modelScale,
+        (index - (groupSize - 1) / 2) * SCENE_TUNING.passengers.groupSpacing * SCENE_TUNING.passengers.modelScale,
         0,
         0
       ).applyAxisAngle(new THREE.Vector3(0, 1, 0), pathYaw);
-      const start = startCenter.clone().add(rowOffset);
+      return startCenter.clone().add(rowOffset);
+    });
+    const order = getBoardingPassengerOrder(starts, target);
+    for (let rank = 0; rank < order.length; rank += 1) {
+      const start = starts[order[rank]];
+      const visual = this.acquireBoardingVisual(event.colorIndex);
+      visual.scale.setScalar(SCENE_TUNING.passengers.modelScale);
       const direction = target.clone().sub(start);
       visual.position.copy(start);
-      visual.rotation.y = Math.atan2(direction.x, direction.z)
+      visual.rotation.y = pathYaw;
+      const runningYaw = Math.atan2(direction.x, direction.z)
         + deg(SCENE_TUNING.facing.passengerYawDegrees);
       if (visual.userData.isLuxuryPassenger) {
-        visual.userData.animationClipName = 'move';
+        visual.userData.animationClipName = 'idle';
         visual.userData.animationPhase = 0;
       } else {
-        this.setVatAnimation(visual.userData.vatMaterial, 'move');
+        this.setVatAnimation(visual.userData.vatMaterial, 'idle');
       }
       this.layoutRoot.add(visual);
+      const bodyMeshes = [];
+      visual.userData.modelRoot?.traverse((object) => {
+        if (object.isMesh) bodyMeshes.push(object);
+      });
+      visual.updateWorldMatrix(true, true);
+      const bodyBounds = this.getBoardingBodyBounds(bodyMeshes, visual.matrixWorld.clone().invert());
       this.boardingViews.push({
         root: visual,
         material: visual.userData.vatMaterial,
         vehicleId: event.vehicleId,
+        passengerId: `${event.id}:${order[rank]}`,
+        bodyBounds,
         start,
         target: target.clone(),
         startedAt: event.startedAt,
-        delay: index * SCENE_TUNING.passengers.aboardInterval,
-        duration: event.rescue && Number.isFinite(event.duration)
-          ? Math.max(0.25, event.duration)
+        delay: rank * passengerInterval,
+        runningYaw,
+        moving: false,
+        duration: event.rescue && Number.isFinite(event.duration) ? Math.max(0.25, event.duration)
           : Math.max(0.25, start.distanceTo(target) / SCENE_TUNING.passengers.aboardSpeed)
       });
     }
@@ -6896,18 +7060,14 @@ export class SceneView {
       this.hooks.onPassengerAboard?.(pending.vehicleId);
     }
     const soundOffset = Number(SCENE_TUNING.passengers.aboardSoundOffset) || 0;
+    const contactAreas = new Map();
     for (let index = this.boardingViews.length - 1; index >= 0; index -= 1) {
       const entry = this.boardingViews[index];
-      // A car that already left the bay cannot still receive passengers. Left
-      // alone, the last group keeps walking to the now-empty spot and is drawn
-      // standing where the car used to be.
+      // A car that left cannot receive new passengers. Those already touching
+      // it finish their three contact frames alongside its actual visual.
       const vehicle = this.lastGame?.getVehicle?.(entry.vehicleId);
-      const vehicleGone = vehicle && (['departing', 'done'].includes(vehicle.state) || vehicle.state === 'revive-departing');
-      if (vehicleGone) {
-        if (!entry.soundPlayed) {
-          entry.soundPlayed = true;
-          this.hooks.onPassengerAboard?.(entry.vehicleId);
-        }
+      const vehicleGone = vehicle && ['departing', 'revive-departing', 'done'].includes(vehicle.state);
+      if (vehicleGone && entry.contactStartedAt === undefined) {
         this.layoutRoot.remove(entry.root);
         this.releaseBoardingVisual(entry.root);
         this.boardingViews.splice(index, 1);
@@ -6915,22 +7075,69 @@ export class SceneView {
       }
       entry.root.visible = passengersVisible;
       const elapsed = time - entry.startedAt - entry.delay;
-      if (elapsed < 0) continue;
-      const progress = THREE.MathUtils.clamp(elapsed / entry.duration, 0, 1);
-      entry.root.position.lerpVectors(entry.start, entry.target, ease(progress));
-      // The aboard sound is triggered on its own timeline so the offset can
-      // advance (negative) or delay (positive) it against the arrival frame.
+      if (elapsed < -1e-9) continue;
+      if (!entry.moving) {
+        entry.moving = true;
+        entry.root.rotation.y = entry.runningYaw;
+        if (entry.root.userData.isLuxuryPassenger) {
+          entry.root.userData.animationClipName = 'move';
+        } else {
+          this.setVatAnimation(entry.material, 'move');
+        }
+      }
       const soundAt = entry.startedAt + entry.delay + entry.duration + soundOffset;
       if (!entry.soundPlayed && time >= soundAt) {
         entry.soundPlayed = true;
         this.hooks.onPassengerAboard?.(entry.vehicleId);
       }
-      if (progress < 1) continue;
-      if (Boolean(SCENE_TUNING.visibility?.vehicles ?? 1)) {
-        this.vehicleEffects?.spawnAboardSmoke(entry.vehicleId);
+      const contacted = entry.contactStartedAt !== undefined;
+      const ended = this.lastSnapshot && this.lastSnapshot.status !== 'playing';
+      if (contacted && (time > entry.contactFrameTime + 1e-9 || ended)) {
+        entry.contactFrames += 1;
+        entry.contactFrameTime = time;
       }
-      if (!entry.soundPlayed) {
-        this.pendingBoardingSounds.push({ vehicleId: entry.vehicleId, triggerAt: soundAt });
+      const progress = contacted
+        ? entry.contactProgress + (1 - entry.contactProgress) * BOARDING_CONTACT_ENTRY_FRACTION
+          * Math.min(entry.contactFrames / BOARDING_CONTACT_HIDE_FRAMES, 1)
+        : THREE.MathUtils.clamp(elapsed / entry.duration, 0, 1);
+      // Easing out leaves many successive passengers lingering on top of the
+      // car. Keep running until the third frame after touching the actual body.
+      entry.root.position.lerpVectors(entry.start, entry.target, progress);
+      if (vehicleGone && entry.contactVehiclePoint) {
+        const car = this.vehicleViews.get(entry.vehicleId);
+        if (car) {
+          car.updateWorldMatrix(true, false);
+          this.layoutRoot.updateWorldMatrix(true, false);
+          entry.root.position.copy(entry.contactVehiclePoint).applyMatrix4(car.matrixWorld)
+            .applyMatrix4(this.layoutRoot.matrixWorld.clone().invert());
+        }
+      }
+      if (!contacted) {
+        if (!contactAreas.has(entry.vehicleId)) {
+          contactAreas.set(entry.vehicleId, this.getVehicleBoardingContactArea(entry.vehicleId));
+        }
+        const contact = contactAreas.get(entry.vehicleId);
+        const contactProgress = contact ? this.getBoardingPassengerContactProgress(entry, contact) : progress >= 1 ? 1 : null;
+        if (contactProgress !== null) {
+          entry.contactProgress = progress * contactProgress;
+          entry.contactStartedAt = time;
+          entry.contactFrameTime = time;
+          entry.contactFrames = 0;
+          // A slow frame may have crossed deep into the car. Start the three
+          // visible frames at the swept first-touch point rather than its centre.
+          entry.root.position.lerpVectors(entry.start, entry.target, entry.contactProgress);
+          if (contact) entry.contactVehiclePoint = entry.root.position.clone().applyMatrix4(contact.fromLayout);
+        }
+      }
+      if ((entry.contactFrames ?? 0) < BOARDING_CONTACT_HIDE_FRAMES) continue;
+      // Already-contacted passengers retain their completion feedback even if
+      // the model has begun departing during the three visual contact frames.
+      // A fully removed car has no visible feedback target.
+      const canFinishFeedback = vehicle?.state !== 'done';
+      if (canFinishFeedback) this.triggerVehicleBoardingPulse(entry.vehicleId, time);
+      if (!entry.soundPlayed) this.pendingBoardingSounds.push({ vehicleId: entry.vehicleId, triggerAt: soundAt });
+      if (canFinishFeedback && Boolean(SCENE_TUNING.visibility?.vehicles ?? 1)) {
+        this.vehicleEffects?.spawnAboardSmoke(entry.vehicleId);
       }
       this.layoutRoot.remove(entry.root);
       this.releaseBoardingVisual(entry.root);
@@ -7052,6 +7259,8 @@ export class SceneView {
       });
     const distance = calculatePerspectiveDistance(halfHeight, camera.fovDegrees);
     const elevation = deg(camera.elevationDegrees);
+    const azimuth = deg(Number(camera.azimuthDegrees) || 0);
+    const horizontalDistance = Math.cos(elevation) * distance;
     const cropOffsetX = cropEnabled
       ? responsiveCrop.cropOffsetX
       : 0;
@@ -7066,9 +7275,9 @@ export class SceneView {
     this.camera.fov = camera.fovDegrees;
     this.camera.aspect = aspect;
     this.camera.position.set(
-      target.x,
+      target.x + Math.sin(azimuth) * horizontalDistance,
       target.y + Math.sin(elevation) * distance,
-      target.z + Math.cos(elevation) * distance
+      target.z + Math.cos(azimuth) * horizontalDistance
     );
     this.camera.lookAt(target);
 
@@ -7089,6 +7298,16 @@ export class SceneView {
       backgroundHeight,
       1
     );
+    const backgroundRotation = calculateCameraGroundRotation(camera);
+    // Rebuild the base transform on every layout so resize/capture never
+    // accumulates rotation. Turn both the artwork and its offset about target.
+    this.backgroundPlane.updateMatrix();
+    this.backgroundPlane.matrix.premultiply(new THREE.Matrix4().set(
+      backgroundRotation.xx, backgroundRotation.xy, 0, 0,
+      backgroundRotation.yx, backgroundRotation.yy, 0, 0,
+      0, 0, 1, 0,
+      0, 0, 0, 1
+    ));
     this.camera.near = Math.max(0.1, distance - 35);
     this.camera.far = backgroundDistance + 5;
     this.camera.updateProjectionMatrix();

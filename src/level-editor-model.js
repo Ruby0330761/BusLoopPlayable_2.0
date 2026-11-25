@@ -83,94 +83,6 @@ export function getVehiclePaintColor(colorIndex) {
   return getVehicleColorOption(colorIndex).css.toLowerCase();
 }
 
-const srgbToLinear = (channel) => {
-  const value = channel / 255;
-  return value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4;
-};
-const linearToSrgb = (value) => {
-  const clamped = Math.max(0, Math.min(1, value));
-  return Math.round(255 * (clamped <= 0.0031308 ? clamped * 12.92 : 1.055 * clamped ** (1 / 2.4) - 0.055));
-};
-const hexChannels = (hex) => {
-  const match = /^#([0-9a-f]{6})$/i.exec(String(hex ?? ''));
-  return match ? [0, 2, 4].map((offset) => Number.parseInt(match[1].slice(offset, offset + 2), 16)) : null;
-};
-
-// Slot paint → slot rendered, for the slots that have a measured entry. Slots
-// 11-16 are special vehicles whose swatch is a placeholder, so they are excluded.
-const MEASURED_PAINT_BY_LINEAR = Object.freeze(VEHICLE_COLOR_OPTIONS
-  .filter((color) => color.id <= 10 || color.id >= 17)
-  .map((color) => ({ paint: color.css.toLowerCase(), rendered: renderedVehicleColor(color.id) }))
-  .filter((entry) => /^#[0-9a-f]{6}$/i.test(entry.rendered))
-  .map((entry) => Object.freeze({
-    paintHex: entry.paint,
-    renderedHex: entry.rendered,
-    paintLinear: hexChannels(entry.paint).map(srgbToLinear)
-  })));
-
-// Per-slot, per-channel tone curve: out = 1 - (1 - in)^g, fitted to measurements
-// taken from the running playable.
-//
-// The canvas has to draw what the player sees. The playable renders the atlas
-// through a lit MeshStandardMaterial (hemisphere 2.25 + directional 1.9), which
-// lifts a dark paint far above its stored value: a filled #3e897d shows as
-// #4cccc0 on a green car. Drawing the raw paint made every board look darker
-// than the game, and once an override was set the two never agreed.
-//
-// This is a per-channel power curve rather than a single gain because the
-// lighting is not separable — one scalar cannot reproduce it. Measured on the
-// green slot: channels want exponents 1.98 / 3.08 / 2.99, so a shared exponent
-// left 33/255 of error where a per-channel one lands within ~10. The curve is
-// also bounded in [0,1], so a bright paint saturates instead of blowing past
-// white; a plain multiplier overshot (pale blue #9fc2d5 x 2.46 came out almost
-// pure white).
-//
-// Per-slot because the shipped table encodes each atlas's own baked highlight
-// band, not a pure lighting response: the effective gain runs from 1.25x on the
-// black slot to 13x on the teal slot. Anything derived across slots is wrong for
-// a specific car — blending a custom paint from its nearest slots painted a black
-// car brown.
-const SLOT_TONE_EXPONENT = Object.freeze({
-  // Green slot (index 9). Exponents fitted to four measured pairs from the running
-  // game: #206d53->#34b094, #3e897d->#4cccc0, #5c7a70->#68bcb0, #8aa89e->#b8dcd0.
-  9: Object.freeze([1.98, 3.08, 2.99]),
-  // Blue slot (index 0). Fitted to three measured pairs: #0061e8->#50a4fc,
-  // #5a8fd0->#acd4fc, #2b62c4->#7ca4f4. The red channel needs a much steeper
-  // curve than green/blue: blue paint has almost no red to lift, so any red that
-  // does show has to come from the specular term.
-  0: Object.freeze([5.38, 3.48, 3.08])
-});
-
-// Slots without a fitted curve fall back to a single exponent solved from the
-// shipped paint/rendered pair, or this midpoint when that pair has no shape
-// (the special mechanism slots).
-const DEFAULT_TONE_EXPONENT = 2.6;
-
-/**
- * The colour a paint value shows on screen.
- *
- * A paint that matches a shipped slot returns that slot's measured colour
- * exactly, so picking from the swatch list is pixel-consistent with the game.
- * Any other paint runs through the slot's tone curve. This is an approximation,
- * not a promise: the residual is ~10/255 on the fitted green slot, against
- * 67/255 for drawing the paint raw.
- */
-export function getRenderedPaintColor(paintCss, fallbackCss = null, colorIndex = null) {
-  const channels = hexChannels(String(paintCss ?? '').toLowerCase());
-  if (!channels) return fallbackCss;
-  const paintLinear = channels.map(srgbToLinear);
-  const measured = MEASURED_PAINT_BY_LINEAR.find((entry) => (
-    entry.paintLinear.every((value, channel) => Math.abs(value - paintLinear[channel]) < 0.002)
-  ));
-  if (measured) return measured.renderedHex;
-
-  const fitted = SLOT_TONE_EXPONENT[Number(colorIndex)] ?? null;
-  const exponents = fitted ?? [DEFAULT_TONE_EXPONENT, DEFAULT_TONE_EXPONENT, DEFAULT_TONE_EXPONENT];
-  return `#${paintLinear
-    .map((value, channel) => linearToSrgb(1 - (1 - Math.min(1, value)) ** exponents[channel]).toString(16).padStart(2, '0'))
-    .join('')}`;
-}
-
 const VEHICLE_COLOR_BY_ID = new Map(VEHICLE_COLOR_OPTIONS.map((color) => [color.id, color]));
 
 const SPECIAL_VEHICLE_COLOR_INDEX = Object.freeze({
@@ -204,13 +116,6 @@ function normalizeVehicleColorOverrides(value) {
   return Object.fromEntries(['body', 'highlight', 'shadow', 'window', 'detail']
     .map((key) => [key, normalizeHexColor(value[key])])
     .filter(([, color]) => color));
-}
-
-function normalizePassengerColorOverrides(value) {
-  if (!value || typeof value !== 'object') return {};
-  return Object.fromEntries(Object.entries(value)
-    .map(([colorIndex, override]) => [String(Math.max(0, Math.round(finite(colorIndex)))), normalizeVehicleColorOverrides(override)])
-    .filter(([, override]) => Object.keys(override).length));
 }
 
 const clone = (value) => structuredClone(value);
@@ -334,8 +239,23 @@ function normalizeTransformConfig(value) {
   };
 }
 
+// Queues identify a paint by matching group. Older boards sometimes overrode
+// only one vehicle in a group, so that authored body supplies the group colour.
+function syncMatchingBodyPaints(vehicles) {
+  const bodies = new Map();
+  for (const vehicle of vehicles) {
+    if (vehicle.colorOverrides.body && !bodies.has(vehicle.colorIndex) && !isSpecialVehicle(vehicle)) {
+      bodies.set(vehicle.colorIndex, vehicle.colorOverrides.body);
+    }
+  }
+  for (const vehicle of vehicles) {
+    if (bodies.has(vehicle.colorIndex) && !isSpecialVehicle(vehicle)) vehicle.colorOverrides.body = bodies.get(vehicle.colorIndex);
+  }
+}
+
 export function createLevelDocument(level = {}) {
   const vehicles = (level.vehicles ?? []).map((vehicle, index) => normalizeVehicle(vehicle, index + 1));
+  syncMatchingBodyPaints(vehicles);
   const conveyorWidths = new Map((level.conveyorBelts ?? []).map((belt) => [Number(belt.vcId), belt.width]));
   const containers = (level.containers?.length ? level.containers : [{ id: 0, type: 1 }])
     .map((container, index) => normalizeContainer({
@@ -345,16 +265,6 @@ export function createLevelDocument(level = {}) {
   const passengerQueues = Array.isArray(level.passengerQueues)
     ? level.passengerQueues.map((queue) => queue.map((value) => Math.max(0, Math.round(finite(value)))))
     : [[], []];
-  const passengerColorOverrides = normalizePassengerColorOverrides(level.passengerColorOverrides);
-  for (const vehicle of vehicles) {
-    const overrides = vehicle.colorOverrides;
-    if (!Object.keys(overrides).length) continue;
-    const id = String(vehicle.colorIndex);
-    passengerColorOverrides[id] = {
-      ...overrides,
-      ...(passengerColorOverrides[id] ?? {})
-    };
-  }
   return {
     format: 'bus-loop-web-level-v1',
     key: level.key ?? `level${positiveInt(level.unityId ?? level.id, 1)}`,
@@ -376,7 +286,6 @@ export function createLevelDocument(level = {}) {
     vehicles,
     containers,
     passengerQueues,
-    passengerColorOverrides,
     vehicleDepthes: clone(level.vehicleDepthes ?? {}),
     // Scene tuning (parking spots, vehicle layer, camera/background, badge
     // sizes) is authored per level and lives beside the layout. It is optional
@@ -1126,6 +1035,7 @@ export class LevelEditorModel {
     const beforeSelection = [...this.selection];
     this.pendingRenumber = null;
     mutator(this.document);
+    syncMatchingBodyPaints(this.document.vehicles);
     // A mutator may compact the numbering; keep that mapping with the history
     // entry so undo/redo can walk the ids held outside the document back.
     const renumber = this.pendingRenumber;
@@ -1518,6 +1428,10 @@ export class LevelEditorModel {
         const path = field.split('.');
         const key = path.pop();
         const parent = path.reduce((target, part) => target[part], item);
+        if (field === 'colorIndex' && item.seats && item.colorIndex !== value) {
+          const target = document.vehicles.find(other => other.colorIndex === value);
+          item.colorOverrides = target?.colorOverrides.body ? { body: target.colorOverrides.body } : {};
+        }
         parent[key] = value;
         if (item.seats && field === 'colorIndex') {
           const fixedColor = getSpecialVehicleColorIndex(item.mechanism.type);
@@ -1543,8 +1457,6 @@ export class LevelEditorModel {
         } else if (field === 'mechanism.type') {
           syncVehiclePassengerColor(document, item, 'primary', previousColor, item.colorIndex);
         } else if (field === 'colorOverrides.body') {
-          document.passengerColorOverrides[item.colorIndex] ??= {};
-          document.passengerColorOverrides[item.colorIndex].body = value;
           bodyColourChanges.set(String(item.colorIndex), value);
         } else if (field === 'mechanism.secondColorIndex' && item.mechanism.type === 'combination') {
           syncVehiclePassengerColor(document, item, 'second', previousColor, item.mechanism.secondColorIndex);
@@ -1566,49 +1478,15 @@ export class LevelEditorModel {
     });
   }
 
-  setSelectedPassengerColorField(region, value) {
-    const vehicles = this.selected().filter((item) => item.seats);
-    const color = normalizeHexColor(value);
-    if (!vehicles.length || !['body', 'highlight', 'shadow', 'window', 'detail'].includes(region) || !color) return false;
-    this.transact((document) => {
-      const colorIds = new Set(vehicles.map((vehicle) => String(vehicle.colorIndex)));
-      for (const id of colorIds) {
-        document.passengerColorOverrides[id] ??= {};
-        document.passengerColorOverrides[id][region] = color;
-      }
-      document.vehicles
-        .filter((vehicle) => colorIds.has(String(vehicle.colorIndex)))
-        .forEach((vehicle) => { vehicle.colorOverrides[region] = color; });
-    });
-    return true;
-  }
-
-  setPassengerColorOverride(colorIndex, region, value) {
-    const id = Math.max(0, Math.round(finite(colorIndex)));
-    const color = normalizeHexColor(value);
-    if (!['body', 'highlight', 'shadow', 'window', 'detail'].includes(region) || !color) return false;
-    this.transact((document) => {
-      document.passengerColorOverrides[String(id)] ??= {};
-      document.passengerColorOverrides[String(id)][region] = color;
-      document.vehicles
-        .filter((vehicle) => vehicle.colorIndex === id)
-        .forEach((vehicle) => { vehicle.colorOverrides[region] = color; });
-    });
-    return true;
-  }
-
   resetSelectedVehicleColors() {
     const vehicles = this.selected().filter((item) => item.seats);
     if (!vehicles.length) return false;
     this.transact((document) => {
       const colorIds = new Set(vehicles.map((vehicle) => String(vehicle.colorIndex)));
       vehicles.forEach((vehicle) => { vehicle.colorOverrides = {}; });
-      colorIds.forEach((colorIndex) => {
-        const hasRemainingOverride = document.vehicles
-          .filter((vehicle) => String(vehicle.colorIndex) === colorIndex)
-          .some((vehicle) => Object.keys(vehicle.colorOverrides).length);
-        if (!hasRemainingOverride) delete document.passengerColorOverrides[colorIndex];
-      });
+      for (const vehicle of document.vehicles) {
+        if (colorIds.has(String(vehicle.colorIndex))) delete vehicle.colorOverrides.body;
+      }
     });
     return true;
   }
@@ -1768,8 +1646,9 @@ export function levelDocumentToRuntime(document, baseLevel = {}) {
     vcId: container.id,
     width: container.conveyorWidth
   }));
+  const { passengerColorOverrides: obsoletePassengerPaint, ...base } = baseLevel;
   return {
-    ...clone(baseLevel),
+    ...clone(base),
     key: doc.key,
     displayName: doc.displayName,
     id: doc.unityId,
@@ -1779,7 +1658,6 @@ export function levelDocumentToRuntime(document, baseLevel = {}) {
     vehicles,
     containers: clone(doc.containers),
     conveyorBelts,
-    passengerColorOverrides: clone(doc.passengerColorOverrides),
     vehicleDepthes: clone(doc.vehicleDepthes),
     passengerQueues: clone(doc.passengerQueues),
     passengerSequence: doc.passengerQueues.flat(),

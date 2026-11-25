@@ -1,3 +1,4 @@
+import { withVehicleEffectAssets } from './vehicle-effect-assets.js';
 import { ACTIVE_LEVEL } from './generated-active-level.js';
 import { isColorAtlasTableComplete, resolveColorAtlasPaths } from './color-atlases.js';
 import { isLevelAudioConfigComplete, resolveLevelAudioConfig } from './level-audio-config.js';
@@ -74,6 +75,7 @@ export let LEVEL_1 = withCompleteLevelAssets(ACTIVE_LEVEL);
 // sound name makes the controller drop that event without logging anything, so
 // no level is allowed to activate with a partial asset table.
 function withCompleteLevelAssets(level) {
+  level = withVehicleEffectAssets(level);
   if (!level?.assets) return level;
   const colorTextures = isColorAtlasTableComplete(level.assets.colorTextures)
     ? level.assets.colorTextures

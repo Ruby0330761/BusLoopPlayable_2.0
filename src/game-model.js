@@ -1,7 +1,7 @@
+import { getBoardingRowTiming } from './passenger-boarding-motion.js';
 import { LEVEL_1 } from './level-data.js';
 import { SCENE_TUNING } from './scene-tuning.js';
-import { parkedVehicleSizeMultiplier } from './vehicle-area-transform.js';
-import { resolveParkingSpots, resolveParkingStartX } from './stage-scene.js';
+import { resolveParkingSpots, resolveParkingStartX, resolvePassengerSpeedMultiplier } from './stage-scene.js';
 import { createVehicleRouteTransform, resolveVehiclePathConfig } from './vehicle-path-config.js';
 import { CONVEYOR_MECHANISM_TUNING } from './conveyor-mechanism-config.js';
 import { normalizeStaminaConfig } from './stamina.js';
@@ -21,6 +21,7 @@ import {
 } from './vehicle-motion.js';
 import {
   createVehicleCollisionContext,
+  getVehicleCollisionScale,
   findCollisionContact
 } from './vehicle-collision.js';
 import {
@@ -130,9 +131,8 @@ function collisionVisualOverhang(candidate, attacker, level) {
     // the ratio, so the overhang it adds has to be multiplied with it. Without
     // this an enlarged board stops with a whole car-width of air between the
     // bumpers.
-    const sizeMultiplier = parkedVehicleSizeMultiplier(vehicle, SCENE_TUNING.vehicleArea);
-    const renderedLength = collisionLength * RENDERED_OVER_COLLISION_RATIO * sizeMultiplier;
-    return Math.max(0, (renderedLength - collisionLength) / 2);
+    const scaledLength = collisionLength * getVehicleCollisionScale(level, vehicle);
+    return (RENDERED_OVER_COLLISION_RATIO - 1) * scaledLength / 2;
   };
   // Containers (garage bodies, conveyor walls) keep their authored footprint:
   // only cars carry the model-vs-collision overhang.
@@ -318,6 +318,7 @@ export class BusLoopGame {
     this.stamina = { enabled: Boolean(stamina.enabled), lives: stamina.lives, remaining: stamina.lives };
     this.pendingStaminaRescue = null;
     this.speedMultiplier = 1;
+    this.nextBoardingRowAt = 0;
     this.boardingEventId = 0;
     this.turnVehicleEventId = 0;
     // A collision contact is a single moment, but the event stays as `lastEvent`
@@ -857,6 +858,7 @@ export class BusLoopGame {
       resetVersion: this.resetVersion,
       status: this.status,
       speedMultiplier: this.speedMultiplier,
+      passengerSpeedMultiplier: this.getPassengerSpeedMultiplier(),
       initialFillActive: this.initialFillActive,
       // How close the tail-queue head is to the pit (0 calm, 1 failed). The
       // renderer drives the warning beacons from this.
@@ -914,6 +916,7 @@ export class BusLoopGame {
     state.resetVersion = this.resetVersion;
     state.status = this.status;
     state.speedMultiplier = this.speedMultiplier;
+    state.passengerSpeedMultiplier = this.getPassengerSpeedMultiplier();
     state.initialFillActive = this.initialFillActive;
     state.danger = this.q37Danger ?? 0;
     state.queueItems = this.queues;
@@ -925,6 +928,10 @@ export class BusLoopGame {
     state.boardingEvents = this.boardingEvents;
     state.lastEvent = this.lastEvent;
     return state;
+  }
+
+  getPassengerSpeedMultiplier() {
+    return this.speedMultiplier * resolvePassengerSpeedMultiplier();
   }
 
   setSpeedMultiplier(multiplier) {
@@ -1633,7 +1640,7 @@ export class BusLoopGame {
       ? (entryMotion.passengerSpeed ?? this.level.conveyorSpeed)
         * Math.max(1, Number(this.initialFillSpeedMultiplier) || 1)
       : this.level.conveyorSpeed;
-    const progressDelta0 = delta * activeConveyorSpeed / this.conveyorPathLength * this.speedMultiplier;
+    const progressDelta0 = delta * activeConveyorSpeed / this.conveyorPathLength * this.getPassengerSpeedMultiplier();
     // The belt is a rigid loop: all slots keep their spacing, so it can only stop
     // or start as one piece. When an empty slot is about to reach an entrance
     // that has nobody ready to board, the loop must stop just short of it --
@@ -1694,11 +1701,18 @@ export class BusLoopGame {
       this.initialFillActive = false;
     }
 
-    for (const slot of this.slots) {
-      if (slot.colorIndex === null || !this.inExitRange(slot.progress)) continue;
+    // A late-arriving car can find several matching rows already in the exit.
+    // Release the downstream row first, then keep the others on the belt until
+    // its third passenger starts. Array/slot indices are not travel order.
+    const boardingSlots = this.slots
+      .filter((slot) => slot.colorIndex !== null && this.inExitRange(slot.progress))
+      .sort((a, b) => wrap01(b.progress - this.exitStart) - wrap01(a.progress - this.exitStart));
+    for (const slot of boardingSlots) {
+      if (this.time + 1e-9 < this.nextBoardingRowAt) break;
       const vehicle = this.findBoardableVehicle(slot.colorIndex);
       if (!vehicle) continue;
       const colorIndex = slot.colorIndex;
+      const timing = getBoardingRowTiming(SCENE_TUNING.passengers, this.level.groupSize);
       this.boardingEvents.push({
         id: ++this.boardingEventId,
         vehicleId: vehicle.id,
@@ -1706,8 +1720,10 @@ export class BusLoopGame {
         colorIndex,
         slotIndex: slot.index,
         progress: slot.progress,
-        startedAt: this.time
+        startedAt: this.time,
+        passengerInterval: timing.passengerInterval
       });
+      this.nextBoardingRowAt = this.time + timing.rowInterval;
       if (this.boardingEvents.length > 24) this.boardingEvents.shift();
       slot.colorIndex = null;
       slot.entryIndex = null;
@@ -1759,7 +1775,7 @@ export class BusLoopGame {
       this.q37Danger = 0;
       return;
     }
-    const seconds = Math.max(0, delta) / Math.max(1, this.speedMultiplier);
+    const seconds = Math.max(0, delta) * resolvePassengerSpeedMultiplier() / Math.max(1, this.speedMultiplier);
     // The head creeps forward at `passengerSpeed`, while a row that was just taken
     // lets the column behind it close up at `retreatSpeed`. Progress is measured
     // on the belt curve, so world units convert through the path length.
@@ -1896,7 +1912,7 @@ export class BusLoopGame {
 
   updateQueues(delta) {
     const speed = Math.max(0.01, this.level.passengerEntryMotion?.passengerSpeed ?? this.level.conveyorSpeed);
-    const step = speed * Math.max(0, delta) * this.speedMultiplier;
+    const step = speed * Math.max(0, delta) * this.getPassengerSpeedMultiplier();
     for (let queueIndex = 0; queueIndex < this.queues.length; queueIndex += 1) {
       const queue = this.queues[queueIndex];
       const availableLength = this.queueAvailableLengths?.[queueIndex] ?? Infinity;

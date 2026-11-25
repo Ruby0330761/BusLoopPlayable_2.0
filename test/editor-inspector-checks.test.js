@@ -4,9 +4,9 @@ import { readFile } from 'node:fs/promises';
 
 import { SCENE_TUNING } from '../src/scene-tuning.js';
 import { LEVEL_1 } from '../src/level-data.js';
-import { RETRY_BUTTON_ASSET_PATH, SPEED_TOGGLE_ASSET_PATHS, SPEED_TOGGLE_BACKGROUND_ASSET_PATH } from '../src/mechanism-resources.js';
+import { MECHANISM_ASSETS, RETRY_BUTTON_ASSET_PATH, SPEED_TOGGLE_ASSET_PATHS, SPEED_TOGGLE_BACKGROUND_ASSET_PATH } from '../src/mechanism-resources.js';
 import { SPEED_TOGGLE_ICON_PATHS } from '../src/speed-toggle.js';
-import { collectPlayableInlineAssetUrls } from '../src/playable-inline-assets.js';
+import { collectPlayableInlineAssetUrls, getReachableStageArt } from '../src/playable-inline-assets.js';
 
 const read = (relative) => readFile(new URL(`../${relative}`, import.meta.url), 'utf8');
 
@@ -23,8 +23,7 @@ test('the inline asset set always carries the runtime shell and the level assets
   // buttons. The speed switch art is deliberately absent: it follows
   // `speedToggle.enabled`, which is off in the shipped tuning.
   for (const required of [
-    '/assets/applovin/icon_q75.jpg',
-    '/assets/applovin/main-guide-hand_q80.webp',
+    SCENE_TUNING.branding.icon.asset,
     '/assets/unity/ui/Main_Prop_GreenBtn.png'
   ]) {
     assert.ok(urls.has(required), `missing base runtime asset ${required}`);
@@ -36,8 +35,25 @@ test('the inline asset set always carries the runtime shell and the level assets
   assert.ok(!urls.has(LEVEL_1.assets.loopScene), 'the level\'s authored belt art is dead weight');
   assert.ok(urls.has('/assets/unity/conveyors/Loop_03_q80.webp'), 'the selected layout\'s belt art is missing');
   assert.ok(urls.has(LEVEL_1.assets.background), 'level background is missing');
-  assert.ok(urls.has(LEVEL_1.assets.colorTextures[0]), 'level colour atlas is missing');
+  assert.ok(!urls.has('/assets/applovin/icon_q75.jpg'), 'unused standalone loader icon');
+  assert.ok(LEVEL_1.assets.colorTextures.filter(Boolean).every(url => !urls.has(url)));
+  assert.ok(urls.has(LEVEL_1.assets.models.passengerVatMesh));
+  assert.ok(urls.has(LEVEL_1.assets.models.passengerVatTexture));
   assert.ok(urls.has(LEVEL_1.assets.audio.bus_hit.clips[0]), 'level audio clip is missing');
+});
+
+test('shell artwork follows reachable guides, choices, CTA and retry', () => {
+  const tuning = { cta: { enabled: 0 }, vehicleGuideHand: { enabled: 1, levelKey: 'level36' } };
+  const urls = (stages, choices = []) => collectPlayableInlineAssetUrls({
+    tuning, levels: stages.map(s => s.level), ...getReachableStageArt(tuning, stages, choices)
+  });
+  const hand = '/assets/applovin/main-guide-hand_q80.webp';
+  const stage = { level: { key: 'level122' } };
+  const off = urls([stage]);
+  assert.ok(!off.has(hand) && !off.has('/assets/unity/ui/Main_Prop_GreenBtn.png') && !off.has('/assets/unity/ui/Main_Prop_RedBtn_blank_q90.webp'));
+  assert.ok(urls([stage, {level:{key:'level36'}}]).has(hand));
+  assert.ok(urls([stage], [{ options:[{opening:{firstClickGuide:{enabled:1,durationSeconds:2}}}], handIndex:-1 }]).has(hand));
+  assert.ok(urls([stage], [{ options:[{}], handIndex:0 }]).has(hand));
 });
 
 test('belt art follows the reachable layouts, not the whole catalog', () => {
@@ -145,23 +161,34 @@ test('guide media and free-placed layers are inlined from tuning, not from the l
   ];
   const urls = collectPlayableInlineAssetUrls({ ...baseOptions(), tuning });
   assert.ok(urls.has('/assets/editor-effects/snowflake.png'));
-  // A hidden layer still assigns `src`, so the browser fetches it.
   assert.ok(urls.has('/assets/editor-free-assets/sticker.webp'));
-  assert.ok(urls.has('/assets/editor-free-assets/hidden.webp'));
+  assert.ok(!urls.has('/assets/editor-free-assets/hidden.webp'));
 });
 
-test('a custom entry-banner plate is inlined only when the banner is on', () => {
-  const tuning = structuredClone(SCENE_TUNING);
-  tuning.entryBanner.customAsset = '/assets/editor-banners/banner-abc-storm.webp';
-  const withBanner = collectPlayableInlineAssetUrls({
-    ...baseOptions(),
-    tuning,
-    entryBannerEnabled: true
-  });
-  assert.ok(withBanner.has('/assets/editor-banners/banner-abc-storm.webp'));
-  // A build that can never show the banner must not pay for its plate.
-  const withoutBanner = collectPlayableInlineAssetUrls({ ...baseOptions(), tuning });
-  assert.ok(!withoutBanner.has('/assets/editor-banners/banner-abc-storm.webp'));
+test('only reachable banner styles and plates ship, including inherited stage and choice settings', () => {
+  const art = MECHANISM_ASSETS.entryBanner;
+  const upload = '/assets/editor-banners/banner-abc-storm.webp';
+  const tuning = { entryBanner: { enabled: 1, style: 'custom', customAsset: upload } };
+  const stage = entryBanner => ({ opening: { entryBanner } });
+  const included = (stages, options = []) => [...collectPlayableInlineAssetUrls({
+    tuning, ...getReachableStageArt(tuning, stages, [{ options }])
+  })].filter(url => url.includes('banner'));
+  assert.deepEqual(included([]), [upload]);
+  assert.deepEqual(included([stage({ enabled: 0 })]), []);
+  assert.deepEqual(included([stage({ customAsset: '' })]), [art.stormBanner]);
+  assert.deepEqual(included([stage({ customAsset: art.rainBanner })]), [art.rainBanner]);
+  assert.deepEqual(new Set(included([stage({ style: 'hard' })], [stage({ style: 'superhard' }), stage({})])), new Set([
+    art.hardBackground, art.hardTitle, art.redArrows, art.superHardBackground, art.superHardTitle, art.purpleArrows, upload
+  ]));
+});
+
+test('ordinary passengers never add colour atlases even for stitched legacy levels', () => {
+  const assets = { colorTextures: Array.from({ length: 26 }, (_, i) => '/assets/test-' + i + '.webp') };
+  const urls = collectPlayableInlineAssetUrls({ levels: [
+    { assets, vehicles: [{ colorIndex: 19 }], passengerQueues: [[17], [18]] },
+    { assets, vehicles: [{ colorIndex: 6 }], passengerSequence: [25] }
+  ] });
+  assert.deepEqual(assets.colorTextures.filter(url => urls.has(url)), []);
 });
 
 test('the editor preflight shares the packager inline set and the 5 MB budget', async () => {

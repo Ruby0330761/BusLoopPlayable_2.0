@@ -78,11 +78,7 @@ export const MECHANISM_RESOURCE_MANIFEST = Object.freeze({
   [MECHANISM_TYPES.entryBanner]: Object.freeze([
     `${MECHANISM_ROOT}/entry-banner/sprites/Main_EntryBanner_PurpleArrows.png`,
     `${MECHANISM_ROOT}/entry-banner/sprites/Main_EntryBanner_RedArrows.png`,
-    // Single-plate banners (art and copy baked in) for the `custom` style. They
-    // are choices an author can pick without uploading anything, so they ride
-    // with the mechanism rather than the upload library. Both are shipped
-    // unconditionally like the layered sprites below: the style is a tuning
-    // value, so a build must be able to switch plates without a rebuild.
+    // Inventory includes both built-in plates. Exports select reachable styles.
     `${MECHANISM_ROOT}/entry-banner/sprites/Main_EntryBanner_Storm.webp`,
     `${MECHANISM_ROOT}/entry-banner/sprites/Main_EntryBanner_Rain.webp`,
     `${MECHANISM_ROOT}/entry-banner/sprites/Hard.png`,
@@ -347,21 +343,20 @@ export function getMechanismAudioConfig(types = []) {
   );
 }
 
-export const BASE_RUNTIME_ASSET_PATHS = Object.freeze([
-  '/assets/applovin/icon_q75.jpg',
-  '/assets/applovin/main-guide-hand_q80.webp',
-  '/assets/unity/ui/Main_Prop_GreenBtn.png'
-]);
-
-// CSS references these even when the corresponding UI cannot be shown. The
-// shared inline collector applies the exported tuning after scanning CSS.
+export const GUIDE_HAND_ART = '/assets/applovin/main-guide-hand_q80.webp';
+export const CTA_BUTTON_ART = '/assets/unity/ui/Main_Prop_GreenBtn.png';
 export const RETRY_BUTTON_ASSET_PATH = '/assets/unity/ui/Main_Prop_RedBtn_blank_q90.webp';
+export const BASE_RUNTIME_ASSET_PATHS = Object.freeze([GUIDE_HAND_ART, CTA_BUTTON_ART, RETRY_BUTTON_ASSET_PATH]);
 export const SPEED_TOGGLE_BACKGROUND_ASSET_PATH = '/assets/applovin/speed-toggle-bg_q90.webp';
 
 // Speed switch artwork. The switch is off by default (the progress bar owns that
 // corner), so five unconditional bitmaps were ~58 KB in every delivery for a
-// button that stayed `hidden`. This lists every skin for discovery; the shared
-// collector ships only the selected skin's normal/boost icons and background.
+// button that stayed `hidden`. The packager selects the configured skin.
+//
+// `speed-toggle-bg_q90.webp` is the default skin's pill and is addressed from
+// styles.css, not from JS. It is listed here so the packager inlines it when the
+// switch is on; a build with the switch off drops it from the CSS pass too
+// (see `stripSpeedToggleArt` in the packager).
 export const SPEED_TOGGLE_ASSET_PATHS = Object.freeze([
   SPEED_TOGGLE_BACKGROUND_ASSET_PATH,
   '/assets/applovin/speed-toggle-icon-normal.png',
@@ -468,7 +463,7 @@ export function getMechanismTypesForLevels(
   const types = [];
   if (entryBannerEnabled) addType(types, MECHANISM_TYPES.entryBanner);
   for (const level of levels) {
-    const metadata = level?.mechanics ?? deriveLevelMechanics(level);
+    const metadata = Array.isArray(level?.vehicles) ? deriveLevelMechanics(level) : level?.mechanics ?? deriveLevelMechanics(level);
     for (const type of metadata.types ?? []) addType(types, type);
   }
   if (typeof spatialSelection === 'string' && spatialSelection.startsWith('spatial:')) {
@@ -477,8 +472,22 @@ export function getMechanismTypesForLevels(
   return MECHANISM_TYPE_ORDER.filter((type) => types.includes(type));
 }
 
-export function getMechanismResourcePaths(types = [], { conveyorLayout = null, conveyorLayouts = null } = {}) {
-  const paths = [...new Set(types.flatMap((type) => MECHANISM_RESOURCE_MANIFEST[type] ?? []))];
+export function getEntryBannerArt(tuning = {}) {
+  const assets = MECHANISM_ASSETS.entryBanner;
+  switch (String(tuning.style).toLowerCase()) {
+    case 'custom': return { card: tuning.customAsset || assets.stormBanner };
+    case 'superhard': return { card: assets.superHardBackground, arrows: assets.purpleArrows, label: assets.superHardTitle };
+    default: return { card: assets.hardBackground, arrows: assets.redArrows, label: assets.hardTitle };
+  }
+}
+
+export function getMechanismResourcePaths(types = [], { conveyorLayout = null, conveyorLayouts = null, entryBanners = null } = {}) {
+  const paths = types.flatMap((type) => {
+    if (type === MECHANISM_TYPES.entryBanner && entryBanners !== null) {
+      return entryBanners.flatMap((banner) => Object.values(getEntryBannerArt(banner)));
+    }
+    return MECHANISM_RESOURCE_MANIFEST[type] ?? [];
+  });
   // Imported tracks ship as a mesh/art pair per track, and each pair is well
   // over 100 KB once base64'd. Only the tracks a session can actually reach may
   // enter a package, or a single playable would carry every track it can never

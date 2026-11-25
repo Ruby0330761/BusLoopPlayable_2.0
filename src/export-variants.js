@@ -9,6 +9,7 @@ export function parseExportVariantValues(raw, kind, enabled = true) {
   const label = stamina ? '尾段版本（体力）' : '步数';
   const limit = stamina ? 10 : 200;
   const text = String(raw ?? '').trim();
+  if (!stamina && (!text || text.toUpperCase() === 'N')) return [null];
   const pattern = stamina ? /^(\d+)(?:hp)?$/i : /^(\d+)(?:moves)?$/i;
   const message = `${label}必须填写1～${limit}的整数，多个值用 / 分隔`;
   if (!text || text.length > 256) throw new TypeError(message);
@@ -23,7 +24,7 @@ export function parseExportVariantValues(raw, kind, enabled = true) {
 
 export function getExportVariantPlan(tuning) {
   const lives = parseExportVariantValues(tuning.exportNaming?.version, 'stamina', Number(tuning.stamina?.enabled) === 1);
-  const steps = parseExportVariantValues(tuning.exportNaming?.steps, 'steps', isInstallGateEnabled(tuning.installGate));
+  const steps = parseExportVariantValues(tuning.exportNaming?.steps, 'steps');
   return { lives, steps, count: lives.length * steps.length };
 }
 
@@ -33,14 +34,10 @@ export function expandExportVariantTunings(tuning) {
     const next = structuredClone(tuning);
     next.exportNaming ??= {};
     next.stamina ??= {};
-    next.installGate ??= {};
     next.exportNaming.version = lifeCount === null ? 'N' : `${lifeCount}hp`;
     next.exportNaming.steps = stepCount === null ? 'N' : `${stepCount}moves`;
     next.stamina.enabled = lifeCount === null ? 0 : 1;
-    next.installGate.enabled = stepCount === null ? 0 : 1;
-    next.installGate.customThresholdEnabled = stepCount === null ? 0 : 1;
     if (lifeCount !== null) next.stamina.lives = lifeCount;
-    if (stepCount !== null) next.installGate.successfulOperationThreshold = stepCount;
     return next;
   }));
 }
@@ -49,26 +46,17 @@ export function expandExportVariantTunings(tuning) {
 export function syncExportVariantTuning(tuning, path) {
   tuning.exportNaming ??= {};
   tuning.stamina ??= {};
-  tuning.installGate ??= {};
-  for (const [kind, name, enabled, valuePath, valueObject, valueKey, togglePath] of [
-    ['stamina', 'version', Number(tuning.stamina?.enabled) === 1, 'stamina.lives', tuning.stamina, 'lives', 'stamina.enabled'],
-    ['steps', 'steps', isInstallGateEnabled(tuning.installGate), 'installGate.successfulOperationThreshold', tuning.installGate, 'successfulOperationThreshold', 'installGate.enabled']
-  ]) {
-    if (kind === 'steps' && !enabled) tuning.installGate.customThresholdEnabled = 0;
-    if (!enabled) tuning.exportNaming[name] = 'N';
-    else if (path === valuePath) tuning.exportNaming[name] = String(valueObject[valueKey]);
-    else if (path === togglePath && tuning.exportNaming[name] === 'N') tuning.exportNaming[name] = '';
-    else if (path === 'initialize' && (!Object.hasOwn(tuning.exportNaming, name) || tuning.exportNaming[name] === 'N')) {
-      tuning.exportNaming[name] = String(valueObject?.[valueKey] ?? (kind === 'stamina' ? 3 : 64));
-    }
-    if (enabled && (path === `exportNaming.${name}` || path === 'initialize')) {
-      try {
-        valueObject[valueKey] = parseExportVariantValues(tuning.exportNaming[name], kind)[0];
-        if (kind === 'steps') tuning.installGate.customThresholdEnabled = 1;
-      }
-      catch { /* Preserve the invalid draft so the field can explain the error. */ }
-    }
-    if (kind === 'steps' && path === valuePath) tuning.installGate.customThresholdEnabled = 1;
+  const naming = tuning.exportNaming;
+  const stamina = tuning.stamina;
+  if (Number(stamina.enabled) !== 1) naming.version = 'N';
+  else if (path === 'stamina.lives') naming.version = String(stamina.lives);
+  else if (path === 'stamina.enabled' && naming.version === 'N') naming.version = '';
+  else if (path === 'initialize' && (!Object.hasOwn(naming, 'version') || naming.version === 'N')) {
+    naming.version = String(stamina.lives ?? 3);
+  }
+  if (Number(stamina.enabled) === 1 && (path === 'exportNaming.version' || path === 'initialize')) {
+    try { stamina.lives = parseExportVariantValues(naming.version, 'stamina')[0]; }
+    catch { /* Preserve the invalid draft so the field can explain the error. */ }
   }
   return tuning;
 }

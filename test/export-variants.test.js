@@ -8,9 +8,9 @@ import { resolvePlayableSession } from '../src/playable-session-config.js';
 function fixture() {
   const tuning = structuredClone(SCENE_TUNING);
   tuning.stamina.enabled = 1;
-  // A steps list only exists when the operator opted into the early jump; the
-  // shipped default is the all-clear ending with `enabled: 0`.
   tuning.installGate.enabled = 1;
+  tuning.installGate.successfulOperationThreshold = 56;
+  tuning.installGate.customThresholdEnabled = 1;
   tuning.exportNaming.version = '3/5/10';
   tuning.exportNaming.steps = '10/20';
   return tuning;
@@ -38,17 +38,18 @@ test('lists accept bare numbers and suffixes, normalize duplicates in order', ()
   assert.deepEqual(parseExportVariantValues('invalid', 'stamina', false), [null]);
 });
 
-test('every Cartesian variant has a matching artifact name and actual settings', () => {
+test('every steps label combines with every stamina version and preserves the authored store gate', () => {
   const tuning = fixture();
   const original = structuredClone(tuning);
   const variants = expandExportVariantTunings(tuning);
   assert.equal(getExportVariantPlan(tuning).count, 6);
   assert.equal(variants.length, 6);
-  for (const variant of variants) {
+  for (const [index, variant] of variants.entries()) {
     validateTuning(variant, SCENE_TUNING);
-    const step = variant.installGate.successfulOperationThreshold;
+    const step = index < 3 ? 10 : 20;
     const hp = variant.stamina.lives;
-    assert.equal(variant.installGate.customThresholdEnabled, 1, 'the threshold survives stripped naming metadata');
+    assert.equal(hp, [3, 5, 10][index % 3]);
+    assert.deepEqual(variant.installGate, original.installGate);
     assert.match(buildPlayableArtifactName(variant, 'meta'), new RegExp(`-FB-${step}moves-${hp}hp\\.zip$`));
     assert.match(buildPlayableArtifactName(variant, 'mintegral'), new RegExp(`_MT_${step}moves_${hp}hp\\.zip$`));
   }
@@ -57,32 +58,47 @@ test('every Cartesian variant has a matching artifact name and actual settings',
   assert.deepEqual(tuning, original);
 });
 
-test('disabled features emit N and are disabled inside the output', () => {
+test('blank and legacy N steps emit N with either gate setting; manual labels work with the gate off', () => {
   const tuning = fixture();
   tuning.stamina.enabled = 0;
+  assert.equal(SCENE_TUNING.exportNaming.steps, '');
+  for (const enabled of [0, 1]) {
+    tuning.installGate.enabled = enabled;
+    for (const [steps, expected] of [[undefined, 'N'], ['', 'N'], ['  ', 'N'], ['N', 'N'], ['12', '12moves']]) {
+      tuning.exportNaming.steps = steps;
+      const variants = expandExportVariantTunings(tuning);
+      assert.equal(variants.length, 1);
+      const [variant] = variants;
+      assert.equal(variant.exportNaming.version, 'N');
+      assert.equal(variant.exportNaming.steps, expected);
+      assert.ok(buildPlayableArtifactName(variant, 'applovin').endsWith(`-AL-${expected}-N.html`));
+      assert.equal(variant.stamina.enabled, 0);
+      assert.deepEqual(variant.installGate, tuning.installGate);
+    }
+  }
   tuning.installGate.enabled = 0;
-  const [variant] = expandExportVariantTunings(tuning);
-  assert.equal(variant.exportNaming.version, 'N');
-  assert.equal(variant.exportNaming.steps, 'N');
-  assert.equal(variant.stamina.enabled, 0);
-  assert.equal(variant.installGate.enabled, 0);
+  tuning.exportNaming.steps = 'bad';
+  assert.throws(() => getExportVariantPlan(tuning), /步数/);
   assert.equal(isInstallGateEnabled({ successfulOperationThreshold: 5 }), true, 'old configurations retain their gate');
-  assert.equal(isInstallGateEnabled(variant.installGate), false);
 });
 
-test('typing a list previews the first value; guide edits replace the list', () => {
+test('stamina still previews the first value, while gate edits and step labels are independent', () => {
   const tuning = fixture();
   syncExportVariantTuning(tuning, 'exportNaming.version');
   syncExportVariantTuning(tuning, 'exportNaming.steps');
   assert.equal(tuning.stamina.lives, 3);
-  assert.equal(tuning.installGate.successfulOperationThreshold, 10);
+  assert.equal(tuning.installGate.successfulOperationThreshold, 56);
   assert.equal(tuning.exportNaming.version, '3/5/10');
   tuning.stamina.lives = 8;
   syncExportVariantTuning(tuning, 'stamina.lives');
   assert.equal(tuning.exportNaming.version, '8');
   tuning.installGate.successfulOperationThreshold = 15;
   syncExportVariantTuning(tuning, 'installGate.successfulOperationThreshold');
-  assert.equal(tuning.exportNaming.steps, '15');
+  assert.equal(tuning.exportNaming.steps, '10/20');
+  tuning.installGate.enabled = 0;
+  syncExportVariantTuning(tuning, 'installGate.enabled');
+  assert.equal(tuning.exportNaming.steps, '10/20');
+  assert.equal(tuning.installGate.customThresholdEnabled, 1);
 });
 
 test('toggle off clears to N, toggle on requires a value, invalid drafts do not change preview', () => {
@@ -102,15 +118,21 @@ test('toggle off clears to N, toggle on requires a value, invalid drafts do not 
   assert.equal(tuning.stamina.lives, SCENE_TUNING.stamina.lives);
 });
 
-test('initial legacy on settings get their current values without overwriting lists', () => {
+test('initializing a legacy enabled gate preserves its threshold independently of naming', () => {
   const tuning = fixture();
   tuning.exportNaming.steps = 'N';
   delete tuning.installGate.enabled;
   syncExportVariantTuning(tuning, 'initialize');
-  assert.equal(tuning.exportNaming.steps, String(tuning.installGate.successfulOperationThreshold));
+  assert.equal(tuning.exportNaming.steps, 'N');
+  assert.equal(tuning.installGate.successfulOperationThreshold, 56);
   assert.equal(tuning.exportNaming.version, '3/5/10');
   assert.equal(tuning.stamina.lives, 3);
   tuning.exportNaming.version = '10hp';
   syncExportVariantTuning(tuning, 'initialize');
   assert.equal(tuning.stamina.lives, 10, 'loaded names and preview must agree');
+  tuning.installGate.customThresholdEnabled = 0;
+  tuning.exportNaming.steps = '12';
+  syncExportVariantTuning(tuning, 'initialize');
+  assert.equal(tuning.installGate.customThresholdEnabled, 0);
+  assert.equal(tuning.installGate.successfulOperationThreshold, 56);
 });

@@ -41,6 +41,40 @@ body { user-select: none; overscroll-behavior: none; }
   overflow: visible;
 }
 .progress-hud[hidden] { display: none; }
+#bus-combo {
+  position: absolute;
+  z-index: 3;
+  width: max-content;
+  max-width: calc(100% - 10px);
+  transform: translateX(-50%);
+  text-align: center;
+  pointer-events: none;
+  user-select: none;
+  font: italic 1000 28px/1.12 'Poppins Branding', Arial, sans-serif;
+  white-space: nowrap;
+}
+#bus-combo[hidden], #bus-combo .combo-meter { display: none; }
+.combo-label {
+  display: block;
+  color: #ffe45a;
+  -webkit-text-stroke: .12em #754013;
+  paint-order: stroke fill;
+  text-shadow: 0 .11em 0 #613413, 0 .18em .16em #30160066;
+}
+#bus-combo[data-mode="timed"] { width: calc(var(--combo-bay) * 2); font-size: clamp(10px, calc(var(--combo-bay) * .30), 22px); }
+#bus-combo[data-mode="timed"] .combo-label { margin-top: 1px; color: #fffaf1; -webkit-text-stroke-color: #473a97; text-shadow: 0 .1em 0 #382a80; }
+#bus-combo[data-mode="timed"] .combo-meter { display: block; position: relative; }
+.combo-meter img { display: block; width: 100%; height: auto; }
+.combo-track { position: absolute; inset: 15.2174% 2.8302%; }
+.combo-fill { position: absolute; inset: 0 auto 0 0; width: 0; overflow: hidden; }
+.combo-fill img { width: auto; height: 100%; max-width: none; }
+.combo-pulse .combo-label { animation: combo-pop .24s ease-out; }
+#bus-combo[data-mode="gold"].combo-pulse .combo-label { animation: combo-pop .24s ease-out, combo-fade .24s .74s ease-in forwards; }
+@keyframes combo-pop { 0% { transform: scale(.82); } 58% { transform: scale(1.1); } 100% { transform: scale(1); } }
+@keyframes combo-fade { to { opacity: 0; transform: translateY(-3px); } }
+@media (prefers-reduced-motion: reduce) {
+  #bus-combo.combo-pulse .combo-label, #bus-combo[data-mode="gold"].combo-pulse .combo-label { animation: none; }
+}
 .progress-hud.is-mounted { display: block; }
 
 .countdown {
@@ -205,6 +239,11 @@ body { user-select: none; overscroll-behavior: none; }
   -webkit-user-drag: none;
 }
 .branding-item[hidden] { display: none; }
+.branding-frame {
+  pointer-events: none;
+  box-sizing: border-box;
+  border: 0 solid transparent;
+}
 .branding-text {
   display: flex;
   align-items: center;
@@ -453,6 +492,7 @@ body { user-select: none; overscroll-behavior: none; }
   border-radius: 28px;
   box-shadow: 0 24px 64px rgba(28, 62, 120, .24);
 }
+.loading-screen img:not([src]) { visibility: hidden; }
 .loading-screen h1 {
   max-width: min(560px, calc(100vw - 44px));
   margin: 0;
@@ -727,7 +767,6 @@ button:hover { transform: translateY(-1px); background: #fff; }
   padding: 0 var(--cta-padding-x, 24px);
   border: 0;
   border-radius: 0;
-  background: transparent url('/assets/unity/ui/Main_Prop_GreenBtn.png') center / 100% 100% no-repeat;
   color: #fff;
   font: 900 var(--cta-font-size, 28px)/var(--cta-font-height, 28px) 'Poppins Branding', Arial, sans-serif;
   text-align: center;
@@ -755,7 +794,7 @@ button:hover { transform: translateY(-1px); background: #fff; }
   transform: translate(-50%, -50%);
 }
 .game-over-overlay.is-tap-to-store.is-cta-ready { cursor: pointer; }
-.cta-button:hover {
+.cta-button, .cta-button:hover {
   background: transparent url('/assets/unity/ui/Main_Prop_GreenBtn.png') center / 100% 100% no-repeat;
 }
 @keyframes game-over-title-pop {
@@ -852,6 +891,61 @@ button:hover { transform: translateY(-1px); background: #fff; }
   background: rgba(244,250,255,.94); box-shadow: -16px 0 40px rgba(28,68,92,.12);
   backdrop-filter: blur(20px);
 }
+.editor-safe-guide-toggle {
+  display: flex; align-items: center; gap: 6px; cursor: pointer;
+}
+.editor-export-confirm {
+  width: min(490px, calc(100% - 24px)); max-height: calc(100% - 24px); box-sizing: border-box;
+  padding: 0; border: 1px solid #c4d3dd; border-radius: 8px; color: #1d3343;
+}
+.editor-export-confirm::backdrop { background: rgba(12, 26, 36, .48); }
+.editor-export-confirm form { display: flex; flex-direction: column; max-height: min(740px, calc(100dvh - 28px)); }
+.editor-export-confirm header, .editor-export-confirm footer {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 12px 16px;
+}
+.editor-export-confirm h3 { margin: 0; font-size: 18px; }
+.editor-export-confirm output { color: #546b7b; font-size: 12px; }
+.export-review-list { overflow: auto; border-block: 1px solid #d8e1e6; }
+.export-review-list label {
+  display: grid; grid-template-columns: 18px minmax(72px, .65fr) minmax(0, 1fr); gap: 10px;
+  align-items: center; padding: 7px 16px; cursor: pointer; font-size: 13px; line-height: 1.4;
+}
+.export-review-list label + label { border-top: 1px solid #edf1f3; }
+.export-review-list label:has(:checked) { background: #f2f9f5; }
+.export-review-list input { margin: 0; width: 16px; height: 16px; accent-color: #197653; }
+.export-review-list strong { overflow-wrap: anywhere; }
+.export-review-list img { width: 52px; height: 42px; object-fit: contain; vertical-align: middle; margin-right: 8px; }
+.editor-export-confirm footer { justify-content: flex-end; }
+.editor-export-confirm button { padding: 8px 14px; cursor: pointer; border-radius: 5px; background: white; border: 1px solid #b9cbd6; }
+.editor-export-confirm button[value="confirm"] { background: #197653; color: white; border-color: #197653; }
+.editor-export-confirm button[value="confirm"]:disabled { background: #e4eaed; color: #657882; border-color: #d6dfe3; cursor: default; }
+/* Checker device_preview.css uses CSS pixels in the playable viewport. Query
+   the stage overlay itself: the desktop window can be wide around a tall phone. */
+/* Keep preview overlays above the game HUD but below editor dialogs. */
+.stage:has(> .editor-safe-guide) { isolation: isolate; }
+.editor-safe-guide {
+  position: absolute; inset: 0; z-index: 50; pointer-events: none;
+  container: editor-safe-guide / size;
+  --safe-top: 44px;
+  --wide-top: 34px;
+}
+.editor-safe-guide[hidden],
+#app:has(> .scene-editor.is-about-open) .editor-safe-guide { display: none; }
+.editor-safe-guide[data-platform="unityads"] { --safe-top: 58px; --wide-top: 38px; }
+.editor-safe-guide[data-platform="moloco"] { --safe-top: 54px; --wide-top: 36px; }
+.editor-safe-guide[data-platform="mintegral"] { --safe-top: 42px; --wide-top: 32px; }
+.editor-safe-guide[data-platform="google-ads"] { --safe-top: 48px; }
+.editor-safe-guide > span {
+  position: absolute; left: 0; right: 0; display: grid; place-items: center;
+  background: rgba(2, 6, 23, .58); color: #fff; text-shadow: 0 1px 2px #000;
+  font: 600 11px/1.2 -apple-system, "Segoe UI", sans-serif;
+}
+.editor-safe-guide > :first-child { top: 0; height: var(--safe-top); border-bottom: 1px dashed rgba(255,255,255,.72); }
+.editor-safe-guide > :last-child { bottom: 0; height: var(--safe-bottom); border-top: 1px dashed rgba(255,255,255,.72); }
+@container editor-safe-guide (orientation: landscape) {
+  .editor-safe-guide > :first-child { height: var(--wide-top); }
+  .editor-safe-guide > :last-child { height: var(--wide-bottom); }
+}
 .editor-header {
   flex: none; display: flex; align-items: center; justify-content: space-between;
   flex-wrap: wrap; gap: 8px 10px;
@@ -897,6 +991,7 @@ button:hover { transform: translateY(-1px); background: #fff; }
   align-items: center; gap: 8px; min-height: 34px; color: #5a7085; font-size: 11px;
 }
 .editor-field-color { grid-template-columns: 64px 34px 64px; }
+.editor-field[data-path^="combo."][hidden] { display: none; }
 .editor-field-toggle { grid-template-columns: 1fr auto; }
 .editor-field-text { grid-template-columns: 64px minmax(0, 1fr); }
 .editor-field-url { grid-template-columns: minmax(0, 1fr); gap: 4px; padding: 3px 0; }
@@ -1054,6 +1149,15 @@ button:hover { transform: translateY(-1px); background: #fff; }
 .editor-level-tools { margin-top: 8px; }
 .editor-level-actions,
 .editor-spatial-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.spatial-json-dialog { width: min(360px, 88vw); box-sizing: border-box; padding: 18px; border: 1px solid #bdcbd3; border-radius: 8px; color: #20374a; background: white; }
+.spatial-json-dialog::backdrop { background: rgba(18, 38, 54, .42); }
+.spatial-json-dialog form, .spatial-json-dialog label { display: grid; gap: 6px; }
+.spatial-json-dialog form { gap: 12px; }
+.spatial-json-dialog h3, .spatial-json-dialog p { margin: 0; overflow-wrap: anywhere; }
+.spatial-json-dialog p, .spatial-json-dialog label { font-size: 13px; }
+.spatial-json-dialog input, .spatial-json-dialog select { box-sizing: border-box; width: 100%; min-width: 0; padding: 6px; }
+.spatial-json-dialog footer { display: flex; justify-content: end; gap: 8px; }
+.spatial-json-dialog button { width: auto; height: auto; padding: 6px 12px; }
 .editor-level-actions button,
 .editor-spatial-actions button {
   min-width: 0; padding: 8px 6px; border-radius: 8px; box-shadow: none; font-size: 11px;

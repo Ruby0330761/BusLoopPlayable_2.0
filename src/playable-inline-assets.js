@@ -1,18 +1,18 @@
+import { DEPARTURE_STAR_TEXTURE, DEPARTURE_TRAIL_TEXTURE, withVehicleEffectAssets } from './vehicle-effect-assets.js';
 import {
-  BASE_RUNTIME_ASSET_PATHS,
+  GUIDE_HAND_ART, CTA_BUTTON_ART, RETRY_BUTTON_ASSET_PATH, SPEED_TOGGLE_ASSET_PATHS,
   PRE_ROLL_ASSET_PATHS,
   PROGRESS_HUD_ASSET_PATHS,
-  RETRY_BUTTON_ASSET_PATH,
-  SPEED_TOGGLE_ASSET_PATHS,
-  SPEED_TOGGLE_BACKGROUND_ASSET_PATH,
   getMechanismResourcePaths,
   getMechanismTypesForLevels
 } from './mechanism-resources.js';
+import { mergeStageTuning } from './playable-session-config.js';
+import { getSpeedToggleAssetPaths } from './speed-toggle.js';
+import { getComboAssets } from './combo-hud.js';
 import { COUNTDOWN_SIREN_ASSET, COUNTDOWN_TIMER_ASSET } from './countdown.js';
 import { getStaminaAssetPaths } from './stamina.js';
-import { LEVEL_AUDIO_CONFIG } from './level-audio-config.js';
+import { resolveLevelAudioConfig } from './level-audio-config.js';
 import { isPreRollAssetPath, resolvePreRollAsset } from './pre-roll.js';
-import { normalizeSpeedToggleStyle, resolveSpeedToggleIcon } from './speed-toggle.js';
 
 const ASSET_URL_PATTERN = /\/assets\/[^\s"'`<>)]*/gu;
 
@@ -43,9 +43,25 @@ export function collectAssetUrls(value, output = new Set()) {
 // layout but exported on another, a belt the ad can never draw. The selected
 // layout's art is added from `CONVEYOR_LAYOUT_ART_PATHS` instead.
 function withoutDeadLevelArt(level) {
-  if (!level?.assets || level.assets.loopScene === undefined) return level;
-  const { loopScene: _loopScene, ...liveAssets } = level.assets;
+  if (!level?.assets) return level;
+  const { loopScene, background, colorTextures, ...liveAssets } = level.assets;
   return { ...level, assets: liveAssets };
+}
+
+export function getReachableStageArt(tuning, stages = [], choices = []) {
+  const options = choices.flatMap(choice => choice?.options ?? []);
+  const reachable = [...(stages.length ? stages : [{}]), ...options];
+  return {
+    openingHandEnabled: reachable.some(stage => {
+      const guide = mergeStageTuning(tuning.firstClickGuide, stage.opening?.firstClickGuide);
+      return Number(guide.enabled) === 1 && Number(guide.durationSeconds) > 0;
+    }) || choices.some(choice => choice?.options?.[choice.handIndex]),
+    entryBanners: reachable.map(stage => mergeStageTuning(tuning.entryBanner, stage.opening?.entryBanner))
+      .filter(banner => Number(banner.enabled)),
+    conveyorLayouts: [...new Set(reachable.map(stage => stage.scene?.conveyorLayout || tuning.conveyorLayout?.selected).filter(Boolean))],
+    backgrounds: [...new Set(reachable.map(stage => stage.scene?.background || tuning.background?.asset || stage.level?.assets?.background).filter(Boolean))],
+    choiceOptionImages: options.map(option => option.image).filter(Boolean)
+  };
 }
 
 // Which assets a single-file playable actually inlines. The export packager
@@ -62,12 +78,19 @@ export function collectPlayableInlineAssetUrls({
   levels = [],
   activeSession = null,
   spatialSelection = null,
-  entryBannerEnabled = false,
+  entryBanners = Number(tuning.entryBanner?.enabled) ? [tuning.entryBanner] : [],
+  backgrounds = [tuning.background?.asset ?? levels[0]?.assets?.background],
   conveyorLayouts = [],
   choiceOptionImages = [],
+  openingHandEnabled = Number(tuning.firstClickGuide?.enabled) === 1 && Number(tuning.firstClickGuide?.durationSeconds) > 0,
   extraUrls = []
 } = {}) {
-  const urls = new Set(BASE_RUNTIME_ASSET_PATHS);
+  const urls = new Set();
+  const hand = tuning.vehicleGuideHand;
+  if (openingHandEnabled || (Number(hand?.enabled) === 1 && (!hand.levelKey || levels.some(level => level.key === hand.levelKey)))) {
+    urls.add(GUIDE_HAND_ART);
+  }
+  if (Number(tuning.cta?.enabled ?? 1)) urls.add(CTA_BUTTON_ART);
   // The progress HUD's three marker bitmaps (~193 KB) are only inlined for a
   // build that actually turns the HUD on. Inlining them unconditionally bloated
   // every delivery and, worse, made the runtime gate report missing assets for a
@@ -83,6 +106,7 @@ export function collectPlayableInlineAssetUrls({
     urls.add(COUNTDOWN_SIREN_ASSET);
   }
   for (const asset of getStaminaAssetPaths(tuning.stamina)) urls.add(asset);
+  for (const asset of getComboAssets(tuning.combo)) urls.add(asset);
   // A session can disable the pre-roll, and the runtime applies that by zeroing
   // the tuning flag. Reading the raw `tuning.preRoll.enabled` here inlined a
   // 519 KB MP4 the runtime never played, so the session has to be consulted in
@@ -94,7 +118,7 @@ export function collectPlayableInlineAssetUrls({
   )) {
     urls.add(selectedPreRollAsset);
   }
-  for (const level of levels) collectAssetUrls(withoutDeadLevelArt(level), urls);
+  for (const level of levels) collectAssetUrls(withoutDeadLevelArt(withVehicleEffectAssets(level)), urls);
   // The BGM is addressed from tuning, not from a level document, so the plain
   // URL collection above never sees it. Missing it ships a silently dead loop:
   // the runtime requests a root-relative path that does not exist in the
@@ -111,24 +135,14 @@ export function collectPlayableInlineAssetUrls({
     urls.add(tuning.weatherEffect.sprite);
   }
   for (const layer of tuning.freeAssets?.layers ?? []) {
-    // Hidden layers still assign `src`, so the browser fetches them; they have
-    // to be inlined whenever the layer exists, not only when it is visible.
-    if (layer?.asset) urls.add(layer.asset);
+    if (layer?.asset && Number(layer.visible ?? 1) === 1) urls.add(layer.asset);
   }
   // Picker art is not part of a level document, so it needs its own pass.
   for (const image of choiceOptionImages) {
     if (typeof image === 'string' && image) urls.add(image);
   }
-  // A custom entry-banner plate is addressed from tuning and can live on the
-  // editor volume, so neither the level walk nor the mechanism manifest sees it.
-  // Only a build that can actually show the banner pays for it.
-  if (entryBannerEnabled
-    && typeof tuning.entryBanner?.customAsset === 'string'
-    && tuning.entryBanner.customAsset) {
-    urls.add(tuning.entryBanner.customAsset);
-  }
   collectAssetUrls({
-    background: tuning.background?.asset,
+    backgrounds,
     icon: tuning.branding?.icon?.asset,
     // One Bus build serves both stores and swaps its icon from the device UA, so
     // every per-device icon has to be inlined. Taking only `icon.asset` shipped
@@ -139,37 +153,27 @@ export function collectPlayableInlineAssetUrls({
   }, urls);
   const mechanismTypes = getMechanismTypesForLevels(levels, {
     spatialSelection,
-    entryBannerEnabled
+    entryBannerEnabled: entryBanners.length > 0
   });
-  for (const assetUrl of getMechanismResourcePaths(mechanismTypes, { conveyorLayouts })) {
+  for (const assetUrl of getMechanismResourcePaths(mechanismTypes, { conveyorLayouts, entryBanners })) {
     urls.add(assetUrl);
   }
   // The runtime completes a level's sound list from the canonical table, so a
   // clip a level document does not name can still be requested at playback.
   // Inlining only what the documents list would leave that fallback pointing at
   // a root-relative URL that does not exist inside a single-file ad.
-  for (const entry of Object.values(LEVEL_AUDIO_CONFIG)) {
-    for (const clip of entry.clips) urls.add(clip);
-  }
+  for (const level of levels) collectAssetUrls(resolveLevelAudioConfig(level.assets?.audio), urls);
   for (const url of extraUrls) {
     if (typeof url === 'string' && url) urls.add(url);
   }
-  // Apply optional UI rules last: level/shell/CSS scans must not re-add art
-  // that the exported tuning cannot show. Match the runtime's toggle defaults.
-  if (Boolean(tuning.gameOver?.retryEnabled ?? 0)) urls.add(RETRY_BUTTON_ASSET_PATH);
+  // Level and shell references must not reintroduce art for an inactive control.
+  if (tuning.gameOver?.retryEnabled) urls.add(RETRY_BUTTON_ASSET_PATH);
   else urls.delete(RETRY_BUTTON_ASSET_PATH);
-
-  const speedStyle = normalizeSpeedToggleStyle(tuning.speedToggle?.style);
-  const speedAssets = new Set(Boolean(tuning.speedToggle?.enabled ?? 0)
-    ? [
-        resolveSpeedToggleIcon(speedStyle, false),
-        resolveSpeedToggleIcon(speedStyle, true),
-        ...(speedStyle === 'default' ? [SPEED_TOGGLE_BACKGROUND_ASSET_PATH] : [])
-      ]
-    : []);
-  for (const asset of SPEED_TOGGLE_ASSET_PATHS) {
-    if (speedAssets.has(asset)) urls.add(asset);
-    else urls.delete(asset);
+  for (const asset of SPEED_TOGGLE_ASSET_PATHS) urls.delete(asset);
+  for (const asset of getSpeedToggleAssetPaths(tuning.speedToggle)) urls.add(asset);
+  if (!Number(tuning.effects?.departureStars?.enabled)) {
+    urls.delete(DEPARTURE_STAR_TEXTURE);
+    urls.delete(DEPARTURE_TRAIL_TEXTURE);
   }
   return urls;
 }
