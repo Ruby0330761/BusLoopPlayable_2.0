@@ -11,6 +11,10 @@ import {
   checkPlayableRuntimeArtifact
 } from './check-playable-runtime.mjs';
 import { validateStoreLink } from '../src/store-links.js';
+import {
+  getExportNamingSegments, PLAYABLE_CHANNEL_FOLDER_FALLBACKS, validateRequiredExportNaming, validateRequirementCode
+} from '../src/export-naming.js';
+import { getVehicleGuideHandIssue } from '../src/vehicle-guide-hand.js';
 import { validateCountdownConfig } from '../src/countdown.js';
 import { validateStaminaConfig } from '../src/stamina.js';
 import { validateFreeAssetConfig } from '../src/free-asset-layers.js';
@@ -19,6 +23,10 @@ import { getEntryBannerArt } from '../src/mechanism-resources.js';
 import { resolvePreRollEnabled } from '../src/pre-roll.js';
 import { migrateVehiclePathTuning } from '../src/vehicle-path-config.js';
 import { migrateBrandingIconRadius } from '../src/branding-image-frame.js';
+import { LARGE_ASSET_BYTES, exportReviewPreviewKind } from '../src/export-review.js';
+import {
+  assetDeliveryReport, createAssetDelivery, mimeForPlayableAsset, playableAssetDataUri
+} from './playable-asset-delivery.mjs';
 import {
   PRE_ROLL_COMPRESSION_VERSION,
   compressPreRollFile
@@ -69,7 +77,7 @@ const MAX_EXPORT_NAME_LENGTH = 180;
 const DEFAULT_EXPORT_CONCURRENCY = 2;
 const EDITOR_BACKGROUND_PREFIX = '/assets/editor-backgrounds/';
 const EDITOR_PRE_ROLL_PREFIX = '/assets/editor-prerolls/';
-const EXPORT_SOURCE_CACHE_VERSION = 'v4';
+const EXPORT_SOURCE_CACHE_VERSION = 'v6';
 const EXPORT_SOURCE_CACHE_LIMIT = 2;
 const exportSourceCache = new Map();
 
@@ -132,15 +140,7 @@ export function buildDeliveryFolderName({ requirementCode, materialCode } = {}) 
 // NAS channel folders use the delivery channel abbreviations, not the internal
 // platform ids: `applovin` -> `AL`, `google-ads` -> `GG`, and so on. Uploading
 // follows this exact spelling, so an export that groups by it needs no renaming.
-export const PLAYABLE_CHANNEL_FOLDER_FALLBACKS = Object.freeze({
-  applovin: 'AL',
-  'google-ads': 'GG',
-  meta: 'FB',
-  mintegral: 'MT',
-  moloco: 'MO',
-  tiktok: 'TT',
-  unityads: 'UN'
-});
+export { PLAYABLE_CHANNEL_FOLDER_FALLBACKS };
 
 export function resolveChannelFolder(tuning, platform) {
   const configured = String(tuning?.exportNaming?.channels?.[platform] ?? '').trim();
@@ -160,28 +160,13 @@ export function buildPlayableArtifactName(tuning, platform, suffix = '', { compa
     throw new TypeError('tuning.exportNaming must contain naming fields and platform channels.');
   }
   const safeNaming = naming ?? {};
-  const channels = safeNaming.channels ?? {};
   // Delivery names carry one fixed `N` after the pre-roll/inducement segment and
   // end with steps + the version tag. Both tail segments default to `N` instead
   // of being dropped: the requirement sheet compares names field by field, so a
   // name with the tail segments missing reads as a different deliverable.
-  const parts = [
-    ['requirementCode', safeNaming.requirementCode],
-    ['materialCode', safeNaming.materialCode],
-    ['iterationCode', safeNaming.iterationCode],
-    ['n', 'N'],
-    ['language', safeNaming.language],
-    ['format', safeNaming.format],
-    ['designer', safeNaming.designer],
-    ['requester', safeNaming.requester],
-    [`channels.${platform}`, channels[platform]],
-    ['steps', safeNaming.steps || 'N'],
-    // The last segment is the delivery version tag: N = plain, B = background
-    // music, T = pre-roll TP1326, BT = both. The requirement sheet's naming
-    // convention is "change the trailing -N", so one segment carries it rather
-    // than adding new fields to the middle of the name.
-    ['version', safeNaming.version || 'N']
-  ].map(([key, value]) => [key, validateExportNamingPart(value, `tuning.exportNaming.${key}`)]);
+  const parts = getExportNamingSegments({
+    ...safeNaming, steps: safeNaming.steps || 'N', version: safeNaming.version || 'N'
+  }, platform).map(([key, value]) => [key, validateExportNamingPart(value, `tuning.exportNaming.${key}`)]);
   const channelKey = `channels.${platform}`;
   const buildBaseName = (selectedParts) => {
     const businessBaseName = selectedParts
@@ -613,7 +598,7 @@ async function copySelectedGuideAssets(projectRoot, workRoot, tuning, stageArt) 
   }
 }
 
-async function loadBrandingIconDataUri(projectRoot, tuning) {
+async function loadBrandingIconDataUri(projectRoot, tuning, delivery) {
   const asset = tuning?.branding?.icon?.asset;
   if (
     typeof asset !== 'string'
@@ -622,15 +607,11 @@ async function loadBrandingIconDataUri(projectRoot, tuning) {
   ) {
     throw new Error('Branding variant icon must be a project asset.');
   }
-  const mime = new Map([
-    ['.jpg', 'image/jpeg'],
-    ['.jpeg', 'image/jpeg'],
-    ['.png', 'image/png'],
-    ['.webp', 'image/webp']
-  ]).get(path.extname(asset).toLowerCase());
-  if (!mime) throw new Error(`Unsupported branding variant icon type: ${path.extname(asset) || '<missing>'}.`);
+  const mime = mimeForPlayableAsset(asset);
+  if (!mime.startsWith('image/')) throw new Error(`Unsupported branding variant icon type: ${path.extname(asset) || '<missing>'}.`);
   const bytes = await readFile(path.join(projectRoot, 'public', asset.slice(1)));
-  return `data:${mime};base64,${bytes.toString('base64')}`;
+  const selected = await delivery.select(asset, bytes, mime);
+  return { uri: playableAssetDataUri(selected), report: assetDeliveryReport(asset, selected) };
 }
 
 // The workspace shell is the Bus template copied into every variant, so both
@@ -660,6 +641,37 @@ async function applyWorkspaceBranding(workRoot, tuning) {
     loadingTitle: tuning?.branding?.loading?.title
   });
   await writeFile(indexPath, source, 'utf8');
+}
+
+async function validateEditorGuideHand(projectRoot, tuning, levelDocument) {
+  const guide = tuning.vehicleGuideHand;
+  if (Number(guide?.enabled) !== 1) return levelDocument;
+  const levelKey = tuning.level?.selected;
+  if (!/^level[1-9]\d*$/u.test(levelKey ?? '')) throw new TypeError('编辑器导出缺少有效的当前关卡');
+
+  // Follow the same precedence as level generation. Keep the checked document
+  // as the export snapshot so a save arriving during the build cannot replace it.
+  const document = levelDocument ?? await readFile(path.join(projectRoot, 'artifacts', 'web-levels', `${levelKey}.json`), 'utf8')
+    .then(JSON.parse, error => {
+      if (error.code !== 'ENOENT') throw error;
+      return null;
+    });
+  let vehicles;
+  if (document) {
+    if (document.format !== 'bus-loop-web-level-v1' || document.key !== levelKey || !Array.isArray(document.vehicles)) {
+      throw new TypeError('导出关卡数据与当前关卡不匹配，请重新打开关卡。');
+    }
+    vehicles = document.vehicles;
+  } else {
+    const catalogPath = process.env.PLAYABLE_LEVEL_CATALOG_PATH
+      ? path.resolve(process.env.PLAYABLE_LEVEL_CATALOG_PATH)
+      : path.join(projectRoot, 'src', 'level-catalog.js');
+    const { LEVEL_CATALOG } = await import(pathToFileURL(catalogPath).href);
+    vehicles = LEVEL_CATALOG[levelKey]?.vehicles;
+  }
+  const issue = getVehicleGuideHandIssue(guide, levelKey, vehicles);
+  if (issue) throw new TypeError(issue.message);
+  return document;
 }
 
 async function prepareWorkspace(projectRoot, tuning, levelDocument, useSelectedLevel, stageArt, preRollEnabled) {
@@ -829,7 +841,7 @@ async function generateWorkspaceSources(workRoot, signal, useSelectedLevel = fal
   ]);
 }
 
-async function buildUniversalHtml(workRoot, platform, signal, sharedBuild = null) {
+async function buildUniversalHtml(workRoot, platform, signal, delivery, sharedBuild = null) {
   const buildRoot = path.join(workRoot, 'artifacts', 'export-builds', platform);
   const sharedCore = sharedBuild !== null && platform !== 'mintegral';
   const distRoot = path.join(sharedCore
@@ -853,9 +865,10 @@ async function buildUniversalHtml(workRoot, platform, signal, sharedBuild = null
   } else {
     await build();
   }
-  await run(process.execPath, ['scripts/package-applovin-single-html.mjs'], {
+  const inline = () => run(process.execPath, ['scripts/package-applovin-single-html.mjs'], {
     cwd: workRoot,
     env: {
+      ...delivery.childEnv,
       PLAYABLE_PLATFORM: platform,
       PLAYABLE_EXPORT_SHARED_CORE: sharedCore ? '1' : '0',
       PLAYABLE_DIST_DIR: distRoot,
@@ -864,6 +877,15 @@ async function buildUniversalHtml(workRoot, platform, signal, sharedBuild = null
     signal,
     label: `Inline ${platform}`
   });
+  // Share completed asset cache entries across channels and bound image
+  // encoding memory independently of the platform check concurrency.
+  if (sharedBuild) {
+    const pending = sharedBuild.inline.then(inline);
+    sharedBuild.inline = pending.catch(() => {});
+    await pending;
+  } else {
+    await inline();
+  }
   const html = await readFile(outputPath, 'utf8');
   // The packager's sidecar lists what it inlined and how many bytes each asset
   // costs in the final file. It is optional: an older workspace or a cached
@@ -1209,7 +1231,7 @@ async function buildOne({
   // Size is checked first: a package over the platform cap is not deliverable,
   // and failing here skips a two-minute browser smoke for an artifact that can
   // never be uploaded.
-  await assertPlayableWithinSizeBudget({ platform, artifactPath, payloadAssets, label: artifactLabel });
+  const uncompressedBytes = await assertPlayableWithinSizeBudget({ platform, artifactPath, payloadAssets, label: artifactLabel });
   const checkSummary = await checkArtifact({
     skill,
     platform,
@@ -1234,6 +1256,7 @@ async function buildOne({
     filePath: artifactPath,
     contentType: PLATFORM_FORMATS[platform] === 'zip' ? 'application/zip' : 'text/html; charset=utf-8',
     bytes,
+    uncompressedBytes,
     sha256,
     checkSummary
   };
@@ -1256,6 +1279,34 @@ async function artifactIdentity(filePath) {
   const bytes = (await stat(filePath)).size;
   const sha256 = createHash('sha256').update(await readFile(filePath)).digest('hex');
   return { bytes, sha256 };
+}
+
+async function stageReviewAsset(review, asset, bytes) {
+  if (review.files.has(asset.deliverySha256)) return;
+  const kind = exportReviewPreviewKind(asset.url, asset.mime);
+  const mime = kind === 'image' || kind === 'audio' || kind === 'video' ? asset.mime : 'application/octet-stream';
+  await mkdir(review.directory, { recursive: true });
+  await writeFile(path.join(review.directory, asset.deliverySha256), bytes, { flag: 'wx' }).catch(error => {
+    if (error.code !== 'EEXIST') throw error;
+  });
+  review.files.set(asset.deliverySha256, mime);
+}
+
+async function stageInlineReviewAssets(review, html, assets) {
+  const wanted = new Map((assets ?? [])
+    .filter(asset => asset.deliveryBytes > LARGE_ASSET_BYTES && !review.files.has(asset.deliverySha256))
+    .map(asset => [asset.deliverySha256, asset]));
+  if (!wanted.size) return;
+  const encodedLengths = new Set([...wanted.values()].map(asset => 4 * Math.ceil(asset.deliveryBytes / 3)));
+  for (const [, encoded] of html.matchAll(/data:[\w.+/-]+;base64,([A-Za-z0-9+/]+=*)/gu)) {
+    if (!encodedLengths.has(encoded.length)) continue;
+    const bytes = Buffer.from(encoded, 'base64');
+    const hash = createHash('sha256').update(bytes).digest('hex');
+    if (!wanted.has(hash)) continue;
+    await stageReviewAsset(review, wanted.get(hash), bytes);
+    wanted.delete(hash);
+    if (!wanted.size) break;
+  }
 }
 
 async function verifyPublishedArtifact(filePath, expected, label) {
@@ -1444,7 +1495,7 @@ async function readPlayableSessionConfig(projectRoot) {
   return { key, session, config };
 }
 
-async function exportInputFingerprint(projectRoot, tuning, levelDocument, variants, platforms, useSelectedLevel, stageArt) {
+async function exportInputFingerprint(projectRoot, tuning, levelDocument, variants, platforms, useSelectedLevel, stageArt, deliveryIdentity) {
   const candidates = [
     path.join(projectRoot, 'artifacts', 'selected-level.txt'),
     path.join(projectRoot, 'artifacts', 'level-catalog.js'),
@@ -1512,13 +1563,22 @@ async function exportInputFingerprint(projectRoot, tuning, levelDocument, varian
     relativePath
   )));
   sourceStates.sort((left, right) => left[0].localeCompare(right[0]));
+  // Delivery decisions are keyed by content. Include those same inputs in the
+  // whole-HTML cache even when a file is replaced without changing size or mtime.
+  const mediaStates = [...artifactStates, ...sourceStates].filter(([file, size]) => (
+    size !== null && (/\.(?:png|mp3|fbx(?:\.bin)?)$/iu.test(file) || file.startsWith('artifacts/spatial-conveyors/'))
+  ));
+  await mapWithConcurrency(mediaStates, 4, async state => {
+    const contents = await readFile(path.join(projectRoot, state[0]));
+    state.push(createHash('sha256').update(contents).digest('hex'));
+  });
   return createHash('sha256')
     // The cached sources are built with the first variant's branding art, so a
     // Bus and a Crowd export of the same tuning must never share cache entries.
     // The platform list is part of the key too: a single-platform export only
     // builds that platform's HTML, and reusing it for an all-platform run failed
     // with "Cached <platform> build is missing" for the other six.
-    .update(`${EXPORT_SOURCE_CACHE_VERSION}\n${useSelectedLevel}\n${JSON.stringify(platforms)}\n${JSON.stringify(tuning)}\n${JSON.stringify(variants)}\n${JSON.stringify(levelDocument)}\n${JSON.stringify(artifactStates)}\n${JSON.stringify(sourceStates)}`)
+    .update(`${EXPORT_SOURCE_CACHE_VERSION}\n${JSON.stringify(deliveryIdentity)}\n${useSelectedLevel}\n${JSON.stringify(platforms)}\n${JSON.stringify(tuning)}\n${JSON.stringify(variants)}\n${JSON.stringify(levelDocument)}\n${JSON.stringify(artifactStates)}\n${JSON.stringify(sourceStates)}`)
     .digest('hex');
 }
 
@@ -1561,7 +1621,7 @@ async function mapWithConcurrency(items, concurrency, operation) {
   return results;
 }
 
-async function exportPlatforms({ projectRoot, tuning, levelDocument = null, platforms, outputDir, signal, variants = null, skipRuntime = false, skipChecks = false, keepMaterialCode = false, namingOverride = null, useSelectedLevel = false }) {
+async function exportPlatforms({ projectRoot, tuning, levelDocument = null, platforms, outputDir, signal, variants = null, skipRuntime = false, skipChecks = false, keepMaterialCode = false, namingOverride = null, useSelectedLevel = false, brandingSet = DEFAULT_PLAYABLE_BRANDING_SET, reviewAssets = null }) {
   const resolvedRoot = path.resolve(projectRoot);
   const template = await loadTemplate(resolvedRoot);
   const sessionConfig = useSelectedLevel ? null : await readPlayableSessionConfig(resolvedRoot);
@@ -1577,6 +1637,11 @@ async function exportPlatforms({ projectRoot, tuning, levelDocument = null, plat
       ),
       template
     );
+    validateRequirementCode(safeTuning.exportNaming?.requirementCode, brandingSet);
+    if (useSelectedLevel) {
+      validateRequiredExportNaming(safeTuning.exportNaming);
+      levelDocument = await validateEditorGuideHand(resolvedRoot, safeTuning, levelDocument);
+    }
     outputNames = buildPlayableArtifactNames(safeTuning, platforms);
   } catch (error) {
     if (error instanceof TypeError) error.statusCode = 400;
@@ -1588,7 +1653,10 @@ async function exportPlatforms({ projectRoot, tuning, levelDocument = null, plat
   const preRollEnabled = resolvePreRollEnabled(safeTuning.preRoll, {
     preRollEnabled: Number(sessionConfig?.session?.preRoll ?? 1) !== 0
   });
-  const sourceCacheKey = variants ? await exportInputFingerprint(resolvedRoot, safeTuning, levelDocument, variants, platforms, useSelectedLevel, stageArt) : null;
+  const delivery = await createAssetDelivery(resolvedRoot);
+  const sourceCacheKey = variants
+    ? await exportInputFingerprint(resolvedRoot, safeTuning, levelDocument, variants, platforms, useSelectedLevel, stageArt, delivery.identity)
+    : null;
   const cachedSources = sourceCacheKey ? getCachedExportSources(sourceCacheKey) : null;
   const workspace = cachedSources
     ? { tempRoot: await mkdtemp(path.join(os.tmpdir(), 'bus-loop-playable-export-')), workRoot: null }
@@ -1610,7 +1678,7 @@ async function exportPlatforms({ projectRoot, tuning, levelDocument = null, plat
     }];
     const reusableSources = variants ? new Map(cachedSources?.sources ?? []) : null;
     // Mintegral still builds with its own loader and syntax compatibility pass.
-    const sharedBuild = platforms.length > 1 ? { promise: null } : null;
+    const sharedBuild = platforms.length > 1 ? { promise: null, inline: Promise.resolve() } : null;
     const cachedBackupImagePath = skipChecks
       ? path.join(resolvedRoot, 'artifacts', 'google-ads-backup.jpg')
       : variants && process.env.PLAYABLE_EXPORT_REMOTE_FAST === '1'
@@ -1628,8 +1696,8 @@ async function exportPlatforms({ projectRoot, tuning, levelDocument = null, plat
         if (variant.id) await applyWorkspaceTuning(workspace.workRoot, variantTuning);
         await generateWorkspaceSources(workspace.workRoot, signal, useSelectedLevel);
       }
-      const targetIconDataUri = reusesBuiltSources
-        ? await loadBrandingIconDataUri(resolvedRoot, variantTuning)
+      const targetIcon = reusesBuiltSources
+        ? await loadBrandingIconDataUri(resolvedRoot, variantTuning, delivery)
         : null;
       let variantNames;
       try {
@@ -1653,22 +1721,25 @@ async function exportPlatforms({ projectRoot, tuning, levelDocument = null, plat
               reusableSource.html,
               sourceVariantTuning,
               variantTuning,
-              targetIconDataUri
+              targetIcon.uri
             );
-            payloadAssets = reusableSource.payloadAssets;
+            payloadAssets = reusableSource.payloadAssets && [
+              ...reusableSource.payloadAssets.filter(({ url }) => url !== sourceVariantTuning.branding.icon.asset),
+              targetIcon.report
+            ];
           } else if (cachedSources) {
             const cachedSource = reusableSources.get(platform);
             if (!cachedSource) throw new Error(`Cached ${platform} build is missing.`);
             sourceHtml = cachedSource.html;
             payloadAssets = cachedSource.payloadAssets;
           } else {
-            const built = await buildUniversalHtml(workspace.workRoot, platform, signal, sharedBuild);
+            const built = await buildUniversalHtml(workspace.workRoot, platform, signal, delivery, sharedBuild);
             sourceHtml = built.html;
             payloadAssets = built.payloadAssets;
             reusableSources?.set(platform, built);
           }
           assertEmbeddedStoreLinks(sourceHtml, variantTuning);
-          return buildOne({
+          const artifact = await buildOne({
             platform,
             fileName: variantNames[platform],
             sourceHtml,
@@ -1688,6 +1759,17 @@ async function exportPlatforms({ projectRoot, tuning, levelDocument = null, plat
             cachedBackupImagePath,
             payloadAssets
           });
+          if (reviewAssets) await stageInlineReviewAssets(reviewAssets, sourceHtml, payloadAssets);
+          if (platform === 'google-ads') {
+            const backup = await readFile(path.join(stageRoot, 'google-ads-root', 'backup.jpg'));
+            const asset = {
+              url: 'backup.jpg', mime: 'image/jpeg', deliveryBytes: backup.length,
+              deliverySha256: createHash('sha256').update(backup).digest('hex')
+            };
+            if (reviewAssets && backup.length > LARGE_ASSET_BYTES) await stageReviewAsset(reviewAssets, asset, backup);
+            payloadAssets = [...(payloadAssets ?? []), asset];
+          }
+          return { ...artifact, assetDelivery: { ...delivery.identity, assets: payloadAssets } };
         }
       );
       results.push(...variantResults);
@@ -1735,7 +1817,8 @@ export async function exportPlayablePackage({
   namingOverride = null,
   noBrandingSuffix = false,
   useSelectedLevel = false,
-  brandingSet = DEFAULT_PLAYABLE_BRANDING_SET
+  brandingSet = DEFAULT_PLAYABLE_BRANDING_SET,
+  reviewAssets = null
 } = {}) {
   if (!SUPPORTED_PLATFORMS.includes(platform)) {
     const error = new TypeError(`Unsupported playable platform: ${platform ?? '<missing>'}.`);
@@ -1746,10 +1829,12 @@ export async function exportPlayablePackage({
   const destinationRoot = path.resolve(outputDir ?? path.join(projectRoot, 'artifacts', 'playable-exports'));
   const built = await exportPlatforms({
     projectRoot,
+    brandingSet,
     tuning,
     levelDocument,
     platforms: [platform],
     outputDir: destinationRoot,
+    reviewAssets,
     signal,
     skipChecks,
     keepMaterialCode,
@@ -1791,6 +1876,9 @@ export async function exportPlayablePackage({
       ? platform
       : `${platform}-${requirementPrefix || brandingSet}`;
     const reportPaths = await publishCheckReports(result.checkSummary, destinationRoot, reportLabel);
+    reportPaths.assets = path.join(destinationRoot, 'reports', `${reportLabel}-assets.json`);
+    await mkdir(path.dirname(reportPaths.assets), { recursive: true });
+    await writeFile(reportPaths.assets, `${JSON.stringify(result.assetDelivery, null, 2)}\n`);
     return {
       ...result,
       brandingSet,
@@ -1821,7 +1909,8 @@ export async function exportAllPlayablePackages({
   tuningVariants = null,
   platforms = SUPPORTED_PLATFORMS,
   useSelectedLevel = false,
-  brandingSet = DEFAULT_PLAYABLE_BRANDING_SET
+  brandingSet = DEFAULT_PLAYABLE_BRANDING_SET,
+  reviewAssets = null
 } = {}) {
   const destinationRoot = path.resolve(outputDir ?? path.join(projectRoot, 'artifacts', 'playable-exports'));
   const brandingVariants = resolveBrandingSetVariants(brandingSet);
@@ -1834,10 +1923,12 @@ export async function exportAllPlayablePackages({
       if (signal?.aborted) throw new Error('导出已取消');
       builds.push(await exportPlatforms({
         projectRoot,
+        brandingSet,
         tuning: variantTuning,
         levelDocument,
         platforms,
         outputDir: destinationRoot,
+        reviewAssets,
         signal,
         // Keep each branding set's existing device profiles and native formats.
         variants: brandingVariants.map(({ id, suffix, runtimeDevices }) => ({
@@ -1892,20 +1983,22 @@ export async function exportAllPlayablePackages({
       brandingSet,
       status: checksSkipped ? 'EXPORTED_WITHOUT_LOCAL_CHECKS' : 'LOCAL_RULES_PASSED_AWAITING_PLATFORM_ACCEPTANCE',
       note: checksSkipped
-        ? 'Local package, payload, and runtime checks were intentionally skipped by the editor export action. Official upload and device acceptance are required before use.'
-        : 'Existing project assets are packaged as-is; custom pre-roll videos are stored and staged as compressed H.264/AAC MP4s. Each nested artifact keeps the platform-native delivery format. Official upload and device acceptance remain required.',
+        ? 'The editor applied the final size gate and skipped optional platform and browser checks. Official upload and device acceptance are required before use.'
+        : 'Each artifact uses its platform-native format and records the selected media bytes. Official upload and device acceptance remain required.',
       naming: {
         pattern: PLAYABLE_NAMING_PATTERN,
         values: built.tuning.exportNaming
       },
-      artifacts: built.results.map(({ platform, brandingVariant, format, fileName, bytes, sha256, checkSummary, variant }) => ({
+      artifacts: built.results.map(({ platform, brandingVariant, format, fileName, bytes, uncompressedBytes, sha256, checkSummary, variant, assetDelivery }) => ({
         platform,
         brandingVariant,
         format,
         fileName,
         bytes,
+        uncompressedBytes,
         sha256,
         variant,
+        assetDelivery,
         check: {
           conclusion: checkSummary.conclusion,
           checkBatchId: checkSummary.checkBatchId,

@@ -40,6 +40,16 @@ pnpm install
 pnpm dev
 ```
 
+本地导出使用 Pillow 13.0.0 和 libwebp 1.6.0。macOS 或 Linux 可在项目中安装固定版本，编辑器会自动使用该环境。
+
+```sh
+python3 -m venv artifacts/.playable-codecs
+artifacts/.playable-codecs/bin/python -m pip install --only-binary=:all: -r scripts/playable-lossless-requirements.txt
+artifacts/.playable-codecs/bin/python scripts/playable-lossless-webp.py --probe
+```
+
+其他 Python 环境可通过 `PLAYABLE_ASSET_PYTHON` 指定解释器。探针验证全透明像素的 RGB，探针失败时导出沿用 PNG，MP3 标签清理照常运行。Dockerfile 在镜像构建时执行同一探针。
+
 ## 验证
 
 ```powershell

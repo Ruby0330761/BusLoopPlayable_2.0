@@ -2,7 +2,7 @@
 
 ## Current implementation status
 
-- The editor now exports one selected platform or all seven supported platforms through a package-only path. Existing assets are packaged as-is; no asset compression or resource optimization is performed during export.
+- The editor exports one selected platform or all seven supported platforms. Both paths strip verified MP3 production tags, use smaller lossless WebP candidates when pixels and color interpretation match, and remove unreferenced FBX display layers. The packager reads the original assets and records each delivery decision.
 - AppLovin, Unity Ads, and Moloco use single HTML; Google Ads, Meta, Mintegral, and TikTok use their required ZIP layouts. The all-platform ZIP contains those native deliverables unchanged.
 - Ruleset `1.5.0` passes all `132` automated checks across `146` total checks; `14` manual platform gates remain. Official Preview, ad-console upload, and representative-device play are still required.
 

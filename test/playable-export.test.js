@@ -30,7 +30,7 @@ import {
   validateTuning
 } from '../scripts/export-playable-package.mjs';
 import { BASE_RUNTIME_ASSET_PATHS } from '../src/mechanism-resources.js';
-import { buildExportReviewRows } from '../src/export-review.js';
+import { buildExportReview, summarizeExportPackage } from '../src/export-review.js';
 import { isValidStoreLink, resolveStoreLink } from '../src/store-links.js';
 import { auditEmbeddedAssets, inlineModule, replaceAssetUrls } from '../scripts/package-applovin-single-html.mjs';
 
@@ -66,49 +66,54 @@ const EXPORT_NAMING = Object.freeze({
   }),
 });
 
-test('review covers every exported stage, channel and branding image from the selected set', () => {
+test('review lists each channel filename and previews the selected branding set', () => {
+  const tuning = {
+    level: { selected: 'level9' }, parkingSpots: { count: 6 },
+    exportNaming: { ...EXPORT_NAMING, steps: '35/35moves', version: 'N' },
+    branding: { logo: { enabled: 0 } }
+  };
+  const platforms = [['applovin', 'AppLovin', 'HTML'], ['mintegral', 'Mintegral', 'ZIP']];
   for (const brandingSet of ['bus', 'crowd']) {
-    const tuning = { level: { selected: 'level9' }, parkingSpots: { count: 6 }, exportNaming: EXPORT_NAMING,
-      branding: { logo: { asset: '/wrong.png', enabled: 0 }, icon: { enabled: 1 } } };
-    const options = { brandingSet, brandingSetLabel: brandingSet, platforms: [['applovin', 'AppLovin'], ['meta', 'Meta']], variantCount: 3 };
-    const rows = buildExportReviewRows(tuning, options);
-    const row = label => rows.find(item => item.label === label);
-    assert.equal(row('关卡'), undefined);
-    for (const key of ['level9', 'level7']) assert.equal(row(key + ' 车位数量').value, '6 个');
-    assert.deepEqual(rows.filter(item => item.label === '投放渠道').map(item => item.value), ['AppLovin (AL)', 'Meta (FB)']);
-    assert.equal(row('导出数量').value, '3 个版本，共 6 份');
+    const options = { brandingSet, platforms };
+    const review = buildExportReview(tuning, options);
+    assert.deepEqual(review.names, [
+      { channel: 'AL', files: [
+        'AC-2607141-Q1V1-N-N-EN-PL-NLY-ZZN-AL-35-N.html',
+        'AC-2607141-Q1V1-N-N-EN-PL-NLY-ZZN-AL-35moves-N.html'
+      ] },
+      { channel: 'MT', files: [
+        'AC_2607141_Q1V1_N_N_EN_PL_NLY_ZZN_MT_35_N.zip',
+        'AC_2607141_Q1V1_N_N_EN_PL_NLY_ZZN_MT_35moves_N.zip'
+      ] }
+    ]);
     const [art] = PLAYABLE_BRANDING_SETS[brandingSet];
-    assert.deepEqual([row('Logo').asset, row('Android Icon').asset, row('iOS Icon').asset], [art.logoAsset, art.iconAssets.android, art.iconAssets.ios]);
-    assert.equal(row('Logo').value, '隐藏');
-    assert.equal(row('iOS Icon').value, '显示');
-    assert.ok(buildExportReviewRows({ ...tuning, parkingSpots: { count: 0 } }, options).some(item => item.invalid));
+    assert.deepEqual(review.branding.map(row => row.asset), [art.iconAssets.android, art.iconAssets.ios, art.logoAsset]);
+    assert.deepEqual(review.branding.map(row => row.visible), [true, true, false]);
+    assert.throws(() => buildExportReview({ ...tuning, parkingSpots: { count: 0 } }, options), /车位数量/);
   }
 });
 
-test('review only adds checks for active playable scenes and their enabled children', () => {
-  const base = { level: { selected: 'level12' }, parkingSpots: { count: 5 }, cta: { enabled: 0 }, exportNaming: EXPORT_NAMING };
-  const options = { brandingSet: 'bus', brandingSetLabel: 'BL', platforms: [['applovin', 'AppLovin']], variantCount: 1 };
-  const labels = tuning => buildExportReviewRows({ ...base, ...tuning }, options).map(row => row.label);
-  const basic = labels({});
-  const added = tuning => labels(tuning).filter(label => !basic.includes(label));
-  assert.equal(basic.length, 16);
-  assert.deepEqual(added({
-    firstClickGuide: { enabled: 0, durationSeconds: 3, maskEnabled: 1 },
-    stamina: { enabled: 0, introEnabled: 1 }, vehicleGuideHand: { enabled: 1, levelKey: 'level7' }
-  }), []);
-  const guide = { enabled: 1, vehicleId: 17, durationSeconds: 3, maskEnabled: 1 };
-  assert.deepEqual(added({ firstClickGuide: { ...guide, durationSeconds: 0 } }), []);
-  assert.deepEqual(added({ firstClickGuide: { ...guide, maskEnabled: 0 } }), ['开局指引']);
-  assert.deepEqual(added({ firstClickGuide: { ...guide, maskOpacity: 0 } }), ['开局指引']);
-  assert.deepEqual(added({ firstClickGuide: guide, progressHud: { enabled: 1 }, cta: { enabled: 1 } }),
-    ['开局指引', '开局置灰', '进度条', 'Play Now 弹窗']);
-  assert.deepEqual(added({ stamina: { enabled: 1, introEnabled: 0 } }), ['体力条']);
-  assert.deepEqual(added({ stamina: { enabled: 1 }, gameOver: { retryEnabled: 1 } }),
-    ['体力条', '开场体力说明弹窗', '失败弹窗重试按钮']);
-  assert.deepEqual(added({ entryBanner: { enabled: 1 }, combo: { mode: 'timed' }, countdown: { enabled: 1 } }),
-    ['入场横幅', '倒计时', '连击提示']);
-  const chained = labels({ level: { selected: 'level9' }, vehicleGuideHand: { enabled: 1, levelKey: 'level7' } });
-  assert.equal(chained.filter(label => label === '小手提示').length, 1);
+test('package review uses delivered bytes and deduplicates assets across channels', () => {
+  const file = (fileName, bytes, assets) => ({ fileName, bytes, uncompressedBytes: bytes, assetDelivery: { assets } });
+  const first = file('AL.html', 500_001, [
+    { url: '/assets/model.fbx', deliveryBytes: 206_000, deliverySha256: 'model-hash' },
+    { url: '/assets/small.mp3', deliveryBytes: 100_000, sourceBytes: 910_000 }
+  ]);
+  const second = file('GG.zip', 420_002, [
+    { url: '/assets/model.fbx', deliveryBytes: 206_000 },
+    { url: 'backup.jpg', deliveryBytes: 137_000, deliverySha256: 'image-hash', mime: 'image/jpeg' }
+  ]);
+  const review = summarizeExportPackage(
+    { fileName: 'all.zip', bytes: 827_000, artifacts: [first, second] },
+    new Set(['model-hash', 'image-hash'])
+  );
+  assert.equal(review.bytes, 827_000);
+  assert.deepEqual(review.artifacts.map(artifact => artifact.bytes), [500_001, 420_002]);
+  assert.deepEqual(review.assets, [
+    { url: '/assets/model.fbx', bytes: 206_000, preview: { hash: 'model-hash', kind: 'model' } },
+    { url: 'backup.jpg', bytes: 137_000, preview: { hash: 'image-hash', kind: 'image' } }
+  ]);
+  assert.equal(summarizeExportPackage(first).bytes, 500_001);
 });
 
 // Resolve a dotted tuning path such as `exportNaming.channels.applovin`, the
@@ -122,7 +127,7 @@ function hasPath(root, dottedPath) {
   return true;
 }
 
-test('export is package-only and does not opt into resource optimization', () => {
+test('export retains the package-only response contract', () => {
   assert.equal(EXPORT_RESOURCE_MODE, 'package-only');
 });
 
@@ -136,8 +141,11 @@ test('inlining the ordinary models preserves editor paint selection for each sea
     url, 'data:application/octet-stream;base64,' + Buffer.from(url).toString('base64')
   ]));
   const editor = await import('../src/color-atlases.js');
+  const blackAtlas = editor.COLOR_ATLAS_PATHS[17];
+  assetMap.set(blackAtlas, 'data:image/webp;base64,YXRsYXM=');
   const source = await readFile(new URL('../src/color-atlases.js', import.meta.url), 'utf8');
   const packaged = await import('data:text/javascript;base64,' + Buffer.from(replaceAssetUrls(source, assetMap)).toString('base64'));
+  assert.equal(packaged.resolveColorAtlasPaths([])[17], assetMap.get(blackAtlas));
   for (const [seats, path] of Object.entries(models)) {
     assert.ok(editor.usesShippedVehicleMesh(path, seats));
     assert.ok(packaged.usesShippedVehicleMesh(assetMap.get(path), seats));
@@ -418,13 +426,12 @@ test('Crowd exports one shared Android/iOS package with its own icon and logo', 
     'crowd'
   );
   assert.equal(legacyShortName.branding.text.content, 'Bus Crowd - Traffic Jam');
-  // The Crowd wordmark must sit centred even when a saved editor session left
-  // the draggable x a few pixels off (a 534 shipped once and looked off-centre).
+  // The Crowd caption stays centered under the CTA after it is moved.
   const dragged = createBrandingVariantTuning(
-    { preview: { width: 1080, height: 2160 }, branding: { text: { x: 534, content: 'Bus Crowd' } } },
+    { preview: { width: 1080, height: 2160 }, cta: { x: 600 }, branding: { text: { x: 594, content: 'Bus Crowd' } } },
     'crowd'
   );
-  assert.equal(dragged.branding.text.x, 540);
+  assert.equal(dragged.branding.text.x, 600);
   assert.equal(dragged.branding.text.content, 'Bus Crowd - Traffic Jam');
   // An operator's own line is still product copy and must not be rewritten.
   const authored = createBrandingVariantTuning(
@@ -713,13 +720,14 @@ test('packaging and checks include EntryBanner resources only when the tuning or
 });
 
 test('packaging embeds only the selected configured pre-roll MP4', async () => {
-  const [inliner, checker, resources, inlineAssets] = await Promise.all([
+  const [inliner, checker, resources, inlineAssets, assetDelivery] = await Promise.all([
     readFile(new URL('../scripts/package-applovin-single-html.mjs', import.meta.url), 'utf8'),
     readFile(new URL('../scripts/check-applovin-package.mjs', import.meta.url), 'utf8'),
     readFile(new URL('../src/mechanism-resources.js', import.meta.url), 'utf8'),
-    readFile(new URL('../src/playable-inline-assets.js', import.meta.url), 'utf8')
+    readFile(new URL('../src/playable-inline-assets.js', import.meta.url), 'utf8'),
+    readFile(new URL('../scripts/playable-asset-delivery.mjs', import.meta.url), 'utf8')
   ]);
-  assert.match(inliner, /\['\.mp4', 'video\/mp4'\]/);
+  assert.match(assetDelivery, /\['\.mp4', 'video\/mp4'\]/);
   // The packager and the checker must resolve the pre-roll the same way the
   // runtime does, session opt-out included. That rule now lives in the shared
   // inline-asset module, which both the packager and the editor preflight call.
@@ -766,8 +774,9 @@ test('editor and server expose production-only single-platform and all-platform 
   ]);
   assert.match(editor, /editor-export-all-button/);
   assert.match(editor, /\/__playable-export-all/);
-  assert.match(editor, /\\u6b63\\u5728\\u6253\\u5305/);
-  assert.match(editor, /getPlayableExportPayload\(\)[\s\S]*?JSON\.stringify\(all[\s\S]*?\.\.\.exportPayload, platform, brandingSet/);
+  assert.match(editor, /正在下载试玩包/);
+  assert.match(editor, /getPlayableExportPayload\(\)[\s\S]*?JSON\.stringify\(\{ \.\.\.exportPayload,[^\n]*brandingSet, review: true \}\)/);
+  assert.match(editor, /confirmPlayableExport[\s\S]*?exportQueue\.enter\([\s\S]*?signal,[\s\n]*ticket/);
   assert.match(mainSource, /function getPlayableExportPayload\(\)[\s\S]*?levelDocumentBaseRevision/);
   // One stale key makes the server reject the whole export at 0 seconds, so the
   // payload is pruned against the shipped template before it is posted.
@@ -781,6 +790,7 @@ test('editor and server expose production-only single-platform and all-platform 
   assert.match(editor, /\\u672a\\u6267\\u884c\\u672c\\u5730\\u68c0\\u6d4b/);
   assert.match(editor, /\\u65e0\\u6cd5\\u8fde\\u63a5\\u5bfc\\u51fa\\u670d\\u52a1/);
   assert.match(vite, /pathname === '\/__playable-export-all'/);
+  assert.match(vite, /playableExportQueue\.start\(request\.headers\['x-export-ticket'\]/);
   assert.match(vite, /exportAllPlayablePackages/);
   assert.match(vite, /X-Playable-Resource-Mode/);
   assert.match(vite, /X-Playable-Source-Cache/);
@@ -805,7 +815,7 @@ test('editor and server expose production-only single-platform and all-platform 
   assert.match(vite, /pathname === '\/' \|\| pathname\.endsWith\('\.html'\)/);
   assert.match(vite, /Cache-Control', 'no-store'/);
   assert.match(vite, /\[playable-export\] finished route=/);
-  assert.match(vite, /rm\(transientExportRoot, \{ recursive: true, force: true \}\)/);
+  assert.match(vite, /await removeTemporaryExport\(transientExportRoot\)/);
   assert.match(exporter, /checkPlayableRuntimeArtifact\(\{[\s\S]*?signal/);
   assert.match(exporter, /conclusion: 'SKIPPED_LOCAL_CHECKS'/);
   assert.match(exporter, /skipChecks/);
@@ -942,6 +952,8 @@ test('applying export tuning rewrites only tuning data and leaves runtime helper
       await readFile(new URL('../src/speed-toggle.js', import.meta.url)));
     await writeFile(path.join(root, 'src', 'branding-image-frame.js'),
       await readFile(new URL('../src/branding-image-frame.js', import.meta.url)));
+    await writeFile(path.join(root, 'src', 'scene-layout.js'),
+      await readFile(new URL('../src/scene-layout.js', import.meta.url)));
     await writeFile(path.join(root, 'src', 'vehicle-effect-assets.js'),
       await readFile(new URL('../src/vehicle-effect-assets.js', import.meta.url)));
     await writeFile(path.join(root, 'scripts', 'apply-scene-tuning.mjs'), applyScript, 'utf8');

@@ -3725,7 +3725,7 @@ const STAGE_1_LEVEL = Object.freeze({
   },
   "vehiclePathSnapshot": {
     "version": 4,
-    "inputKey": "12703:3673293481:3628926669",
+    "inputKey": "12703:3734819784:470339052",
     "levelKey": "level15",
     "vehicleArea": {
       "unityToWorldScale": 2,
@@ -3869,7 +3869,7 @@ const STAGE_1_LEVEL = Object.freeze({
       "hitDuration": 0.5,
       "autoBounds": 1,
       "boundsPadding": 0.1,
-      "enabled": 1,
+      "enabled": 0,
       "showBlocked": 1,
       "color": 2160383,
       "opacity": 0.88,

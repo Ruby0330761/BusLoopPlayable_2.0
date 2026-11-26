@@ -5,6 +5,9 @@ import { build as bundleWithEsbuild } from 'esbuild';
 import { transformWithEsbuild } from 'vite';
 import { SPEED_TOGGLE_SEED_SRC } from '../src/speed-toggle.js';
 import { BASE_RUNTIME_ASSET_PATHS, GUIDE_HAND_ART } from '../src/mechanism-resources.js';
+import {
+  assetDeliveryReport, createAssetDelivery, playableAssetDataUri, selectSpatialTexture
+} from './playable-asset-delivery.mjs';
 
 const ROOT = process.cwd();
 const DIST_DIR = path.resolve(process.env.PLAYABLE_DIST_DIR || path.join(ROOT, 'dist'));
@@ -54,23 +57,6 @@ const DATA_URL_ONLY_REQUEST_SCRIPT = `;function __playableDataRequest(input) {
   return Promise.reject(new TypeError('Only embedded data: assets are available in this playable.'));
 }\n`;
 
-const MIME_TYPES = new Map([
-  ['.bin', 'application/octet-stream'],
-  ['.css', 'text/css'],
-  ['.fbx', 'application/octet-stream'],
-  ['.html', 'text/html'],
-  ['.jpeg', 'image/jpeg'],
-  ['.jpg', 'image/jpeg'],
-  ['.js', 'text/javascript'],
-  ['.mp3', 'audio/mpeg'],
-  ['.mp4', 'video/mp4'],
-  ['.wav', 'audio/wav'],
-  ['.png', 'image/png'],
-  ['.rgba16f', 'application/octet-stream'],
-  ['.ttf', 'font/ttf'],
-  ['.webp', 'image/webp']
-]);
-
 async function listFiles(dir) {
   const entries = await readdir(dir, { withFileTypes: true });
   const files = await Promise.all(entries.map(async (entry) => {
@@ -78,10 +64,6 @@ async function listFiles(dir) {
     return entry.isDirectory() ? listFiles(fullPath) : fullPath;
   }));
   return files.flat();
-}
-
-function mimeFor(filePath) {
-  return MIME_TYPES.get(path.extname(filePath).toLowerCase()) ?? 'application/octet-stream';
 }
 
 function toDistUrl(filePath) {
@@ -121,20 +103,22 @@ function collectAssetUrls(value, output = new Set()) {
   return output;
 }
 
-async function createAssetMap(realAssetUrls, excludedUrls = new Set()) {
+async function createAssetMap(realAssetUrls, excludedUrls, delivery) {
   const files = await listFiles(path.join(DIST_DIR, 'assets'));
-  const entries = await Promise.all(files.map(async (filePath) => {
+  const entries = [];
+  const optimizations = new Map();
+  for (const filePath of files) {
     const url = toDistUrl(filePath);
-    if (excludedUrls.has(url)) return null;
-    const bytes = realAssetUrls.has(url) ? await readFile(filePath) : null;
-    return [
-      url,
-      bytes
-        ? `data:${mimeFor(filePath)};base64,${bytes.toString('base64')}`
-        : url === GUIDE_HAND_ART ? SPEED_TOGGLE_SEED_SRC : OMITTED_ASSET_DATA_URI
-    ];
-  }));
-  return new Map(entries.filter(Boolean).sort((a, b) => b[0].length - a[0].length));
+    if (excludedUrls.has(url)) continue;
+    let uri = url === GUIDE_HAND_ART ? SPEED_TOGGLE_SEED_SRC : OMITTED_ASSET_DATA_URI;
+    if (realAssetUrls.has(url)) {
+      const selected = await delivery.select(url, await readFile(filePath));
+      uri = playableAssetDataUri(selected);
+      optimizations.set(url, assetDeliveryReport(url, selected));
+    }
+    entries.push([url, uri]);
+  }
+  return { assetMap: new Map(entries.sort((a, b) => b[0].length - a[0].length)), optimizations };
 }
 
 export function replaceAssetUrls(content, assetMap) {
@@ -328,12 +312,28 @@ async function main() {
     }
   }
 
-  const assetMap = await createAssetMap(realAssetUrls, new Set([jsPath, cssPath]));
+  const delivery = await createAssetDelivery();
+  const { assetMap, optimizations } = await createAssetMap(realAssetUrls, new Set([jsPath, cssPath]), delivery);
   const availableUrls = new Set(assetMap.keys());
   for (const assetUrl of realAssetUrls) {
     if (!availableUrls.has(assetUrl)) throw new Error(`Required production asset is missing: ${assetUrl}`);
   }
-  const jsWithAssets = replaceAssetUrls(replaceBundledDynamicAssetUrls(jsSource, assetMap), assetMap);
+  const { ACTIVE_SPATIAL_CONVEYOR_PACKAGE } = await import('../src/generated-active-spatial-conveyor.js');
+  const material = ACTIVE_SPATIAL_CONVEYOR_PACKAGE?.visual?.material;
+  const spatialReplacements = new Map();
+  const spatialAssets = new Map();
+  for (const slot of ['loopTextureDataUrl', 'exitTextureDataUrl']) {
+    const source = material?.[slot];
+    if (!source) continue;
+    const url = `spatial:${ACTIVE_SPATIAL_CONVEYOR_PACKAGE.id}/${slot}`;
+    const selected = await selectSpatialTexture(delivery, url, source);
+    const uri = selected?.optimized ? playableAssetDataUri(selected) : source;
+    spatialAssets.set(url, uri);
+    if (selected) optimizations.set(url, assetDeliveryReport(url, selected));
+    if (uri !== source) spatialReplacements.set(source, uri);
+  }
+  const withSpatialTextures = replaceAssetUrls(jsSource, spatialReplacements);
+  const jsWithAssets = replaceAssetUrls(replaceBundledDynamicAssetUrls(withSpatialTextures, assetMap), assetMap);
   // These images are already inlined in the document; re-embedding the same
   // base64 blob in the tuning literal doubles the package size. The loader
   // selects the branding icon at runtime and has no embedded image of its own.
@@ -345,14 +345,12 @@ async function main() {
   const css = replaceAssetUrls(runtimeCss, assetMap);
 
   let output = inlineCss(html, css, cssPath);
-  output = await inlineModule(output, js, jsPath, assetMap);
+  output = await inlineModule(output, js, jsPath, new Map([...assetMap, ...spatialAssets]));
   output = replaceAssetUrls(output, assetMap);
 
-  const { ACTIVE_SPATIAL_CONVEYOR_PACKAGE } = await import('../src/generated-active-spatial-conveyor.js');
-  const material = ACTIVE_SPATIAL_CONVEYOR_PACKAGE?.visual?.material;
   const embedded = auditEmbeddedAssets(output, [
     ...Array.from(realAssetUrls, url => assetMap.get(url)),
-    material?.loopTextureDataUrl, material?.exitTextureDataUrl
+    ...spatialAssets.values()
   ]);
 
   await mkdir(OUTPUT_DIR, { recursive: true });
@@ -367,9 +365,9 @@ async function main() {
   await writeFile(`${OUTPUT_FILE}.payload.json`, `${JSON.stringify({
     platform: PLAYABLE_PLATFORM,
     bytes: size,
-    assets: [...assetMap.entries()]
-      .filter(([url, dataUri]) => realAssetUrls.has(url) && embedded.has(dataUri))
-      .map(([url, dataUri]) => ({ url, bytes: dataUri.length }))
+    optimization: delivery.identity,
+    assets: [...optimizations.values()]
+      .filter(({ url }) => embedded.has(assetMap.get(url) ?? spatialAssets.get(url)))
       .sort((first, second) => second.bytes - first.bytes)
   }, null, 2)}\n`, 'utf8');
   console.log(`Mechanism whitelist: ${mechanismTypes.join(', ')}.`);

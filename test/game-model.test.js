@@ -1721,7 +1721,7 @@ test('editor sizing, source background ratio, and passenger shadow anchor stay w
   assert.equal(LEVEL_1.conveyorPathLength, 4.591284809513923);
   assert.deepEqual(SCENE_TUNING.vehicleBoardingPulse, { scale: 1.09, speed: 11.7 });
   assert.equal(SCENE_TUNING.vehicleArea.sizeMultiplier, 1);
-  assert.equal(SCENE_TUNING.vehicleGuideHand.enabled, 1);
+  assert.equal(SCENE_TUNING.vehicleGuideHand.enabled, 0);
   assert.equal(SCENE_TUNING.vehicleGuideHand.levelKey, 'level36');
   assert.equal(SCENE_TUNING.vehicleGuideHand.vehicleId, 1);
   assert.equal(SCENE_TUNING.vehicleGuideHand.size, 2.2);
@@ -2290,7 +2290,7 @@ test('station approach follows the Unity parking-area rectangle before entering 
 });
 
 test('vehicle path preview and shape controls are wired to scene tuning', () => {
-  assert.equal(SCENE_TUNING.vehiclePath.enabled, 1);
+  assert.equal(SCENE_TUNING.vehiclePath.enabled, 0);
   assert.equal(SCENE_TUNING.vehiclePath.autoBounds, 1);
   assert.deepEqual(SCENE_TUNING.vehiclePath.parkingBounds, { minX: -2.6, maxX: 2.6, minZ: -3.22, maxZ: 3.28 });
   const game = new BusLoopGame();
@@ -2880,11 +2880,7 @@ test('main thread saves and restores scene tuning from localStorage', () => {
   assert.match(mainSource, /ctaButton\?\.addEventListener\('click', \(event\) => \{/);
   assert.match(mainSource, /event\.stopPropagation\(\)/);
   assert.match(mainSource, /maxNumberCountBus: getSuccessfulOperationThreshold\(\)/);
-  assert.match(mainSource, /height \* \(Number\(cta\.stretchX\)/);
-  assert.match(mainSource, /Number\.isFinite\(Number\(cta\.x\)\)/);
-  assert.match(mainSource, /Number\.isFinite\(Number\(cta\.y\)\)/);
-  assert.match(mainSource, /centerX \* metrics\.positionScaleX/);
-  assert.match(mainSource, /centerY \* metrics\.positionScaleY/);
+  assert.match(mainSource, /const \{ height, width \} = resolveCtaSize\(cta\)/);
   assert.doesNotMatch(mainSource, /Number\(cta\.world[XYZ]\)/);
   assert.match(mainSource, /function scaledPx\(value, scale\)/);
 
@@ -2912,8 +2908,6 @@ test('main thread saves and restores scene tuning from localStorage', () => {
   assert.match(mainSource, /--cta-stroke-width', scaledPx\(Math\.max\(0, Number\(cta\.strokeWidth\) \|\| 0\), uiScale\)/);
   assert.match(mainSource, /const stageRect = stage\?\.getBoundingClientRect\(\)/);
   assert.match(mainSource, /const uiScale = getStageUiScale\(stageWidth, designWidth\)/);
-  assert.match(mainSource, /centerX \* metrics\.positionScaleX/);
-  assert.match(mainSource, /centerY \* metrics\.positionScaleY/);
   assert.match(mainSource, /--cta-font-height/);
   assert.match(mainSource, /--cta-stroke-color/);
   assert.match(mainSource, /--cta-pulse-duration/);
@@ -2923,7 +2917,7 @@ test('main thread saves and restores scene tuning from localStorage', () => {
   assert.match(mainSource, /updateCtaPosition\(\)/);
 });
 
-test('Icon, Logo, and text overlays expose independent responsive editor controls and drag locking', () => {
+test('branding overlays expose responsive editor controls and drag locking', () => {
   const indexSource = readFileSync('index.html', 'utf8');
   const mainSource = readFileSync(join('src', 'main.js'), 'utf8');
   const editorSource = readFileSync(join('src', 'scene-editor.js'), 'utf8');
@@ -2995,16 +2989,15 @@ test('Icon, Logo, and text overlays expose independent responsive editor control
   assert.match(mainSource, /function fitBrandingText/);
   assert.match(mainSource, /function bindBrandingDrag/);
   assert.match(mainSource, /if \(EDITOR_ENABLED\) \{\s+for \(const \[key, element\] of Object\.entries\(brandingItems\)\)/);
-  assert.match(mainSource, /key === 'text'[\s\S]*\? authoredCenterX[\s\S]*: clampCenteredRectX/);
+  assert.match(mainSource, /function applyBrandingRowLayout/);
   assert.match(mainSource, /applyBrandingTuning\(view\.getBackgroundCanvasBounds\(\)\)/);
   assert.match(mainSource, /path\?\.startsWith\('branding\.'\)/);
   assert.match(mainSource, /branding\.\$\{key\}\.position/);
   assert.match(mainSource, /config\.locked/);
   assert.match(mainSource, /element\.setAttribute\('src', asset\)/);
   assert.match(mainSource, /element\.textContent = content/);
-  assert.match(mainSource, /element\.style\.left = `\$\{renderedCenterX\}px`/);
-  assert.match(mainSource, /element\.style\.top = `\$\{y \* metrics\.positionScaleY\}px`/);
-  assert.match(mainSource, /drawFramedBrandingImage\(context, images\[key\], centerX, frame\.centerY, frame\)/);
+  assert.match(mainSource, /ctaButton\.style\.top = `\$\{layout\.rowY\}px`/);
+  assert.match(mainSource, /drawFramedBrandingImage\(context, image, centerX, layout\.rowY, frame\)/);
   assert.match(mainSource, /const x = localX \/ metrics\.positionScaleX/);
   assert.match(mainSource, /const y = localY \/ metrics\.positionScaleY/);
   assert.match(mainSource, /setPointerCapture/);

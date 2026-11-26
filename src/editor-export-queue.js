@@ -79,7 +79,8 @@ export function createEditorExportQueue(panel, platforms) {
     release();
   });
 
-  async function enter(metadata, headers, onWait) {
+  async function enter(metadata, headers, onWait, signal) {
+    signal?.throwIfAborted();
     revision++;
     waiting = true;
     cancelled = false;
@@ -87,7 +88,7 @@ export function createEditorExportQueue(panel, platforms) {
       headers: { ...headers, 'Content-Type': 'application/json' }, body: JSON.stringify(metadata)
     });
     ticket = data.ticket;
-    while (!cancelled) {
+    while (!cancelled && !signal?.aborted) {
       render(data);
       const index = data.jobs.findIndex(job => job.number === data.mine);
       if (index < 0) throw new Error('排队已过期，请重新提交导出。');
@@ -99,14 +100,14 @@ export function createEditorExportQueue(panel, platforms) {
       onWait(index);
       cancel.hidden = false;
       await pause(2000);
-      if (!cancelled) {
+      if (!cancelled && !signal?.aborted) {
         try {
           data = await requestQueue('GET', ticket);
         } catch (error) {
           if (!(error instanceof TypeError || error.name === 'TimeoutError')) throw error;
           summary.textContent = '正在重新连接队列';
           await pause(2000);
-          if (!cancelled) data = await requestQueue('GET', ticket);
+          if (!cancelled && !signal?.aborted) data = await requestQueue('GET', ticket);
         }
       }
     }

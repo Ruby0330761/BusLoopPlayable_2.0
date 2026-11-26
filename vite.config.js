@@ -1,7 +1,7 @@
 import { spawn } from 'node:child_process';
-import { createHash } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { gzipSync } from 'node:zlib';
-import { copyFile, mkdir, mkdtemp, readdir, readFile, rename, rm, stat, unlink, writeFile } from 'node:fs/promises';
+import { copyFile, cp, mkdir, mkdtemp, readdir, readFile, rename, rm, stat, unlink, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -10,6 +10,8 @@ import { createPlayableExportQueue } from './scripts/playable-export-queue.mjs';
 import { matchesSmokeMigration } from './scripts/migrate-all-levels-smoke.mjs';
 import { checkLayoutDriveOut } from './src/level-drive-out.js';
 import { MAX_SPATIAL_PACKAGE_BYTES, validateSpatialJsonImport } from './src/spatial-conveyor-json.js';
+import { validateRequiredExportNaming, validateRequirementCode } from './src/export-naming.js';
+import { summarizeExportPackage } from './src/export-review.js';
 import {
   DEFAULT_OUTPUT_ROOT,
   importSpatialConveyorPrefab
@@ -137,6 +139,10 @@ const PLAYABLE_EXPORT_PLATFORMS = new Set([
 // Bus Fever uploads split Android/iOS art; Crowd is one package for both stores.
 const PLAYABLE_BRANDING_SETS = new Set(['bus', 'crowd']);
 const playableExportQueue = createPlayableExportQueue();
+let pendingPlayableArchive = Promise.resolve();
+const preparedPlayableExports = new Map();
+const PLAYABLE_REVIEW_TTL_MS = 10 * 60 * 1000;
+const MAX_PREPARED_PLAYABLE_EXPORTS = 8;
 
 const FBX_BINARY_IMAGE_BRANCH = `\t\t} else { // Binary Format
 
@@ -1702,6 +1708,51 @@ function playableExportDisposition(fileName) {
   return `attachment; filename="${asciiName}"; filename*=UTF-8''${encodeURIComponent(fileName)}`;
 }
 
+async function removeTemporaryExport(root) {
+  await rm(root, { recursive: true, force: true }).catch(error => {
+    console.warn('[playable-export] Failed to clean temporary export files:', error);
+  });
+}
+
+function archivePlayableExport(root, previewDirectory) {
+  if (PLAYABLE_REMOTE_EDITOR) return;
+  const archived = pendingPlayableArchive.then(() => cp(root, path.resolve('artifacts', 'playable-exports'), {
+    recursive: true, filter: source => source !== previewDirectory
+  }));
+  pendingPlayableArchive = archived.catch(() => {});
+  return archived;
+}
+
+function takePreparedPlayableExport(id) {
+  const prepared = preparedPlayableExports.get(id);
+  if (!prepared) return null;
+  preparedPlayableExports.delete(id);
+  clearTimeout(prepared.timeout);
+  return prepared;
+}
+
+async function sendPlayableArtifact(response, result, startedAt) {
+  const fileName = playableExportFilename(result.fileName, result.format);
+  const file = await readFile(result.filePath);
+  const passedCount = Number(result.checkSummary.passedCount) || 0;
+  const totalCount = Number(result.checkSummary.totalCount) || passedCount;
+  response.statusCode = 200;
+  response.setHeader('Content-Type', result.format === 'zip' ? 'application/zip' : 'text/html; charset=utf-8');
+  response.setHeader('Content-Length', file.byteLength);
+  response.setHeader('Content-Disposition', playableExportDisposition(fileName));
+  response.setHeader('Cache-Control', 'no-store');
+  response.setHeader('X-Content-Type-Options', 'nosniff');
+  response.setHeader('X-Playable-Resource-Mode', result.resourceMode);
+  const checksSkipped = result.checkSummary.conclusion === 'SKIPPED_LOCAL_CHECKS'
+    || result.checkSummary.conclusion === 'EXPORTED_WITHOUT_LOCAL_CHECKS';
+  response.setHeader('X-Playable-Check', checksSkipped
+    ? 'skipped; local checks disabled'
+    : `passed; ${passedCount}/${totalCount}`);
+  response.setHeader('X-Playable-Source-Cache', result.sourceCacheHit ? 'hit' : 'miss');
+  response.setHeader('X-Playable-Export-Duration-Ms', String(Date.now() - startedAt));
+  response.end(file);
+}
+
 function levelExportDisposition(fileName) {
   const asciiName = fileName.replace(/[^A-Za-z0-9._-]/g, '_') || 'level-export';
   return `attachment; filename="${asciiName}"; filename*=UTF-8''${encodeURIComponent(fileName)}`;
@@ -1711,7 +1762,10 @@ export default defineConfig({
   // Export HTML and workspaces are outputs, not editor source. Watching them
   // reloads the page during a batch and aborts its own download request.
   server: {
-    watch: { ignored: ['**/artifacts/playable-exports/**', '**/artifacts/export-builds/**'] }
+    watch: { ignored: [
+      '**/artifacts/playable-exports/**', '**/artifacts/export-builds/**',
+      '**/artifacts/.playable-asset-cache/**', '**/artifacts/.playable-codecs/**'
+    ] }
   },
   optimizeDeps: {
     noDiscovery: true,
@@ -2010,7 +2064,9 @@ export default defineConfig({
             const body = JSON.parse(await readRequestBody(request, 512 * 1024, 'Asset size request'));
             const urls = Array.isArray(body?.urls) ? body.urls : [];
             if (urls.length > 4000) throw new Error('Too many asset URLs requested.');
-            const items = await Promise.all(urls.map(async (url) => {
+            const { createAssetDelivery, decodeSpatialTexture } = await import('./scripts/playable-asset-delivery.mjs');
+            const delivery = await createAssetDelivery();
+            const estimateAsset = async url => {
               if (typeof url !== 'string' || !url.startsWith('/assets/')) {
                 return { url: String(url ?? ''), bytes: 0, exists: false };
               }
@@ -2028,14 +2084,31 @@ export default defineConfig({
                 }
                 try {
                   const info = await stat(resolved);
-                  return { url, bytes: info.size, exists: info.isFile() };
+                  if (!info.isFile()) return { url, bytes: 0, exists: false };
+                  return { url, exists: true, ...await delivery.estimate(url, resolved, info.size) };
                 } catch (error) {
                   if (error.code !== 'ENOENT') throw error;
                   return { url, bytes: 0, exists: false };
                 }
               }
               return { url, bytes: 0, exists: false };
-            }));
+            };
+            const items = [];
+            for (const url of urls) items.push(await estimateAsset(url));
+            const spatialId = typeof body?.spatialSelection === 'string' && body.spatialSelection.startsWith('spatial:')
+              ? body.spatialSelection.slice('spatial:'.length) : null;
+            if (spatialId) {
+              const { packageData } = await readSpatialConveyorPackage(spatialId);
+              const sources = new Set();
+              for (const slot of ['loopTextureDataUrl', 'exitTextureDataUrl']) {
+                const url = `spatial:${spatialId}/${slot}`;
+                const source = packageData.visual?.material?.[slot];
+                if (sources.has(source)) continue;
+                sources.add(source);
+                const texture = decodeSpatialTexture(source);
+                if (texture) items.push({ url, exists: true, ...await delivery.estimateBytes(url, texture.bytes, texture.mime) });
+              }
+            }
             sendJson(response, 200, { items });
           } catch (error) {
             sendJson(response, error.statusCode ?? 400, { error: error.message });
@@ -2063,6 +2136,48 @@ export default defineConfig({
             }
           } catch (error) {
             sendJson(response, error.statusCode ?? 400, { error: error.message });
+          }
+          return;
+        }
+        if (pathname === '/__playable-export-resource' && request.method === 'GET') {
+          const prepared = preparedPlayableExports.get(requestUrl.searchParams.get('id'));
+          const hash = requestUrl.searchParams.get('hash');
+          const mime = prepared?.reviewAssets.files.get(hash);
+          if (!mime) {
+            sendJson(response, 404, { error: '素材预览不存在或已过期。' });
+            return;
+          }
+          try {
+            const bytes = await readFile(path.join(prepared.reviewAssets.directory, hash));
+            response.setHeader('Content-Type', mime);
+            response.setHeader('Content-Length', bytes.length);
+            response.setHeader('X-Content-Type-Options', 'nosniff');
+            response.setHeader('Cache-Control', 'no-store');
+            response.end(bytes);
+          } catch {
+            sendJson(response, 404, { error: '素材预览不存在或已过期。' });
+          }
+          return;
+        }
+        if (pathname === '/__playable-export-prepared' && request.method === 'POST') {
+          let prepared;
+          try {
+            const { id, discard } = JSON.parse(await readRequestBody(request, 1024, 'Prepared playable export'));
+            prepared = takePreparedPlayableExport(id);
+            if (discard) {
+              sendJson(response, 200, {});
+              return;
+            }
+            if (!prepared) {
+              sendJson(response, 410, { error: '导出包准备结果已过期，请重新打开导出确认。' });
+              return;
+            }
+            await archivePlayableExport(prepared.root, prepared.reviewAssets.directory);
+            await sendPlayableArtifact(response, prepared.result, prepared.startedAt);
+          } catch (error) {
+            sendJson(response, 500, { error: error.message });
+          } finally {
+            if (prepared) await removeTemporaryExport(prepared.root);
           }
           return;
         }
@@ -2128,6 +2243,8 @@ export default defineConfig({
               error.statusCode = 400;
               throw error;
             }
+            validateRequiredExportNaming(payload.tuning.exportNaming);
+            validateRequirementCode(payload.tuning.exportNaming?.requirementCode, brandingSet);
             let levelDocument = null;
             if (payload.levelDocument !== undefined) {
               const selectedLevelKey = payload.tuning.level?.selected;
@@ -2151,9 +2268,11 @@ export default defineConfig({
               levelDocument = payload.levelDocument;
             }
 
-            if (process.env.PLAYABLE_REMOTE_EDITOR === '1') {
-              transientExportRoot = await mkdtemp(path.join(os.tmpdir(), 'bus-loop-remote-export-'));
-            }
+            const review = payload.review === true;
+            transientExportRoot = await mkdtemp(path.join(os.tmpdir(), 'bus-loop-remote-export-'));
+            const reviewAssets = review
+              ? { directory: path.join(transientExportRoot, '.review-previews'), files: new Map() }
+              : null;
             const { exportAllPlayablePackages, exportPlayablePackage } = await import('./scripts/export-playable-package.mjs');
             const { expandExportVariantTunings } = await import('./src/export-variants.js');
             let tuningVariants;
@@ -2169,12 +2288,13 @@ export default defineConfig({
               useSelectedLevel: true,
               levelDocument,
               brandingSet,
+              reviewAssets,
               signal: exportAbortController.signal,
               // The editor's export action is a packaging/download operation.
               // Platform checks remain available through the CLI, but must not
               // block a user who explicitly asks for the playable artifact.
               skipChecks: true,
-              ...(transientExportRoot ? { outputDir: transientExportRoot } : {})
+              outputDir: transientExportRoot
             });
             if (
               !result?.filePath
@@ -2185,25 +2305,26 @@ export default defineConfig({
               throw new Error('Playable export did not produce an artifact.');
             }
 
-            const fileName = playableExportFilename(result.fileName, result.format);
-            const file = await readFile(result.filePath);
-            const passedCount = Number(result.checkSummary.passedCount) || 0;
-            const totalCount = Number(result.checkSummary.totalCount) || passedCount;
-            response.statusCode = 200;
-            response.setHeader('Content-Type', result.format === 'zip' ? 'application/zip' : 'text/html; charset=utf-8');
-            response.setHeader('Content-Length', file.byteLength);
-            response.setHeader('Content-Disposition', playableExportDisposition(fileName));
-            response.setHeader('Cache-Control', 'no-store');
-            response.setHeader('X-Content-Type-Options', 'nosniff');
-            response.setHeader('X-Playable-Resource-Mode', result.resourceMode);
-            const checksSkipped = result.checkSummary.conclusion === 'SKIPPED_LOCAL_CHECKS'
-              || result.checkSummary.conclusion === 'EXPORTED_WITHOUT_LOCAL_CHECKS';
-            response.setHeader('X-Playable-Check', checksSkipped
-              ? 'skipped; local checks disabled'
-              : `passed; ${passedCount}/${totalCount}`);
-            response.setHeader('X-Playable-Source-Cache', result.sourceCacheHit ? 'hit' : 'miss');
-            response.setHeader('X-Playable-Export-Duration-Ms', String(Date.now() - exportStartedAt));
-            response.end(file);
+            if (review) {
+              if (exportAbortController.signal.aborted) return;
+              if (preparedPlayableExports.size >= MAX_PREPARED_PLAYABLE_EXPORTS) {
+                const oldest = takePreparedPlayableExport(preparedPlayableExports.keys().next().value);
+                await removeTemporaryExport(oldest.root);
+              }
+              const id = randomUUID();
+              const summary = summarizeExportPackage(result, new Set(reviewAssets.files.keys()));
+              const timeout = setTimeout(() => {
+                const expired = takePreparedPlayableExport(id);
+                if (expired) void removeTemporaryExport(expired.root);
+              }, PLAYABLE_REVIEW_TTL_MS);
+              timeout.unref();
+              preparedPlayableExports.set(id, { root: transientExportRoot, result, reviewAssets, startedAt: Date.now(), timeout });
+              transientExportRoot = null;
+              sendJson(response, 200, { id, ...summary });
+            } else {
+              await archivePlayableExport(transientExportRoot);
+              await sendPlayableArtifact(response, result, exportStartedAt);
+            }
           } catch (error) {
             const statusCode = Number.isInteger(error.statusCode) && error.statusCode >= 400 && error.statusCode < 500
               ? error.statusCode
@@ -2222,11 +2343,7 @@ export default defineConfig({
             clearTimeout(exportTimeout);
             request.off('aborted', abortDisconnectedExport);
             response.off('close', abortDisconnectedExport);
-            if (transientExportRoot) {
-              await rm(transientExportRoot, { recursive: true, force: true }).catch((error) => {
-                console.warn('[playable-export] Failed to clean temporary export files:', error);
-              });
-            }
+            if (transientExportRoot) await removeTemporaryExport(transientExportRoot);
             releaseExport();
             console.info(`[playable-export] finished route=${pathname} durationMs=${Date.now() - exportStartedAt}`);
           }

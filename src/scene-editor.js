@@ -10,11 +10,15 @@ import {
 } from './level-editor-model.js';
 import { LEVEL_1 } from './level-data.js';
 import { isValidStoreLink } from './store-links.js';
+import {
+  formatCompleteExportName, getRequirementCodeError, isValidExportNamingPart, parseCompleteExportName
+} from './export-naming.js';
+import { getVehicleGuideHandIssue } from './vehicle-guide-hand.js';
 import { detectPlayfieldHorizon, resolveBackgroundHorizon } from './background-alignment.js';
 import { BUILD_VERSION } from './build-version.js';
-import { brandingBottomInset } from './branding-image-frame.js';
+import { brandingBottomInset, brandingRowY } from './branding-image-frame.js';
 import { createBrandingVariantTuning } from './export-branding.js';
-import { buildExportReviewRows, confirmPlayableExport } from './export-review.js';
+import { buildExportReview, confirmPlayableExport } from './export-review.js';
 import { createEditorExportQueue } from './editor-export-queue.js';
 import { BUILD_CHANGELOG, changelogVersions } from './build-changelog.js';
 import { COUNTDOWN_SIREN_ASSET, COUNTDOWN_TIMER_ASSET, normalizeCountdownConfig } from './countdown.js';
@@ -288,14 +292,6 @@ export function attachTuningToExportedLevel(raw, levelKey, tuning) {
   if (!sceneTuning) return null;
   if (sceneTuning.level) delete sceneTuning.level.selected;
   return `${JSON.stringify({ ...document, tuning: sceneTuning }, null, 2)}\n`;
-}
-
-function isValidExportNamingPart(value) {
-  const normalized = String(value ?? '').trim();
-  return normalized.length === 0
-    || (normalized.length <= 64
-      && !normalized.includes('..')
-      && /^[A-Za-z0-9_-]+$/.test(normalized));
 }
 
 function isCustomBackgroundAsset(value) {
@@ -632,6 +628,7 @@ function brandingFrameFields(key, label) {
 const FIELD_GROUPS = [
   {
     title: '\u5bfc\u51fa\u547d\u540d',
+    completeExportName: true,
     defaultOpen: true,
     fields: [
       ['\u9700\u6c42\u7f16\u53f7', 'exportNaming.requirementCode', 0, 0, 1, null, 'filename'],
@@ -1537,9 +1534,13 @@ function renderExportSection() {
           <ol></ol>
           <button type="button" hidden>取消排队</button>
         </div>
+        <div class="editor-export-naming-blocker" hidden>
+          <span id="editor-export-naming-message" role="status"></span>
+          <button class="editor-export-naming-jump" type="button">去修改</button>
+        </div>
         <div class="editor-export-actions">
-          <button class="editor-export-button" type="button">\u5bfc\u51fa\u5f53\u524d\u5e73\u53f0</button>
-          <button class="editor-export-all-button" type="button">\u4e00\u952e\u5bfc\u51fa\u5168\u90e8</button>
+          <button class="editor-export-button" type="button" aria-describedby="editor-export-naming-message">\u5bfc\u51fa\u5f53\u524d\u5e73\u53f0</button>
+          <button class="editor-export-all-button" type="button" aria-describedby="editor-export-naming-message">\u4e00\u952e\u5bfc\u51fa\u5168\u90e8</button>
         </div>
         <p class="editor-export-limit editor-export-variants" role="status" aria-live="polite"></p>
         <p class="editor-export-limit" role="note">\u6240\u6709\u6e20\u9053\u4e0a\u9650 5 MB\uff1a\u8d85\u8fc7\u7684\u5305\u4e0d\u4f1a\u4e0b\u8f7d\uff0c\u5bfc\u51fa\u4f1a\u76f4\u63a5\u62a5\u9519\u5e76\u5217\u51fa\u5360\u7528\u6700\u5927\u7684\u7d20\u6750\u3002</p>
@@ -1693,9 +1694,9 @@ export function createSceneEditor(root, {
   const exportSelect = root.querySelector('.editor-export-select');
   let previewExportSet = false;
   function refreshExportBranding() {
-    const { branding, storeLinks, preview } = getTuning();
+    const { branding, storeLinks, preview, cta } = getTuning();
     previewExportBranding(previewExportSet
-      ? createBrandingVariantTuning({ branding, storeLinks, preview }, exportSetSelect.value)
+      ? createBrandingVariantTuning({ branding, storeLinks, preview, cta }, exportSetSelect.value)
       : null, exportSelect.value);
   }
   const guideToggle = root.querySelector('.editor-safe-guide-toggle input');
@@ -1726,6 +1727,21 @@ export function createSceneEditor(root, {
   const exportAllButton = root.querySelector('.editor-export-all-button');
   const exportStatus = root.querySelector('.editor-export-status');
   const exportQueue = createEditorExportQueue(root.querySelector('.editor-export-queue'), PLAYABLE_EXPORT_PLATFORMS);
+  const exportNamingBlocker = root.querySelector('.editor-export-naming-blocker');
+  const exportNamingMessage = exportNamingBlocker.querySelector('[role="status"]');
+  const exportNamingJump = exportNamingBlocker.querySelector('.editor-export-naming-jump');
+  const completeNamePath = 'exportNaming';
+  const completeNameRow = document.createElement('label');
+  completeNameRow.className = 'editor-field editor-field-text editor-complete-export-name';
+  completeNameRow.dataset.path = completeNamePath;
+  completeNameRow.innerHTML = `
+    <span>完整需求命名</span>
+    <input class="editor-text" type="text" maxlength="1024" spellcheck="false" autocomplete="off"
+      aria-label="完整需求命名" aria-describedby="complete-export-name-hint complete-export-name-error">
+    <small id="complete-export-name-hint">粘贴完整命名自动填写下方各项。整串显示当前导出渠道。</small>
+    <small id="complete-export-name-error" class="editor-naming-error" role="status" hidden></small>`;
+  const completeNameInput = completeNameRow.querySelector('input');
+  const completeNameError = completeNameRow.querySelector('.editor-naming-error');
   const exportVariantsStatus = root.querySelector('.editor-export-variants');
   const exportEventsStatus = root.querySelector('.editor-export-events');
   const localeSelect = root.querySelector('.editor-locale-select');
@@ -1740,10 +1756,67 @@ export function createSceneEditor(root, {
   const MAX_TUNING_HISTORY = 50;
   let restoringHistory = false;
   let playableExportBusy = false;
-  let exportStepsDraft = '';
+  let shellJumpToField = null;
 
-  function withExportStepsDraft(tuning) {
-    return { ...tuning, exportNaming: { ...tuning.exportNaming, steps: exportStepsDraft.trim() } };
+  function setCompleteNameError(message = '') {
+    completeNameInput.setCustomValidity(message);
+    completeNameInput.setAttribute('aria-invalid', String(Boolean(message)));
+    completeNameError.textContent = message;
+    completeNameError.hidden = !message;
+  }
+
+  function syncCompleteName() {
+    if (completeNameInput.validationMessage) return;
+    const name = formatCompleteExportName(getTuning().exportNaming, exportSelect.value);
+    if (completeNameInput.value !== name) completeNameInput.value = name;
+  }
+
+  function selectExportPlatform(platform) {
+    if (platform === exportSelect.value) return;
+    exportSelect.value = platform;
+    updateSafeGuide();
+    refreshExportBranding();
+  }
+
+  function collectExportNamingErrors() {
+    if (completeNameInput.validationMessage) {
+      return {
+        first: { path: completeNamePath, label: '完整需求命名' },
+        message: completeNameInput.validationMessage
+      };
+    }
+    const missing = [];
+    const invalid = [];
+    for (const [path, controls] of inputs) {
+      if (!controls.isExportNaming || controls.updateValidity()) continue;
+      const { textInput, label } = controls;
+      const errors = textInput.value.trim() ? invalid : missing;
+      errors.push({ path, label, message: textInput.validationMessage });
+    }
+    const messages = [];
+    if (missing.length) messages.push(`请填写${missing.map(({ label }) => label).join('、')}。`);
+    if (invalid.length === 1) messages.push(invalid[0].message);
+    if (invalid.length > 1) messages.push(`请修正${invalid.map(({ label }) => label).join('、')}。`);
+    return { first: missing[0] ?? invalid[0], message: messages.join(' ') };
+  }
+
+  function updatePlayableExportButtons() {
+    const { first, message } = collectExportNamingErrors();
+    const handIssue = getVehicleGuideHandIssue(getTuning().vehicleGuideHand, LEVEL_1.key, LEVEL_1.vehicles);
+    for (const path of ['vehicleGuideHand.levelKey', 'vehicleGuideHand.vehicleId']) {
+      const select = inputs.get(path)?.select;
+      const error = handIssue?.path === path ? handIssue.message : '';
+      select?.setAttribute('aria-invalid', String(Boolean(error)));
+      select?.setCustomValidity(error);
+    }
+    const invalidCountdown = [...inputs.values()].some(controls => controls.isCountdownNumber && !controls.updateValidity());
+    const blocker = first ?? handIssue;
+    exportButton.disabled = exportAllButton.disabled = playableExportBusy || Boolean(blocker) || invalidCountdown;
+    exportNamingBlocker.hidden = !blocker;
+    const blockerMessage = [message, handIssue?.message].filter(Boolean).join(' ');
+    if (exportNamingMessage.textContent !== blockerMessage) exportNamingMessage.textContent = blockerMessage;
+    exportNamingJump.dataset.path = blocker?.path ?? '';
+    exportNamingJump.setAttribute('aria-label', first ? `去修改${first.label}` : handIssue ? '去修改小手提示' : '去修改');
   }
 
   function updateCountdownControls() {
@@ -1764,8 +1837,7 @@ export function createSceneEditor(root, {
       }
       if (controls.updateValidity && !controls.updateValidity()) invalid = true;
     }
-    exportButton.disabled = playableExportBusy || invalid;
-    exportAllButton.disabled = playableExportBusy || invalid;
+    updatePlayableExportButtons();
     const countdownErrorMessage = '请先修正「引导 → 倒计时挑战」中的时间配置';
     if (invalid && !playableExportBusy) {
       exportStatus.dataset.state = 'error';
@@ -1808,15 +1880,15 @@ export function createSceneEditor(root, {
     }
     let valid = true;
     try {
-      const plan = getExportVariantPlan(withExportStepsDraft(tuning));
-      exportVariantsStatus.textContent = `${plan.count} 个版本，当前渠道 ${plan.count} 份，全部渠道 ${plan.count * 7} 份。多值用 / 分隔，体力预览使用第一个值。`;
+      const plan = getExportVariantPlan(tuning);
+      exportVariantsStatus.textContent = `${plan.count} 个版本，当前渠道 ${plan.count} 份，全部渠道 ${plan.count * 7} 份。多值用 / 分隔，预览使用第一个值。`;
     } catch (error) {
       valid = false;
       exportVariantsStatus.textContent = error.message;
     }
     exportVariantsStatus.dataset.state = valid ? '' : 'error';
-    const invalidCountdown = [...inputs.values()].some(controls => controls.isCountdownNumber && !controls.updateValidity());
-    exportButton.disabled = exportAllButton.disabled = playableExportBusy || !valid || invalidCountdown;
+    updatePlayableExportButtons();
+    if (!valid) exportButton.disabled = exportAllButton.disabled = true;
     return valid;
   }
 
@@ -1844,23 +1916,35 @@ export function createSceneEditor(root, {
     }
   }
 
-  function commitTuning(next, { path, merge = false } = {}) {
+  function commitTuning(next, { path, merge = false, platform = exportSelect.value } = {}) {
     const before = structuredClone(getTuning());
+    const beforePlatform = exportSelect.value;
     syncExportVariantTuning(next, path);
     const result = setTuning(next, { path });
     const after = structuredClone(result ?? getTuning());
-    if (!restoringHistory && !sameTuning(before, after)) {
+    selectExportPlatform(platform);
+    if (!restoringHistory && (!sameTuning(before, after) || beforePlatform !== platform)) {
       const previous = tuningUndoStack[tuningUndoStack.length - 1];
       if (merge && previous?.path === path) {
         previous.after = after;
       } else {
-        tuningUndoStack.push({ before, after, path });
+        tuningUndoStack.push({
+          before, after, path, ...(path === completeNamePath ? { beforePlatform, afterPlatform: platform } : {})
+        });
         if (tuningUndoStack.length > MAX_TUNING_HISTORY) tuningUndoStack.shift();
       }
       tuningRedoStack.length = 0;
     }
     updateHistoryButtons();
     if (/^(vehiclePath|vehicleArea|parkingSpots|facing)\./u.test(path ?? '')) updateVehiclePathBounds(getTuning());
+    if (/^(cta|branding)\./u.test(path ?? '')) {
+      if (previewExportSet) refreshExportBranding();
+      syncBrandingPositions(getTuning());
+    }
+    if (!path || path === completeNamePath || path === 'level.selected' || /^(exportNaming|installGate|stamina)\./u.test(path)) {
+      setCompleteNameError();
+      syncCompleteName();
+    }
     return result;
   }
 
@@ -1870,12 +1954,14 @@ export function createSceneEditor(root, {
     const target = direction === 'undo' ? entry.before : entry.after;
     restoringHistory = true;
     try {
-      setTuning(structuredClone(target), { path: entry.path });
+      setTuning(structuredClone(target), { path: entry.path, restoreSnapshot: true });
+      if (entry.beforePlatform) selectExportPlatform(direction === 'undo' ? entry.beforePlatform : entry.afterPlatform);
       if (direction === 'undo') {
-        tuningRedoStack.push({ before: target, after: current, path: entry.path });
+        tuningRedoStack.push({ ...entry, before: target, after: current });
       } else {
-        tuningUndoStack.push({ before: current, after: target, path: entry.path });
+        tuningUndoStack.push({ ...entry, before: current, after: target });
       }
+      setCompleteNameError();
       sync({ resetCountdownDrafts: true });
     } finally {
       restoringHistory = false;
@@ -1885,6 +1971,32 @@ export function createSceneEditor(root, {
 
   undoButton.addEventListener('click', () => restoreHistoryEntry(tuningUndoStack.pop(), 'undo'));
   redoButton.addEventListener('click', () => restoreHistoryEntry(tuningRedoStack.pop(), 'redo'));
+
+  completeNameInput.addEventListener('input', event => {
+    if (event.isComposing) return;
+    let parsed;
+    try {
+      parsed = parseCompleteExportName(completeNameInput.value, getTuning().exportNaming, exportSelect.value);
+    } catch (error) {
+      setCompleteNameError(error.message);
+      updatePlayableExportButtons();
+      shellRefresh?.();
+      return;
+    }
+    const next = structuredClone(getTuning());
+    next.exportNaming = parsed.naming;
+    next.stamina.enabled = parsed.naming.version === 'N' ? 0 : 1;
+    commitTuning(next, { path: completeNamePath, platform: parsed.platform });
+    sync();
+  });
+  completeNameInput.addEventListener('compositionend', () => {
+    completeNameInput.dispatchEvent(new Event('input'));
+  });
+  exportSelect.addEventListener('change', () => {
+    setCompleteNameError();
+    syncCompleteName();
+    updatePlayableExportButtons();
+  });
 
   function setEditorCategory(category, { focus = false } = {}) {
     if (!EDITOR_CATEGORIES.some(([id]) => id === category)) return;
@@ -1927,6 +2039,8 @@ export function createSceneEditor(root, {
         ? 'BFT \u53ea\u51fa\u4e00\u5957\u5305\uff08\u5b89\u5353/iOS \u5408\u5e76\uff09\uff1a\u5bfc\u51fa\u65f6\u81ea\u52a8\u6362 BFT Icon\u3001Logo\u3001BFT \u5546\u5e97\u94fe\u63a5\uff0c\u5e95\u90e8\u6587\u6848\u82e5\u4ecd\u4e3a\u9ed8\u8ba4\u5219\u6539\u4e3a Bus Crowd\u3002'
         : 'BL \u53ea\u51fa\u4e00\u5957\u5305\uff08\u5b89\u5353/iOS \u5408\u5e76\uff09\uff1a\u540c\u4e00\u4efd HTML \u6309\u673a\u578b\u81ea\u52a8\u5207\u5bf9\u5e94 Icon \u4e0e\u5546\u5e97\u94fe\u63a5\uff0cLogo \u8ddf\u968f Logo \u7248\u672c\u3002';
     }
+    updatePlayableExportButtons();
+    shellRefresh?.();
   });
 
   async function exportPlayable({ all = false } = {}) {
@@ -1943,64 +2057,24 @@ export function createSceneEditor(root, {
       exportStatus.textContent = '导出失败：请先修正倒计时配置';
       return;
     }
-    const invalidNamingControl = [...inputs.values()]
-      .find((controls) => controls.isFilename && !controls.updateValidity());
-    if (invalidNamingControl) {
-      invalidNamingControl.textInput.reportValidity();
-      exportStatus.dataset.state = 'error';
-      exportStatus.textContent = '\u5bfc\u51fa\u5931\u8d25\uff1a\u8bf7\u5148\u4fee\u6b63\u5bfc\u51fa\u547d\u540d\u5b57\u6bb5';
+    if (exportNamingJump.dataset.path) {
+      exportNamingJump.click();
       return;
     }
     const platform = all ? null : exportSelect.value;
     const brandingSet = exportSetSelect.value === 'crowd' ? 'crowd' : 'bus';
-    const brandingSetLabel = brandingSet === 'crowd'
-      ? 'BFT \u5408\u5e76\u4e00\u5957'
-      : 'BL \u5b89\u5353/iOS \u5408\u5e76\u4e00\u5957';
-    const platformLabel = all
-      ? `\u5168\u90e8 7 \u4e2a\u5e73\u53f0 \u00d7 ${brandingSetLabel}`
-      : `${PLAYABLE_EXPORT_PLATFORMS.find(([id]) => id === platform)?.[1] ?? platform}\uff08${brandingSetLabel}\uff09`;
-    const source = getPlayableExportPayload() ?? { tuning: getTuning() };
-    const snapshot = withExportStepsDraft(source.tuning);
-    const exportPayload = { ...source, tuning: snapshot };
-    const variantCount = getExportVariantPlan(snapshot).count;
-    const exportLabel = `${platformLabel}，${variantCount}个版本 / ${variantCount * (all ? 7 : 1)}份`;
-    const naming = snapshot.exportNaming;
+    const exportPayload = getPlayableExportPayload() ?? { tuning: structuredClone(getTuning()) };
     const platforms = all ? PLAYABLE_EXPORT_PLATFORMS : PLAYABLE_EXPORT_PLATFORMS.filter(([id]) => id === platform);
-    const confirmed = await confirmPlayableExport(root, buildExportReviewRows(snapshot, {
-      brandingSet, brandingSetLabel, platforms, variantCount
-    }));
-    if (!confirmed) return;
+    const reviewEndpoint = '/__playable-export-prepared';
+    const headers = { 'Content-Type': 'application/json' };
+    let preparedId = null;
     playableExportBusy = true;
     exportSetSelect.disabled = true;
     exportSelect.disabled = true;
-    exportButton.disabled = true;
-    exportAllButton.disabled = true;
-    exportButton.setAttribute('aria-busy', 'true');
-    exportAllButton.setAttribute('aria-busy', 'true');
-    exportStatus.dataset.state = 'busy';
-    exportStatus.textContent = `\u6b63\u5728\u6253\u5305 ${exportLabel}...`;
-    // The first export builds the shared runtime and Mintegral compatibility
-    // runtime; a repeat of the same setup can reuse those packaged sources.
-    // A live counter keeps that wait legible instead of looking hung.
-    const exportStartedAt = Date.now();
-    let packingSince = 0;
-    const exportElapsedTimer = setInterval(() => {
-      if (!packingSince) return;
-      const seconds = Math.round((Date.now() - packingSince) / 1000);
-      exportStatus.textContent = `\u6b63\u5728\u6253\u5305 ${exportLabel}...（已用 ${seconds} 秒）`;
-    }, 1000);
-    try {
-      exportStatus.textContent = '正在加入导出队列…';
-      const ticket = await exportQueue.enter({ level: snapshot.level?.selected, platform: platform ?? 'all' },
-        levelOwnerHeaders(), ahead => { exportStatus.textContent = '已排队，前方 ' + ahead + ' 个任务'; });
-      packingSince = Date.now();
-      exportStatus.textContent = '正在打包 ' + exportLabel;
-      const response = await fetch(all ? '/__playable-export-all' : '/__playable-export', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'X-Export-Ticket': ticket },
-        body: JSON.stringify(all
-          ? { ...exportPayload, brandingSet }
-          : { ...exportPayload, platform, brandingSet })
+    updatePlayableExportButtons();
+    async function fetchExport(endpoint, body, signal, ticket) {
+      const response = await fetch(endpoint, {
+        method: 'POST', headers: ticket ? { ...headers, 'X-Export-Ticket': ticket } : headers, body, signal
       });
       if (!response.ok) {
         const payload = await response.json().catch(() => ({}));
@@ -2018,6 +2092,48 @@ export function createSceneEditor(root, {
           : '';
         throw new Error(`${baseMessage}${detail && !detailAlreadyShown ? `：${detail}` : ''}${durationMessage}`);
       }
+      return response;
+    }
+    try {
+      const review = buildExportReview(exportPayload.tuning, { brandingSet, platforms });
+      const confirmed = await confirmPlayableExport(root, review, async (signal, setStatus) => {
+        let elapsedTimer;
+        try {
+          setStatus('正在加入导出队列…');
+          const ticket = await exportQueue.enter(
+            { level: exportPayload.tuning.level?.selected, platform: platform ?? 'all' },
+            levelOwnerHeaders(),
+            ahead => setStatus('已排队，前方 ' + ahead + ' 个任务。点击「返回修改」可取消。'),
+            signal
+          );
+          signal.throwIfAborted();
+          const packingSince = Date.now();
+          const message = '正在准备导出包并计算实际体积…';
+          setStatus(message);
+          elapsedTimer = setInterval(() => {
+            setStatus(message + ' 已用 ' + Math.round((Date.now() - packingSince) / 1000) + ' 秒');
+          }, 1000);
+          const response = await fetchExport(
+            all ? '/__playable-export-all' : '/__playable-export',
+            JSON.stringify({ ...exportPayload, ...(all ? {} : { platform }), brandingSet, review: true }),
+            signal,
+            ticket
+          );
+          const summary = await response.json();
+          preparedId = summary.id;
+          return summary;
+        } finally {
+          clearInterval(elapsedTimer);
+          exportQueue.finish();
+        }
+      });
+      if (!confirmed) return;
+
+      exportStatus.dataset.state = 'busy';
+      exportStatus.textContent = '正在下载试玩包…';
+      const exportStartedAt = Date.now();
+      const response = await fetchExport(reviewEndpoint, JSON.stringify({ id: preparedId }));
+      preparedId = null;
 
       const blob = await response.blob();
       const filename = all || response.headers.get('Content-Type')?.includes('application/zip')
@@ -2033,10 +2149,6 @@ export function createSceneEditor(root, {
       link.remove();
       setTimeout(() => URL.revokeObjectURL(objectUrl), 0);
 
-      if (exportStepsDraft && exportStepsDraft.trim() === naming.steps) {
-        exportStepsDraft = '';
-        sync();
-      }
       const check = response.headers.get('X-Playable-Check');
       const serverMs = Number(response.headers.get('X-Playable-Export-Duration-Ms'));
       const totalSeconds = Math.max(1, Math.round((Date.now() - exportStartedAt) / 1000));
@@ -2050,6 +2162,7 @@ export function createSceneEditor(root, {
       // creeping toward the cap before it is refused.
       const sizeMessage = blob.size > 0 ? `\uff08${formatKilobytes(blob.size)}\uff09` : '';
       exportStatus.textContent = `\u5df2\u4e0b\u8f7d ${filename}${sizeMessage}${checkMessage}${timingMessage}\uff0c\u5f85\u5e73\u53f0\u9a8c\u6536`;
+      refreshPayloadStats?.();
     } catch (error) {
       if (error.name === 'AbortError') {
         exportStatus.dataset.state = '';
@@ -2062,20 +2175,36 @@ export function createSceneEditor(root, {
         : error.message;
       exportStatus.textContent = `\u5bfc\u51fa\u5931\u8d25\uff1a${message}`;
     } finally {
-      clearInterval(exportElapsedTimer);
-      exportQueue.finish();
+      if (preparedId) {
+        void fetch(reviewEndpoint, {
+          method: 'POST', headers, body: JSON.stringify({ id: preparedId, discard: true })
+        }).catch(() => {});
+      }
       exportSetSelect.disabled = false;
       exportSelect.disabled = false;
       playableExportBusy = false;
       updateCountdownControls();
       updateExportVariantControls();
-      exportButton.removeAttribute('aria-busy');
-      exportAllButton.removeAttribute('aria-busy');
     }
   }
 
   exportButton.addEventListener('click', () => exportPlayable());
   exportAllButton.addEventListener('click', () => exportPlayable({ all: true }));
+  exportNamingJump.addEventListener('click', () => {
+    const path = exportNamingJump.dataset.path;
+    const controls = path === completeNamePath ? { row: completeNameRow, textInput: completeNameInput } : inputs.get(path);
+    if (!controls) return;
+    if (shellJumpToField) {
+      shellJumpToField(path);
+      return;
+    }
+    const { row, textInput, select } = controls;
+    const section = row.closest('.editor-section');
+    setEditorCategory(section.dataset.editorCategory);
+    section.open = true;
+    row.scrollIntoView({ block: 'center' });
+    (textInput ?? select)?.focus({ preventScroll: true });
+  });
 
   screenshotButton.addEventListener('click', async () => {
     const [width, height] = String(screenshotSelect.value || '720x1280')
@@ -2114,6 +2243,7 @@ export function createSceneEditor(root, {
     if (group.spatialOnly) section.dataset.spatialOnly = 'true';
     if (group.spatialImportAnchor) section.dataset.spatialImportAnchor = 'true';
     section.innerHTML = `<summary class="editor-section-summary"><h3>${group.title}</h3></summary>`;
+    if (group.completeExportName) section.append(completeNameRow);
     for (const [label, path, min, max, step, configuredOptions, control] of group.fields) {
       const options = control === 'vehicle-id-select'
         ? getVehicleIdOptions(LEVEL_1.vehicles)
@@ -2123,7 +2253,8 @@ export function createSceneEditor(root, {
       const isCountdownNumber = control === 'countdown-number';
       const isFilename = control === 'filename';
       const isVariant = control === 'variant';
-      const isText = control === 'text' || isFilename || isVariant;
+      const isExportNaming = isFilename || isVariant;
+      const isText = control === 'text' || isExportNaming;
       const isUrl = control === 'url';
       const row = document.createElement('label');
       row.className = 'editor-field';
@@ -2145,7 +2276,7 @@ export function createSceneEditor(root, {
         ${options ? '' : rangeMarkup}
         ${isColor && !options ? '<input class="editor-color" type="color">' : ''}
         ${isToggle ? `<input class="editor-checkbox" type="checkbox" role="switch" aria-label="${group.title} ${label}">` : ''}
-        ${isText ? `<input class="editor-text" type="text"${isFilename ? ' maxlength="64" pattern="[A-Za-z0-9_-]+" spellcheck="false"' : ''} aria-label="${group.title} ${label}">` : ''}
+        ${isText ? `<input class="editor-text" type="text"${isExportNaming ? ' required' : ''}${isFilename ? ' maxlength="64" spellcheck="false"' : ''} aria-label="${group.title} ${label}">` : ''}
         ${isUrl ? `<input class="editor-url" type="url" inputmode="url" spellcheck="false" aria-label="${group.title} ${label}">` : ''}
         ${options || isToggle || isText || isUrl ? '' : `<input class="editor-number" type="number" min="${min}" max="${max}" step="${step}" aria-label="${group.title} ${label}">`}
       `;
@@ -2163,7 +2294,7 @@ export function createSceneEditor(root, {
       if (isVariant) {
         textInput.maxLength = 256;
         textInput.spellcheck = false;
-        textInput.placeholder = path.endsWith('.version') ? '如 3/5/10' : '留空为 N';
+        textInput.placeholder = path.endsWith('.version') ? '如 3/5/10' : '如 35 或 35moves';
       }
       if (control === 'stamina-number') {
         range.setAttribute('aria-label', `${group.title} ${label}滑条`);
@@ -2248,6 +2379,7 @@ export function createSceneEditor(root, {
           // row visibility has to be refreshed on the toggle that flips it.
           if (path === 'firstClickGuide.enabled' || path === 'vehiclePath.autoBounds'
             || path === 'iq.enabled' || path.startsWith('countdown.') || path.startsWith('stamina.')
+            || path === 'vehicleGuideHand.enabled'
             || path.startsWith('installGate.')) sync();
         });
         inputs.set(path, { row, checkbox, step });
@@ -2255,38 +2387,51 @@ export function createSceneEditor(root, {
         continue;
       }
       if (isText) {
+        const requirementError = path === 'exportNaming.requirementCode' ? document.createElement('p') : null;
+        if (requirementError) {
+          requirementError.className = 'editor-camera-status editor-naming-error';
+          requirementError.dataset.state = 'error';
+          requirementError.id = 'export-requirement-error';
+          requirementError.hidden = true;
+          requirementError.setAttribute('role', 'status');
+          textInput.setAttribute('aria-describedby', requirementError.id);
+          textInput.placeholder = 'BL-… / BFT-…（与导出套系一致）';
+          row.append(requirementError);
+        }
         const updateValidity = () => {
-          if (isVariant) {
+          if (!isExportNaming) return true;
+          let message = '';
+          if (requirementError) {
+            message = getRequirementCodeError(textInput.value, exportSetSelect.value);
+            requirementError.textContent = message;
+            requirementError.hidden = !message;
+          } else if (!textInput.disabled && !textInput.value.trim()) {
+            message = `${label}不能为空`;
+          } else if (isVariant) {
             const stamina = path === 'exportNaming.version';
             const enabled = !stamina || Number(getTuning().stamina?.enabled) === 1;
-            let message = '';
             try { parseExportVariantValues(textInput.value, stamina ? 'stamina' : 'steps', enabled); }
             catch (error) { message = error.message; }
-            textInput.setAttribute('aria-invalid', String(Boolean(message)));
-            textInput.setCustomValidity(message);
-            return !message;
+          } else if (!isValidExportNamingPart(textInput.value)) {
+            message = `${label}只能使用 1～64 位英文字母、数字、中划线或下划线`;
           }
-          if (!isFilename) return true;
-          const valid = isValidExportNamingPart(textInput.value);
-          textInput.setAttribute('aria-invalid', String(!valid));
-          textInput.setCustomValidity(valid ? '' : '\u53ef\u7559\u7a7a\uff0c\u6216\u8f93\u5165 1-64 \u4f4d\u82f1\u6587\u5b57\u6bcd\u3001\u6570\u5b57\u3001\u4e2d\u5212\u7ebf\u548c\u4e0b\u5212\u7ebf\uff0c\u4e0d\u80fd\u5305\u542b ..');
-          return valid;
+          textInput.setAttribute('aria-invalid', String(Boolean(message)));
+          textInput.setCustomValidity(message);
+          return !message;
         };
         textInput.addEventListener('input', () => {
           updateValidity();
-          if (path === 'exportNaming.steps') {
-            exportStepsDraft = textInput.value;
-            updateExportVariantControls();
-            shellRefresh?.();
-            return;
-          }
           const next = structuredClone(getTuning());
           setAtPath(next, path, textInput.value);
           commitTuning(next, { path, merge: true });
           if (isVariant) sync();
+          else if (isFilename) {
+            updatePlayableExportButtons();
+            shellRefresh?.();
+          }
         });
         textInput.addEventListener('blur', updateValidity);
-        inputs.set(path, { row, textInput, isFilename, isVariant, updateValidity });
+        inputs.set(path, { row, textInput, label, isExportNaming, isVariant, updateValidity });
         section.append(row);
         continue;
       }
@@ -2405,7 +2550,7 @@ export function createSceneEditor(root, {
     if (group.fields.some(([, path]) => path === 'installGate.enabled')) {
       const help = document.createElement('p');
       help.className = 'editor-camera-status';
-      help.textContent = '关闭（默认）：消除全部车辆后跳商店；打开：达到下方「成功操作次数」就提前跳。';
+      help.textContent = '关闭时清空关卡后跳商店。可在「导出命名」的步数中填写 35 或 35moves，直接启用对应的跳转次数。';
       section.append(help);
     }
     fieldsRoot.append(section);
@@ -3980,10 +4125,26 @@ export function createSceneEditor(root, {
     spatialEditPointsButton.disabled = !isSpatialConveyorSelection(selected);
   }
 
+  const brandingPositionPaths = [
+    'cta.y', 'branding.icon.y', 'branding.logo.y', 'branding.text.x', 'branding.text.y'
+  ];
+
+  function syncBrandingPositions(tuning) {
+    const rowY = brandingRowY(tuning.branding, tuning.cta);
+    for (const path of brandingPositionPaths) {
+      const controls = inputs.get(path);
+      if (!controls) continue;
+      const value = path.startsWith('branding.text.') ? getAtPath(tuning, path) : rowY;
+      if (controls.range) controls.range.value = String(value);
+      controls.number.value = formatValue(value, controls.step);
+    }
+  }
+
   function sync({ resetCountdownDrafts = false } = {}) {
     const tuning = getTuning();
     if (previewExportSet) refreshExportBranding();
     for (const [path, controls] of inputs) {
+      if (brandingPositionPaths.includes(path)) continue;
       if (path === 'combo.goldSeconds') controls.row.hidden = tuning.combo?.mode !== 'gold';
       if (path.startsWith('iq.') && path !== 'iq.enabled') controls.row.hidden = !Number(tuning.iq?.enabled);
       if (path === 'combo.timedSeconds') controls.row.hidden = tuning.combo?.mode !== 'timed';
@@ -4017,7 +4178,7 @@ export function createSceneEditor(root, {
         continue;
       }
       if (controls.textInput) {
-        controls.textInput.value = path === 'exportNaming.steps' ? exportStepsDraft : value ?? '';
+        controls.textInput.value = value ?? '';
         controls.updateValidity?.();
         continue;
       }
@@ -4030,6 +4191,8 @@ export function createSceneEditor(root, {
       controls.number.value = formatValue(value, controls.step);
       if (controls.color) controls.color.value = formatColor(value);
     }
+    syncBrandingPositions(tuning);
+    syncCompleteName();
     updateConveyorLayoutVisibility(tuning);
     updateCountdownControls();
     updateStaminaControls();
@@ -4067,6 +4230,7 @@ export function createSceneEditor(root, {
   // working untouched. The classic layout never reaches this code.
   // -------------------------------------------------------------------------
   let shellRefresh = null;
+  let refreshPayloadStats = null;
 
   function installShellLayout() {
     // The classic editor opens on the 关卡 tab, which leaves every other
@@ -4228,7 +4392,9 @@ export function createSceneEditor(root, {
     if (namingSection && !namingSection.querySelector('.shell-naming-grid')) {
       const grid = document.createElement('div');
       grid.className = 'shell-naming-grid';
-      for (const row of [...namingSection.querySelectorAll('.editor-field')]) grid.appendChild(row);
+      for (const row of [...namingSection.querySelectorAll('.editor-field')]) {
+        if (row !== completeNameRow) grid.appendChild(row);
+      }
       namingSection.appendChild(grid);
     }
 
@@ -4426,7 +4592,8 @@ export function createSceneEditor(root, {
     function schedulePayloadStats() {
       if (activeTab !== 'checks') return;
       const urls = [...inlineAssetUrls()].sort();
-      const key = `${LEVEL_1.key}|${urls.join('\n')}`;
+      const spatialSelection = getTuning().conveyorLayout?.selected;
+      const key = `${LEVEL_1.key}|${spatialSelection}|${urls.join('\n')}`;
       if (payloadStats?.key === key || payloadStatsKey === key) return;
       payloadStatsKey = key;
       clearTimeout(payloadStatsTimer);
@@ -4437,16 +4604,15 @@ export function createSceneEditor(root, {
           const response = await fetch('/__playable-asset-sizes', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ urls })
+            body: JSON.stringify({ urls, spatialSelection })
           });
           const payload = await response.json().catch(() => ({}));
           if (!response.ok) throw new Error(payload.error || `HTTP ${response.status}`);
           const items = Array.isArray(payload.items) ? payload.items : [];
           const rawBytes = items.reduce((sum, item) => sum + (Number(item.bytes) || 0), 0);
-          // Base64 payload cost per file rounded up to a 4-byte group, which is
-          // what the data URI actually adds to the single-file HTML.
+          // Include the MIME prefix and Base64 padding for each delivery asset.
           const base64Bytes = items.reduce(
-            (sum, item) => sum + (Number(item.bytes) ? Math.ceil(Number(item.bytes) / 3) * 4 : 0),
+            (sum, item) => sum + (Number(item.embeddedBytes) || 0),
             0
           );
           payloadStats = {
@@ -4471,17 +4637,12 @@ export function createSceneEditor(root, {
 
     function collectChecks() {
       const tuning = getTuning();
-      let badNames = 0;
-      let firstBadName = '';
+      const namingErrors = collectExportNamingErrors();
       let badUrls = 0;
       let firstBadUrl = '';
       let badCountdown = 0;
       let firstBadCountdown = '';
       for (const [path, controls] of inputs) {
-        if (controls.isFilename && controls.updateValidity && !controls.updateValidity()) {
-          badNames += 1;
-          firstBadName ||= path;
-        }
         if (controls.urlInput && controls.urlInput.getAttribute('aria-invalid') === 'true') {
           badUrls += 1;
           firstBadUrl ||= path;
@@ -4509,24 +4670,10 @@ export function createSceneEditor(root, {
 
       const vehicles = Array.isArray(LEVEL_1?.vehicles) ? LEVEL_1.vehicles : [];
       const vehicleIds = new Set(vehicles.map((vehicle) => Number(vehicle?.id)).filter(Number.isFinite));
-      const guideIssues = [];
-      let firstGuidePath = '';
       const hand = tuning.vehicleGuideHand ?? {};
-      if (Number(hand.enabled) === 1) {
-        if (hand.levelKey && hand.levelKey !== LEVEL_1.key) {
-          guideIssues.push(`小手提示指向 ${hand.levelKey}，当前关卡是 ${LEVEL_1.key}`);
-          firstGuidePath = 'vehicleGuideHand.levelKey';
-        }
-        if (!vehicleIds.has(Number(hand.vehicleId))) {
-          guideIssues.push(`小手目标车 ${hand.vehicleId ?? '未选'} 不在本关`);
-          firstGuidePath ||= 'vehicleGuideHand.vehicleId';
-        }
-      }
+      const handIssue = getVehicleGuideHandIssue(hand, LEVEL_1.key, vehicles);
       const firstClick = tuning.firstClickGuide ?? {};
-      if (Number(firstClick.enabled) === 1 && !vehicleIds.has(Number(firstClick.vehicleId))) {
-        guideIssues.push(`开场引导目标车 ${firstClick.vehicleId ?? '未选'} 不在本关`);
-        firstGuidePath ||= 'firstClickGuide.vehicleId';
-      }
+      const firstClickIssue = Number(firstClick.enabled) === 1 && !vehicleIds.has(Number(firstClick.vehicleId));
 
       const levelIssues = [];
       let firstLevelPath = '';
@@ -4560,10 +4707,10 @@ export function createSceneEditor(root, {
 
       const checks = [
         {
-          state: badNames ? 'bad' : 'ok',
+          state: namingErrors.first ? 'bad' : 'ok',
           title: '导出命名',
-          note: badNames ? `${badNames} 个片段含非法字符` : '所有命名片段合法（可留空）',
-          path: firstBadName
+          note: namingErrors.message || '需求编号与套系匹配，命名字段已填写',
+          path: namingErrors.first?.path ?? ''
         },
         {
           state: duplicateChannels.length ? 'bad' : 'ok',
@@ -4604,12 +4751,11 @@ export function createSceneEditor(root, {
           path: gateUnreachable ? 'installGate.successfulOperationThreshold' : ''
         },
         {
-          state: guideIssues.length ? 'warn' : 'ok',
+          state: handIssue ? 'bad' : firstClickIssue ? 'warn' : 'ok',
           title: '引导目标',
-          note: guideIssues.length
-            ? guideIssues.join('；')
-            : '引导车辆都存在于本关',
-          path: firstGuidePath
+          note: handIssue?.message
+            ?? (firstClickIssue ? '开场引导目标车不在本关' : Number(hand.enabled) === 1 ? '小手提示已指向本关车辆' : '小手提示已关闭'),
+          path: handIssue?.path ?? (firstClickIssue ? 'firstClickGuide.vehicleId' : '')
         },
         ...describeSizeChecks()
       ];
@@ -4645,7 +4791,7 @@ export function createSceneEditor(root, {
       const { items, rawBytes, base64Bytes, missing } = payloadStats;
       const oversized = items.filter((item) => {
         const cap = perAssetCaps.find(([prefix]) => item.url.startsWith(prefix));
-        return cap && Number(item.bytes) > cap[1];
+        return cap && Number(item.sourceBytes ?? item.bytes) > cap[1];
       });
       const heaviest = items
         .filter((item) => Number(item.bytes) > 0)
@@ -4748,7 +4894,7 @@ export function createSceneEditor(root, {
       if (activeTab === 'checks') {
         const checks = collectChecks();
         inspectorBody.innerHTML = `<div class="shell-insp-checks">${checks.map((check, index) => (
-          `<div class="shell-insp-check ${check.state}${check.path ? ' has-jump' : ''}" data-check-index="${index}"${check.path ? ' role="button" tabindex="0"' : ''}><i></i><div><strong>${check.title}</strong><small>${check.note}</small>${check.path ? '<em class="shell-insp-jump-field">去修改</em>' : ''}</div></div>`
+          `<div class="shell-insp-check ${check.state}${check.path ? ' has-jump' : ''}" data-check-index="${index}"${check.path ? ' role="button" tabindex="0"' : ''}><i></i><div><strong>${check.title}</strong><small>${escapeChangelogText(check.note)}</small>${check.path ? '<em class="shell-insp-jump-field">去修改</em>' : ''}</div></div>`
         )).join('')}</div>
           <p class="shell-insp-note">同一结论也会落在出问题的字段旁：命名片段标红，倒计时时间冲突时导出按钮禁用。点「去修改」直接跳到对应字段。</p>`;
         for (const node of inspectorBody.querySelectorAll('.shell-insp-check.has-jump')) {
@@ -4794,7 +4940,7 @@ export function createSceneEditor(root, {
         activeTab = tab.dataset.shellTab;
         // Re-opening the panel is the retry gesture for a failed asset-size
         // request; the failure is cached so an automatic refresh cannot loop.
-        if (activeTab === 'checks' && payloadStats?.error) payloadStats = null;
+        if (activeTab === 'checks') payloadStats = null;
         renderInspector();
       });
     }
@@ -4806,6 +4952,11 @@ export function createSceneEditor(root, {
       refreshRail();
       renderInspector();
     };
+    refreshPayloadStats = () => {
+      payloadStats = null;
+      renderInspector();
+    };
+    shellJumpToField = jumpToField;
 
     setActivePanel('track');
     refreshRail();

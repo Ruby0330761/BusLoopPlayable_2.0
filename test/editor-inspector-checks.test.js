@@ -215,8 +215,8 @@ test('the checks panel validates channels, guide targets, level data and the ins
   }
   // Channel codes must be unique or two deliveries resolve to one filename.
   assert.match(editor, /duplicateChannels\.push/);
-  // A guide car id that is not in the level hides the hand with no error.
-  assert.match(editor, /不在本关/);
+  assert.match(editor, /getVehicleGuideHandIssue/);
+  assert.match(editor, /state: handIssue \? 'bad'/);
   // A threshold above the fleet can never be reached.
   assert.match(editor, /永远触发不了/);
 });

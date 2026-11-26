@@ -8,8 +8,9 @@ import { SceneView } from './scene-view.js';
 import { setActiveStageScene } from './stage-scene.js';
 import { calculateAutoCameraFit, clampCenteredRectX, clampCenteredRectY } from './scene-layout.js';
 import { SCENE_TUNING } from './scene-tuning.js';
-import { drawFramedBrandingImage, layoutBrandingFrames, migrateBrandingIconRadius } from './branding-image-frame.js';
+import { drawFramedBrandingImage, migrateBrandingIconRadius, resolveBrandingRowLayout, resolveCtaSize, syncBrandingRowTuning } from './branding-image-frame.js';
 import { migrateSmokeTrailCaches, pruneUnknownTuning } from './tuning-migrations.js';
+import { resetInheritedGuideHandDefault } from './vehicle-guide-hand.js';
 import { migrateVehiclePathTuning } from './vehicle-path-config.js';
 import { isValidStoreLink, resolveStoreLink } from './store-links.js';
 import {
@@ -79,6 +80,7 @@ const INSTALL_THRESHOLD_CUSTOM_STORAGE_KEY = 'bus-loop-install-threshold-custom-
 const LEVEL36_VEHICLE_SCALE_MIGRATION_KEY = 'bus-loop-level36-vehicle-scale-v1';
 const LEVEL36_VEHICLE_COMPACTION_MIGRATION_KEY = 'bus-loop-level36-vehicle-compaction-v1';
 const LEVEL36_TIMED_GUIDE_MIGRATION_KEY = 'bus-loop-level36-timed-guide-v1';
+const GUIDE_HAND_DEFAULT_OFF_MIGRATION_KEY = 'bus-loop-guide-hand-default-off-v1';
 const INSTALL_GATE_DEFAULT_OFF_MIGRATION_KEY = 'bus-loop-install-gate-default-off-v1';
 const PREVIEW_LOCALE_MIGRATION_KEY = 'bus-loop-preview-locale-en-v1';
 const CUSTOM_BACKGROUND_ASSET_PREFIX = '/assets/editor-backgrounds/';
@@ -131,7 +133,7 @@ const brandingItems = {
 if (gameOverLogo && brandingItems.logo?.src) gameOverLogo.src = brandingItems.logo.src;
 const brandingFrames = { icon: $('#branding-icon-frame'), logo: $('#branding-logo-frame') };
 for (const key of Object.keys(brandingFrames)) {
-  brandingItems[key]?.addEventListener('load', () => applyBrandingFrames(getBrandingStageMetrics()));
+  brandingItems[key]?.addEventListener('load', () => applyBrandingRowLayout(getBrandingStageMetrics()));
 }
 const sceneEditorRoot = $('#scene-editor');
 
@@ -349,7 +351,6 @@ function migrateLevel36TimedGuideTuning(source) {
   source.vehicleGuideHand ??= {};
   source.firstClickGuide ??= {};
   assignChanged(source.vehicleGuideHand, {
-    enabled: 1,
     levelKey: 'level36',
     vehicleId: 1,
     showAtStart: 1,
@@ -995,18 +996,26 @@ function restoreSelectedLevelTuning() {
   // Clean every stored profile, not only the selected one: switching levels
   // later would otherwise reload the same stale keys and break the export then.
   const storedProfiles = readLevelTuningProfiles();
+  const levelKey = String(SCENE_TUNING.level?.selected ?? '').trim();
+  const migrateGuideDefault = localStorage.getItem(GUIDE_HAND_DEFAULT_OFF_MIGRATION_KEY) !== '1';
   let profilesPruned = false;
   for (const [key, entry] of Object.entries(storedProfiles)) {
     if (!isLevelTuningProfile(entry)) continue;
     if (migrateVehiclePathTuning(entry.tuning)) profilesPruned = true;
     if (migrateBrandingIconRadius(entry.tuning.branding?.icon)) profilesPruned = true;
+    if (migrateGuideDefault && resetInheritedGuideHandDefault(entry.tuning, key)) profilesPruned = true;
     if (pruneUnknownTuning(entry.tuning, DEFAULT_SCENE_TUNING)) {
       storedProfiles[key] = entry;
       profilesPruned = true;
     }
   }
   if (profilesPruned) writeLevelTuningProfiles(storedProfiles);
-  const levelKey = String(SCENE_TUNING.level?.selected ?? '').trim();
+  if (migrateGuideDefault) {
+    if (resetInheritedGuideHandDefault(SCENE_TUNING, levelKey)) {
+      localStorage.setItem(TUNING_STORAGE_KEY, JSON.stringify(SCENE_TUNING));
+    }
+    localStorage.setItem(GUIDE_HAND_DEFAULT_OFF_MIGRATION_KEY, '1');
+  }
   if (!levelKey) return;
   const profiles = profilesPruned ? readLevelTuningProfiles() : storedProfiles;
   const profile = profiles[levelKey];
@@ -1256,29 +1265,42 @@ function resolveBrandingIconAsset(config = {}) {
   return typeof config.asset === 'string' ? config.asset : '';
 }
 
-function applyBrandingFrames(metrics) {
-  const frames = layoutBrandingFrames(visibleBranding(), brandingItems, metrics, brandingPlatform());
-  for (const key of Object.keys(brandingFrames)) applyBrandingFrame(key, frames[key]);
-}
-
-function applyBrandingFrame(key, frame) {
+function applyBrandingFrame(key, { centerX, frame }, rowY) {
   const image = brandingItems[key];
   const decoration = brandingFrames[key];
   if (!image || !decoration) return;
-  if (!frame) { decoration.hidden = true; return; }
-  image.style.top = frame.centerY + 'px';
-  const size = { width: `${frame.width}px`, height: `${frame.height}px`, borderRadius: `${frame.radius}px` };
-  Object.assign(image.style, size);
+  const geometry = {
+    left: `${centerX}px`, top: `${rowY}px`,
+    width: `${frame.width}px`, height: `${frame.height}px`, borderRadius: `${frame.radius}px`
+  };
+  Object.assign(image.style, geometry);
   decoration.hidden = image.hidden || (!frame.strokeWidth && !frame.shadow);
   const shadow = frame.shadow;
-  Object.assign(decoration.style, size, {
-    left: image.style.left, top: image.style.top,
+  Object.assign(decoration.style, geometry, {
     borderWidth: `${frame.strokeWidth}px`, borderColor: frame.strokeColor,
     boxShadow: shadow ? `${shadow.x}px ${shadow.y}px ${shadow.blur}px ${shadow.color}` : 'none'
   });
 }
 
+let brandingBackgroundBounds = null;
+
+function applyBrandingRowLayout(metrics) {
+  const layout = resolveBrandingRowLayout(
+    visibleBranding(), SCENE_TUNING.cta, brandingItems, metrics, brandingPlatform(), brandingBackgroundBounds
+  );
+  for (const key of Object.keys(brandingFrames)) applyBrandingFrame(key, layout[key], layout.rowY);
+  if (brandingItems.text) {
+    brandingItems.text.style.left = `${layout.textCenterX}px`;
+    brandingItems.text.style.top = `${layout.textCenterY}px`;
+  }
+  if (ctaButton) {
+    ctaButton.style.left = `${layout.buttonCenterX}px`;
+    ctaButton.style.top = `${layout.rowY}px`;
+  }
+}
+
 function applyBrandingTuning(backgroundBounds = null) {
+  brandingBackgroundBounds = backgroundBounds;
   const metrics = getBrandingStageMetrics();
   const copy = resolveBrandingCopy();
   // The resolved locale also sets <html lang>, so assistive tech announces the
@@ -1290,21 +1312,6 @@ function applyBrandingTuning(backgroundBounds = null) {
     const config = visibleBranding()?.[key] ?? {};
     const enabled = Boolean(config.enabled ?? 1);
     const locked = Boolean(config.locked ?? 0);
-    const x = Number.isFinite(Number(config.x)) ? Number(config.x) : metrics.designWidth / 2;
-    const y = Number.isFinite(Number(config.y)) ? Number(config.y) : metrics.designHeight / 2;
-    const width = Math.max(1, Number(config.width) || 180);
-    const height = Math.max(1, Number(config.height) || width);
-    const renderedWidth = width * metrics.uiScale;
-    const renderedHeight = height * metrics.uiScale;
-    const authoredCenterX = x * metrics.positionScaleX;
-    const renderedCenterX = key === 'text'
-      ? authoredCenterX
-      : clampCenteredRectX({
-        centerX: authoredCenterX,
-        width: width * metrics.uiScale,
-        left: backgroundBounds?.left,
-        right: backgroundBounds?.right
-      });
     const draggable = EDITOR_ENABLED && enabled && !locked;
     if (key === 'icon' || key === 'logo') {
       const asset = key === 'icon'
@@ -1328,11 +1335,12 @@ function applyBrandingTuning(backgroundBounds = null) {
     element.classList.toggle('is-draggable', draggable);
     element.classList.toggle('is-locked', locked);
     if (!draggable) element.classList.remove('is-dragging');
-    element.style.left = `${renderedCenterX}px`;
-    element.style.top = `${y * metrics.positionScaleY}px`;
-    element.style.width = `${renderedWidth}px`;
-    if (key === 'text') element.style.height = `${renderedHeight}px`;
     if (key === 'text') {
+      const width = Math.max(1, Number(config.width) || 180);
+      const height = Math.max(1, Number(config.height) || width);
+      const renderedHeight = height * metrics.uiScale;
+      element.style.width = `${width * metrics.uiScale}px`;
+      element.style.height = `${renderedHeight}px`;
       fitBrandingText(element, renderedHeight);
       // The first fit can measure a fallback face; a webfont with wider
       // metrics would then overflow the fixed box, so measure again once the
@@ -1349,7 +1357,7 @@ function applyBrandingTuning(backgroundBounds = null) {
       }
     }
   }
-  applyBrandingFrames(metrics);
+  applyBrandingRowLayout(metrics);
   applyLoadingBranding();
 }
 
@@ -1452,31 +1460,13 @@ function applyCtaTuning() {
   if (!ctaButton) return;
   const cta = SCENE_TUNING.cta ?? {};
   const metrics = getBrandingStageMetrics();
-  const height = Math.max(1, Number(cta.height) || 68);
-  const width = Math.max(1, height * (Number(cta.stretchX) || 2.75));
+  const { height, width } = resolveCtaSize(cta);
   const fontSize = Math.max(1, Number(cta.fontSize) || 28);
   const fontHeight = Math.max(1, Number(cta.fontHeight) || fontSize);
   const paddingX = 24;
-  const centerX = Number.isFinite(Number(cta.x)) ? Number(cta.x) : metrics.designWidth / 2;
-  const centerY = Number.isFinite(Number(cta.y))
-    ? Number(cta.y)
-    : metrics.designHeight - height / 2;
   const pulseSpeed = Math.max(0.01, Number(cta.pulseSpeed) || 0.55);
   const uiScale = metrics.uiScale;
   const renderedWidth = width * uiScale;
-  const renderedHeight = height * uiScale;
-  const left = clampConfigNumber(
-    centerX * metrics.positionScaleX,
-    renderedWidth / 2,
-    metrics.stageWidth - renderedWidth / 2,
-    metrics.stageWidth / 2
-  );
-  const top = clampConfigNumber(
-    centerY * metrics.positionScaleY,
-    renderedHeight / 2,
-    metrics.stageHeight - renderedHeight / 2,
-    metrics.stageHeight - renderedHeight / 2
-  );
   // A localized CTA is wider than "Play Now" in most languages; the label is
   // swapped before fitting so the measurement is of the text that ships.
   const ctaLabel = resolveBrandingCopy().ctaLabel;
@@ -1507,8 +1497,6 @@ function applyCtaTuning() {
   ctaButton.style.setProperty('--cta-pulse-scale', String(Math.max(1, Number(cta.pulseScale) || 1.08)));
   ctaButton.style.setProperty('--cta-pulse-duration', `${1 / pulseSpeed}s`);
   ctaButton.style.setProperty('--game-over-cta-appear-duration', durationCss(cta.appearSpeed, 1.45));
-  ctaButton.style.left = `${left}px`;
-  ctaButton.style.top = `${top}px`;
   // An early fit may have measured a wider fallback face; re-fit once the
   // bundled font finishes loading so the label uses its final metrics.
   if (!ctaFitFontsReadyHooked && document.fonts?.ready) {
@@ -1554,6 +1542,7 @@ function captureMetrics(width, height) {
   const positionScaleX = width / designWidth;
   const positionScaleY = height / designHeight;
   return {
+    stageWidth: width,
     stageHeight: height,
     designWidth,
     designHeight,
@@ -1573,35 +1562,18 @@ function drawContainImage(context, image, centerX, centerY, width, height) {
   context.drawImage(image, centerX - drawWidth / 2, centerY - drawHeight / 2, drawWidth, drawHeight);
 }
 
-async function drawScreenshotBranding(context, metrics, width) {
-  const branding = visibleBranding();
-  const images = {};
-  await Promise.all(['icon', 'logo'].map(async key => {
-    const config = branding[key];
-    if (!Number(config?.enabled ?? 1) || !config) return;
-    const source = key === 'icon' ? resolveBrandingIconAsset(config) : config.asset;
-    if (source) images[key] = await loadScreenshotImage(source).catch(() => null);
-  }));
-  const frames = layoutBrandingFrames(branding, images, { ...metrics, stageWidth: width }, brandingPlatform());
-  for (const [key, frame] of Object.entries(frames)) {
-    const config = branding[key];
-    const boxWidth = Math.max(1, Number(config.width) || 180) * metrics.uiScale;
-    const centerX = clampCenteredRectX({
-      centerX: (config.x ?? metrics.designWidth / 2) * metrics.positionScaleX,
-      width: boxWidth, left: 0, right: width
-    });
-    drawFramedBrandingImage(context, images[key], centerX, frame.centerY, frame);
+function drawScreenshotBranding(context, metrics, layout, images, textConfig = {}) {
+  for (const [key, image] of Object.entries(images)) {
+    if (!image) continue;
+    const { centerX, frame } = layout[key];
+    drawFramedBrandingImage(context, image, centerX, layout.rowY, frame);
   }
 
-  const textConfig = visibleBranding()?.text ?? {};
   if (!Boolean(textConfig.enabled ?? 1)) return;
   const content = resolveBrandingCopy().title;
   const boxWidth = Math.max(1, Number(textConfig.width) || 800) * metrics.uiScale;
   const boxHeight = Math.max(1, Number(textConfig.height) || 100) * metrics.uiScale;
-  const centerX = (Number.isFinite(Number(textConfig.x)) ? Number(textConfig.x) : metrics.designWidth / 2)
-    * metrics.positionScaleX;
-  const centerY = (Number.isFinite(Number(textConfig.y)) ? Number(textConfig.y) : metrics.designHeight / 2)
-    * metrics.positionScaleY;
+  const { textCenterX: centerX, textCenterY: centerY } = layout;
   let fontSize = Math.max(1, boxHeight * 0.62);
   context.save();
   context.textAlign = 'center';
@@ -1624,26 +1596,12 @@ async function drawScreenshotBranding(context, metrics, width) {
   context.restore();
 }
 
-async function drawScreenshotCta(context, metrics, width, height) {
-  const cta = SCENE_TUNING.cta ?? {};
-  if (!Boolean(cta.enabled ?? 1)) return;
-  const buttonHeight = Math.max(1, Number(cta.height) || 68);
-  const buttonWidth = Math.max(1, buttonHeight * (Number(cta.stretchX) || 2.75));
-  const renderedWidth = buttonWidth * metrics.uiScale;
-  const renderedHeight = buttonHeight * metrics.uiScale;
-  const centerX = clampConfigNumber(
-    (Number.isFinite(Number(cta.x)) ? Number(cta.x) : metrics.designWidth / 2) * metrics.positionScaleX,
-    renderedWidth / 2,
-    width - renderedWidth / 2,
-    width / 2
-  );
-  const centerY = clampConfigNumber(
-    (Number.isFinite(Number(cta.y)) ? Number(cta.y) : metrics.designHeight - buttonHeight / 2)
-      * metrics.positionScaleY,
-    renderedHeight / 2,
-    height - renderedHeight / 2,
-    height - renderedHeight / 2
-  );
+async function drawScreenshotCta(context, metrics, layout, cta) {
+  if (!Boolean(cta.enabled ?? 1) || stageChoiceActive) return;
+  const { width, height } = resolveCtaSize(cta);
+  const renderedWidth = width * metrics.uiScale;
+  const renderedHeight = height * metrics.uiScale;
+  const { buttonCenterX: centerX, rowY: centerY } = layout;
   const button = await loadScreenshotImage('/assets/unity/ui/Main_Prop_GreenBtn.png').catch(() => null);
   if (button) drawContainImage(context, button, centerX, centerY, renderedWidth, renderedHeight);
 
@@ -1698,8 +1656,18 @@ async function composeScreenshotBlob(baseBlob, { width, height }) {
   // switch, free-placed art and weather are DOM overlays, so they have to be
   // replayed here or the PNG silently loses every HUD element.
   await drawScreenshotStageOverlays(context, { width, height });
-  await drawScreenshotBranding(context, metrics, width);
-  await drawScreenshotCta(context, metrics, width, height);
+  const branding = visibleBranding();
+  const cta = SCENE_TUNING.cta;
+  const images = Object.fromEntries(await Promise.all(['icon', 'logo'].map(async (key) => {
+    const config = branding?.[key];
+    const source = key === 'icon' ? resolveBrandingIconAsset(config) : config?.asset;
+    const image = source && Boolean(config?.enabled ?? 1)
+      ? await loadScreenshotImage(source).catch(() => null) : null;
+    return [key, image];
+  })));
+  const layout = resolveBrandingRowLayout(branding, cta, images, metrics, brandingPlatform(), { left: 0, right: width });
+  drawScreenshotBranding(context, metrics, layout, images, branding?.text);
+  await drawScreenshotCta(context, metrics, layout, cta);
   return new Promise((resolve, reject) => {
     output.toBlob((blob) => {
       if (blob) resolve(blob);
@@ -2907,7 +2875,7 @@ async function startRuntime() {
     }
   }
 
-  function applyTuningPatch(next, { path, syncEditor = false } = {}) {
+  function applyTuningPatch(next, { path, syncEditor = false, restoreSnapshot = false } = {}) {
     if (path?.startsWith('iq.')) {
       SCENE_TUNING.iq = normalizeIq(next.iq);
       game.configureIq(SCENE_TUNING.iq);
@@ -2952,9 +2920,12 @@ async function startRuntime() {
       if (syncEditor) editor.sync();
       return SCENE_TUNING;
     }
-    if (path?.startsWith('stamina.') || path === 'exportNaming.version') {
+    if (path?.startsWith('stamina.') || path === 'exportNaming.version' || path === 'exportNaming') {
       const previous = normalizeStaminaConfig(SCENE_TUNING.stamina);
       const settings = validateStaminaConfig(next.stamina);
+      if (path === 'exportNaming') {
+        setLevelInstallThresholdCustom(SCENE_TUNING.level?.selected, Number(next.installGate?.customThresholdEnabled) === 1);
+      }
       deepMerge(SCENE_TUNING, { ...next, stamina: settings });
       saveTuning(SCENE_TUNING, { immediate: true });
       if (settings.enabled !== previous.enabled || settings.lives !== previous.lives) reset();
@@ -3014,8 +2985,8 @@ async function startRuntime() {
       return SCENE_TUNING;
     }
     if (path?.startsWith('installGate.') || path?.startsWith('exportNaming.')) {
-      if (path === 'installGate.successfulOperationThreshold') {
-        setLevelInstallThresholdCustom(SCENE_TUNING.level?.selected, Number(next.installGate.customThresholdEnabled) === 1);
+      if (path.startsWith('installGate.') || path === 'exportNaming.steps') {
+        setLevelInstallThresholdCustom(SCENE_TUNING.level?.selected, Number(next.installGate?.customThresholdEnabled) === 1);
       }
       deepMerge(SCENE_TUNING, next);
       saveTuning(SCENE_TUNING, { immediate: true });
@@ -3030,15 +3001,10 @@ async function startRuntime() {
       if (syncEditor) editor.sync();
       return SCENE_TUNING;
     }
-    if (path?.startsWith('cta.')) {
+    if (path?.startsWith('cta.') || path?.startsWith('branding.')) {
+      const previousCta = { ...SCENE_TUNING.cta };
       deepMerge(SCENE_TUNING, next);
-      applyCtaTuning();
-      saveTuning(SCENE_TUNING);
-      if (syncEditor) editor.sync();
-      return SCENE_TUNING;
-    }
-    if (path?.startsWith('branding.')) {
-      deepMerge(SCENE_TUNING, next);
+      if (!restoreSnapshot) syncBrandingRowTuning(SCENE_TUNING, previousCta, path);
       applyBrandingTuning(view.getBackgroundCanvasBounds());
       // The CTA label follows the same language as the caption, so a locale
       // change must re-measure the button instead of waiting for a resize.
@@ -3121,8 +3087,15 @@ async function startRuntime() {
     for (const [key, element] of Object.entries(brandingItems)) {
       bindBrandingDrag(element, key, (x, y) => {
         const next = structuredClone(SCENE_TUNING);
-        next.branding[key].x = Math.round(x);
-        next.branding[key].y = Math.round(y);
+        if (key === 'text') {
+          const metrics = getBrandingStageMetrics();
+          // Convert from the rendered caption position back to its saved coordinates.
+          next.branding.text.x += Math.round(x - parseFloat(element.style.left) / metrics.positionScaleX);
+          next.branding.text.y += Math.round(y - parseFloat(element.style.top) / metrics.positionScaleY);
+        } else {
+          next.branding[key].x = Math.round(x);
+          next.branding[key].y = Math.round(y);
+        }
         applyTuningPatch(next, { path: `branding.${key}.position`, syncEditor: true });
       });
     }
@@ -3161,6 +3134,7 @@ async function startRuntime() {
           previewBrandPlatform = platform;
           exportBrandPreview = preview;
           applyBrandingTuning(view.getBackgroundCanvasBounds());
+          applyCtaTuning();
         },
         clearSavedTuning,
         saveImportedLevelTuning,

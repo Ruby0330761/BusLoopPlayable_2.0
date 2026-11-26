@@ -1,4 +1,7 @@
+import { clampCenteredRectX } from './scene-layout.js';
+
 const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
+const coordinate = (value, fallback) => Number.isFinite(value) ? value : fallback;
 
 // Bottom obstruction in CSS pixels, in portrait and landscape respectively.
 const bottomInsets = {
@@ -14,31 +17,6 @@ export function safeBrandingCenterY(authoredY, frame, width, height, platform) {
   const shadow = frame.shadow ? Math.max(0, frame.shadow.y + frame.shadow.blur * 1.5) : 0;
   const bottom = height - brandingBottomInset(platform, width > height) - 4;
   return Math.min(authoredY, bottom - frame.height / 2 - shadow);
-}
-
-export function layoutBrandingFrames(branding, images, metrics, platform) {
-  const frames = {};
-  for (const key of ['icon', 'logo']) {
-    const config = branding[key];
-    if (!config || !images[key] || !Number(config.enabled ?? 1)) continue;
-    const frame = resolveBrandingImageFrame(config, images[key], metrics.uiScale);
-    const y = (config.y ?? metrics.designHeight / 2) * metrics.positionScaleY;
-    frame.centerY = safeBrandingCenterY(y, frame, metrics.stageWidth, metrics.stageHeight, platform);
-    frames[key] = frame;
-  }
-  const { icon, logo } = frames;
-  if (icon && logo) {
-    const sameRow = branding.icon.y === branding.logo.y || (branding.icon.y === 2018 && branding.logo.y === 2023);
-    const bothClamped = icon.centerY < branding.icon.y * metrics.positionScaleY
-      && logo.centerY < branding.logo.y * metrics.positionScaleY;
-    if (sameRow || bothClamped) {
-      // Align the artwork after reserving each image's own shadow clearance.
-      const bottom = Math.min(icon.centerY + icon.height / 2, logo.centerY + logo.height / 2);
-      icon.centerY = bottom - icon.height / 2;
-      logo.centerY = bottom - logo.height / 2;
-    }
-  }
-  return frames;
 }
 
 function rgba(color, opacity) {
@@ -72,6 +50,71 @@ export function resolveBrandingImageFrame(config, image, scale) {
       blur: clamp(shadow.blur ?? 12, 0, 100) * scale, color: rgba(shadow.color ?? 0, shadow.opacity ?? 0.35)
     } : null
   };
+}
+
+export function resolveCtaSize(cta) {
+  const height = Math.max(1, Number(cta.height) || 68);
+  return { height, width: Math.max(1, height * (Number(cta.stretchX) || 2.75)) };
+}
+
+export function brandingRowY(branding, cta) {
+  return coordinate(branding?.logo?.y, cta?.y);
+}
+
+export function resolveBrandingRowLayout(branding, cta, images, metrics, platform, bounds) {
+  const { designWidth, designHeight, stageWidth, stageHeight, positionScaleX, positionScaleY, uiScale } = metrics;
+  const { icon = {}, logo = {}, text = {} } = branding ?? {};
+  const { height: buttonHeight, width: buttonWidth } = resolveCtaSize(cta);
+  const ctaX = coordinate(cta.x, designWidth / 2);
+  const ctaY = coordinate(cta.y, designHeight - buttonHeight / 2);
+  const logoY = coordinate(brandingRowY(branding, cta), ctaY) * positionScaleY;
+  const buttonCenterX = clampCenteredRectX({
+    centerX: ctaX * positionScaleX, width: buttonWidth * uiScale, left: 0, right: stageWidth
+  });
+  const imagePositions = {};
+  let minY = (cta.enabled ?? 1) ? buttonHeight * uiScale / 2 : 0;
+  let maxY = stageHeight - minY;
+  for (const [key, config] of [['icon', icon], ['logo', logo]]) {
+    const frame = resolveBrandingImageFrame(config, images[key] ?? {}, uiScale);
+    const centerX = clampCenteredRectX({
+      centerX: coordinate(config.x, designWidth / 2) * positionScaleX,
+      width: Math.max(1, Number(config.width) || 180) * uiScale,
+      left: bounds?.left, right: bounds?.right
+    });
+    imagePositions[key] = { centerX, frame };
+    if (Boolean(config.enabled ?? 1)) {
+      minY = Math.max(minY, frame.height / 2);
+      maxY = safeBrandingCenterY(maxY, frame, stageWidth, stageHeight, platform);
+    }
+  }
+  const rowY = minY <= maxY ? clamp(logoY, minY, maxY) : clamp(maxY, 0, stageHeight);
+  return {
+    ...imagePositions,
+    rowY,
+    buttonCenterX,
+    textCenterX: buttonCenterX + (coordinate(text.x, ctaX) - ctaX) * positionScaleX,
+    textCenterY: rowY + (coordinate(text.y, ctaY) - ctaY) * positionScaleY
+  };
+}
+
+export function syncBrandingRowTuning(tuning, previousCta, path) {
+  const { cta, branding, preview } = tuning;
+  if (path === 'cta.x' && Number.isFinite(cta.x)) {
+    const oldX = coordinate(previousCta.x, preview.width / 2);
+    branding.text.x = coordinate(branding.text.x, oldX) + cta.x - oldX;
+    return;
+  }
+  const source = {
+    'cta.y': cta, 'branding.logo.y': branding.logo, 'branding.logo.position': branding.logo,
+    'branding.icon.y': branding.icon, 'branding.icon.position': branding.icon
+  }[path];
+  if (!Number.isFinite(source?.y)) return;
+  const newY = source.y;
+  const oldY = coordinate(previousCta.y, newY);
+  branding.text.y = coordinate(branding.text.y, oldY) + newY - oldY;
+  cta.y = newY;
+  branding.logo.y = newY;
+  branding.icon.y = newY;
 }
 
 export function drawFramedBrandingImage(ctx, image, centerX, centerY, frame) {

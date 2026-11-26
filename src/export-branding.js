@@ -74,10 +74,7 @@ export const PLAYABLE_BRANDING_SETS = Object.freeze({
         google: 'Bus Crowd',
         ios: 'Bus Crowd - Traffic Jam'
       }),
-      // The Crowd wordmark under the CTA has to sit dead centre. The editor
-      // stores a draggable x, and a saved session can leave it a few pixels off
-      // (a 534 instead of 540 shipped once), so the Crowd set pins the text to
-      // the design centre instead of trusting whatever the tuning carries.
+      // Keep the Crowd caption centered under the CTA at its authored position.
       centerText: true,
       loadingTitle: 'Bus Crowd - Traffic Jam'
     })
@@ -126,10 +123,8 @@ export function createBrandingVariantTuning(tuning, variantId) {
   }
   if (variant.centerText) {
     output.branding.text ??= {};
-    // Preview size is the authoring canvas the editor's x is expressed in, so
-    // its half width is the horizontal centre for every rendered ad size.
     const designWidth = Number(output.preview?.width) > 0 ? Number(output.preview.width) : 1080;
-    output.branding.text.x = designWidth / 2;
+    output.branding.text.x = Number.isFinite(output.cta?.x) ? output.cta.x : designWidth / 2;
   }
   if (variant.loadingTitle) {
     output.branding.loading ??= {};

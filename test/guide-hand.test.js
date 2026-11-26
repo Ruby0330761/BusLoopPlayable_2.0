@@ -3,6 +3,8 @@ import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 
 import { SCENE_TUNING } from '../src/scene-tuning.js';
+import { getVehicleGuideHandIssue, resetInheritedGuideHandDefault } from '../src/vehicle-guide-hand.js';
+import { exportPlayablePackage, exportAllPlayablePackages } from '../scripts/export-playable-package.mjs';
 import {
   getVehicleIdOptions,
   normalizeVehicleIdSelection
@@ -31,7 +33,7 @@ test('opening guide vehicle choices use the active level vehicle ids', () => {
   assert.equal(normalizeVehicleIdSelection('missing'), null);
 });
 
-test('level36 uses an opening and five-second idle hand without a dimming mask', async () => {
+test('the opt-in hand retains its opening and idle motion settings', async () => {
   const tuning = SCENE_TUNING.vehicleGuideHand;
   const firstClickGuide = SCENE_TUNING.firstClickGuide;
   const mainSource = await readFile(new URL('../src/main.js', import.meta.url), 'utf8');
@@ -39,6 +41,7 @@ test('level36 uses an opening and five-second idle hand without a dimming mask',
   const stylesSource = await readFile(new URL('../src/styles.css', import.meta.url), 'utf8');
   const viewSource = await readFile(new URL('../src/scene-view.js', import.meta.url), 'utf8');
 
+  assert.equal(tuning.enabled, 0);
   assert.equal(tuning.levelKey, 'level36');
   assert.equal(tuning.vehicleId, 1);
   assert.equal(tuning.showAtStart, 1);
@@ -194,6 +197,41 @@ test('level36 uses an opening and five-second idle hand without a dimming mask',
   assert.match(editorSource, /firstClickGuide\.holeOffsetY/);
   assert.match(editorSource, /firstClickGuide\.holeScaleX/);
   assert.match(editorSource, /firstClickGuide\.holeScaleY/);
+});
+
+test('enabled hand requires an explicit current level and a vehicle in its roster', () => {
+  const vehicles = [{ id: 8 }];
+  const hand = { enabled: 1, levelKey: 'level33', vehicleId: 8 };
+  assert.equal(getVehicleGuideHandIssue(hand, 'level33', vehicles), null);
+  assert.equal(getVehicleGuideHandIssue({ ...hand, enabled: 0 }, 'level7', []), null);
+  for (const levelKey of ['', 'level7']) {
+    assert.equal(getVehicleGuideHandIssue({ ...hand, levelKey }, 'level33', vehicles).path, 'vehicleGuideHand.levelKey');
+  }
+  for (const vehicleId of [0, 8.5, 9]) {
+    assert.equal(getVehicleGuideHandIssue({ ...hand, vehicleId }, 'level33', vehicles).path, 'vehicleGuideHand.vehicleId');
+  }
+});
+
+test('old inherited guide defaults are turned off outside level36, while authored targets survive', () => {
+  const tuning = { vehicleGuideHand: { ...SCENE_TUNING.vehicleGuideHand, enabled: 1 } };
+  assert.equal(resetInheritedGuideHandDefault(tuning, 'level36'), false);
+  assert.equal(resetInheritedGuideHandDefault({ vehicleGuideHand: { ...tuning.vehicleGuideHand, vehicleId: 2 } }, 'level33'), false);
+  assert.equal(resetInheritedGuideHandDefault(tuning, 'level33'), true);
+  assert.equal(tuning.vehicleGuideHand.enabled, 0);
+});
+
+test('editor exports block mismatched guide scope and use the draft roster when supplied', async () => {
+  const tuning = structuredClone(SCENE_TUNING);
+  tuning.level.selected = 'level33';
+  tuning.vehicleGuideHand.enabled = 1;
+  const options = { tuning, platform: 'applovin', useSelectedLevel: true, skipChecks: true };
+  await assert.rejects(exportPlayablePackage(options), error => error.statusCode === 400 && /请选择当前关卡 level33/.test(error.message));
+  tuning.vehicleGuideHand.levelKey = 'level33';
+  // The catalog has vehicle 89, but an unsaved edit has removed it.
+  tuning.vehicleGuideHand.vehicleId = 89;
+  const levelDocument = { format: 'bus-loop-web-level-v1', key: 'level33', vehicles: [] };
+  await assert.rejects(exportAllPlayablePackages({ ...options, levelDocument }),
+    error => error.statusCode === 400 && /目标车 89 不在本关/.test(error.message));
 });
 
 test('opening guide animation has an editor toggle that restarts its preview', async () => {

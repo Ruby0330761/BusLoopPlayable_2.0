@@ -9,34 +9,33 @@
 // runtime's `?? colorTextures[0]` fallback painted every black and white car
 // blue. Keeping the table in code makes a level's colour slots independent of
 // catalog age; packaging still whitelists whatever the level ends up referencing.
-const ATLAS_ROOT = '/assets/applovin/textures';
-const ATLAS_SLOT_COUNT = 26;
-const STANDARD_COLOR_NAMES = Object.freeze([
-  'blue', 'green', 'pink', 'purple', 'red', 'yellow',
-  'orange', 'lightblue', 'brown', 'darkgreen', 'darkblue'
-]);
 // Indices 11-16 are special mechanism vehicles (police, firetruck, ambulance,
 // VIP, luxury) that carry authored textures instead of a paint atlas, so those
-// slots stay empty on purpose.
-const SUPPLEMENT_COLOR_NAMES = Object.freeze({
-  17: 'black',
-  18: 'white',
-  19: 'darkred',
-  20: 'darkyellow',
-  21: 'cream',
-  22: 'mintgreen',
-  23: 'matchagreen',
-  24: 'lightpink',
-  25: 'gray'
-});
-
-export const COLOR_ATLAS_PATHS = Object.freeze(Array.from(
-  { length: ATLAS_SLOT_COUNT },
-  (_unused, index) => {
-    const name = STANDARD_COLOR_NAMES[index] ?? SUPPLEMENT_COLOR_NAMES[index];
-    return name ? `${ATLAS_ROOT}/color_${index}_${name}_q85.webp` : null;
-  }
-));
+// slots stay empty. Complete asset paths let the single-file packager rewrite
+// the fallback table alongside the paths emitted by the level generator.
+export const COLOR_ATLAS_PATHS = Object.freeze([
+  '/assets/applovin/textures/color_0_blue_q85.webp',
+  '/assets/applovin/textures/color_1_green_q85.webp',
+  '/assets/applovin/textures/color_2_pink_q85.webp',
+  '/assets/applovin/textures/color_3_purple_q85.webp',
+  '/assets/applovin/textures/color_4_red_q85.webp',
+  '/assets/applovin/textures/color_5_yellow_q85.webp',
+  '/assets/applovin/textures/color_6_orange_q85.webp',
+  '/assets/applovin/textures/color_7_lightblue_q85.webp',
+  '/assets/applovin/textures/color_8_brown_q85.webp',
+  '/assets/applovin/textures/color_9_darkgreen_q85.webp',
+  '/assets/applovin/textures/color_10_darkblue_q85.webp',
+  null, null, null, null, null, null,
+  '/assets/applovin/textures/color_17_black_q85.webp',
+  '/assets/applovin/textures/color_18_white_q85.webp',
+  '/assets/applovin/textures/color_19_darkred_q85.webp',
+  '/assets/applovin/textures/color_20_darkyellow_q85.webp',
+  '/assets/applovin/textures/color_21_cream_q85.webp',
+  '/assets/applovin/textures/color_22_mintgreen_q85.webp',
+  '/assets/applovin/textures/color_23_matchagreen_q85.webp',
+  '/assets/applovin/textures/color_24_lightpink_q85.webp',
+  '/assets/applovin/textures/color_25_gray_q85.webp',
+]);
 
 /**
  * Fills colour slots the level's catalog data did not provide.

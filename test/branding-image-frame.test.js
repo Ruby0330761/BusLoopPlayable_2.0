@@ -1,8 +1,57 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { layoutBrandingFrames, migrateBrandingIconRadius, resolveBrandingImageFrame, safeBrandingCenterY } from '../src/branding-image-frame.js';
+import { migrateBrandingIconRadius, resolveBrandingImageFrame, resolveBrandingRowLayout, safeBrandingCenterY, syncBrandingRowTuning } from '../src/branding-image-frame.js';
 import { SCENE_TUNING } from '../src/scene-tuning.js';
 import { createBrandingVariantTuning, PLAYABLE_BRANDING_SETS, validateTuning } from '../scripts/export-playable-package.mjs';
+
+test('Logo anchors the brand row while the caption follows the clamped CTA', () => {
+  const { branding, cta, preview } = structuredClone(SCENE_TUNING);
+  Object.assign(branding.logo, { y: 1500 });
+  const metrics = {
+    designWidth: preview.width, designHeight: preview.height, stageWidth: 360, stageHeight: 720,
+    positionScaleX: 1 / 3, positionScaleY: 1 / 3, uiScale: 1 / 3
+  };
+  const bounds = { left: 10, right: 350 };
+  const layout = () => resolveBrandingRowLayout(branding, cta, {}, metrics, 'mintegral', bounds);
+  const initial = layout();
+  assert.equal(initial.rowY, 500);
+  assert.equal(initial.textCenterX, initial.buttonCenterX);
+  assert.equal(initial.textCenterY, 532);
+  assert.ok(initial.logo.centerX < initial.buttonCenterX && initial.icon.centerX > initial.buttonCenterX);
+
+  branding.logo.y = preview.height;
+  branding.text.x += 30;
+  cta.x = 0;
+  const clamped = layout();
+  const iconBottom = clamped.rowY + clamped.icon.frame.height / 2;
+  const shadow = clamped.icon.frame.shadow;
+  assert.equal(iconBottom + shadow.y + shadow.blur * 1.5, 720 - 86 - 4);
+  assert.ok(clamped.buttonCenterX > 0);
+  assert.equal(clamped.textCenterX, clamped.buttonCenterX + 190);
+  assert.equal(clamped.textCenterY, clamped.rowY + 32);
+});
+
+test('CTA changes move the caption by the same amount and keep the saved row aligned', () => {
+  const tuning = structuredClone(SCENE_TUNING);
+  const { cta, branding } = tuning;
+  const originalCta = { ...cta };
+  const originalText = { ...branding.text };
+  cta.x += 60;
+  syncBrandingRowTuning(tuning, originalCta, 'cta.x');
+  assert.equal(branding.text.x, originalText.x + 60);
+  cta.y -= 120;
+  syncBrandingRowTuning(tuning, originalCta, 'cta.y');
+  assert.equal(branding.text.y, originalText.y - 120);
+  assert.equal(branding.icon.y, cta.y);
+  assert.equal(branding.logo.y, cta.y);
+
+  const previousCta = { ...cta };
+  branding.logo.y += 100;
+  syncBrandingRowTuning(tuning, previousCta, 'branding.logo.position');
+  assert.equal(cta.y, originalCta.y - 20);
+  assert.equal(branding.icon.y, cta.y);
+  assert.equal(branding.text.y, originalText.y - 20);
+});
 
 test('brand art and its shadow clear each bottom band and higher authored positions stay put', () => {
   const frame = { height: 50, shadow: { y: 3, blur: 4 } };
@@ -15,20 +64,6 @@ test('brand art and its shadow clear each bottom band and higher authored positi
       assert.equal(safeBrandingCenterY(70, frame, w, h, channel), 70);
     }
   }
-});
-
-test('logo and icon share a safe artwork baseline without moving independently placed branding', () => {
-  const branding = structuredClone(SCENE_TUNING.branding);
-  const metrics = { stageWidth: 390, stageHeight: 844, designHeight: 2160, positionScaleY: 844/2160, uiScale: 390/1080 };
-  const images = { icon: { naturalWidth: 512, naturalHeight: 512 }, logo: { naturalWidth: 492, naturalHeight: 318 } };
-  for (const platform of ['applovin', 'unityads', 'moloco', 'mintegral', 'google-ads']) {
-    const { icon, logo } = layoutBrandingFrames(branding, images, metrics, platform);
-    assert.equal(icon.centerY + icon.height / 2, logo.centerY + logo.height / 2);
-  }
-  branding.logo.y = 500;
-  assert.equal(layoutBrandingFrames(branding, images, metrics, 'applovin').logo.centerY, 500 * metrics.positionScaleY);
-  branding.icon.enabled = 0;
-  assert.equal(layoutBrandingFrames(branding, images, metrics, 'applovin').icon, undefined);
 });
 
 test('a saved pixel radius keeps its visible size and an explicit zero percentage wins', () => {

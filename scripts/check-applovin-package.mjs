@@ -3,9 +3,12 @@ import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { validateStoreLink } from '../src/store-links.js';
 import { getReachableStageArt } from '../src/playable-inline-assets.js';
+import {
+  createAssetDelivery, playableAssetDataUri, mimeForPlayableAsset, selectSpatialTexture
+} from './playable-asset-delivery.mjs';
 
 const ROOT = process.cwd();
-const PACKAGE_FILE = path.join(ROOT, 'artifacts', 'applovin', 'index.html');
+const PACKAGE_FILE = path.resolve(process.env.PLAYABLE_INLINE_OUTPUT_FILE ?? path.join(ROOT, 'artifacts', 'applovin', 'index.html'));
 const TUNING_FILE = path.join(ROOT, 'src', 'scene-tuning.js');
 const SPATIAL_PACKAGE_ROOT = path.join(ROOT, 'artifacts', 'spatial-conveyors');
 const MAX_BYTES = 5_000_000;
@@ -44,26 +47,14 @@ function inlineModulesAreSyntaxValid(html) {
   }
 }
 
-function mimeForAsset(asset) {
-  const extension = path.extname(asset).toLowerCase();
-  return new Map([
-    ['.jpg', 'image/jpeg'],
-    ['.jpeg', 'image/jpeg'],
-    ['.png', 'image/png'],
-    ['.mp3', 'audio/mpeg'],
-    ['.mp4', 'video/mp4'],
-    ['.wav', 'audio/wav'],
-    ['.webp', 'image/webp']
-  ]).get(extension) ?? 'application/octet-stream';
-}
-
-async function assetDataUri(asset) {
-  const filePath = path.join(ROOT, 'public', asset.replace(/^\//u, ''));
-  const bytes = await readFile(filePath);
-  return `data:${mimeForAsset(asset)};base64,${bytes.toString('base64')}`;
-}
-
 async function main() {
+  const delivery = await createAssetDelivery(ROOT);
+  async function acceptableAssetUris(asset) {
+    const bytes = await readFile(path.join(ROOT, 'public', asset.slice(1)));
+    const source = playableAssetDataUri({ bytes, mime: mimeForPlayableAsset(asset) });
+    const selected = await delivery.select(asset, bytes);
+    return selected.optimized ? [source, playableAssetDataUri(selected)] : [source];
+  }
   const [{ PLAYABLE_STAGES, PLAYABLE_STAGE_CHOICES, PLAYABLE_ALL_LEVELS, ACTIVE_PLAYABLE_SESSION }, {
     MECHANISM_RESOURCE_MANIFEST,
     PLAYABLE_TRACK_RESOURCES,
@@ -86,7 +77,8 @@ async function main() {
   if (!BRANDING_ICON_ASSETS.includes(selectedIconAsset)) {
     throw new Error(`Unsupported branding Icon asset: ${selectedIconAsset}`);
   }
-  const unselectedIconAssets = BRANDING_ICON_ASSETS.filter((asset) => asset !== selectedIconAsset);
+  const selectedIconAssets = new Set([selectedIconAsset, ...Object.values(SCENE_TUNING.branding?.icon?.deviceAssets ?? {})]);
+  const unselectedIconAssets = BRANDING_ICON_ASSETS.filter((asset) => !selectedIconAssets.has(asset));
   const selectedLogoAsset = SCENE_TUNING.branding?.logo?.asset ?? BRANDING_LOGO_ASSETS[0];
   if (!BRANDING_LOGO_ASSETS.includes(selectedLogoAsset)) {
     throw new Error(`Unsupported branding Logo asset: ${selectedLogoAsset}`);
@@ -110,7 +102,7 @@ async function main() {
     conveyorLayouts: Object.keys(PLAYABLE_TRACK_RESOURCES)
   });
   const selectedMechanismDataUris = await Promise.all(
-    selectedMechanismUrls.map((asset) => assetDataUri(asset))
+    selectedMechanismUrls.map((asset) => acceptableAssetUris(asset))
   );
   // Same resolution as the runtime and the packager: a session that opts out of
   // the pre-roll must not be asked to carry the video.
@@ -122,7 +114,7 @@ async function main() {
     throw new Error(`Unsupported pre-roll asset: ${selectedPreRollAsset}`);
   }
   const selectedPreRollDataUri = selectedPreRollAsset
-    ? await assetDataUri(selectedPreRollAsset)
+    ? await acceptableAssetUris(selectedPreRollAsset)
     : null;
   const omittedMechanismUrls = allMechanismUrls.filter((asset) => !selectedMechanismUrls.includes(asset));
 
@@ -133,14 +125,22 @@ async function main() {
       .replace(/[.*+?^${}()|[\]\\]/gu, '\\$&');
     return new RegExp(`\\$\\{[A-Za-z_$][\\w$]*\\}${tail}`, 'u').test(html);
   }
-  const [{ size }, html, selectedIconDataUri, unselectedIconDataUris, selectedLogoDataUri, legacyLogoDataUri] = await Promise.all([
+  const [{ size }, html, selectedIconDataUris, unselectedIconDataUris, selectedLogoDataUris, legacyLogoDataUris] = await Promise.all([
     stat(PACKAGE_FILE),
     readFile(PACKAGE_FILE, 'utf8'),
-    assetDataUri(selectedIconAsset),
-    Promise.all(unselectedIconAssets.map((asset) => assetDataUri(asset))),
-    assetDataUri(selectedLogoAsset),
-    assetDataUri('/assets/main-loading-icon.png')
+    Promise.all(Array.from(selectedIconAssets, asset => acceptableAssetUris(asset))),
+    Promise.all(unselectedIconAssets.map((asset) => acceptableAssetUris(asset))),
+    acceptableAssetUris(selectedLogoAsset),
+    acceptableAssetUris('/assets/main-loading-icon.png')
   ]);
+  const spatialTextureUris = [];
+  for (const slot of ['loopTextureDataUrl', 'exitTextureDataUrl']) {
+    if (!selectedSpatialPackage) break;
+    const source = selectedSpatialPackage.visual?.material?.[slot];
+    const selected = await selectSpatialTexture(delivery, `spatial:${selectedSpatialId}/${slot}`, source);
+    spatialTextureUris.push(selected?.optimized ? [source, playableAssetDataUri(selected)] : [source]);
+  }
+  const includesAsset = uris => uris.some(uri => Boolean(uri) && html.includes(uri));
 
   const checks = [
     {
@@ -190,7 +190,7 @@ async function main() {
     },
     {
       name: 'selected mechanism resources inlined',
-      pass: selectedMechanismDataUris.every((dataUri) => html.includes(dataUri)),
+      pass: selectedMechanismDataUris.every(includesAsset),
       detail: mechanismTypes.join(', ')
     },
     {
@@ -218,8 +218,7 @@ async function main() {
       pass: !selectedSpatialPackage || (
         selectedSpatialPackage.id === selectedSpatialId &&
         html.includes(selectedConveyor) &&
-        html.includes(selectedSpatialPackage.visual?.material?.loopTextureDataUrl) &&
-        html.includes(selectedSpatialPackage.visual?.material?.exitTextureDataUrl)
+        spatialTextureUris.every(includesAsset)
       ),
       detail: selectedSpatialPackage ? selectedConveyor : 'ordinary conveyor selected'
     },
@@ -230,17 +229,17 @@ async function main() {
     },
     {
       name: 'selected branding Icon and Logo images inlined',
-      pass: html.includes(selectedIconDataUri) &&
-        html.includes(selectedLogoDataUri) &&
+      pass: selectedIconDataUris.every(includesAsset) &&
+        includesAsset(selectedLogoDataUris) &&
         /<img\b(?=[^>]*\bid=["']branding-logo["'])(?=[^>]*\bsrc=["']data:image\/(?:png|jpeg|webp);base64,)[^>]*>/iu.test(html)
     },
     {
       name: 'unselected branding Icon omitted',
-      pass: unselectedIconDataUris.every((dataUri) => !html.includes(dataUri))
+      pass: unselectedIconDataUris.every(uris => !includesAsset(uris))
     },
     {
       name: 'legacy large branding Logo omitted',
-      pass: !html.includes(legacyLogoDataUri)
+      pass: !includesAsset(legacyLogoDataUris)
     },
     {
       name: 'no bundled font or external font reference',
@@ -252,7 +251,7 @@ async function main() {
     },
     {
       name: 'configured pre-roll video inlined',
-      pass: !selectedPreRollDataUri || html.includes(selectedPreRollDataUri),
+      pass: !selectedPreRollDataUri || includesAsset(selectedPreRollDataUri),
       detail: selectedPreRollAsset ?? 'disabled'
     },
     {

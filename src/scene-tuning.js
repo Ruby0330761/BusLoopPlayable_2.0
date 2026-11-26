@@ -89,7 +89,7 @@ export const SCENE_TUNING = {
       "tiktok": "TT",
       "unityads": "UN"
     },
-    "steps": "",
+    "steps": "N",
     "version": "N"
   },
   "branding": {
@@ -849,7 +849,7 @@ export const SCENE_TUNING = {
   "vehiclePath": {
     "autoBounds": 1,
     "boundsPadding": 0.1,
-    "enabled": 1,
+    "enabled": 0,
     "showBlocked": 1,
     "color": 2160383,
     "opacity": 0.88,
@@ -911,7 +911,7 @@ export const SCENE_TUNING = {
     "speed": 11.7
   },
   "vehicleGuideHand": {
-    "enabled": 1,
+    "enabled": 0,
     "levelKey": "level36",
     "vehicleId": 1,
     "showAtStart": 1,
