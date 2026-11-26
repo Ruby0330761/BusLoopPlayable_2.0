@@ -30,6 +30,9 @@ function sceneReviewRows(tuning, stages) {
     rows.push({ label: '倒计时', value: `${countdown.durationSeconds} 秒，归零后${countdown.timeoutStore ? '跳转商店' : '显示失败弹窗'}` });
   }
   const combo = normalizeCombo(tuning.combo);
+  if (Number(tuning.iq?.enabled) === 1) {
+    rows.push({ label: 'IQ 计分', value: '车辆进站 +10，碰撞 −5，最低 0 分' });
+  }
   if (combo.mode !== 'off') {
     rows.push({ label: '连击提示', value: combo.mode === 'timed' ? '倒计时读条' : '金色弹字' });
   }

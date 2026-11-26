@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { SMOKE_TRAIL_ANIMATION, SMOKE_TRAIL_DEFAULTS } from './vehicle-effect-assets.js';
+import { drivingSmokeRate, SMOKE_TRAIL_ANIMATION, SMOKE_TRAIL_DEFAULTS } from './vehicle-effect-assets.js';
 import { DepartureStars, sampleParticleCurve, departureStarSizeScale, departureStarTuning, departureStarColors } from './departure-stars.js';
 
 const DEG = Math.PI / 180;
@@ -215,7 +215,7 @@ function smokeTrailTuning(effectsTuning) {
   const lifetimeMin = number('lifetimeMin', 0.01);
   const sizeMin = number('sizeMin', 0.001);
   return {
-    rateOverTime: number('rateOverTime', 0),
+    rateOverTime: drivingSmokeRate(effectsTuning),
     lifetimeMin,
     // A max below the min would collapse the random range to a constant, so the
     // lower bound wins and the effect keeps a spread.

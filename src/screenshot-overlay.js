@@ -19,6 +19,7 @@ import { STAMINA_ASSETS } from './stamina.js';
 // stage picker, game over, end panel) are deliberately absent: a promo shot of
 // a dim opening card is not the gameplay frame the operator asked for.
 export const OVERLAY_ROOT_SELECTORS = Object.freeze([
+  '#iq-hud',
   '#stamina',
   '#countdown',
   '#progress-hud',
@@ -35,6 +36,7 @@ export const PAINTED_ROOT_SELECTORS = Object.freeze(['#progress-hud']);
 // Overlay nodes whose text is part of the HUD. They are drawn with their
 // computed font/colour/stroke instead of being skipped as empty boxes.
 export const OVERLAY_TEXT_SELECTORS = Object.freeze([
+  '#iq-score',
   '#countdown-value',
   '#speed-toggle-label'
 ]);

@@ -3004,7 +3004,7 @@ test('Icon, Logo, and text overlays expose independent responsive editor control
   assert.match(mainSource, /element\.textContent = content/);
   assert.match(mainSource, /element\.style\.left = `\$\{renderedCenterX\}px`/);
   assert.match(mainSource, /element\.style\.top = `\$\{y \* metrics\.positionScaleY\}px`/);
-  assert.match(mainSource, /drawFramedBrandingImage\(context, image, centerX, centerY, frame\)/);
+  assert.match(mainSource, /drawFramedBrandingImage\(context, images\[key\], centerX, frame\.centerY, frame\)/);
   assert.match(mainSource, /const x = localX \/ metrics\.positionScaleX/);
   assert.match(mainSource, /const y = localY \/ metrics\.positionScaleY/);
   assert.match(mainSource, /setPointerCapture/);

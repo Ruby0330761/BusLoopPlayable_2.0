@@ -5,6 +5,7 @@ import { resolveParkingSpots, resolveParkingStartX, resolvePassengerSpeedMultipl
 import { createVehicleRouteTransform, resolveVehiclePathConfig } from './vehicle-path-config.js';
 import { CONVEYOR_MECHANISM_TUNING } from './conveyor-mechanism-config.js';
 import { normalizeStaminaConfig } from './stamina.js';
+import { IqScore, normalizeIq } from './iq-hud.js';
 import {
   UNITY_CURVES,
   UNITY_VEHICLE_MOTION,
@@ -310,6 +311,8 @@ export class BusLoopGame {
   }
 
   reset() {
+    this.iq = null;
+    this.configureIq(SCENE_TUNING.iq);
     this.vehiclePathConfigKey = null;
     this.resetVersion += 1;
     this.time = 0;
@@ -829,6 +832,12 @@ export class BusLoopGame {
     this.failureConditionStartedAt = null;
     this.lastEvent = { type: 'queues-initialized' };
     this.emit();
+  }
+
+  configureIq(input) {
+    const { enabled, initialScore } = normalizeIq(input);
+    if (!enabled) this.iq = null;
+    else if (this.iq?.initial !== initialScore) this.iq = new IqScore(initialScore);
   }
 
   subscribe(listener) {
@@ -1427,6 +1436,9 @@ export class BusLoopGame {
   update(deltaSeconds) {
     if (this.status !== 'playing') return;
     const delta = Math.max(0, Math.min(deltaSeconds, 0.1));
+    // The speed button already scales delta in the frame loop. Cars and
+    // passengers share the additional movement rate from tuning and long press.
+    const movementDelta = delta * this.getPassengerSpeedMultiplier();
     this.time += delta;
     this.frameAudioEvents.length = 0;
     let changed = false;
@@ -1447,7 +1459,7 @@ export class BusLoopGame {
       this.garageRefreshPending = false;
       collectGarageEvents(this.refreshGarages());
     }
-    changed = this.updateConveyors(delta) || changed;
+    changed = this.updateConveyors(movementDelta) || changed;
     changed = this.layoutGateQueues() || changed;
     changed = this.refreshGateQueues() || changed;
     changed = this.refreshElevators() || changed;
@@ -1461,7 +1473,7 @@ export class BusLoopGame {
     for (const vehicle of this.vehicles) {
       const rotation = vehicle.turnRotation;
       if (!rotation?.active) continue;
-      rotation.elapsed += delta;
+      rotation.elapsed += movementDelta;
       const progress = rotation.duration <= 0
         ? 1
         : clamp01(rotation.elapsed / rotation.duration);
@@ -1498,12 +1510,12 @@ export class BusLoopGame {
     let garageVehicleCompleted = false;
     for (const vehicle of this.vehicles) {
       if (vehicle.state === 'revive-boarding' || vehicle.state === 'revive-departing') {
-        this.updateStaminaRescue(vehicle, delta);
+        this.updateStaminaRescue(vehicle, vehicle.state === 'revive-departing' ? movementDelta : delta);
         changed = true;
         if (this.status !== 'playing') break;
       } else if (vehicle.state === 'leaving-garage') {
         const data = vehicle.motionData;
-        data.elapsed += delta;
+        data.elapsed += movementDelta;
         const movingElapsed = Math.max(0, data.elapsed - data.delay);
         vehicle.motion = clamp01(movingElapsed / data.duration);
         if (vehicle.motion >= 1) {
@@ -1530,7 +1542,7 @@ export class BusLoopGame {
         }
         changed = true;
       } else if (vehicle.state === 'moving-to-spot') {
-        vehicle.motion = clamp01(vehicle.motion + delta / vehicle.motionData.duration);
+        vehicle.motion = clamp01(vehicle.motion + movementDelta / vehicle.motionData.duration);
         if (vehicle.motion >= 1) {
           // A car whose colour has more seats than passengers can reach a spot
           // with nobody left to board. It cannot fill up, so it leaves through
@@ -1545,11 +1557,12 @@ export class BusLoopGame {
             ...(surplus ? { surplusReleased: true } : {})
           });
           this.lastEvent = { type: 'vehicle-arrived', vehicleId: vehicle.id, spotIndex: vehicle.spotIndex };
+          this.iq?.change(10, this.time);
           changed = true;
         }
       } else if (vehicle.state === 'colliding') {
         const collision = vehicle.collision;
-        collision.elapsed += delta;
+        collision.elapsed += movementDelta;
         const contactTime = collision.forwardDuration;
         const returnStart = contactTime + collision.delay;
         const finishTime = returnStart + collision.backwardDuration;
@@ -1565,6 +1578,7 @@ export class BusLoopGame {
         vehicle.motion = collision.distance > 0 ? collision.offset / collision.distance : 0;
         if (!collision.contactTriggered && collision.elapsed >= contactTime) {
           collision.contactTriggered = true;
+          this.iq?.change(-5, this.time);
           const target = this.getVehicle(collision.targetId);
           if (target) target.hit = { startedAt: this.time, ...collision.hitDirection };
           this.recordEvent({
@@ -1618,7 +1632,7 @@ export class BusLoopGame {
         }
       } else if (vehicle.state === 'departing') {
         const totalDuration = vehicle.motionData.backwardDuration + vehicle.motionData.forwardDuration;
-        vehicle.motion = clamp01(vehicle.motion + delta / totalDuration);
+        vehicle.motion = clamp01(vehicle.motion + movementDelta / totalDuration);
         if (vehicle.motion >= 1) {
           Object.assign(vehicle, { state: 'done', motion: 0, motionData: null });
           this.lastEvent = { type: 'vehicle-finished', vehicleId: vehicle.id };
@@ -1640,7 +1654,7 @@ export class BusLoopGame {
       ? (entryMotion.passengerSpeed ?? this.level.conveyorSpeed)
         * Math.max(1, Number(this.initialFillSpeedMultiplier) || 1)
       : this.level.conveyorSpeed;
-    const progressDelta0 = delta * activeConveyorSpeed / this.conveyorPathLength * this.getPassengerSpeedMultiplier();
+    const progressDelta0 = movementDelta * activeConveyorSpeed / this.conveyorPathLength;
     // The belt is a rigid loop: all slots keep their spacing, so it can only stop
     // or start as one piece. When an empty slot is about to reach an entrance
     // that has nobody ready to board, the loop must stop just short of it --

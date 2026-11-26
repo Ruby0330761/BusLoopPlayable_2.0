@@ -56,6 +56,19 @@ test('the exported file includes star art only for the enabled option, including
   }
 });
 
+test('a zero driving-smoke rate drops only its atlas from exports', () => {
+  const level = { assets: { textures: { effects: {
+    aboardSmoke: '/assets/unity/effects/Round_01.png'
+  } } } };
+  const assets = (rateOverTime) => collectPlayableInlineAssetUrls({
+    tuning: { effects: { smokeTrail: { rateOverTime } } }, levels: [level]
+  });
+  const enabled = assets(1);
+  assert.ok(enabled.delete(SMOKE_TRAIL_ANIMATION.texture));
+  assert.deepEqual(assets(0), enabled);
+  assert.ok(assets(undefined).has(SMOKE_TRAIL_ANIMATION.texture));
+});
+
 test('Unity vehicle effect assets and prefab parameters stay explicit', () => {
   assert.deepEqual(LEVEL_1.assets.textures.effects, {
     aboardSmoke: '/assets/unity/effects/Round_01.png',

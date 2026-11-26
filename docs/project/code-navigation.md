@@ -4,7 +4,11 @@ Use this file before code changes. Pick the closest change area, then read only 
 
 ## Change Target Map
 
+多人导出队列由 `scripts/playable-export-queue.mjs` 管理。单渠道与全部渠道共用 `vite.config.js` 中的队列接口及打包入口。两套编辑器均通过 `src/editor-export-queue.js` 显示队列、排队和取消。顺序、凭证及断线释放测试见 `test/playable-export-queue.test.js`。
+
 COMBO 连击的派车计数、碰撞中断、倒计时和定位由 `src/combo-hud.js` 管理。编辑器字段在 `src/scene-editor.js`，关卡默认值在 `src/scene-tuning.js`，音效和读条原图在 `public/assets/applovin/combo/`。导出素材选择和计时回归见 `test/combo-hud.test.js`。
+
+IQ 计分在 `src/iq-hud.js`，进站和碰撞触发点在 `src/game-model.js`。编辑器通过 `src/scene-editor.js` 配置，默认关闭。原图在 `artifacts/unity-iq/`，试玩使用 `public/assets/applovin/iq/iq-badge.webp`。计分与素材筛选回归见 `test/iq-hud.test.js`。
 
 车顶箭头的等宽描边几何在 `src/roof-arrow-outline.js`，由 `src/scene-view.js` 绘制。参考样式入口在 `src/scene-editor.js`，回归测试见 `test/game-model.test.js`。
 

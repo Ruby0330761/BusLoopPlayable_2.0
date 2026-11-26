@@ -14,6 +14,7 @@ import {
   getConveyorLayout
 } from './conveyor-layouts.js';
 import { SCENE_TUNING } from './scene-tuning.js';
+import { drivingSmokeRate } from './vehicle-effect-assets.js';
 import { createRoofArrowOutline, updateRoofArrowOutline, roofArrowStrokeRatio } from './roof-arrow-outline.js';
 import { resolveBackgroundOffsetY } from './background-alignment.js';
 import { mergeStageTuning } from './playable-session-config.js';
@@ -3499,8 +3500,9 @@ export class SceneView {
       const garageShadowTexturePromise = hasGarage
         ? this.textureLoader.loadAsync(GARAGE_ASSETS.shadowTexture)
         : Promise.resolve(null);
-      const loadDepartureArt = import.meta.env?.DEV || (typeof __REMOTE_EDITOR__ !== 'undefined' && __REMOTE_EDITOR__)
-        || Boolean(Number(SCENE_TUNING.effects?.departureStars?.enabled));
+      const editableEffects = import.meta.env?.DEV || (typeof __REMOTE_EDITOR__ !== 'undefined' && __REMOTE_EDITOR__);
+      const loadDepartureArt = editableEffects || Boolean(Number(SCENE_TUNING.effects?.departureStars?.enabled));
+      const loadDrivingSmoke = editableEffects || drivingSmokeRate(SCENE_TUNING.effects) > 0;
       const [
         passengerVatGeometry,
         passengerVatTexture,
@@ -3577,7 +3579,7 @@ export class SceneView {
         this.textureLoader.loadAsync(LEVEL_1.assets.textures.effects.hitCircle),
         this.textureLoader.loadAsync(LEVEL_1.assets.textures.effects.hitRound2),
         this.textureLoader.loadAsync(LEVEL_1.assets.textures.effects.hitRound1),
-        this.textureLoader.loadAsync(LEVEL_1.assets.textures.effects.smokeTrail)
+        loadDrivingSmoke ? this.textureLoader.loadAsync(LEVEL_1.assets.textures.effects.smokeTrail) : null
       ]);
 
       this.passengerVatTexture = passengerVatTexture;

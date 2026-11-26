@@ -1,6 +1,13 @@
 import { DEPARTURE_STAR_DEFAULTS, DEPARTURE_TRAIL_DEFAULTS, SMOKE_TRAIL_DEFAULTS } from './vehicle-effect-assets.js';
 import { DEFAULT_SPEED_TOGGLE_BOUNDS } from './speed-toggle.js';
 export const SCENE_TUNING = {
+  "iq": {
+    "enabled": 0,
+    "initialScore": 110,
+    "offsetX": 0,
+    "offsetY": 0,
+    "scale": 1
+  },
   "combo": {
     "mode": "off",
     "goldSeconds": 0,

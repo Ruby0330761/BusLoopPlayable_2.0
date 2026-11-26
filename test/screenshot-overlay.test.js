@@ -128,7 +128,8 @@ test('overlay roots cover the HUD the canvas capture cannot see', () => {
   for (const excluded of ['#stamina-intro', '#pre-roll-overlay', '#game-over-overlay', '#stage-choice-overlay']) {
     assert.equal(OVERLAY_ROOT_SELECTORS.includes(excluded), false, `${excluded} must stay out`);
   }
-  assert.deepEqual(OVERLAY_TEXT_SELECTORS, ['#countdown-value', '#speed-toggle-label']);
+  assert.ok(OVERLAY_ROOT_SELECTORS.includes('#iq-hud'));
+  assert.deepEqual(OVERLAY_TEXT_SELECTORS, ['#iq-score', '#countdown-value', '#speed-toggle-label']);
 });
 
 test('the stamina frame slice mirrors the CSS border-image geometry', () => {

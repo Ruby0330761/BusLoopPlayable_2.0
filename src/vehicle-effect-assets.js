@@ -13,6 +13,11 @@ export const SMOKE_TRAIL_DEFAULTS = Object.freeze({
   gravity: -0.50, opacity: 1
 });
 
+export function drivingSmokeRate(effects) {
+  const rate = Number(effects?.smokeTrail?.rateOverTime ?? SMOKE_TRAIL_DEFAULTS.rateOverTime);
+  return Number.isFinite(rate) ? Math.max(0, rate) : SMOKE_TRAIL_DEFAULTS.rateOverTime;
+}
+
 export const DEPARTURE_STAR_TEXTURE = '/assets/unity/effects/DepartureStar.png';
 export const FULL_CONFETTI_TEXTURE = '/assets/unity/effects/Ribbon_01.png';
 export const FULL_COMPLETION_SMOKE_TEXTURE = '/assets/applovin/effects/Smoke_08_q80.webp';

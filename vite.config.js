@@ -6,6 +6,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { defineConfig } from 'vite';
+import { createPlayableExportQueue } from './scripts/playable-export-queue.mjs';
 import { matchesSmokeMigration } from './scripts/migrate-all-levels-smoke.mjs';
 import { checkLayoutDriveOut } from './src/level-drive-out.js';
 import { MAX_SPATIAL_PACKAGE_BYTES, validateSpatialJsonImport } from './src/spatial-conveyor-json.js';
@@ -122,10 +123,7 @@ const LEVEL_CATALOG_ALIAS = process.env.PLAYABLE_LEVEL_CATALOG_PATH
     }]
   : [];
 const MAX_PLAYABLE_EXPORT_BYTES = 3 * 1024 * 1024;
-// A wedged headless-Chromium check used to leave playableExportInFlight set
-// forever, so every later export answered 409. This ceiling aborts the run and
-// the finally block releases the lock. Comfortably above one full all-platform
-// export, which locally finishes in well under a minute.
+// This deadline starts when packing begins, after any time in the queue.
 const PLAYABLE_EXPORT_TIMEOUT_MS = 10 * 60 * 1000;
 const PLAYABLE_EXPORT_PLATFORMS = new Set([
   'applovin',
@@ -138,7 +136,7 @@ const PLAYABLE_EXPORT_PLATFORMS = new Set([
 ]);
 // Bus Fever uploads split Android/iOS art; Crowd is one package for both stores.
 const PLAYABLE_BRANDING_SETS = new Set(['bus', 'crowd']);
-let playableExportInFlight = false;
+const playableExportQueue = createPlayableExportQueue();
 
 const FBX_BINARY_IMAGE_BRANCH = `\t\t} else { // Binary Format
 
@@ -2044,14 +2042,43 @@ export default defineConfig({
           }
           return;
         }
+        if (pathname === '/__playable-export-queue') {
+          const ticket = request.headers['x-export-ticket'];
+          try {
+            if (request.method === 'GET') {
+              sendJson(response, 200, playableExportQueue.view(ticket));
+            } else if (request.method === 'POST') {
+              const metadata = JSON.parse(await readRequestBody(request, 2048, 'Export queue'));
+              if (!metadata || !(metadata.platform === 'all' || PLAYABLE_EXPORT_PLATFORMS.has(metadata.platform))) {
+                throw new Error('请选择有效的导出渠道。');
+              }
+              const issued = playableExportQueue.reserve({ ...metadata, owner: readRequestLevelOwner(request) });
+              sendJson(response, 201, { ticket: issued, ...playableExportQueue.view(issued) });
+            } else if (request.method === 'DELETE') {
+              playableExportQueue.cancel(ticket);
+              sendJson(response, 200, {});
+            } else {
+              response.setHeader('Allow', 'GET, POST, DELETE');
+              sendJson(response, 405, { error: '不支持的队列请求。' });
+            }
+          } catch (error) {
+            sendJson(response, error.statusCode ?? 400, { error: error.message });
+          }
+          return;
+        }
         if (pathname === '/__playable-export' || pathname === '/__playable-export-all') {
           if (request.method !== 'POST') {
             response.setHeader('Allow', 'POST');
             sendJson(response, 405, { error: '仅支持 POST 导出请求。' });
             return;
           }
-          if (playableExportInFlight) {
-            sendJson(response, 409, { error: '已有试玩包正在导出，请稍后重试。' });
+          let releaseExport;
+          try {
+            releaseExport = playableExportQueue.start(request.headers['x-export-ticket'], {
+              owner: readRequestLevelOwner(request), platform: pathname.endsWith('-all') ? 'all' : ''
+            });
+          } catch (error) {
+            sendJson(response, error.statusCode ?? 409, { error: error.message });
             return;
           }
 
@@ -2062,7 +2089,6 @@ export default defineConfig({
           request.once('aborted', abortDisconnectedExport);
           response.once('close', abortDisconnectedExport);
           const exportTimeout = setTimeout(() => exportAbortController.abort(), PLAYABLE_EXPORT_TIMEOUT_MS);
-          playableExportInFlight = true;
           const exportStartedAt = Date.now();
           console.info(`[playable-export] started route=${pathname}`);
           let transientExportRoot = null;
@@ -2201,7 +2227,7 @@ export default defineConfig({
                 console.warn('[playable-export] Failed to clean temporary export files:', error);
               });
             }
-            playableExportInFlight = false;
+            releaseExport();
             console.info(`[playable-export] finished route=${pathname} durationMs=${Date.now() - exportStartedAt}`);
           }
           return;

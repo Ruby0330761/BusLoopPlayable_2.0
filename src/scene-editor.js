@@ -15,6 +15,7 @@ import { BUILD_VERSION } from './build-version.js';
 import { brandingBottomInset } from './branding-image-frame.js';
 import { createBrandingVariantTuning } from './export-branding.js';
 import { buildExportReviewRows, confirmPlayableExport } from './export-review.js';
+import { createEditorExportQueue } from './editor-export-queue.js';
 import { BUILD_CHANGELOG, changelogVersions } from './build-changelog.js';
 import { COUNTDOWN_SIREN_ASSET, COUNTDOWN_TIMER_ASSET, normalizeCountdownConfig } from './countdown.js';
 import { BRANDING_LOCALE_OPTIONS, STOREFRONT_PREVIEW_OPTIONS, normalizeStorefrontPreview } from './branding-localization.js';
@@ -793,6 +794,17 @@ const FIELD_GROUPS = [
     ]
   },
   {
+    title: 'IQ 计分',
+    category: 'guide',
+    fields: [
+      ['启用 IQ 计分', 'iq.enabled', 0, 1, 1, null, 'toggle'],
+      ['初始 IQ', 'iq.initialScore', 0, 9999, 1],
+      ['水平偏移 X', 'iq.offsetX', -1080, 1080, 1],
+      ['垂直偏移 Y', 'iq.offsetY', -2160, 2160, 1],
+      ['整体缩放', 'iq.scale', 0.25, 3, 0.05]
+    ]
+  },
+  {
     title: 'COMBO 连击',
     category: 'guide',
     fields: [
@@ -955,7 +967,7 @@ const FIELD_GROUPS = [
     spatialImportAnchor: true,
     fields: [
       ['Prefab', 'conveyorLayout.selected', 0, 0, 1, CONVEYOR_LAYOUT_OPTIONS],
-      ['小人跑动速度倍率', 'conveyorLayout.passengerSpeedMultiplier', 0.1, 5, 0.05]
+      ['小人与车辆移动倍率', 'conveyorLayout.passengerSpeedMultiplier', 0.1, 5, 0.05]
     ]
   },
   {
@@ -985,7 +997,7 @@ const FIELD_GROUPS = [
     fields: [
       ['\u7acb\u4f53\u8f68\u9053\u5bb9\u91cf', 'spatialConveyor.capacity', 1, 600, 1],
       ['\u521d\u59cb\u6ee1\u4eba', 'spatialConveyor.startFilled', 0, 1, 1, null, 'toggle'],
-      ['\u5e38\u89c4\u961f\u5217\u901f\u5ea6', 'spatialConveyor.normalSpeedMultiplier', 0.1, 5, 0.1],
+      ['常规移动倍率（人和车）', 'spatialConveyor.normalSpeedMultiplier', 0.1, 5, 0.1],
       ['\u957f\u6309\u52a0\u901f\u500d\u7387', 'spatialConveyor.longPressMultiplier', 1, 10, 0.1]
     ]
   },
@@ -1520,6 +1532,11 @@ function renderExportSection() {
         <label class="editor-safe-guide-toggle" title="按检测平台的渠道规则显示，仅供预览">
           <input type="checkbox" checked />显示平台安全区
         </label>
+        <div class="editor-export-queue" aria-label="导出队列">
+          <div><strong>导出队列</strong><output>正在连接</output></div>
+          <ol></ol>
+          <button type="button" hidden>取消排队</button>
+        </div>
         <div class="editor-export-actions">
           <button class="editor-export-button" type="button">\u5bfc\u51fa\u5f53\u524d\u5e73\u53f0</button>
           <button class="editor-export-all-button" type="button">\u4e00\u952e\u5bfc\u51fa\u5168\u90e8</button>
@@ -1563,7 +1580,7 @@ const SHELL_PANELS = [
   { id: 'track', label: '\u8f68\u9053', icon: 'M4 6h16v12H4zM8 6v12M16 6v12', match: /^(?:conveyorLayout|conveyorLayouts|spatialConveyor|queueCurves|passengerShadows|effects)\./ },
   { id: 'cars', label: '\u8f66\u8f86', icon: 'M4 15v-2.5l1.8-3.2A2 2 0 0 1 7.5 8h9a2 2 0 0 1 1.7 1.3L20 12.5V15M4 15h16v2.5H4z', match: /^(?:parkingSpots|vehiclePath|vehicleDeparturePath|vehicleArea|passengers)\./ },
   { id: 'guide', label: '\u5f15\u5bfc', icon: 'M9 11V5.5a1.5 1.5 0 0 1 3 0V10M12 10V7.5a1.5 1.5 0 0 1 3 0V12M15 12v-1a1.5 1.5 0 0 1 3 0v4.5A5.5 5.5 0 0 1 12.5 21h-1A5.5 5.5 0 0 1 6 15.5V13a1.5 1.5 0 0 1 3 0v1', match: /^(?:vehicleGuideHand|firstClickGuide|entryBanner|countdown|weatherEffect|freeAssets|preRoll|gameOver|installGate|stamina)\./ },
-  { id: 'ui', label: '\u754c\u9762', icon: 'M4 5h16v14H4zM4 9h16M9 9v10', match: /^(?:branding|cta|speedToggle|progressHud|combo)\./ },
+  { id: 'ui', label: '\u754c\u9762', icon: 'M4 5h16v14H4zM4 9h16M9 9v10', match: /^(?:branding|cta|speedToggle|progressHud|combo|iq)\./ },
   { id: 'audio', label: '\u58f0\u97f3', icon: 'M5 9.5h3L12.5 6v12L8 14.5H5zM16 9a4.2 4.2 0 0 1 0 6', match: /^audio\./ },
   { id: 'export', label: '\u5bfc\u51fa', icon: 'M12 16V4M7.5 8.5 12 4l4.5 4.5M4 16v3h16v-3', match: /^exportNaming\./ },
 ];
@@ -1592,7 +1609,7 @@ const SHELL_SUBGROUPS = {
   ],
   ui: [
     ['\u54c1\u724c', /^branding\./],
-    ['\u63a7\u4ef6', /^(?:cta|speedToggle|progressHud|combo)\./],
+    ['\u63a7\u4ef6', /^(?:cta|speedToggle|progressHud|combo|iq)\./],
   ],
   export: [['\u547d\u540d', /^exportNaming\./]],
 };
@@ -1708,6 +1725,7 @@ export function createSceneEditor(root, {
   const exportButton = root.querySelector('.editor-export-button');
   const exportAllButton = root.querySelector('.editor-export-all-button');
   const exportStatus = root.querySelector('.editor-export-status');
+  const exportQueue = createEditorExportQueue(root.querySelector('.editor-export-queue'), PLAYABLE_EXPORT_PLATFORMS);
   const exportVariantsStatus = root.querySelector('.editor-export-variants');
   const exportEventsStatus = root.querySelector('.editor-export-events');
   const localeSelect = root.querySelector('.editor-locale-select');
@@ -1965,14 +1983,21 @@ export function createSceneEditor(root, {
     // runtime; a repeat of the same setup can reuse those packaged sources.
     // A live counter keeps that wait legible instead of looking hung.
     const exportStartedAt = Date.now();
+    let packingSince = 0;
     const exportElapsedTimer = setInterval(() => {
-      const seconds = Math.round((Date.now() - exportStartedAt) / 1000);
+      if (!packingSince) return;
+      const seconds = Math.round((Date.now() - packingSince) / 1000);
       exportStatus.textContent = `\u6b63\u5728\u6253\u5305 ${exportLabel}...（已用 ${seconds} 秒）`;
     }, 1000);
     try {
+      exportStatus.textContent = '正在加入导出队列…';
+      const ticket = await exportQueue.enter({ level: snapshot.level?.selected, platform: platform ?? 'all' },
+        levelOwnerHeaders(), ahead => { exportStatus.textContent = '已排队，前方 ' + ahead + ' 个任务'; });
+      packingSince = Date.now();
+      exportStatus.textContent = '正在打包 ' + exportLabel;
       const response = await fetch(all ? '/__playable-export-all' : '/__playable-export', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', 'X-Export-Ticket': ticket },
         body: JSON.stringify(all
           ? { ...exportPayload, brandingSet }
           : { ...exportPayload, platform, brandingSet })
@@ -2026,6 +2051,11 @@ export function createSceneEditor(root, {
       const sizeMessage = blob.size > 0 ? `\uff08${formatKilobytes(blob.size)}\uff09` : '';
       exportStatus.textContent = `\u5df2\u4e0b\u8f7d ${filename}${sizeMessage}${checkMessage}${timingMessage}\uff0c\u5f85\u5e73\u53f0\u9a8c\u6536`;
     } catch (error) {
+      if (error.name === 'AbortError') {
+        exportStatus.dataset.state = '';
+        exportStatus.textContent = '已取消排队';
+        return;
+      }
       exportStatus.dataset.state = 'error';
       const message = error instanceof TypeError && /fetch|network|failed to fetch/i.test(error.message)
         ? '\u65e0\u6cd5\u8fde\u63a5\u5bfc\u51fa\u670d\u52a1\uff0c\u8bf7\u786e\u8ba4\u5f53\u524d\u7535\u8111\u53ef\u8bbf\u95ee\u7f16\u8f91\u5668\u5730\u5740'
@@ -2033,6 +2063,7 @@ export function createSceneEditor(root, {
       exportStatus.textContent = `\u5bfc\u51fa\u5931\u8d25\uff1a${message}`;
     } finally {
       clearInterval(exportElapsedTimer);
+      exportQueue.finish();
       exportSetSelect.disabled = false;
       exportSelect.disabled = false;
       playableExportBusy = false;
@@ -2216,7 +2247,7 @@ export function createSceneEditor(root, {
           // `vehiclePath.autoBounds` disables the manual bound sliders, so the
           // row visibility has to be refreshed on the toggle that flips it.
           if (path === 'firstClickGuide.enabled' || path === 'vehiclePath.autoBounds'
-            || path.startsWith('countdown.') || path.startsWith('stamina.')
+            || path === 'iq.enabled' || path.startsWith('countdown.') || path.startsWith('stamina.')
             || path.startsWith('installGate.')) sync();
         });
         inputs.set(path, { row, checkbox, step });
@@ -3954,6 +3985,7 @@ export function createSceneEditor(root, {
     if (previewExportSet) refreshExportBranding();
     for (const [path, controls] of inputs) {
       if (path === 'combo.goldSeconds') controls.row.hidden = tuning.combo?.mode !== 'gold';
+      if (path.startsWith('iq.') && path !== 'iq.enabled') controls.row.hidden = !Number(tuning.iq?.enabled);
       if (path === 'combo.timedSeconds') controls.row.hidden = tuning.combo?.mode !== 'timed';
       // A profile saved before the skin existed has no `speedToggle.style`, and a
       // hand-edited one may carry a value this build dropped. Either way the

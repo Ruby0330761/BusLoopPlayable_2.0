@@ -1,4 +1,4 @@
-import { DEPARTURE_STAR_TEXTURE, DEPARTURE_TRAIL_TEXTURE, withVehicleEffectAssets } from './vehicle-effect-assets.js';
+import { DEPARTURE_STAR_TEXTURE, DEPARTURE_TRAIL_TEXTURE, drivingSmokeRate, withVehicleEffectAssets } from './vehicle-effect-assets.js';
 import {
   GUIDE_HAND_ART, CTA_BUTTON_ART, RETRY_BUTTON_ASSET_PATH, SPEED_TOGGLE_ASSET_PATHS,
   PRE_ROLL_ASSET_PATHS,
@@ -9,6 +9,7 @@ import {
 import { mergeStageTuning } from './playable-session-config.js';
 import { getSpeedToggleAssetPaths } from './speed-toggle.js';
 import { getComboAssets } from './combo-hud.js';
+import { IQ_BADGE } from './iq-hud.js';
 import { COUNTDOWN_SIREN_ASSET, COUNTDOWN_TIMER_ASSET } from './countdown.js';
 import { getStaminaAssetPaths } from './stamina.js';
 import { resolveLevelAudioConfig } from './level-audio-config.js';
@@ -42,9 +43,13 @@ export function collectAssetUrls(value, output = new Set()) {
 // inlined a second belt image in every package — and for a level authored on one
 // layout but exported on another, a belt the ad can never draw. The selected
 // layout's art is added from `CONVEYOR_LAYOUT_ART_PATHS` instead.
-function withoutDeadLevelArt(level) {
+function withoutDeadLevelArt(level, includeDrivingSmoke) {
   if (!level?.assets) return level;
   const { loopScene, background, colorTextures, ...liveAssets } = level.assets;
+  if (!includeDrivingSmoke && liveAssets.textures?.effects) {
+    const { smokeTrail, ...effects } = liveAssets.textures.effects;
+    liveAssets.textures = { ...liveAssets.textures, effects };
+  }
   return { ...level, assets: liveAssets };
 }
 
@@ -118,7 +123,8 @@ export function collectPlayableInlineAssetUrls({
   )) {
     urls.add(selectedPreRollAsset);
   }
-  for (const level of levels) collectAssetUrls(withoutDeadLevelArt(withVehicleEffectAssets(level)), urls);
+  const includeDrivingSmoke = drivingSmokeRate(tuning.effects) > 0;
+  for (const level of levels) collectAssetUrls(withoutDeadLevelArt(withVehicleEffectAssets(level), includeDrivingSmoke), urls);
   // The BGM is addressed from tuning, not from a level document, so the plain
   // URL collection above never sees it. Missing it ships a silently dead loop:
   // the runtime requests a root-relative path that does not exist in the
@@ -167,6 +173,8 @@ export function collectPlayableInlineAssetUrls({
     if (typeof url === 'string' && url) urls.add(url);
   }
   // Level and shell references must not reintroduce art for an inactive control.
+  if (Number(tuning.iq?.enabled) === 1) urls.add(IQ_BADGE);
+  else urls.delete(IQ_BADGE);
   if (tuning.gameOver?.retryEnabled) urls.add(RETRY_BUTTON_ASSET_PATH);
   else urls.delete(RETRY_BUTTON_ASSET_PATH);
   for (const asset of SPEED_TOGGLE_ASSET_PATHS) urls.delete(asset);

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { migrateBrandingIconRadius, resolveBrandingImageFrame, safeBrandingCenterY } from '../src/branding-image-frame.js';
+import { layoutBrandingFrames, migrateBrandingIconRadius, resolveBrandingImageFrame, safeBrandingCenterY } from '../src/branding-image-frame.js';
 import { SCENE_TUNING } from '../src/scene-tuning.js';
 import { createBrandingVariantTuning, PLAYABLE_BRANDING_SETS, validateTuning } from '../scripts/export-playable-package.mjs';
 
@@ -15,6 +15,20 @@ test('brand art and its shadow clear each bottom band and higher authored positi
       assert.equal(safeBrandingCenterY(70, frame, w, h, channel), 70);
     }
   }
+});
+
+test('logo and icon share a safe artwork baseline without moving independently placed branding', () => {
+  const branding = structuredClone(SCENE_TUNING.branding);
+  const metrics = { stageWidth: 390, stageHeight: 844, designHeight: 2160, positionScaleY: 844/2160, uiScale: 390/1080 };
+  const images = { icon: { naturalWidth: 512, naturalHeight: 512 }, logo: { naturalWidth: 492, naturalHeight: 318 } };
+  for (const platform of ['applovin', 'unityads', 'moloco', 'mintegral', 'google-ads']) {
+    const { icon, logo } = layoutBrandingFrames(branding, images, metrics, platform);
+    assert.equal(icon.centerY + icon.height / 2, logo.centerY + logo.height / 2);
+  }
+  branding.logo.y = 500;
+  assert.equal(layoutBrandingFrames(branding, images, metrics, 'applovin').logo.centerY, 500 * metrics.positionScaleY);
+  branding.icon.enabled = 0;
+  assert.equal(layoutBrandingFrames(branding, images, metrics, 'applovin').icon, undefined);
 });
 
 test('a saved pixel radius keeps its visible size and an explicit zero percentage wins', () => {

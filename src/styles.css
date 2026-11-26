@@ -41,6 +41,17 @@ body { user-select: none; overscroll-behavior: none; }
   overflow: visible;
 }
 .progress-hud[hidden] { display: none; }
+#iq-hud {
+  position: absolute; z-index: 3; width: 0; aspect-ratio: 310 / 183;
+  pointer-events: none; user-select: none;
+  color: #4f0f14; font: 700 0/1 'Poppins Branding', Arial, sans-serif;
+  font-variant-numeric: tabular-nums;
+}
+#iq-hud img { display: block; width: 100%; height: 100%; }
+#iq-score {
+  position: absolute; inset: 46% 0 13%; display: grid; place-items: center;
+  white-space: nowrap;
+}
 #bus-combo {
   position: absolute;
   z-index: 3;
@@ -862,7 +873,7 @@ button:hover { transform: translateY(-1px); background: #fff; }
    puts the numeral on the left and the badge on the right as the art does. */
 .speed-toggle[data-speed-style="light"] {
   flex-direction: row-reverse;
-  justify-content: space-between;
+  justify-content: flex-start;
   padding: 0 var(--speed-toggle-pad-right, 0) 0 var(--speed-toggle-pad-left, 0);
   border-radius: calc(var(--speed-toggle-height, 69px) * .5);
   border: max(1px, calc(var(--speed-toggle-height, 69px) * .022)) solid #b9c2e3;
@@ -879,9 +890,13 @@ button:hover { transform: translateY(-1px); background: #fff; }
   object-fit: contain;
 }
 .speed-toggle[data-speed-style="light"] .speed-toggle-label {
+  /* Keep the trailing x one gap from the badge even with a wider system font. */
+  flex: 0 0 auto;
+  white-space: nowrap;
   min-width: 0;
+  font-size: calc(var(--speed-toggle-font-size, 28px) * 2 / var(--speed-toggle-label-length, 2));
   color: #5c658b;
-  text-align: left;
+  text-align: right;
   text-shadow: none;
 }
 .scene-editor {
@@ -992,6 +1007,7 @@ button:hover { transform: translateY(-1px); background: #fff; }
 }
 .editor-field-color { grid-template-columns: 64px 34px 64px; }
 .editor-field[data-path^="combo."][hidden] { display: none; }
+.editor-field[data-path^="iq."][hidden] { display: none; }
 .editor-field-toggle { grid-template-columns: 1fr auto; }
 .editor-field-text { grid-template-columns: 64px minmax(0, 1fr); }
 .editor-field-url { grid-template-columns: minmax(0, 1fr); gap: 4px; padding: 3px 0; }
@@ -1051,6 +1067,14 @@ button:hover { transform: translateY(-1px); background: #fff; }
 .editor-export-button:focus-visible,
 .editor-export-all-button:focus-visible { outline: 2px solid #287fa8; outline-offset: 2px; }
 .editor-export-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 9px; }
+.editor-export-queue { margin: 9px 0; padding: 7px 0; border-block: 1px solid #cadae0; font-size: 11px; color: #304b5d; }
+.editor-export-queue > div, .editor-export-queue li { display: flex; align-items: baseline; gap: 8px; }
+.editor-export-queue output { margin-left: auto; font-weight: 600; }
+.editor-export-queue ol { margin: 0; padding: 0; list-style: none; max-height: 144px; overflow-y: auto; }
+.editor-export-queue li { padding-top: 5px; overflow-wrap: anywhere; }
+.editor-export-queue li > :first-child { flex: none; color: #915d15; }
+.editor-export-queue li[data-state="running"] > :first-child { color: #176a4d; font-weight: 700; }
+.editor-export-queue button:not([hidden]) { margin-top: 6px; cursor: pointer; }
 .editor-export-button,
 .editor-export-all-button {
   min-width: 0; padding: 9px 6px; border-radius: 8px; border-color: #21764f;

@@ -16,6 +16,31 @@ export function safeBrandingCenterY(authoredY, frame, width, height, platform) {
   return Math.min(authoredY, bottom - frame.height / 2 - shadow);
 }
 
+export function layoutBrandingFrames(branding, images, metrics, platform) {
+  const frames = {};
+  for (const key of ['icon', 'logo']) {
+    const config = branding[key];
+    if (!config || !images[key] || !Number(config.enabled ?? 1)) continue;
+    const frame = resolveBrandingImageFrame(config, images[key], metrics.uiScale);
+    const y = (config.y ?? metrics.designHeight / 2) * metrics.positionScaleY;
+    frame.centerY = safeBrandingCenterY(y, frame, metrics.stageWidth, metrics.stageHeight, platform);
+    frames[key] = frame;
+  }
+  const { icon, logo } = frames;
+  if (icon && logo) {
+    const sameRow = branding.icon.y === branding.logo.y || (branding.icon.y === 2018 && branding.logo.y === 2023);
+    const bothClamped = icon.centerY < branding.icon.y * metrics.positionScaleY
+      && logo.centerY < branding.logo.y * metrics.positionScaleY;
+    if (sameRow || bothClamped) {
+      // Align the artwork after reserving each image's own shadow clearance.
+      const bottom = Math.min(icon.centerY + icon.height / 2, logo.centerY + logo.height / 2);
+      icon.centerY = bottom - icon.height / 2;
+      logo.centerY = bottom - logo.height / 2;
+    }
+  }
+  return frames;
+}
+
 function rgba(color, opacity) {
   const rgb = Math.round(clamp(color, 0, 0xffffff));
   return `rgba(${rgb >> 16}, ${(rgb >> 8) & 255}, ${rgb & 255}, ${clamp(opacity, 0, 1)})`;

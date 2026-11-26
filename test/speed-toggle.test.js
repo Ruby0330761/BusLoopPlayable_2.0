@@ -82,6 +82,36 @@ test('scaled substeps advance the game twice as far as real time at x2', () => {
   assert.equal(run(2), 2);
 });
 
+test('a moving car follows the configured movement rate and long-press changes immediately', (t) => {
+  const config = SCENE_TUNING.conveyorLayout;
+  const original = config.passengerSpeedMultiplier;
+  t.after(() => { config.passengerSpeedMultiplier = original; });
+  config.passengerSpeedMultiplier = 1;
+  const game = new BusLoopGame(LEVEL_1);
+  const car = game.vehicles.find(v => game.canMoveToStation(v) && !game.getBlockers(v.id).length);
+  assert.equal(game.clickVehicle(car.id).ok, true);
+  const frame = 1 / 120;
+  const checkStep = (rate) => {
+    const before = car.motion;
+    const duration = car.motionData.duration;
+    game.update(frame);
+    assert.ok(Math.abs((car.motion - before) * duration - frame * rate) < 1e-9);
+  };
+  checkStep(1);
+  config.passengerSpeedMultiplier = 2;
+  checkStep(2);
+  game.setSpeedMultiplier(3);
+  checkStep(6);
+  game.setSpeedMultiplier(1);
+  checkStep(2);
+
+  car.state = 'departing';
+  car.motion = 0;
+  car.motionData = { backwardDuration: 0.3, forwardDuration: 0.7 };
+  game.update(frame);
+  assert.ok(Math.abs(car.motion - frame * 2) < 1e-9);
+});
+
 test('speed toggle matches the reference capsule position and size', () => {
   const tuning = SCENE_TUNING.speedToggle;
   // The switch is off by default: the progress-bar delivery owns the top-right

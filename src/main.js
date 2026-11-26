@@ -8,7 +8,7 @@ import { SceneView } from './scene-view.js';
 import { setActiveStageScene } from './stage-scene.js';
 import { calculateAutoCameraFit, clampCenteredRectX, clampCenteredRectY } from './scene-layout.js';
 import { SCENE_TUNING } from './scene-tuning.js';
-import { drawFramedBrandingImage, migrateBrandingIconRadius, resolveBrandingImageFrame, safeBrandingCenterY } from './branding-image-frame.js';
+import { drawFramedBrandingImage, layoutBrandingFrames, migrateBrandingIconRadius } from './branding-image-frame.js';
 import { migrateSmokeTrailCaches, pruneUnknownTuning } from './tuning-migrations.js';
 import { migrateVehiclePathTuning } from './vehicle-path-config.js';
 import { isValidStoreLink, resolveStoreLink } from './store-links.js';
@@ -38,6 +38,7 @@ import { isInstallGateEnabled, syncExportVariantTuning } from './export-variants
 import { drawStageOverlays } from './screenshot-overlay.js';
 import { createGameAudioController } from './audio-controller.js';
 import { COMBO_COIN, createComboHud, normalizeCombo } from './combo-hud.js';
+import { createIqHud, normalizeIq } from './iq-hud.js';
 import { resolveLevelAudioConfig } from './level-audio-config.js';
 import { createPreRollController } from './pre-roll.js';
 import {
@@ -130,7 +131,7 @@ const brandingItems = {
 if (gameOverLogo && brandingItems.logo?.src) gameOverLogo.src = brandingItems.logo.src;
 const brandingFrames = { icon: $('#branding-icon-frame'), logo: $('#branding-logo-frame') };
 for (const key of Object.keys(brandingFrames)) {
-  brandingItems[key]?.addEventListener('load', () => applyBrandingFrame(key, getBrandingStageMetrics()));
+  brandingItems[key]?.addEventListener('load', () => applyBrandingFrames(getBrandingStageMetrics()));
 }
 const sceneEditorRoot = $('#scene-editor');
 
@@ -473,6 +474,7 @@ function migrateSpatialSpeedTuning(source) {
 
 let cachedSpeedToggle;
 let cachedCombo;
+let cachedIq;
 
 // A switch saved before skin selection used the dark artwork.
 function restoreSpeedToggle(target, saved) {
@@ -806,6 +808,7 @@ function loadSavedTuning() {
       const spatialSpeedMigrated = migrateSpatialSpeedTuning(savedTuning);
       cachedSpeedToggle = savedTuning.speedToggle;
       cachedCombo = savedTuning.combo;
+      cachedIq = savedTuning.iq;
       const ctaScreenPositionMigrated = migrateCtaScreenPositionTuning(savedTuning);
       const gameOverRetryPositionMigrated = migrateGameOverRetryPositionTuning(savedTuning);
       const customBackgroundSourceMigrated = migrateCustomBackgroundSourceSize(savedTuning);
@@ -879,6 +882,7 @@ function loadSavedTuning() {
     migrateSpatialSpeedTuning(legacy);
     cachedSpeedToggle = legacy.speedToggle;
     cachedCombo = legacy.combo;
+    cachedIq = legacy.iq;
     migrateCtaScreenPositionTuning(legacy);
     migrateGameOverRetryPositionTuning(legacy);
     migrateCustomBackgroundSourceSize(legacy);
@@ -1009,6 +1013,7 @@ function restoreSelectedLevelTuning() {
   if (isLevelTuningProfile(profile)) {
     cachedSpeedToggle = profile.tuning.speedToggle ?? cachedSpeedToggle;
     cachedCombo = profile.tuning.combo ?? cachedCombo;
+    cachedIq = profile.tuning.iq;
     deepMerge(SCENE_TUNING, structuredClone(profile.tuning));
     pruneUnknownTuning(SCENE_TUNING, DEFAULT_SCENE_TUNING);
     SCENE_TUNING.level.selected = levelKey;
@@ -1061,6 +1066,7 @@ function activateLevelTuning(levelKey, savedTuning) {
   tuning.speedToggle ??= structuredClone(DEFAULT_SCENE_TUNING.speedToggle);
   restoreSpeedToggle(tuning.speedToggle, profile?.tuning?.speedToggle ?? savedTuning?.speedToggle);
   tuning.combo = normalizeCombo(profile?.tuning?.combo ?? savedTuning?.combo);
+  tuning.iq = normalizeIq(profile?.tuning?.iq ?? savedTuning?.iq);
   if (profile?.installThresholdCustom) {
     localStorage.setItem(INSTALL_THRESHOLD_CUSTOM_STORAGE_KEY, '1');
   } else {
@@ -1250,14 +1256,17 @@ function resolveBrandingIconAsset(config = {}) {
   return typeof config.asset === 'string' ? config.asset : '';
 }
 
-function applyBrandingFrame(key, metrics) {
+function applyBrandingFrames(metrics) {
+  const frames = layoutBrandingFrames(visibleBranding(), brandingItems, metrics, brandingPlatform());
+  for (const key of Object.keys(brandingFrames)) applyBrandingFrame(key, frames[key]);
+}
+
+function applyBrandingFrame(key, frame) {
   const image = brandingItems[key];
   const decoration = brandingFrames[key];
   if (!image || !decoration) return;
-  const config = visibleBranding()[key];
-  const frame = resolveBrandingImageFrame(config, image, metrics.uiScale);
-  const authoredY = (config.y ?? metrics.designHeight / 2) * metrics.positionScaleY;
-  image.style.top = safeBrandingCenterY(authoredY, frame, metrics.stageWidth, metrics.stageHeight, brandingPlatform()) + 'px';
+  if (!frame) { decoration.hidden = true; return; }
+  image.style.top = frame.centerY + 'px';
   const size = { width: `${frame.width}px`, height: `${frame.height}px`, borderRadius: `${frame.radius}px` };
   Object.assign(image.style, size);
   decoration.hidden = image.hidden || (!frame.strokeWidth && !frame.shadow);
@@ -1322,7 +1331,6 @@ function applyBrandingTuning(backgroundBounds = null) {
     element.style.left = `${renderedCenterX}px`;
     element.style.top = `${y * metrics.positionScaleY}px`;
     element.style.width = `${renderedWidth}px`;
-    if (brandingFrames[key]) applyBrandingFrame(key, metrics);
     if (key === 'text') element.style.height = `${renderedHeight}px`;
     if (key === 'text') {
       fitBrandingText(element, renderedHeight);
@@ -1341,6 +1349,7 @@ function applyBrandingTuning(backgroundBounds = null) {
       }
     }
   }
+  applyBrandingFrames(metrics);
   applyLoadingBranding();
 }
 
@@ -1565,22 +1574,23 @@ function drawContainImage(context, image, centerX, centerY, width, height) {
 }
 
 async function drawScreenshotBranding(context, metrics, width) {
-  for (const key of ['icon', 'logo']) {
-    const config = visibleBranding()?.[key] ?? {};
-    if (!Boolean(config.enabled ?? 1)) continue;
+  const branding = visibleBranding();
+  const images = {};
+  await Promise.all(['icon', 'logo'].map(async key => {
+    const config = branding[key];
+    if (!Number(config?.enabled ?? 1) || !config) return;
     const source = key === 'icon' ? resolveBrandingIconAsset(config) : config.asset;
-    if (!source) continue;
-    const image = await loadScreenshotImage(source).catch(() => null);
-    if (!image) continue;
-    const frame = resolveBrandingImageFrame(config, image, metrics.uiScale);
+    if (source) images[key] = await loadScreenshotImage(source).catch(() => null);
+  }));
+  const frames = layoutBrandingFrames(branding, images, { ...metrics, stageWidth: width }, brandingPlatform());
+  for (const [key, frame] of Object.entries(frames)) {
+    const config = branding[key];
     const boxWidth = Math.max(1, Number(config.width) || 180) * metrics.uiScale;
     const centerX = clampCenteredRectX({
       centerX: (config.x ?? metrics.designWidth / 2) * metrics.positionScaleX,
       width: boxWidth, left: 0, right: width
     });
-    const authoredY = (config.y ?? metrics.designHeight / 2) * metrics.positionScaleY;
-    const centerY = safeBrandingCenterY(authoredY, frame, width, metrics.stageHeight, brandingPlatform());
-    drawFramedBrandingImage(context, image, centerX, centerY, frame);
+    drawFramedBrandingImage(context, images[key], centerX, frame.centerY, frame);
   }
 
   const textConfig = visibleBranding()?.text ?? {};
@@ -2086,6 +2096,8 @@ async function startRuntime() {
       && previewEntry.document.key === selectedKey
       && previewEntry.baseRevision === savedRevision;
     const previewDocument = useDraft ? previewEntry.document : savedEntry?.document;
+    SCENE_TUNING.iq = normalizeIq((useDraft && previewDocument?.tuning?.iq)
+      || cachedIq || savedEntry?.document?.tuning?.iq);
     if (!useDraft) localStorage.removeItem(LEVEL_EDITOR_PREVIEW_STORAGE_KEY);
     if (useDraft && previewDocument) {
       const { levelDocumentToRuntime } = await import('./level-editor-model.js');
@@ -2201,6 +2213,7 @@ async function startRuntime() {
     playCoin: () => audio.play('combo_coin', COMBO_COIN)
   });
   combo.configure(SCENE_TUNING.combo);
+  const iqHud = createIqHud($('#iq-hud'));
   const endPanel = $('#end-panel');
   let pressTimer = 0;
   let pressed = false;
@@ -2560,7 +2573,7 @@ async function startRuntime() {
   void ensureBackgroundHorizon({ onMeasured: () => view?.resize?.() });
   // The speed button scales the simulation clock, so every system (vehicle
   // routes, boarding, collisions, conveyor) keeps its relative pace. The
-  // long-press boost stays a separate belt-only multiplier, exactly as before.
+  // long-press boost changes the shared movement rate for passengers and cars.
   let speedToggleBoosted = false;
   const updateCtaPosition = () => {
     view.resize();
@@ -2568,6 +2581,7 @@ async function startRuntime() {
     // One measurement for the resize pass: the CTA, branding, countdown, stamina
     // and speed switch all clamp against the same painted bounds.
     const backgroundBounds = view.getBackgroundCanvasBounds();
+    if (game.iq) iqHud.resize(backgroundBounds, SCENE_TUNING.iq);
     applyGameOverTuning();
     applyCtaTuning();
     applySpeedToggleTuning(backgroundBounds);
@@ -2670,7 +2684,7 @@ async function startRuntime() {
     speedToggleButton.style.setProperty('--speed-toggle-height', scaledPx(height, uiScale));
     speedToggleButton.style.setProperty(
       '--speed-toggle-gap',
-      scaledPx(style === 'light' ? Math.max(2, lightUnit * 0.1875) : Math.max(2, width * 0.05), uiScale)
+      scaledPx(style === 'light' ? Math.max(2, lightUnit * 0.1) : Math.max(2, width * 0.05), uiScale)
     );
     speedToggleButton.style.setProperty(
       '--speed-toggle-icon-width',
@@ -2729,7 +2743,10 @@ async function startRuntime() {
     const label = formatSpeedLabel(multiplier, style);
     speedToggleButton.setAttribute('aria-pressed', String(speedToggleBoosted));
     speedToggleButton.setAttribute('aria-label', `Playback speed ${label}`);
-    if (speedToggleLabel) speedToggleLabel.textContent = label;
+    if (speedToggleLabel) {
+      speedToggleLabel.textContent = label;
+      speedToggleLabel.style.setProperty('--speed-toggle-label-length', String(label.length));
+    }
     if (speedToggleIcon) {
       // The seed src is a transparent pixel, so a build can ship without the
       // switch art at all. Only a visible switch asks for a real icon: assigning
@@ -2891,6 +2908,15 @@ async function startRuntime() {
   }
 
   function applyTuningPatch(next, { path, syncEditor = false } = {}) {
+    if (path?.startsWith('iq.')) {
+      SCENE_TUNING.iq = normalizeIq(next.iq);
+      game.configureIq(SCENE_TUNING.iq);
+      iqHud.resize(view.getBackgroundCanvasBounds(), SCENE_TUNING.iq);
+      iqHud.paint(game.iq, game.time);
+      saveTuning(SCENE_TUNING, { immediate: true });
+      if (syncEditor) editor.sync();
+      return SCENE_TUNING;
+    }
     if (path?.startsWith('combo.')) {
       SCENE_TUNING.combo = normalizeCombo(next.combo);
       combo.configure(SCENE_TUNING.combo);
@@ -3061,6 +3087,7 @@ async function startRuntime() {
     const vehicleRouteChanged = /^(vehiclePath\.(?:parkingBounds|autoBounds|boundsPadding|turn)|vehicleDeparturePath\.(?:backDistance|exit|turn)|parkingSpots\.|vehicleArea\.|facing\.parkingSpotYawDegrees)/u.test(path ?? '');
     const tuning = view.setTuning(next);
     combo.configure(tuning.combo);
+    game.configureIq(tuning.iq);
     if (conveyorStructureChanged || vehicleRouteChanged) game.reset();
     initializeGameQueues({ resetSlots: conveyorStructureChanged });
     if (!pressed && (
@@ -3630,6 +3657,7 @@ async function startRuntime() {
     }
     countdown.tick({ paused: isCountdownPaused(), status: game.status,
       ended: gameOverActive || levelSession.shouldOpenStore(), time: now });
+    iqHud.paint(gameOverActive || stageChoiceVisible ? null : game.iq, game.time);
     paintCountdown();
     paintStamina();
     const renderState = isSpatialOptimizationEnabled('liveRenderState')

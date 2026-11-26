@@ -1,5 +1,17 @@
 # Findings
 
+## 2026-11-25 真机内测包 IQ 计分
+
+- `Assets/BusJam/Game/Bundleables/UI/IQPanel.prefab` 引用的三张透明图已按原始画布和裁切偏移还原至 `artifacts/unity-iq/`。IQ1 为大脑（2000×2000），IQ2 为底板（310×148），IQ3 为编辑缩放手柄（512×512）。试玩将前两张按预制体坐标合成 310×183 的无损 WebP，分数独立绘制。
+
+- 取证版本为 `gridplus.busjam.carpuzzle.inner` 0.0.1（versionCode 1，APK SHA-256 前缀 `d1f9123c6209235b`）。只读截图显示第 10 关 `IQ = 70`。下列规则来自同一 APK 的 `Assembly-CSharp.dll` 元数据与 ARM64 实现。
+- `IQPresenter.OnShow` 从 `IQData.defaultValue` 初始化计分。构造默认值为 110。车辆进入车站状态时，`BusJam.VehicleImpl.StateStation.OnEnter` 调用 `AddValue(10)`（调用点 `0x20b30d4`）。车辆碰撞流程播放受击动画后调用 `SubValue(5)`（`StateCollide.PlayCollideVfxAsync` 状态机，调用点 `0x20b70d0`）。扣分最低到 0。
+- `IQPresenter.SetTarget` 用 0.5 秒从当前显示值过渡到新目标，结束时才提交整数分。过渡中再次触发时，旧动画会被取消，新目标按上一次已提交的分数计算。快速连续操作可能不逐次累加。
+
+## 2026-11-25 普通配色图集的实际包体成本
+
+- 第 24 关使用同一关卡文档、圣诞配置和 AppLovin 单文件导出。贴图基线 `f622f44` 为 4,553,187 B，其中 20 张普通颜色 WebP 各内嵌一次，共 131,128 B（2.88%）。11 月 24 日分色修复包为 4,504,618 B，图集为零，同期新增的行驶烟雾图占 157,910 B。11 月 25 日 v20261125-1427 重导为 4,166,204 B，图集仍为零。核对方法为逐一匹配 HTML 内嵌数据与素材文件的 SHA-256。
+
 ## 2026-11-24 车辆碰撞反馈
 
 - 碰撞事件提供关卡坐标中的接触点。车辆闪光沿来车方向投到被撞车型的可见边缘，保留接触点沿车身的偏移。镜像车阵还会翻转目标车的局部左右轴，受击动画选片时需计入镜像和模型朝向偏移。
