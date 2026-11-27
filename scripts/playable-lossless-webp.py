@@ -23,9 +23,10 @@ class KeepSource(ValueError):
     pass
 
 
-def encode(image, profile=None):
+def encode(image, profile=None, thorough=False):
     output = io.BytesIO()
-    image.save(output, format="WEBP", lossless=True, exact=True, method=4,
+    image.save(output, format="WEBP", lossless=True, exact=True,
+               method=6 if thorough else 4, quality=100 if thorough else 80,
                icc_profile=profile)
     return output.getvalue()
 
@@ -71,7 +72,7 @@ def png_color_chunks(data):
     raise KeepSource("invalid-png-end")
 
 
-def optimize(data):
+def optimize(data, thorough=False):
     chunks = png_color_chunks(data)
     header = chunks[b"IHDR"]
     if len(header) != 13:
@@ -107,6 +108,8 @@ def optimize(data):
                 raise KeepSource("invalid-or-non-rgb-icc") from error
         rgba = source.convert("RGBA")
     candidate = encode(rgba, profile)
+    if thorough:
+        candidate = min(candidate, encode(rgba, profile, thorough=True), key=len)
     with Image.open(io.BytesIO(candidate), formats=["WEBP"]) as decoded:
         if decoded.info.get("icc_profile") != profile:
             raise KeepSource("webp-icc-mismatch")
@@ -126,7 +129,7 @@ def main():
             if sys.argv[1:] == ["--probe"]:
                 print(json.dumps(identity))
                 return
-            candidate = optimize(sys.stdin.buffer.read())
+            candidate = optimize(sys.stdin.buffer.read(), thorough=sys.argv[1:] == ["--thorough"])
         sys.stdout.buffer.write(b'{"reason":"lossless-webp"}\n' + candidate)
     except KeepSource as error:
         print(json.dumps({"reason": str(error)}))

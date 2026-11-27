@@ -10,7 +10,7 @@ import { createPlayableExportQueue } from './scripts/playable-export-queue.mjs';
 import { matchesSmokeMigration } from './scripts/migrate-all-levels-smoke.mjs';
 import { checkLayoutDriveOut } from './src/level-drive-out.js';
 import { MAX_SPATIAL_PACKAGE_BYTES, validateSpatialJsonImport } from './src/spatial-conveyor-json.js';
-import { validateRequiredExportNaming, validateRequirementCode } from './src/export-naming.js';
+import { createTestExportNaming, deliveryBuilds, parseDeliveryNames, validateRequiredExportNaming, validateRequirementCode } from './src/export-naming.js';
 import { summarizeExportPackage } from './src/export-review.js';
 import {
   DEFAULT_OUTPUT_ROOT,
@@ -1799,6 +1799,7 @@ export default defineConfig({
   },
   plugins: [mintegralRuntimeCompatibility(), (() => {
     const configure = (server) => {
+      const mobileBackgrounds = !PLAYABLE_REMOTE_EDITOR && !server.config.isPreview;
       server.middlewares.use('/__playable-level', async (request, response, next) => {
         if (request.method !== 'POST') return next();
         try {
@@ -2065,7 +2066,8 @@ export default defineConfig({
             const urls = Array.isArray(body?.urls) ? body.urls : [];
             if (urls.length > 4000) throw new Error('Too many asset URLs requested.');
             const { createAssetDelivery, decodeSpatialTexture } = await import('./scripts/playable-asset-delivery.mjs');
-            const delivery = await createAssetDelivery();
+            const backgroundUrls = Array.isArray(body.backgroundUrls) ? body.backgroundUrls : [];
+            const delivery = await createAssetDelivery(process.cwd(), { mobileBackgrounds, backgroundUrls });
             const estimateAsset = async url => {
               if (typeof url !== 'string' || !url.startsWith('/assets/')) {
                 return { url: String(url ?? ''), bytes: 0, exists: false };
@@ -2243,8 +2245,23 @@ export default defineConfig({
               error.statusCode = 400;
               throw error;
             }
-            validateRequiredExportNaming(payload.tuning.exportNaming);
-            validateRequirementCode(payload.tuning.exportNaming?.requirementCode, brandingSet);
+            let deliveryJobs;
+            const testExport = payload.testExport === true;
+            if (testExport) {
+              if (exportAll || payload.platform !== 'applovin' || payload.deliveryNames !== undefined || payload.review) {
+                throw Object.assign(new TypeError('测试导出仅支持单个 AppLovin HTML。'), { statusCode: 400 });
+              }
+              payload.tuning.exportNaming = createTestExportNaming(payload.tuning, brandingSet);
+            } else if (payload.deliveryNames !== undefined) {
+              const { entries, errors } = parseDeliveryNames(payload.deliveryNames, payload.tuning.exportNaming, brandingSet);
+              if (!exportAll || errors.length || !entries.length) {
+                throw Object.assign(new TypeError(errors[0] || '请通过清单导出并至少填写一行有效文件名。'), { statusCode: 400 });
+              }
+              deliveryJobs = deliveryBuilds(payload.tuning, entries);
+            } else {
+              validateRequiredExportNaming(payload.tuning.exportNaming);
+              validateRequirementCode(payload.tuning.exportNaming?.requirementCode, brandingSet);
+            }
             let levelDocument = null;
             if (payload.levelDocument !== undefined) {
               const selectedLevelKey = payload.tuning.level?.selected;
@@ -2276,12 +2293,15 @@ export default defineConfig({
             const { exportAllPlayablePackages, exportPlayablePackage } = await import('./scripts/export-playable-package.mjs');
             const { expandExportVariantTunings } = await import('./src/export-variants.js');
             let tuningVariants;
-            try { tuningVariants = expandExportVariantTunings(payload.tuning); }
+            try { tuningVariants = testExport ? [payload.tuning] : deliveryJobs ? deliveryJobs.map(job => job.tuning) : expandExportVariantTunings(payload.tuning); }
             catch (error) { error.statusCode = 400; throw error; }
             const multipleVariants = tuningVariants.length > 1;
-            const result = await (exportAll || multipleVariants ? exportAllPlayablePackages : exportPlayablePackage)({
+            const aggregate = exportAll || multipleVariants;
+            const result = await (aggregate ? exportAllPlayablePackages : exportPlayablePackage)({
+              mobileBackgrounds,
               projectRoot: process.cwd(),
-              ...(exportAll ? {} : multipleVariants ? { platforms: [payload.platform] } : { platform: payload.platform }),
+              ...(deliveryJobs ? { deliveryJobs } :
+                exportAll ? {} : multipleVariants ? { platforms: [payload.platform] } : { platform: payload.platform }),
               tuning: tuningVariants[0],
               ...(multipleVariants ? { tuningVariants } : {}),
               namingOverride: tuningVariants[0].exportNaming,
@@ -2322,7 +2342,11 @@ export default defineConfig({
               transientExportRoot = null;
               sendJson(response, 200, { id, ...summary });
             } else {
-              await archivePlayableExport(transientExportRoot);
+              if (testExport) {
+                result.fileName = `${brandingSet === 'crowd' ? 'BFT' : 'BL'}-AppLovin-test-${payload.tuning.level.selected}.html`;
+              } else {
+                await archivePlayableExport(transientExportRoot);
+              }
               await sendPlayableArtifact(response, result, exportStartedAt);
             }
           } catch (error) {
@@ -2562,7 +2586,7 @@ export default defineConfig({
           }
           return;
         }
-        const officialChapterMatch = pathname.match(/^\/__official-levels\/([A-Za-z])\/?$/);
+        const officialChapterMatch = pathname.match(/^\/__official-levels\/((?:LIVE-)?[A-Z])\/?$/i);
         if (officialChapterMatch && request.method === 'GET') {
           try {
             sendJson(response, 200, await readOfficialChapter(officialChapterMatch[1]));
@@ -2571,7 +2595,7 @@ export default defineConfig({
           }
           return;
         }
-        const officialImportMatch = pathname.match(/^\/__official-levels\/([A-Za-z])\/([^/]+)\/import$/);
+        const officialImportMatch = pathname.match(/^\/__official-levels\/((?:LIVE-)?[A-Z])\/([^/]+)\/import$/i);
         if (officialImportMatch && request.method === 'POST') {
           try {
             const owner = requireRequestLevelOwner(request);

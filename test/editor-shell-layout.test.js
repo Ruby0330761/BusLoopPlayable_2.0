@@ -9,16 +9,15 @@ import test from 'node:test';
 
 const read = (relative) => readFile(new URL(`../${relative}`, import.meta.url), 'utf8');
 
-test('classic remains the default editor layout', async () => {
+test('the studio workspace is the local default and the remote editor defaults to classic', async () => {
   const mainSource = await read('src/main.js');
   const editorSource = await read('src/scene-editor.js');
 
   assert.match(editorSource, /layoutMode = 'classic'/);
-  // Anything other than the exact string 'shell' must keep the shipped shell.
-  assert.match(editorSource, /const shellLayout = layoutMode === 'shell';/);
-  // The URL flag is opt-in: no `?layout=` and no stored choice means classic.
-  assert.match(mainSource, /return 'classic';/);
-  assert.match(mainSource, /EDITOR_LAYOUT_MODES = new Set\(\['classic', 'shell'\]\)/);
+  assert.match(editorSource, /const shellLayout = layoutMode === 'shell' \|\| Boolean\(studio\)/);
+  assert.match(mainSource, /studioAvailable = import.meta.env.DEV && !__REMOTE_EDITOR__/);
+  assert.match(mainSource, /return studioAvailable \? 'studio' : 'classic'/);
+  assert.match(mainSource, /studioAvailable \? \['classic', 'shell', 'studio'\] : \['classic', 'shell'\]/);
 });
 
 test('the classic shell keeps every hook its wiring queries', async () => {
@@ -38,7 +37,7 @@ test('the classic shell keeps every hook its wiring queries', async () => {
     'editor-export-set-select',
     'editor-export-select',
     'editor-export-button',
-    'editor-export-all-button',
+    'editor-delivery-list',
     'editor-undo',
     'editor-redo',
     'editor-reset',

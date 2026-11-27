@@ -312,7 +312,10 @@ async function main() {
     }
   }
 
-  const delivery = await createAssetDelivery();
+  const delivery = await createAssetDelivery(ROOT, {
+    mobileBackgrounds: process.env.PLAYABLE_MOBILE_BACKGROUNDS === '1',
+    backgroundUrls: stageArt.backgrounds
+  });
   const { assetMap, optimizations } = await createAssetMap(realAssetUrls, new Set([jsPath, cssPath]), delivery);
   const availableUrls = new Set(assetMap.keys());
   for (const assetUrl of realAssetUrls) {
@@ -345,7 +348,10 @@ async function main() {
   const css = replaceAssetUrls(runtimeCss, assetMap);
 
   let output = inlineCss(html, css, cssPath);
-  output = await inlineModule(output, js, jsPath, new Map([...assetMap, ...spatialAssets]));
+  const rects = [...optimizations.values()].filter(asset => asset.backgroundRect)
+    .map(asset => [assetMap.get(asset.url), asset.backgroundRect]);
+  const backgroundSetup = rects.length ? `globalThis.__playableBackgroundRects=new Map(${JSON.stringify(rects)});\n` : '';
+  output = await inlineModule(output, backgroundSetup + js, jsPath, new Map([...assetMap, ...spatialAssets]));
   output = replaceAssetUrls(output, assetMap);
 
   const embedded = auditEmbeddedAssets(output, [

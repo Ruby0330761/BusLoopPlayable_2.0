@@ -5,6 +5,8 @@ import { mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { PNG } from 'pngjs';
+import { gunzipSync } from 'node:zlib';
+import { decodeVatDeltas } from '../src/passenger-vat-delta.js';
 import { createAssetDelivery, playableAssetDataUri, selectSpatialTexture } from '../scripts/playable-asset-delivery.mjs';
 import { stripMp3ProductionTags } from '../scripts/playable-mp3-tags.mjs';
 
@@ -22,6 +24,37 @@ async function temporaryRoot(t) {
   t.after(() => rm(root, { recursive: true, force: true }));
   return root;
 }
+
+test('optimized passenger VAT stays under 100 KB and restores every half-float bit', async t => {
+  const url = '/assets/unity/models/Idle_boy01_anim_map.rgba16f';
+  const source = await readFile('public' + url);
+  const delivery = await createAssetDelivery(process.cwd(), { mobileBackgrounds: true, cacheDir: await temporaryRoot(t) });
+  const selected = await delivery.select(url, source);
+  const original = gunzipSync(source);
+  assert.ok(selected.deliveryBytes < 100_000);
+  assert.deepEqual(Buffer.from(decodeVatDeltas(gunzipSync(selected.bytes), 512, 128)), original);
+  assert.equal(decodeVatDeltas(original, 512, 128), original);
+});
+
+test('local background delivery crops repeated rows and keeps normal exports and unrelated JPEGs intact', async t => {
+  const cacheDir = await temporaryRoot(t);
+  const url = '/assets/applovin/textures/BG01_split01_q60.jpg';
+  const source = await readFile('public' + url);
+  const normal = await createAssetDelivery(process.cwd(), { cacheDir });
+  const local = await createAssetDelivery(process.cwd(), { cacheDir, mobileBackgrounds: true, backgroundUrls: [url] });
+  if (spawnSync(local.childEnv.PLAYABLE_ASSET_PYTHON, ['-c', 'from PIL import Image, ImageChops']).status !== 0) {
+    return t.skip('Mobile background encoding requires Pillow');
+  }
+  const result = await local.select(url, source);
+  assert.equal(result.mime, 'image/webp');
+  assert.ok(result.deliveryBytes < 100_000);
+  assert.equal(result.backgroundRect.width, 1080);
+  assert.ok(result.backgroundRect.imageHeight < result.backgroundRect.height);
+  assert.ok(result.backgroundRect.y < 0);
+  assert.deepEqual((await local.select(url, source)).backgroundRect, result.backgroundRect);
+  assert.equal((await local.select('/unrelated.jpg', source)).bytes, source);
+  assert.equal((await normal.select(url, source)).bytes, source);
+});
 
 test('ID3 parser retains unknown tags, playback metadata and suspicious boundaries', async () => {
   const raw = await readFile('public/assets/unity/audio/vehicle_tap.mp3');

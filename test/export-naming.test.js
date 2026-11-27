@@ -1,12 +1,40 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  formatCompleteExportName, getRequirementCodeError, parseCompleteExportName,
+  deliveryBuilds, formatCompleteExportName, getRequirementCodeError, parseCompleteExportName, parseDeliveryNames,
   validateRequiredExportNaming, validateRequirementCode
 } from '../src/export-naming.js';
 import { syncExportVariantTuning } from '../src/export-variants.js';
 import { buildPlayableArtifactName, exportPlayablePackage, exportAllPlayablePackages } from '../scripts/export-playable-package.mjs';
 import { SCENE_TUNING } from '../src/scene-tuning.js';
+import { buildExportReview } from '../src/export-review.js';
+
+test('delivery rows pair each actual channel with only its own move and stamina settings', () => {
+  const prefix = 'BL-2611045-Q465V1-N-N-EN-PL-LGJ-YQY-';
+  const names = ['FB-10moves-N', 'FB-N-5hp.zip', 'AL-N-10hp.html'].map(tail => prefix + tail);
+  const text = names.join('\r\n\r\n');
+  const tuning = structuredClone(SCENE_TUNING);
+  tuning.exportNaming.steps = '';
+  const { entries, errors } = parseDeliveryNames(text, tuning.exportNaming, 'bus');
+  assert.deepEqual(errors, []);
+  assert.deepEqual(entries.map(e => e.line), [1, 3, 5]);
+  const builds = deliveryBuilds(tuning, entries);
+  assert.deepEqual(builds.map(({ tuning: t, platforms }) => [
+    platforms, t.installGate.enabled ? t.installGate.successfulOperationThreshold : null, t.stamina.enabled ? t.stamina.lives : null
+  ]), [[['meta'], 10, null], [['meta'], null, 5], [['applovin'], null, 10]]);
+  const review = buildExportReview(tuning, { brandingSet: 'bus', platforms: [], deliveryNames: text });
+  assert.deepEqual(review.names.flatMap(row => row.files), builds.map(({ tuning: t, platforms }) => buildPlayableArtifactName(t, platforms[0])));
+  assert.equal(tuning.exportNaming.steps, '');
+});
+
+test('delivery list rejects duplicate output paths, unknown channels, ranges and wrong brands or formats by line', () => {
+  const name = 'BL-2611045-Q465V1-N-N-EN-PL-LGJ-YQY-FB-N-5hp';
+  const input = [name, name+'.zip', name.replace('-FB-', '-QQ-'), name.replace('5hp','5hp/10hp'),
+    name.replace('BL-', 'BFT-'), name+'.html', name.replace('FB-N','MT-N').replaceAll('-','_')];
+  const result = parseDeliveryNames(input.join('\n'), SCENE_TUNING.exportNaming, 'bus');
+  assert.deepEqual(result.entries.map(e => e.platform), ['meta','mintegral']);
+  assert.deepEqual(result.errors.map(s => s.match(/第 (\d+) 行/)[1]), ['2','3','4','5','6']);
+});
 
 test('full export names populate naming and round-trip through native channel filenames', () => {
   const original = SCENE_TUNING.exportNaming;

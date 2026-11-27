@@ -142,6 +142,62 @@ test('parking visual settings do not change the vehicle parking target', () => {
   assert.deepEqual(game.getSpotPosition(0), before);
 });
 
+function seatBoardFixture() {
+  const view = fixture(1);
+  const board = view.seatCountBoards[0];
+  const labels = [];
+  const context = {
+    measureText: () => ({ width: 70, actualBoundingBoxAscent: 60, actualBoundingBoxDescent: 4 }),
+    clearRect() {}, strokeText() {}, fillText(label) { labels.push(Number(label)); }
+  };
+  Object.assign(board.userData, {
+    textCanvas: { width: 256, height: 256, getContext: () => context },
+    textSprite: new THREE.Mesh(), textTexture: new THREE.Texture()
+  });
+  view.boardingViews = [];
+  const vehicle = { id: 0, seats: 10, colorIndex: 0, boardedGroups: 0, state: 'at-spot' };
+  const game = { getVehicle: id => id === vehicle.id ? vehicle : null };
+  const spot = { vehicleId: vehicle.id };
+  const render = ms => view.updateSeatCountBoards([spot], game, ms);
+  return { view, board, vehicle, spot, labels, render };
+}
+
+test('seat badge waits for visual boarding and draws every digit once through departure', () => {
+  const { view, board, vehicle, spot, labels, render } = seatBoardFixture();
+  render(0);
+  vehicle.boardedGroups = 1;
+  view.boardingViews = Array.from({ length: 4 }, () => ({ vehicleId: vehicle.id }));
+  render(50);
+  assert.deepEqual(labels, [40], 'a whole row leaving the belt must not change the badge');
+  view.boardingViews.length = 0;
+  render(100);
+  render(116);
+  assert.deepEqual(labels, [40, 39], 'simultaneous finishes wait their turn on the badge');
+  vehicle.boardedGroups = 10;
+  vehicle.state = 'departing';
+  spot.vehicleId = null;
+  render(850);
+  assert.equal(labels.at(-1), 38, 'a stalled frame must not skip digits');
+  for (let i = 1; i <= 38; i++) render(850 + i * 34);
+  assert.deepEqual(labels, Array.from({ length: 41 }, (_, i) => 40 - i));
+  assert.equal(board.visible, true, 'zero gets its own visible frame');
+  render(850 + 39 * 34);
+  assert.equal(board.visible, false);
+});
+
+test('a replacement car always starts with its own capacity', () => {
+  const { vehicle, spot, labels, render } = seatBoardFixture();
+  render(0);
+  vehicle.boardedGroups = 10;
+  render(40);
+  vehicle.id = 2;
+  vehicle.seats = 4;
+  vehicle.boardedGroups = 0;
+  spot.vehicleId = vehicle.id;
+  render(50);
+  assert.deepEqual(labels, [40, 39, 16]);
+});
+
 test('parking fill stays inside the outline and follows the spot transform below the paint and cars', () => {
   const view = fixture(1);
   const fill = view.spotFills[0];

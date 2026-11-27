@@ -1,4 +1,4 @@
-import { parseExportVariantValues } from './export-variants.js';
+import { parseExportVariantValues, expandExportVariantTunings } from './export-variants.js';
 
 const REQUIRED_NAMING_FIELDS = [
   'requirementCode', 'materialCode', 'iterationCode', 'language', 'format',
@@ -14,8 +14,22 @@ export const PLAYABLE_CHANNEL_FOLDER_FALLBACKS = Object.freeze({
   unityads: 'UN'
 });
 const REQUIRED_CHANNELS = Object.keys(PLAYABLE_CHANNEL_FOLDER_FALLBACKS);
+export const PLATFORM_FORMATS = Object.freeze({
+  applovin: 'html', 'google-ads': 'zip', meta: 'zip', unityads: 'html',
+  mintegral: 'zip', moloco: 'html', tiktok: 'zip'
+});
 const coreFields = REQUIRED_NAMING_FIELDS.slice(0, -2);
 const laterFields = coreFields.slice(3);
+
+export function createTestExportNaming(tuning, brandingSet) {
+  return {
+    requirementCode: brandingSet === 'crowd' ? 'BFT-TEST' : 'BL-TEST',
+    materialCode: 'TEST', iterationCode: 'N', language: 'EN', format: 'PL',
+    designer: 'TEST', requester: 'TEST', channels: { ...PLAYABLE_CHANNEL_FOLDER_FALLBACKS },
+    steps: Number(tuning.installGate?.enabled) === 1 ? String(tuning.installGate.successfulOperationThreshold) : 'N',
+    version: Number(tuning.stamina?.enabled) === 1 ? String(tuning.stamina.lives) + 'hp' : 'N'
+  };
+}
 
 export function isValidExportNamingPart(value) {
   return /^[A-Za-z0-9_-]{1,64}$/u.test(String(value ?? '').trim());
@@ -36,7 +50,7 @@ export function formatCompleteExportName(naming, platform) {
   return getExportNamingSegments(naming, platform).map(([, value]) => String(value ?? '').trim()).join('-');
 }
 
-export function parseCompleteExportName(value, naming, currentPlatform) {
+export function parseCompleteExportName(value, naming, currentPlatform, { knownChannelOnly = false } = {}) {
   const name = String(value ?? '').trim().replace(/\.(?:html?|zip)$/iu, '');
   const separator = name.includes('-') ? '-' : '_';
   const invalidFormat = '请粘贴完整的试玩命名，包含渠道、步数和尾段版本。';
@@ -93,7 +107,8 @@ export function parseCompleteExportName(value, naming, currentPlatform) {
   if (configured.length > 1) throw new TypeError('该渠道代号重复，请先修正各渠道的代号。');
   const platform = configured[0]
     ?? REQUIRED_CHANNELS.find(id => PLAYABLE_CHANNEL_FOLDER_FALLBACKS[id] === code)
-    ?? (separator === '_' ? 'mintegral' : currentPlatform);
+    ?? (knownChannelOnly ? null : separator === '_' ? 'mintegral' : currentPlatform);
+  if (!platform && knownChannelOnly) throw new TypeError(`无法识别渠道 ${channel}。`);
   if (!REQUIRED_CHANNELS.includes(platform) || (separator === '_' && platform !== 'mintegral')) {
     throw new TypeError(invalidFormat);
   }
@@ -104,6 +119,57 @@ export function parseCompleteExportName(value, naming, currentPlatform) {
       channels: { ...channels, [platform]: channel }, steps: normalizedSteps, version: normalizedVersion
     }
   };
+}
+
+export function parseDeliveryNames(text, naming, brandingSet) {
+  const entries = [];
+  const errors = [];
+  const seen = new Set();
+  if (typeof text !== 'string' || text.length > 32768) {
+    return { entries, errors: ['交付清单超过输入范围。'] };
+  }
+  for (const [index, raw] of text.split(/\r\n?|\n/u).entries()) {
+    const line = raw.trim();
+    if (!line) continue;
+    try {
+      const parsed = parseCompleteExportName(line, naming, 'applovin', { knownChannelOnly: true });
+      validateRequirementCode(parsed.naming.requirementCode, brandingSet);
+      const { steps, version } = parsed.naming;
+      if (steps.includes('/') || version.includes('/')) throw new TypeError('每行只填一个步数和一个体力值。');
+      // The normal exporter spells stamina as e.g. 5hp. Keep the reviewed
+      // filename and the bytes delivered by that exporter in agreement.
+      if (version !== 'N') parsed.naming.version = parseExportVariantValues(version, 'stamina')[0] + 'hp';
+      const format = PLATFORM_FORMATS[parsed.platform];
+      const extension = /\.(html?|zip)$/iu.exec(line)?.[1].toLowerCase();
+      if (extension && extension !== format) throw new TypeError(`该渠道的文件扩展名应为 .${format}。`);
+      let stem = formatCompleteExportName(parsed.naming, parsed.platform);
+      if (parsed.platform === 'mintegral') stem = stem.replaceAll('-', '_');
+      if (stem.length > (parsed.platform === 'google-ads' ? 128 : 180)) throw new TypeError('文件名超出该渠道长度限制。');
+      const fileName = stem + '.' + format;
+      const key = fileName.toLowerCase();
+      if (seen.has(key)) throw new TypeError('交付文件名重复。');
+      seen.add(key);
+      entries.push({ ...parsed, fileName, line: index + 1 });
+    } catch (error) {
+      errors.push(`第 ${index + 1} 行：${error.message}`);
+    }
+  }
+  return { entries, errors };
+}
+
+export function deliveryBuilds(tuning, entries) {
+  const groups = new Map();
+  for (const { naming, platform } of entries) {
+    const key = JSON.stringify(naming);
+    if (!groups.has(key)) {
+      const [variant] = expandExportVariantTunings({
+        ...tuning, exportNaming: naming, stamina: { ...tuning.stamina, enabled: naming.version === 'N' ? 0 : 1 }
+      });
+      groups.set(key, { tuning: variant, platforms: [] });
+    }
+    groups.get(key).platforms.push(platform);
+  }
+  return [...groups.values()];
 }
 
 export function validateRequiredExportNaming(naming) {

@@ -12,7 +12,7 @@ import {
 } from './check-playable-runtime.mjs';
 import { validateStoreLink } from '../src/store-links.js';
 import {
-  getExportNamingSegments, PLAYABLE_CHANNEL_FOLDER_FALLBACKS, validateRequiredExportNaming, validateRequirementCode
+  getExportNamingSegments, PLATFORM_FORMATS, PLAYABLE_CHANNEL_FOLDER_FALLBACKS, validateRequiredExportNaming, validateRequirementCode
 } from '../src/export-naming.js';
 import { getVehicleGuideHandIssue } from '../src/vehicle-guide-hand.js';
 import { validateCountdownConfig } from '../src/countdown.js';
@@ -43,15 +43,6 @@ export const SUPPORTED_PLATFORMS = Object.freeze([
 ]);
 export const EXPORT_RESOURCE_MODE = 'package-only';
 
-const PLATFORM_FORMATS = Object.freeze({
-  applovin: 'html',
-  'google-ads': 'zip',
-  meta: 'zip',
-  unityads: 'html',
-  mintegral: 'zip',
-  moloco: 'html',
-  tiktok: 'zip'
-});
 export const PLAYABLE_NAMING_PATTERN = 'requirement-material-iteration-N-language-format-designer-requester-channel-steps-version';
 // The Bus branding variant prints as the delivery requirement prefix (`BL`) in
 // every artifact name. It used to print as `bus`, so the download container and
@@ -111,7 +102,7 @@ export function buildDeliveryPackageLabel({
   if (!requirement || !owner) return '';
   const date = deliveryDate
     ? String(deliveryDate).replaceAll('-', '')
-    : `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}`;
+    : new Intl.DateTimeFormat('sv-SE', { timeZone: 'Asia/Shanghai', year: 'numeric', month: '2-digit', day: '2-digit' }).format(now).replaceAll('-', '');
   if (!/^\d{8}$/u.test(date)) {
     throw new TypeError(`Delivery package date must be YYYYMMDD or YYYY-MM-DD; received ${deliveryDate}.`);
   }
@@ -907,11 +898,8 @@ async function writePlatformArtifact({
   tuning,
   stageRoot,
   zipTool,
-  projectRoot,
   signal,
-  zipTimestamp,
-  cachedBackupImagePath = null,
-  skipChecks = false
+  zipTimestamp
 }) {
   const artifactPath = path.join(stageRoot, fileName);
   let html = encodeCheckerOnlyUrls(sourceHtml);
@@ -957,22 +945,7 @@ async function writePlatformArtifact({
       writeFile(path.join(packageRoot, 'style.css'), split.css, 'utf8')
     ]);
     const backupPath = path.join(packageRoot, 'backup.jpg');
-    if (cachedBackupImagePath) {
-      try {
-        await copyFile(cachedBackupImagePath, backupPath);
-      } catch (error) {
-        if (error.code !== 'ENOENT') throw error;
-        if (skipChecks) {
-          throw new Error('Google Ads backup image is unavailable while local checks are disabled.');
-        }
-        await capturePlayableBackupImage({ artifactPath: packageRoot, platform, outputPath: backupPath });
-        await copyFile(backupPath, cachedBackupImagePath);
-      }
-    } else if (skipChecks) {
-      await copyFile(path.join(projectRoot, 'artifacts', 'google-ads-backup.jpg'), backupPath);
-    } else {
-      await capturePlayableBackupImage({ artifactPath: packageRoot, platform, outputPath: backupPath });
-    }
+    await capturePlayableBackupImage({ artifactPath: packageRoot, platform, outputPath: backupPath, signal });
     await deterministicZip(zipTool, packageRoot, artifactPath, ['index.html', 'index.js', 'style.css', 'backup.jpg'], signal, zipTimestamp);
     return artifactPath;
   }
@@ -1199,7 +1172,6 @@ async function buildOne({
   fileName,
   sourceHtml,
   tuning,
-  projectRoot,
   stageRoot,
   skill,
   signal,
@@ -1208,7 +1180,6 @@ async function buildOne({
   runtimeDevices = [],
   cachedRuntimeReport = null,
   skipRuntime = false,
-  cachedBackupImagePath = null,
   skipChecks = false,
   payloadAssets = null
 }) {
@@ -1219,11 +1190,8 @@ async function buildOne({
     tuning,
     stageRoot,
     zipTool: skill.zip,
-    projectRoot,
     signal,
-    zipTimestamp,
-    cachedBackupImagePath,
-    skipChecks
+    zipTimestamp
   });
   const artifactLabel = brandingVariant
     ? `${platform} (${brandingVariant === 'bus' ? BUS_BRANDING_LABEL : brandingVariant}) `
@@ -1621,7 +1589,7 @@ async function mapWithConcurrency(items, concurrency, operation) {
   return results;
 }
 
-async function exportPlatforms({ projectRoot, tuning, levelDocument = null, platforms, outputDir, signal, variants = null, skipRuntime = false, skipChecks = false, keepMaterialCode = false, namingOverride = null, useSelectedLevel = false, brandingSet = DEFAULT_PLAYABLE_BRANDING_SET, reviewAssets = null }) {
+async function exportPlatforms({ projectRoot, tuning, levelDocument = null, platforms, outputDir, signal, variants = null, skipRuntime = false, skipChecks = false, keepMaterialCode = false, namingOverride = null, useSelectedLevel = false, brandingSet = DEFAULT_PLAYABLE_BRANDING_SET, reviewAssets = null, mobileBackgrounds = false }) {
   const resolvedRoot = path.resolve(projectRoot);
   const template = await loadTemplate(resolvedRoot);
   const sessionConfig = useSelectedLevel ? null : await readPlayableSessionConfig(resolvedRoot);
@@ -1653,7 +1621,7 @@ async function exportPlatforms({ projectRoot, tuning, levelDocument = null, plat
   const preRollEnabled = resolvePreRollEnabled(safeTuning.preRoll, {
     preRollEnabled: Number(sessionConfig?.session?.preRoll ?? 1) !== 0
   });
-  const delivery = await createAssetDelivery(resolvedRoot);
+  const delivery = await createAssetDelivery(resolvedRoot, { mobileBackgrounds });
   const sourceCacheKey = variants
     ? await exportInputFingerprint(resolvedRoot, safeTuning, levelDocument, variants, platforms, useSelectedLevel, stageArt, delivery.identity)
     : null;
@@ -1679,11 +1647,6 @@ async function exportPlatforms({ projectRoot, tuning, levelDocument = null, plat
     const reusableSources = variants ? new Map(cachedSources?.sources ?? []) : null;
     // Mintegral still builds with its own loader and syntax compatibility pass.
     const sharedBuild = platforms.length > 1 ? { promise: null, inline: Promise.resolve() } : null;
-    const cachedBackupImagePath = skipChecks
-      ? path.join(resolvedRoot, 'artifacts', 'google-ads-backup.jpg')
-      : variants && process.env.PLAYABLE_EXPORT_REMOTE_FAST === '1'
-      ? path.join(resolvedRoot, 'artifacts', 'google-ads-backup.jpg')
-      : (variants ? path.join(stageRoot, 'google-ads-backup.jpg') : null);
     let sourceVariantTuning = cachedSources?.sourceVariantTuning ?? null;
     for (let variantIndex = 0; variantIndex < buildVariants.length; variantIndex += 1) {
       const variant = buildVariants[variantIndex];
@@ -1744,7 +1707,6 @@ async function exportPlatforms({ projectRoot, tuning, levelDocument = null, plat
             fileName: variantNames[platform],
             sourceHtml,
             tuning: variantTuning,
-            projectRoot: resolvedRoot,
             stageRoot,
             skill,
             signal,
@@ -1756,7 +1718,6 @@ async function exportPlatforms({ projectRoot, tuning, levelDocument = null, plat
             cachedRuntimeReport: null,
             skipRuntime,
             skipChecks,
-            cachedBackupImagePath,
             payloadAssets
           });
           if (reviewAssets) await stageInlineReviewAssets(reviewAssets, sourceHtml, payloadAssets);
@@ -1806,6 +1767,7 @@ async function exportPlatforms({ projectRoot, tuning, levelDocument = null, plat
 }
 
 export async function exportPlayablePackage({
+  mobileBackgrounds = false,
   projectRoot = process.cwd(),
   platform,
   tuning,
@@ -1828,6 +1790,7 @@ export async function exportPlayablePackage({
   const variants = resolveBrandingSetVariants(brandingSet);
   const destinationRoot = path.resolve(outputDir ?? path.join(projectRoot, 'artifacts', 'playable-exports'));
   const built = await exportPlatforms({
+    mobileBackgrounds,
     projectRoot,
     brandingSet,
     tuning,
@@ -1896,6 +1859,7 @@ export async function exportPlayablePackage({
 }
 
 export async function exportAllPlayablePackages({
+  mobileBackgrounds = false,
   projectRoot = process.cwd(),
   tuning,
   levelDocument = null,
@@ -1907,6 +1871,7 @@ export async function exportAllPlayablePackages({
   noBrandingSuffix = false,
   deliveryDate = null,
   tuningVariants = null,
+  deliveryJobs = null,
   platforms = SUPPORTED_PLATFORMS,
   useSelectedLevel = false,
   brandingSet = DEFAULT_PLAYABLE_BRANDING_SET,
@@ -1919,14 +1884,16 @@ export async function exportAllPlayablePackages({
   }
   const builds = [];
   try {
-    for (const variantTuning of tuningVariants ?? [tuning]) {
+    const jobs = deliveryJobs ?? (tuningVariants ?? [tuning]).map(variant => ({ tuning: variant, platforms }));
+    for (const { tuning: variantTuning, platforms: jobPlatforms } of jobs) {
       if (signal?.aborted) throw new Error('导出已取消');
       builds.push(await exportPlatforms({
+        mobileBackgrounds,
         projectRoot,
         brandingSet,
         tuning: variantTuning,
         levelDocument,
-        platforms,
+        platforms: jobPlatforms,
         outputDir: destinationRoot,
         reviewAssets,
         signal,
@@ -1940,7 +1907,7 @@ export async function exportAllPlayablePackages({
         skipChecks,
         keepMaterialCode,
         useSelectedLevel,
-        namingOverride: tuningVariants ? { ...namingOverride, ...variantTuning.exportNaming } : namingOverride
+        namingOverride: deliveryJobs || tuningVariants ? { ...namingOverride, ...variantTuning.exportNaming } : namingOverride
       }));
     }
   } catch (error) {
@@ -1952,6 +1919,8 @@ export async function exportAllPlayablePackages({
     sourceCacheHit: builds.every(build => build.sourceCacheHit),
     results: builds.flatMap(build => build.results.map(item => ({
       ...item,
+      folder: buildDeliveryFolderName(build.tuning.exportNaming),
+      channelFolder: resolveChannelFolder(build.tuning, item.platform),
       sourcePath: path.join(build.stageRoot, item.fileName),
       variant: {
         steps: build.tuning.exportNaming.steps,
@@ -2026,18 +1995,16 @@ export async function exportAllPlayablePackages({
     // so an operator can upload the folder onto `试玩/` with no renaming and the
     // NAS uploader finds one platform per channel folder. Every branding set uses
     // this same shape; BL and BFT differ only in their own branding assets.
-    const aggregateName = deliveryFolder
-      ? `${deliveryFolder}.zip`
-      : `${BUS_BRANDING_LABEL}-playable.zip`;
+    const aggregateName = `${packageLabel || deliveryFolder || BUS_BRANDING_LABEL + '-playable'}.zip`;
     // The channel folders live inside a folder named after the delivery, so
     // unzipping produces exactly `BFT-2610293-Q184V1/AL/...` and the result can be
     // dropped straight onto the share.
     const bundleRoot = path.join(built.stageRoot, 'delivery-bundle');
-    const deliveryRoot = path.join(bundleRoot, deliveryFolder || 'playable');
-    await mkdir(deliveryRoot, { recursive: true });
+    const bundleFolders = new Set();
     for (const item of built.results) {
-      const channelFolder = resolveChannelFolder(built.tuning, item.platform);
-      const channelRoot = path.join(deliveryRoot, channelFolder);
+      const folder = (deliveryJobs ? item.folder : deliveryFolder) || 'playable';
+      bundleFolders.add(folder);
+      const channelRoot = path.join(bundleRoot, folder, item.channelFolder);
       await mkdir(channelRoot, { recursive: true });
       await copyFile(item.sourcePath, path.join(channelRoot, item.fileName));
     }
@@ -2046,18 +2013,19 @@ export async function exportAllPlayablePackages({
       built.skill.zip,
       bundleRoot,
       aggregateStage,
-      [deliveryFolder || 'playable'],
+      [...bundleFolders],
       signal,
       built.zipTimestamp
     );
     const aggregateIdentity = await artifactIdentity(aggregateStage);
     const filePath = await publish(aggregateStage, path.join(destinationRoot, aggregateName));
     const publishedIdentity = await verifyPublishedArtifact(filePath, aggregateIdentity, 'All-platform artifact');
-    const reportPaths = Object.fromEntries(await Promise.all(built.results.map(async (item) => {
+    const reportPaths = Object.fromEntries(await Promise.all(built.results.map(async (item, index) => {
       // Report files follow the delivery package label, so a reviewer can match a
       // report to the folder it belongs in without decoding the branding set.
       const label = packageLabel || (item.brandingVariant === 'bus' ? BUS_BRANDING_LABEL : item.brandingVariant);
-      const variantLabel = tuningVariants?.length > 1 ? `-${item.variant.steps}-${item.variant.version}` : '';
+      const variantLabel = deliveryJobs ? `-item${index + 1}` :
+        tuningVariants?.length > 1 ? `-${item.variant.steps}-${item.variant.version}` : '';
       return [
         `${item.brandingVariant}-${item.platform}${variantLabel}`,
         await publishCheckReports(

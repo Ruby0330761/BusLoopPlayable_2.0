@@ -116,19 +116,20 @@ test('package review uses delivered bytes and deduplicates assets across channel
   assert.equal(summarizeExportPackage(first).bytes, 500_001);
 });
 
-// Resolve a dotted tuning path such as `exportNaming.channels.applovin`, the
-// same shape the scene editor's field table uses.
-function hasPath(root, dottedPath) {
-  let cursor = root;
-  for (const segment of dottedPath.split('.')) {
-    if (!cursor || typeof cursor !== 'object' || !Object.hasOwn(cursor, segment)) return false;
-    cursor = cursor[segment];
-  }
-  return true;
-}
-
 test('export retains the package-only response contract', () => {
   assert.equal(EXPORT_RESOURCE_MODE, 'package-only');
+});
+
+test('review separates oversized model sources from the delivered assets shown on both pages', () => {
+  const asset = (url, sourceBytes, deliveryBytes) => ({ url, sourceBytes, deliveryBytes });
+  const model = asset('mesh.FBX.BIN', 160_000, 80_000);
+  const texture = asset('anim.rgba16f', 156_000, 156_000);
+  const review = summarizeExportPackage({ artifacts: [
+    { assetDelivery: { assets: [model, texture, asset('limit_vatmesh.bin', 100_000, 100_000)] } },
+    { assetDelivery: { assets: [model, texture, asset('backup.jpg', 137_701, 137_701)] } }
+  ] });
+  assert.deepEqual(review.sourceModels, [{ url: model.url, bytes: model.sourceBytes }]);
+  assert.deepEqual(review.assets, [{ url: texture.url, bytes: 156_000 }, { url: 'backup.jpg', bytes: 137_701 }]);
 });
 
 test('inlining the ordinary models preserves editor paint selection for each seat count', async () => {
@@ -496,7 +497,7 @@ test('Crowd exports one shared Android/iOS package with its own icon and logo', 
   assert.match(exporter, /export function buildDeliveryFolderName\(/);
   assert.match(exporter, /export function resolveChannelFolder\(/);
   assert.match(exporter, /const deliveryFolder = buildDeliveryFolderName\(/);
-  assert.match(exporter, /`\$\{deliveryFolder\}\.zip`/);
+  assert.match(exporter, /const aggregateName = .*packageLabel/);
   assert.match(exporter, /const label = packageLabel \|\|/);
   assert.equal(PLAYABLE_BRANDING_SETS.crowd[0].logoAsset, '/assets/main-loading-icon-crowd.webp');
   assert.match(vite, /PLAYABLE_BRANDING_SETS = new Set\(\['bus', 'crowd'\]\)/);
@@ -586,7 +587,7 @@ test('single HTML can be split into a classic packaged entry', () => {
 test('Google Ads packaging captures a real playable backup instead of duplicating a source asset', async () => {
   const exporter = await readFile(new URL('../scripts/export-playable-package.mjs', import.meta.url), 'utf8');
   assert.match(exporter, /platform === 'google-ads'[\s\S]*capturePlayableBackupImage\(\{/);
-  assert.match(exporter, /copyFile\(path\.join\(projectRoot, 'artifacts', 'google-ads-backup\.jpg'\), backupPath\)/);
+  assert.doesNotMatch(exporter, /google-ads-backup\.jpg|cachedBackupImagePath/);
 });
 
 test('UnityAds single-line packaging preserves GLSL line breaks before flattening HTML', async () => {
@@ -772,7 +773,7 @@ test('editor and server expose production-only single-platform and all-platform 
     readFile(new URL('../scripts/start-remote-editor.mjs', import.meta.url), 'utf8'),
     readFile(new URL('../Dockerfile', import.meta.url), 'utf8')
   ]);
-  assert.match(editor, /editor-export-all-button/);
+  assert.doesNotMatch(editor, /editor-export-all-button/);
   assert.match(editor, /\/__playable-export-all/);
   assert.match(editor, /正在下载试玩包/);
   assert.match(editor, /getPlayableExportPayload\(\)[\s\S]*?JSON\.stringify\(\{ \.\.\.exportPayload,[^\n]*brandingSet, review: true \}\)/);
@@ -842,40 +843,15 @@ test('editor and server expose production-only single-platform and all-platform 
   assert.match(dockerfile, /CMD \["node", "scripts\/start-remote-editor\.mjs"\]/);
 });
 
-test('editor exposes every request naming component and platform channel code', async () => {
+test('delivery list replaces manual naming and uses the Shanghai calendar for package labels', async () => {
   const editor = await readFile(new URL('../src/scene-editor.js', import.meta.url), 'utf8');
-  for (const path of [
-    'requirementCode', 'materialCode', 'iterationCode', 'language', 'format',
-    'designer', 'requester'
-  ]) {
-    assert.match(editor, new RegExp(`exportNaming\\.${path}`));
-  }
-  for (const platform of SUPPORTED_PLATFORMS) {
-    assert.match(editor, new RegExp(`exportNaming\\.channels\\.${platform}`));
-  }
-  assert.match(editor, /control === 'filename'/);
-  assert.match(editor, /isValidExportNamingPart/);
-
-  // A naming row that edits a key the template does not define seats the value
-  // into SCENE_TUNING, and the exporter then rejects the whole payload with
-  // "tuning.exportNaming.<key> is not supported" at 0 seconds. Check every path
-  // the editor's naming group writes against the live template.
-  const { SCENE_TUNING } = await import('../src/scene-tuning.js');
-  const namingPaths = new Set(
-    [...editor.matchAll(/'(exportNaming\.[A-Za-z0-9_.-]+)'/g)].map(([, path]) => path)
-  );
-  assert.ok(namingPaths.size > 0);
-  for (const namingPath of namingPaths) {
-    assert.ok(
-      hasPath(SCENE_TUNING, namingPath),
-      `${namingPath} is edited by the scene editor but missing from src/scene-tuning.js`
-    );
-  }
-  // The retired tail field must not come back: it fails tune validation.
-  assert.equal(hasPath(SCENE_TUNING, 'exportNaming.stamina'), false);
-  assert.equal(hasPath(SCENE_TUNING, 'exportNaming.version'), true);
-  assert.match(editor, /'exportNaming\.version'/);
-  assert.doesNotMatch(editor, /'exportNaming\.stamina'/);
+  assert.doesNotMatch(editor, /shell-naming-grid|editor-export-all-button|editor-complete-export-name/);
+  assert.match(editor, /id="editor-delivery-list"/);
+  assert.match(editor, /class="editor-export-button" type="button" disabled>按清单导出/);
+  const { buildDeliveryPackageLabel } = await import('../scripts/export-playable-package.mjs');
+  const naming = { requirementCode: 'BL-2611254', designer: 'WXJ' };
+  assert.equal(buildDeliveryPackageLabel({ ...naming, now: new Date('2026-11-25T16:00:00Z') }), 'BL-2611254-20261126-WXJ');
+  assert.equal(buildDeliveryPackageLabel({ ...naming, now: new Date('2026-11-25T15:59:59Z') }), 'BL-2611254-20261125-WXJ');
 });
 
 test('scene editor separates controls into keyboard-accessible category tabs', async () => {
@@ -1178,7 +1154,7 @@ test('all-platform and single-platform exports publish into channel folders', as
   // Both entry points use the same layout, so a single-channel download and a
   // full set never disagree about where a file belongs.
   assert.match(exporter, /const relativePath = deliveryFolder[\s\S]{0,200}channelFolder/);
-  assert.match(exporter, /const deliveryRoot = path\.join\(bundleRoot, deliveryFolder \|\| 'playable'\)/);
+  assert.match(exporter, /const channelRoot = path\.join\(bundleRoot, folder, item\.channelFolder\)/);
   assert.match(exporter, /await mkdir\(channelRoot, \{ recursive: true \}\)/);
   // The manifest is written beside the archive, never inside the delivery
   // folder: the NAS uploader rejects any file it cannot assign to a channel.

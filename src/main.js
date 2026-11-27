@@ -762,8 +762,9 @@ function applyPreviewFrame() {
 // Two editor shells live side by side. `classic` is the shipped 320px sidebar
 // and stays the default so an unfinished shell build can never break the
 // editor people rely on; `?layout=shell` opts into the split layout.
-const EDITOR_LAYOUT_STORAGE_KEY = 'bus-loop-editor-layout-v1';
-const EDITOR_LAYOUT_MODES = new Set(['classic', 'shell']);
+const studioAvailable = import.meta.env.DEV && !__REMOTE_EDITOR__;
+const EDITOR_LAYOUT_STORAGE_KEY = studioAvailable ? 'bus-loop-local-layout-v2' : 'bus-loop-editor-layout-v1';
+const EDITOR_LAYOUT_MODES = new Set(studioAvailable ? ['classic', 'shell', 'studio'] : ['classic', 'shell']);
 
 function resolveEditorLayoutMode() {
   const params = new URLSearchParams(location.search);
@@ -776,7 +777,7 @@ function resolveEditorLayoutMode() {
     const saved = localStorage.getItem(EDITOR_LAYOUT_STORAGE_KEY);
     if (saved && EDITOR_LAYOUT_MODES.has(saved)) return saved;
   } catch { /* private mode */ }
-  return 'classic';
+  return studioAvailable ? 'studio' : 'classic';
 }
 
 
@@ -2525,6 +2526,7 @@ async function startRuntime() {
       handleVehicleClick,
       {
         stageOpening: currentStage()?.opening,
+        previewVehiclePaths: EDITOR_ENABLED,
         onPassengerAboard: () => audio.playPassengerUp(),
         onLoadingProgress: updateLoadingProgress
       }
@@ -3120,11 +3122,12 @@ async function startRuntime() {
     const editorLayoutMode = resolveEditorLayoutMode();
     // The shell layout owns the whole page, so the flag lives on #app rather
     // than on the sidebar element that layout dissolves.
-    app?.classList.toggle('layout-shell', editorLayoutMode === 'shell');
+    app?.classList.toggle('layout-shell', editorLayoutMode !== 'classic');
     // The build stamp belongs to exported packages only, where it identifies a
     // file that gets handed around. The editor is a live page with its own
     // version label in the header, so the corner stays empty there.
-    import('./scene-editor.js').then(({ createSceneEditor }) => {
+    import('./scene-editor.js').then(async ({ createSceneEditor }) => {
+      const studio = studioAvailable && editorLayoutMode === 'studio' ? await import('./editor-studio.js') : null;
       editor = createSceneEditor(sceneEditorRoot, {
         getTuning: () => SCENE_TUNING,
         defaultTuning: DEFAULT_SCENE_TUNING,
@@ -3143,7 +3146,10 @@ async function startRuntime() {
         openSpatialPointEditor,
         openLevelLayoutEditor,
         getCameraPreset,
-        layoutMode: resolveEditorLayoutMode()
+        layoutMode: editorLayoutMode,
+        studio,
+        studioAvailable,
+        restartPreview: reset
       });
     }).catch((error) => {
       // A failed editor mount used to leave a blank sidebar with only a console
@@ -3321,10 +3327,10 @@ async function startRuntime() {
     // merge-attached fields (garage release, turn, ambulance) still sound; the
     // controller de-duplicates keys shared with the frame list.
     for (const event of state.frameAudioEvents ?? []) {
-      audio.handleGameEvent(event, state.time);
+      audio.handleGameEvent(event, state.time, state.vehicles);
       combo.contact(event);
     }
-    audio.handleGameEvent(state.lastEvent, state.time);
+    audio.handleGameEvent(state.lastEvent, state.time, state.vehicles);
     updateInstallGate(state);
     paintProgressHud(state);
     if (state.status === 'lost') {
@@ -3637,7 +3643,7 @@ async function startRuntime() {
     const renderState = isSpatialOptimizationEnabled('liveRenderState')
       ? game.renderState()
       : game.snapshot();
-    view.update(renderState, game);
+    view.update(renderState, game, now);
     view.render();
     // Screen-space weather runs on the same clock as the game so a x2 speed
     // toggle also speeds it up, matching what the player perceives.

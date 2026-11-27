@@ -17,7 +17,7 @@ function getEventKeys(event, time = '') {
     keys.push({ name: 'bus_hit', key: `${event.type}:${identity}` });
   }
   if (event.type === 'vehicle-dispatched') {
-    keys.push({ name: 'vehicle_tap', key: `${event.type}:${event.vehicleId}:${timeKey}` });
+    keys.push({ name: 'vehicle_tap', key: `${event.type}:${event.vehicleId}:${event.dispatchedAt ?? timeKey}` });
   }
   if (event.type === 'vehicle-full') {
     // lastEvent remains visible while the vehicle is driving away. The event
@@ -48,12 +48,12 @@ function getEventKeys(event, time = '') {
   }
   if (event.garageReleasedVehicleIds?.length) {
     for (const vehicleId of event.garageReleasedVehicleIds) {
-      keys.push({ name: 'garage_out', key: `garage-out:${vehicleId}` });
+      keys.push({ name: 'garage_out', key: `garage-out:${vehicleId}`, releasedId: vehicleId });
     }
   }
   if (event.garageClearedIds?.length) {
     for (const garageId of event.garageClearedIds) {
-      keys.push({ name: 'garage_clear', key: `garage-clear:${garageId}` });
+      keys.push({ name: 'garage_clear', key: `garage-clear:${garageId}`, garageId });
     }
   }
   return keys;
@@ -80,6 +80,7 @@ export class GameAudioController {
     this.playedGameEventKeys = new Set();
     this.queuedPlays = [];
     this.activeSources = new Set();
+    this.garageCues = new Map();
     // Named looping beds (countdown siren) keyed by purpose. The looping music
     // source stays separate in `bgm` because retry/stage changes must not touch it.
     this.loops = new Map();
@@ -139,22 +140,24 @@ export class GameAudioController {
     return bufferPromise;
   }
 
-  play(name, clipOverride = null) {
+  play(name, clipOverride = null, signal = null) {
     const data = this.audioConfig[name];
     const clip = clipOverride ?? chooseClip(data?.clips);
     if (!clip || !data) return;
     if (!this.unlocked || !this.visible) {
+      if (signal) return;
       this.queuedPlays.push({ name, clip });
       return;
     }
     const context = this.getContext();
     if (!context || context.state !== 'running') {
+      if (signal) return;
       this.queuedPlays.push({ name, clip });
       if (context?.state === 'suspended') void context.resume().then(() => this.flushQueuedPlays());
       return;
     }
     const delay = Math.max(0, Number(this.getDelay?.(name)) || 0);
-    this.startPlayback(name, clip, data, context, delay);
+    this.startPlayback(name, clip, data, context, delay, signal);
   }
 
   // Every source in this controller connects here instead of straight to the
@@ -239,10 +242,10 @@ export class GameAudioController {
     for (const { name, clip } of pending) this.play(name, clip);
   }
 
-  startPlayback(name, clip, data, context, delaySeconds = 0) {
+  startPlayback(name, clip, data, context, delaySeconds = 0, signal = null) {
     void this.loadClip(clip)
       .then((buffer) => {
-        if (!buffer || context.state !== 'running') return;
+        if (!buffer || context.state !== 'running' || signal?.aborted) return;
         const source = context.createBufferSource();
         const gain = context.createGain();
         source.buffer = buffer;
@@ -253,7 +256,12 @@ export class GameAudioController {
         gain.gain.value = Math.max(0, baseVolume * (Number.isFinite(scale) ? scale : 1));
         source.connect(gain).connect(this.getMasterGain(context));
         this.activeSources.add(source);
-        source.onended = () => this.activeSources.delete(source);
+        const stop = () => source.stop();
+        signal?.addEventListener('abort', stop, { once: true });
+        source.onended = () => {
+          signal?.removeEventListener('abort', stop);
+          this.activeSources.delete(source);
+        };
         // A positive delay schedules the start slightly ahead on the audio
         // clock so a sound can be lined up with its animation.
         source.start(delaySeconds > 0 ? context.currentTime + delaySeconds : 0);
@@ -261,17 +269,32 @@ export class GameAudioController {
       .catch((error) => console.warn(`Unable to play audio "${name}".`, error));
   }
 
-  handleGameEvent(event, time = '') {
+  handleGameEvent(event, time = '', vehicles = []) {
     const keys = getEventKeys(event, time);
-    for (const { name, key } of keys) {
+    for (const { name, key, releasedId, garageId } of keys) {
       const eventKey = `${name}:${key}`;
       if (this.playedGameEventKeys.has(eventKey)) continue;
       this.playedGameEventKeys.add(eventKey);
+      if (name === 'vehicle_tap') {
+        const fromGarage = vehicles.find(vehicle => vehicle.id === event.vehicleId)?.garageId;
+        this.garageCues.get(fromGarage)?.abort();
+        this.garageCues.delete(fromGarage);
+      }
+      const garage = releasedId != null ? vehicles.find(vehicle => vehicle.id === releasedId)?.garageId : garageId;
+      if (garage != null) {
+        // Door animation and replenishment can overlap the previous car's trip.
+        if (vehicles.some(vehicle => vehicle.garageId === garage && vehicle.state === 'moving-to-spot')) continue;
+        if (!this.garageCues.has(garage)) this.garageCues.set(garage, new AbortController());
+        this.play(name, null, this.garageCues.get(garage).signal);
+        continue;
+      }
       this.play(name);
     }
   }
 
   resetEventHistory() {
+    for (const cue of this.garageCues.values()) cue.abort();
+    this.garageCues.clear();
     this.playedGameEventKeys.clear();
     this.queuedPlays.length = 0;
     for (const source of this.activeSources) {

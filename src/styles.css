@@ -919,9 +919,26 @@ button:hover { transform: translateY(-1px); background: #fff; }
   display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 12px 16px;
 }
 .editor-export-confirm h3 { margin: 0; font-size: 18px; }
+.export-review-heading { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 10px; min-width: 0; }
+.editor-edition {
+  display: inline-block; vertical-align: middle; white-space: nowrap; padding: 4px 8px;
+  border-radius: 4px; color: white; font: 700 13px/1.2 system-ui, sans-serif; letter-spacing: 0;
+}
+.editor-edition[data-edition="optimized"] { background: #314e9c; }
+.editor-edition[data-edition="formal"] { background: #16664a; }
 .editor-export-confirm h3:focus { outline: none; }
 .editor-export-confirm output { color: #546b7b; font-size: 12px; }
+.export-review-warning:not([hidden]) {
+  display: flex; align-items: center; gap: 9px; padding: 9px 16px;
+  background: #fff0cf; color: #713800; border-inline-start: 4px solid #ba6204; font-size: 15px;
+}
+.export-review-warning > span {
+  display: grid; place-items: center; flex: 0 0 20px; height: 20px;
+  background: #8f4900; color: white; border-radius: 50%; font: bold 15px/1 system-ui, sans-serif;
+}
 .export-review-list { overflow: auto; border-block: 1px solid #d8e1e6; }
+.export-review-check-status { margin: 0; padding: 8px 16px; font-size: 13px; max-height: 18dvh; overflow: auto; overflow-wrap: anywhere; }
+.export-review-first-assets:not(:empty) { padding-bottom: 12px; margin-bottom: 8px; border-bottom: 1px solid #c4d3dd; }
 .export-review-list section { padding: 14px 16px; font-size: 13px; line-height: 1.5; overflow-wrap: anywhere; }
 .export-review-list p { margin: 0; }
 .export-review-list ul { list-style: none; margin: 0; padding: 0; }
@@ -930,6 +947,10 @@ button:hover { transform: translateY(-1px); background: #fff; }
 }
 .export-review-names li { grid-template-columns: minmax(38px, max-content) minmax(0, 1fr); }
 .export-review-assets li { grid-template-columns: minmax(0, 1fr) auto; }
+.export-review-asset-size { display: grid; justify-items: end; gap: 2px; font-variant-numeric: tabular-nums; }
+.export-review-asset-size small {
+  padding: 1px 6px; border-radius: 3px; background: #fff0cf; color: #713800; font-weight: 700;
+}
 .export-review-names li + li, .export-review-assets li + li { border-top: 1px solid #edf1f3; }
 .export-review-names code { display: block; font-size: 12px; }
 .export-review-assets li > :nth-child(3) { grid-column: 1 / -1; }
@@ -1081,6 +1102,14 @@ button:hover { transform: translateY(-1px); background: #fff; }
 }
 .editor-complete-export-name small { color: #5a7085; font-size: 10px; line-height: 1.4; }
 .editor-complete-export-name .editor-naming-error { color: #a82b2b; }
+.editor-delivery-names { display: grid; min-width: 0; gap: 6px; margin: 12px 0; }
+.editor-delivery-names > div:first-child { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+.editor-delivery-names label { color: #33485b; font-size: 12px; font-weight: 700; }
+.editor-delivery-names output, .editor-delivery-names small { color: #52677b; font-size: 11px; line-height: 1.45; }
+.editor-delivery-names textarea { box-sizing: border-box; resize: vertical; min-height: 72px; overflow-x: auto; font: 12px/1.5 ui-monospace, monospace; }
+.editor-delivery-result { max-height: 110px; overflow: auto; white-space: pre-line; overflow-wrap: anywhere; color: #315c51; font-size: 11px; line-height: 1.55; }
+.editor-delivery-names textarea[aria-invalid="true"] + .editor-delivery-result { color: #a82b2b; }
+.editor-delivery-result[hidden] { display: none; }
 .editor-playable-export { border-color: rgba(31, 111, 76, .24); background: rgba(250, 255, 252, .9); }
 .editor-export-set { display: grid; gap: 6px; margin-bottom: 8px; color: #5a7085; font-size: 11px; }
 .editor-export-set-select {
@@ -1097,9 +1126,12 @@ button:hover { transform: translateY(-1px); background: #fff; }
   font: 700 11px/1 'Poppins Branding', Arial, sans-serif; cursor: pointer;
 }
 .editor-export-select:focus-visible,
-.editor-export-button:focus-visible,
-.editor-export-all-button:focus-visible { outline: 2px solid #287fa8; outline-offset: 2px; }
-.editor-export-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 9px; }
+.editor-export-button:focus-visible { outline: 2px solid #287fa8; outline-offset: 2px; }
+.editor-export-actions { display: grid; grid-template-columns: minmax(0, 1fr); margin: 8px 0; }
+.editor-export-preview { margin-top: 10px; border-top: 1px solid #d8e2e8; padding-top: 8px; }
+.editor-export-preview > summary { cursor: pointer; color: #52677b; font-size: 12px; }
+.editor-export-preview[open] > summary { margin-bottom: 8px; }
+#app.layout-shell .shell-delivery-file { margin: 6px 0; overflow-wrap: anywhere; font-size: 11px; }
 .editor-export-queue { margin: 9px 0; padding: 7px 0; border-block: 1px solid #cadae0; font-size: 11px; color: #304b5d; }
 .editor-export-queue > div, .editor-export-queue li { display: flex; align-items: baseline; gap: 8px; }
 .editor-export-queue output { margin-left: auto; font-weight: 600; }
@@ -1123,16 +1155,19 @@ button:hover { transform: translateY(-1px); background: #fff; }
 .editor-export-naming-jump:focus-visible { outline: 2px solid currentColor; outline-offset: 1px; }
 .editor-export-naming-blocker:not([hidden]) ~ .editor-export-status:is(:not([data-state]), [data-state=""]),
 .editor-export-naming-blocker:not([hidden]) ~ .editor-export-variants[data-state="error"] { display: none; }
-.editor-export-button,
-.editor-export-all-button {
+.editor-export-button {
   min-width: 0; padding: 9px 6px; border-radius: 8px; border-color: #21764f;
   background: #21764f; color: #fff; box-shadow: none;
   font-size: 11px;
 }
-.editor-export-button:hover,
-.editor-export-all-button:hover { background: #195f3f; }
+.editor-export-button:hover { background: #195f3f; }
+.editor-test-export {
+  margin: 6px 0; padding: 6px 10px; font: inherit; color: #195f3f;
+  background: #fff; border: 1px solid #98b5a7; border-radius: 4px;
+}
+.editor-test-export:focus-visible { outline: 2px solid #287fa8; outline-offset: 2px; }
+.editor-test-export:disabled { opacity: .6; }
 .editor-export-button:disabled,
-.editor-export-all-button:disabled,
 .editor-export-set-select:disabled,
 .editor-export-select:disabled { cursor: wait; opacity: .62; transform: none; }
 .editor-export-status {
@@ -1198,6 +1233,23 @@ button:hover { transform: translateY(-1px); background: #fff; }
 .editor-pre-roll-status[data-state="error"] { color: #a43a38; }
 .editor-background-tools { margin-top: 8px; }
 .editor-background-actions { display: grid; grid-template-columns: repeat(auto-fit, minmax(92px, 1fr)); gap: 8px; }
+.background-overview { box-sizing: border-box; width: min(760px, 94vw); max-height: 86dvh; padding: 16px; border: 1px solid #bfccd3; border-radius: 8px; color: #263e50; background: #fff; font: 14px/1.45 'Poppins Branding', Arial, sans-serif; }
+.background-overview[open] { display: flex; flex-direction: column; gap: 10px; }
+.background-overview::backdrop { background: rgb(15 32 43 / 50%); }
+.background-overview header, .bg-toolbar { display: flex; align-items: center; gap: 8px; }
+.background-overview h2 { flex: 1; font-size: 18px; margin: 0; }
+.background-overview button, .bg-toolbar input { border: 1px solid #b9c8d1; border-radius: 5px; background: white; color: inherit; font: inherit; }
+.background-overview button { cursor: pointer; }
+.bg-close, .bg-add { width: 36px; height: 36px; flex: none; }
+.bg-toolbar input { min-width: 0; flex: 1; padding: 8px; }
+.background-overview output { color: #52697b; font-size: 12px; }
+.bg-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(130px, 100%), 1fr)); gap: 8px; overflow: auto; min-height: 0; padding: 3px; }
+.bg-grid button { display: grid; align-content: start; gap: 5px; padding: 4px; text-align: start; }
+.bg-grid button[aria-pressed="true"] { outline: 2px solid #267d9a; background: #e8f6f7; }
+.bg-grid img { width: 100%; aspect-ratio: 4 / 3; object-fit: contain; background: #f0f3f6; }
+.bg-grid span { overflow-wrap: anywhere; font-size: 12px; }
+.bg-notice { margin: 0; }
+.bg-notice:empty { display: none; }
 .editor-background-import {
   width: 100%; min-width: 0; padding: 8px 6px; border-radius: 8px; box-shadow: none; font-size: 11px;
 }
@@ -1343,6 +1395,10 @@ button:hover { transform: translateY(-1px); background: #fff; }
   backdrop-filter: blur(12px);
 }
 #app.layout-shell .shell-brand { display: flex; align-items: baseline; gap: 9px; min-width: 0; }
+@media (max-width: 600px) {
+  #app.layout-shell .shell-brand { flex-direction: column; gap: 2px; }
+  #app.layout-shell .editor-header { padding-inline: 6px; gap: 4px; flex-wrap: nowrap; }
+}
 #app.layout-shell .shell-brand h2 {
   margin: 0;
   font-size: 13.5px;
@@ -1651,8 +1707,7 @@ button:hover { transform: translateY(-1px); background: #fff; }
 #app.layout-shell .editor-background-tools { margin-top: 4px; }
 #app.layout-shell .editor-screenshot-button,
 #app.layout-shell .editor-pre-roll-preview,
-#app.layout-shell .editor-export-button,
-#app.layout-shell .editor-export-all-button { min-height: 26px; padding: 5px 6px; font-size: 10px; }
+#app.layout-shell .editor-export-button { min-height: 26px; padding: 5px 6px; font-size: 10px; }
 #app.layout-shell .editor-export-actions { margin-top: 5px; gap: 5px; }
 /* These three are label-above-control blocks in the classic sidebar (54px each
    because the caption takes its own line). Side by side they fit in one 26px
@@ -1715,29 +1770,6 @@ button:hover { transform: translateY(-1px); background: #fff; }
 
 #app.layout-shell .shell-group-head { margin: 7px 0 4px; font-size: 8.5px; }
 
-/* Naming rows are 16 short codes (BL / Q1V1 / EN / AL…). One per line wastes
-   half the panel width on whitespace, so this section alone packs them into two
-   columns. The grid must live on a wrapper *inside* <details>: setting
-   display:grid on the details element itself breaks its own collapse. */
-#app.layout-shell .shell-naming-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 1px 8px;
-  align-items: start;
-}
-/* Two columns of ~130px cannot hold "Google Ads 渠道" beside an input, so the
-   label moves above the field inside the grid. */
-#app.layout-shell .shell-naming-grid .editor-field {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  gap: 1px;
-  min-height: 0;
-  padding: 2px 0;
-}
-#app.layout-shell .shell-naming-grid .editor-field > span:first-child {
-  font-size: 9px;
-  color: #7d919f;
-}
 #app.layout-shell .shell-search-results { padding: 6px 10px 18px; }
 #app.layout-shell .shell-search-hit { margin-bottom: 4px; padding: 4px 7px; }
 #app.layout-shell .shell-search-hit strong { font-size: 10px; }

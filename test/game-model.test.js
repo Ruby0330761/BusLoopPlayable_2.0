@@ -2347,7 +2347,6 @@ test('seat count board displays remaining passengers, not remaining groups', () 
   assert.match(viewSource, /baseRemaining = Math\.max\(0, vehicle\.seats - vehicle\.boardedGroups\) \* LEVEL_1\.groupSize/);
   assert.match(viewSource, /boardingRemaining \+= 1/);
   assert.match(viewSource, /context\.font = `700 \$\{fontSize\}px "Poppins Branding", Arial, sans-serif`/);
-  assert.match(viewSource, /snapshot\.spots\[vehicle\.spotIndex\]\?\.vehicleId === vehicle\.id/);
   assert.match(viewSource, /function resolveCountBoardColors\(vehicle\)/);
   assert.match(viewSource, /vehicle\?\.colorOverrides\?\.body/);
   assert.match(viewSource, /const config = resolveCountBoardColors\(vehicle\)/);
@@ -2802,8 +2801,8 @@ test('main thread saves and restores scene tuning from localStorage', () => {
   assert.match(mainSource, /createGameAudioController\(\{[\s\S]*allSessionLevels\.map\(\(level\) => level\.assets\?\.audio \?\? \{\}\)[\s\S]*getMechanismAudioConfig\(mechanismTypes\)[\s\S]*\}\)/);
   // Every sound-relevant event of the frame must be played, not only lastEvent:
   // a frame can both depart a vehicle and board a group.
-  assert.match(mainSource, /for \(const event of state\.frameAudioEvents \?\? \[\]\) \{\s*audio\.handleGameEvent\(event, state\.time\);\s*combo\.contact\(event\);/);
-  assert.match(mainSource, /audio\.handleGameEvent\(state\.lastEvent, state\.time\)/);
+  assert.match(mainSource, /for \(const event of state\.frameAudioEvents \?\? \[\]\) \{\s*audio\.handleGameEvent\(event, state\.time, state\.vehicles\);\s*combo\.contact\(event\);/);
+  assert.match(mainSource, /audio\.handleGameEvent\(state\.lastEvent, state\.time, state\.vehicles\)/);
   assert.match(mainSource, /audio\.playPassengerUp\(\)/);
   assert.match(mainSource, /audio\.unlock\(\)/);
   assert.match(mainSource, /loadingScreen/);

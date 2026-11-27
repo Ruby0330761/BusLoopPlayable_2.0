@@ -1281,6 +1281,7 @@ export class BusLoopGame {
       this.refreshElevators();
       this.lastEvent = this.attachGarageEvents({
         type: 'vehicle-dispatched',
+        dispatchedAt: this.time,
         vehicleId: id,
         spotIndex: spot.index,
         ambulanceUpdates: ambulanceResult.updates,

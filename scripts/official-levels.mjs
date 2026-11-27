@@ -40,11 +40,11 @@ export const OFFICIAL_LEVEL_FILE_PATTERN = /^(guide)?level(\d+)\.asset$/i;
 // A letter maps to its alphabet position so adding chapter F later never
 // renumbers the keys of levels that were already imported.
 export function chapterCode(chapterId) {
-  const match = /^([A-Z])$/i.exec(String(chapterId ?? '').trim());
+  const match = /^(LIVE-)?([A-Z])$/i.exec(String(chapterId ?? '').trim());
   if (!match) throw new Error(`Invalid official level chapter: ${chapterId}`);
-  const code = match[1].toUpperCase().charCodeAt(0) - 64;
-  if (code < 1 || code > 26) throw new Error(`Invalid official level chapter: ${chapterId}`);
-  return code;
+  const letter = match[2].toUpperCase().charCodeAt(0) - 64;
+  // 801+ reserves a separate namespace for the live source, including guides.
+  return match[1] ? 800 + letter : letter;
 }
 
 export function officialLevelKey(chapterId, number, { guide = false } = {}) {
@@ -57,19 +57,13 @@ export function officialLevelKey(chapterId, number, { guide = false } = {}) {
 
 export function officialLevelDisplayName(chapterId, number, { guide = false } = {}) {
   const chapter = String(chapterId).toUpperCase();
-  return guide ? `${chapter}-引导${Number(number)}（游戏内）` : `${chapter}-${Number(number)}（游戏内）`;
+  const live = chapter.startsWith('LIVE-');
+  return `${live ? chapter.slice(5) : chapter}-${guide ? '引导' : ''}${Number(number)}（${live ? '线上素材' : '游戏内'}）`;
 }
 
 function chapterFromFolder(folderName) {
-  const match = /([A-Z])$/i.exec(folderName);
-  if (!match) return null;
-  const id = match[1].toUpperCase();
-  try {
-    chapterCode(id);
-  } catch {
-    return null;
-  }
-  return id;
+  const match = /^(Live_)?Level_Escape_([A-Z])$/i.exec(folderName);
+  return match ? (match[1] ? 'LIVE-' : '') + match[2].toUpperCase() : null;
 }
 
 function isAssetFile(fileName) {
@@ -101,7 +95,8 @@ export async function listOfficialChapters(root = OFFICIAL_LEVEL_ROOT) {
       continue;
     }
     if (files.length === 0) continue;
-    chapters.push({ id, label: entry.name, folder: entry.name, count: files.length });
+    const label = id.startsWith('LIVE-') ? `线上 ${id.slice(5)} 章` : `${id} 章`;
+    chapters.push({ id, label, folder: entry.name, count: files.length });
   }
   chapters.sort((first, second) => first.id.localeCompare(second.id));
   return chapters;

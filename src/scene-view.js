@@ -17,6 +17,7 @@ import { SCENE_TUNING } from './scene-tuning.js';
 import { drivingSmokeRate } from './vehicle-effect-assets.js';
 import { createRoofArrowOutline, updateRoofArrowOutline, roofArrowStrokeRatio } from './roof-arrow-outline.js';
 import { resolveBackgroundOffsetY } from './background-alignment.js';
+import { decodeVatDeltas } from './passenger-vat-delta.js';
 import { mergeStageTuning } from './playable-session-config.js';
 import {
   getActiveStageScene,
@@ -361,6 +362,7 @@ const COUNT_BOARD_MAX_INK_WIDTH = COUNT_BOARD_PLATE_BOX.width * COUNT_BOARD_INK_
 const COUNT_BOARD_MAX_INK_HEIGHT = COUNT_BOARD_PLATE_BOX.height * COUNT_BOARD_INK_FRACTION;
 const COUNT_BOARD_MAX_FONT_SIZE = 112;
 const COUNT_BOARD_STROKE_RATIO = 0.11;
+const COUNT_BOARD_DIGIT_HOLD_MS = 33;
 
 // Card box inside Unity's authored 256x256 count-board atlases
 // (count_al.png, count_limousine.png). Only the luxury badge still samples its
@@ -775,8 +777,7 @@ async function loadVatTexture(url, width, height, loadingManager) {
     loadingManager?.itemEnd(url);
     throw error;
   }
-  const bytes = decodeOptionalGzip(buffer);
-  if (bytes.byteLength !== width * height * 8) throw new Error('Unexpected VAT texture size.');
+  const bytes = decodeVatDeltas(decodeOptionalGzip(buffer), width, height);
   const texture = new THREE.DataTexture(
     new Uint16Array(bytes.buffer, bytes.byteOffset, bytes.byteLength / 2),
     width,
@@ -2292,7 +2293,7 @@ export class SceneView {
       texture.anisotropy = Math.min(8, this.renderer.capabilities.getMaxAnisotropy());
       this.artworkTextureCache.set(url, texture);
     }
-    this.applyArtworkTextureRect(texture, uvRect);
+    this.applyArtworkTextureRect(texture, uvRect ?? globalThis.__playableBackgroundRects?.get(url));
     material.map = texture;
     material.needsUpdate = true;
     const plane = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), material);
@@ -2325,7 +2326,7 @@ export class SceneView {
       });
       this.artworkTextureCache.set(url, texture);
     }
-    this.applyArtworkTextureRect(texture, uvRect);
+    this.applyArtworkTextureRect(texture, uvRect ?? globalThis.__playableBackgroundRects?.get(url));
     plane.material.map = texture;
     plane.material.needsUpdate = true;
     plane.userData.artworkUrl = url;
@@ -3341,6 +3342,7 @@ export class SceneView {
   }
 
   updateVehiclePathPreview(snapshot = this.lastSnapshot, game = this.lastGame) {
+    if (!this.hooks.previewVehiclePaths) return;
     const routeConfig = game?.getVehiclePathConfig();
     const tuning = routeConfig?.station ?? SCENE_TUNING.vehiclePath;
     const departureTuning = SCENE_TUNING.vehicleDeparturePath;
@@ -3386,6 +3388,7 @@ export class SceneView {
   }
 
   updateVehicleDeparturePathPreview(snapshot = this.lastSnapshot, game = this.lastGame) {
+    if (!this.hooks.previewVehiclePaths) return;
     const routeConfig = game?.getVehiclePathConfig();
     const tuning = routeConfig?.departure ?? SCENE_TUNING.vehicleDeparturePath;
     if (!tuning?.enabled || !snapshot || !game || !Boolean(SCENE_TUNING.visibility?.vehicles ?? 1)) return;
@@ -5447,28 +5450,42 @@ export class SceneView {
     }
   }
 
-  updateSeatCountBoard(board, vehicle, time = 0) {
+  updateSeatCountBoards(spots, game, frameTime) {
+    for (const [index, board] of this.seatCountBoards.entries()) {
+      const spot = spots[index];
+      const occupant = spot?.vehicleId != null ? game.getVehicle(spot.vehicleId) : null;
+      let vehicle = occupant;
+      if (occupant?.state !== 'at-spot' && occupant?.state !== 'boarding-final') {
+        // Finish the outgoing number sequence until the next car parks here.
+        const previous = board.visible && spot ? game.getVehicle(board.userData.vehicleId) : null;
+        vehicle = previous && previous.boardedGroups >= previous.seats
+          && (previous.state === 'departing' || previous.state === 'done') ? previous : null;
+      }
+      if (vehicle && Boolean(SCENE_TUNING.visibility?.vehicles ?? 1)) {
+        this.updateSeatCountBoard(board, vehicle, frameTime);
+      } else {
+        board.visible = false;
+        board.userData.vehicleId = null;
+        board.userData.isLuxuryBoard = false;
+      }
+    }
+  }
+
+  updateSeatCountBoard(board, vehicle, frameTime) {
     const baseRemaining = Math.max(0, vehicle.seats - vehicle.boardedGroups) * LEVEL_1.groupSize;
     let boardingRemaining = 0;
     for (const entry of this.boardingViews) {
-      if (entry.vehicleId !== vehicle.id) continue;
-      if (time < entry.startedAt + entry.delay + entry.duration) boardingRemaining += 1;
+      if (entry.vehicleId === vehicle.id) boardingRemaining += 1;
     }
-    const remaining = Math.max(0, baseRemaining + boardingRemaining);
-    const visible = Boolean(SCENE_TUNING.visibility?.vehicles ?? 1) && (
-      remaining > 0 &&
-      (vehicle.state === 'at-spot' || vehicle.state === 'boarding-final')
-    );
-    board.userData.isLuxuryBoard = vehicle.colorIndex === LUXURY_COLOR_INDEX;
     const vehicleChanged = board.userData.vehicleId !== vehicle.id;
-    board.visible = visible;
-    if (!visible) {
-      board.userData.vehicleId = null;
-      board.userData.remaining = null;
-      board.userData.bodyColor = null;
-      board.userData.isLuxuryBoard = false;
-      return;
+    const canAdvance = frameTime - board.userData.digitShownAt >= COUNT_BOARD_DIGIT_HOLD_MS;
+    let remaining = vehicleChanged ? vehicle.seats * LEVEL_1.groupSize : board.userData.remaining;
+    if (!vehicleChanged && canAdvance && remaining > baseRemaining + boardingRemaining) {
+      remaining -= 1;
     }
+    if (vehicleChanged || remaining !== board.userData.remaining) board.userData.digitShownAt = frameTime;
+    board.visible = remaining > 0 || frameTime - board.userData.digitShownAt < COUNT_BOARD_DIGIT_HOLD_MS;
+    board.userData.isLuxuryBoard = vehicle.colorIndex === LUXURY_COLOR_INDEX;
     const bodyColor = vehicle.colorOverrides?.body ?? null;
     if (
       !vehicleChanged &&
@@ -5947,7 +5964,7 @@ export class SceneView {
     return cached;
   }
 
-  update(snapshot, game) {
+  update(snapshot, game, frameTime = performance.now()) {
     const previousUpdateTime = this.lastSnapshot?.time ?? snapshot.time;
     const visualDelta = Math.max(0, Math.min(snapshot.time - previousUpdateTime, 0.1));
     const passengerSpeedMultiplier = snapshot.passengerSpeedMultiplier ?? snapshot.speedMultiplier;
@@ -5965,9 +5982,6 @@ export class SceneView {
     this.updateGarageViews(snapshot);
     this.updateConveyorViews(snapshot);
     this.updateSpriteTrackDanger(snapshot.danger ?? 0, snapshot.time);
-    for (const board of this.seatCountBoards) {
-      board.visible = false;
-    }
     for (const vehicle of snapshot.vehicles) {
       const view = this.vehicleViews.get(vehicle.id);
       const useStaticCache = vehicle.state === 'parked'
@@ -6122,10 +6136,6 @@ export class SceneView {
       if (view.userData.ambulanceStepBoard) {
         this.updateAmbulanceStepBoard(view.userData.ambulanceStepBoard, vehicle, snapshot.time);
       }
-      if (vehicle.spotIndex != null && snapshot.spots[vehicle.spotIndex]?.vehicleId === vehicle.id) {
-        const board = this.seatCountBoards[vehicle.spotIndex];
-        if (board) this.updateSeatCountBoard(board, vehicle, snapshot.time);
-      }
     }
 
     const passengerYaw = deg(SCENE_TUNING.facing.passengerYawDegrees);
@@ -6215,6 +6225,7 @@ export class SceneView {
     this.pruneQueueEntryPathStates(queueSnapshots);
     this.processBoardingEvents(snapshot);
     this.updateBoardingViews(snapshot.time, passengersVisible);
+    this.updateSeatCountBoards(snapshot.spots, game, frameTime);
     this.updateLuxuryPassengerAnimations(snapshot.time);
     if (vehiclesVisible) this.vehicleEffects?.update(snapshot);
     this.updateVehiclePathPreview(snapshot, game);
@@ -6831,6 +6842,10 @@ export class SceneView {
   }
 
   clearBoardingViews() {
+    for (const board of this.seatCountBoards) {
+      board.visible = false;
+      board.userData.vehicleId = null;
+    }
     for (const entry of this.boardingViews) {
       this.layoutRoot.remove(entry.root);
       this.releaseBoardingVisual(entry.root);
@@ -7342,15 +7357,18 @@ export class SceneView {
     const previousTarget = this.renderer.getRenderTarget();
     const pixels = new Uint8ClampedArray(captureWidth * captureHeight * 4);
     const flipped = new Uint8ClampedArray(pixels.length);
+    const previewLines = [...this.vehiclePathLines, ...this.vehicleDeparturePathLines].filter(line => line.visible);
     try {
       this.applyViewportLayout(captureWidth, captureHeight, {
         updateRenderer: false,
         updateDom: false
       });
       this.renderer.setRenderTarget(renderTarget);
+      for (const line of previewLines) line.visible = false;
       this.render();
       this.renderer.readRenderTargetPixels(renderTarget, 0, 0, captureWidth, captureHeight, pixels);
     } finally {
+      for (const line of previewLines) line.visible = true;
       this.renderer.setRenderTarget(previousTarget);
       renderTarget.dispose();
       this.resize();

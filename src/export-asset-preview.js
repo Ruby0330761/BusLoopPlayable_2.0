@@ -1,6 +1,7 @@
 import { DataUtils } from 'three';
 import { gunzipSync, unzlibSync } from 'three/addons/libs/fflate.module.js';
 import { LEVEL_1 } from './level-data.js';
+import { decodeVatDeltas } from './passenger-vat-delta.js';
 
 function decodeBytes(buffer) {
   const bytes = new Uint8Array(buffer);
@@ -16,7 +17,7 @@ function labelPreview(preview, label) {
 }
 
 function renderVatPreview(bytes, url) {
-  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  let view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
   const isPacked = url.endsWith('.vatq');
   const animation = LEVEL_1.assets.passengerAnimations;
   let width;
@@ -35,6 +36,10 @@ function renderVatPreview(bytes, url) {
     return null;
   }
   const rgb = isPacked ? unzlibSync(bytes.subarray(40)) : null;
+  if (!isPacked) {
+    bytes = decodeVatDeltas(bytes, width, height);
+    view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  }
   if (isPacked ? rgb.length !== width * height * 3 : bytes.length !== width * height * 8) return null;
   const components = [0, 1, 2];
   const read = (pixel, component) => isPacked

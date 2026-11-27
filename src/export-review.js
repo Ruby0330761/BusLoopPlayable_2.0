@@ -1,9 +1,11 @@
+import { EDITOR_EDITION_BADGE } from './build-version.js';
 import { createBrandingVariantTuning } from './export-branding.js';
 import { expandExportVariantTunings } from './export-variants.js';
-import { formatCompleteExportName } from './export-naming.js';
+import { formatCompleteExportName, parseDeliveryNames } from './export-naming.js';
 import { createEditorExportSession } from './playable-session-config.js';
+import { LARGE_ASSET_BYTES, largeSourceModels } from './export-model-check.js';
 
-export const LARGE_ASSET_BYTES = 100_000;
+export { LARGE_ASSET_BYTES };
 
 export function exportReviewPreviewKind(url, mime = '') {
   if (/^image\/(?:png|jpeg|webp|gif|avif)$/u.test(mime)) return 'image';
@@ -14,7 +16,7 @@ export function exportReviewPreviewKind(url, mime = '') {
   return 'binary';
 }
 
-export function buildExportReview(tuning, { brandingSet, platforms }) {
+export function buildExportReview(tuning, { brandingSet, platforms, deliveryNames = '' }) {
   const session = createEditorExportSession(tuning);
   for (const stage of session.sessions[session.active].stages) {
     const count = stage.scene?.parkingSpots?.count ?? tuning.parkingSpots?.count;
@@ -22,10 +24,18 @@ export function buildExportReview(tuning, { brandingSet, platforms }) {
   }
 
   const branded = createBrandingVariantTuning(tuning, brandingSet);
-  const variants = expandExportVariantTunings(branded);
+  const { entries, errors } = parseDeliveryNames(deliveryNames, tuning.exportNaming, brandingSet);
+  if (errors.length) throw new TypeError(errors[0]);
+  const variants = entries.length ? [] : expandExportVariantTunings(branded);
+  const listed = new Map();
+  for (const { platform, naming, fileName } of entries) {
+    const channel = naming.channels[platform];
+    if (!listed.has(channel)) listed.set(channel, []);
+    listed.get(channel).push(fileName);
+  }
   return {
     iqEnabled: Number(tuning.iq?.enabled) === 1,
-    names: platforms.map(([platform, , format]) => ({
+    names: entries.length ? [...listed].map(([channel, files]) => ({ channel, files })) : platforms.map(([platform, , format]) => ({
       channel: branded.exportNaming.channels[platform],
       files: variants.map(({ exportNaming }) => {
         const stem = formatCompleteExportName(exportNaming, platform);
@@ -58,6 +68,7 @@ export function summarizeExportPackage(result, previewHashes = new Set()) {
   return {
     fileName: result.fileName,
     bytes: result.bytes,
+    sourceModels: largeSourceModels(artifacts),
     artifacts: artifacts.map(({ fileName, bytes, uncompressedBytes }) => ({ fileName, bytes, uncompressedBytes })),
     assets: [...assets.values()].sort((a, b) => b.bytes - a.bytes || a.url.localeCompare(b.url))
   };
@@ -78,11 +89,15 @@ export function confirmPlayableExport(root, review, prepare) {
   dialog.className = 'editor-export-confirm';
   dialog.setAttribute('aria-labelledby', 'export-confirm-heading');
   dialog.innerHTML = `<form method="dialog">
-    <header><h3 id="export-confirm-heading" tabindex="-1"></h3><output aria-live="polite"></output></header>
+    <header><div class="export-review-heading"><h3 id="export-confirm-heading" tabindex="-1"></h3>${EDITOR_EDITION_BADGE}</div><output aria-live="polite"></output></header>
+    <div class="export-review-warning" role="status" hidden>
+      <span aria-hidden="true">!</span><strong></strong>
+    </div>
+    <p class="export-review-check-status" role="status" hidden></p>
     <div class="export-review-list">
-      <section data-review-page="names"><ul class="export-review-names"></ul></section>
+      <section data-review-page="names"><div class="export-review-first-assets"></div><ul class="export-review-names"></ul></section>
       <section data-review-page="branding"><div class="export-review-branding"></div><p role="status" hidden></p></section>
-      <section data-review-page="package"><p role="status" aria-live="polite"></p><div></div></section>
+      <section data-review-page="package"><div></div></section>
     </div>
     <footer><button value="cancel">返回修改</button><button type="button" value="back">上一步</button>
       <button type="button" value="confirm"></button></footer>
@@ -92,7 +107,9 @@ export function confirmPlayableExport(root, review, prepare) {
   const pages = [...dialog.querySelectorAll('[data-review-page]')];
   const back = dialog.querySelector('[value="back"]');
   const next = dialog.querySelector('[value="confirm"]');
-  const packageStatus = pages[2].querySelector('p');
+  const warning = dialog.querySelector('.export-review-warning');
+  const packageStatus = dialog.querySelector('.export-review-check-status');
+  const firstAssets = pages[0].querySelector('.export-review-first-assets');
   const packageContent = pages[2].querySelector('div');
   const brandingStatus = pages[1].querySelector('p');
   let step = 0;
@@ -109,7 +126,7 @@ export function confirmPlayableExport(root, review, prepare) {
     const names = element('div');
     names.append(...files.map(file => element('code', file)));
     row.append(element('strong', channel), names);
-    pages[0].querySelector('ul').append(row);
+    pages[0].querySelector('.export-review-names').append(row);
   }
   for (const { label, asset, visible } of review.branding) {
     const figure = element('figure');
@@ -127,7 +144,11 @@ export function confirmPlayableExport(root, review, prepare) {
 
   function updateButtons() {
     back.hidden = step === 0;
-    next.textContent = step < 2 ? '确认，下一步' : failed ? '重试准备' : '确认导出';
+    warning.hidden = step === 1 || !prepared?.assets.length;
+    packageStatus.hidden = step === 1 || !(loading || failed || (step === 0 && !prepared?.assets.length));
+    if (failed && step !== 1) next.textContent = '重试准备';
+    else if (step < 2) next.textContent = '确认，下一步';
+    else next.textContent = warning.hidden ? '确认导出' : '继续导出';
     next.disabled = (step === 1 && readyImages !== review.branding.length)
       || (step === 2 && (loading || (!prepared && !failed)));
   }
@@ -188,6 +209,13 @@ export function confirmPlayableExport(root, review, prepare) {
   }
 
   function renderPackage(summary) {
+    if (summary.sourceModels?.length) {
+      const models = element('details');
+      const list = element('ul');
+      models.append(element('summary', `模型源文件超过 100 KB（${summary.sourceModels.length} 项）`), list);
+      for (const { url, bytes } of summary.sourceModels) list.append(element('li', url.split('/').at(-1) + ' · ' + reviewSize(bytes)));
+      firstAssets.append(models);
+    }
     const size = element('p');
     size.className = 'export-review-size';
     size.append(element('span', '导出包体积'), element('strong', reviewSize(summary.bytes)));
@@ -203,19 +231,32 @@ export function confirmPlayableExport(root, review, prepare) {
       }
       packageContent.append(details);
     }
-    packageContent.append(element('h4', '超过 100 KB 的资源'));
     if (!summary.assets.length) {
-      packageContent.append(element('p', '本次没有超过 100 KB 的资源。'));
+      packageStatus.textContent = '本次交付素材均在 100 KB 以内。';
+      packageContent.append(element('p', packageStatus.textContent));
       return;
     }
+    warning.querySelector('strong').textContent = `${summary.assets.length} 项素材超过 100 KB`;
+    packageContent.append(element('h4', '超限素材明细'));
     const assets = element('ul');
     assets.className = 'export-review-assets';
+    const firstList = element('ul');
+    firstList.className = 'export-review-assets';
+    firstAssets.prepend(firstList);
     for (const asset of summary.assets) {
       const { url, bytes } = asset;
       const row = element('li');
       const name = element('span', url.split('/').at(-1));
       name.title = url;
-      row.append(name, element('strong', reviewSize(bytes)), renderAssetPreview(summary, asset, name.textContent));
+      const excess = bytes - LARGE_ASSET_BYTES;
+      const measure = element('div');
+      measure.className = 'export-review-asset-size';
+      const displaySize = excess < 100 ? (bytes / 1000).toLocaleString('zh-CN') + ' KB' : reviewSize(bytes);
+      measure.append(element('strong', displaySize), element('small', '超出 ' + (excess < 1000 ? excess + ' B' : reviewSize(excess))));
+      const firstRow = element('li');
+      firstRow.append(name.cloneNode(true), measure.cloneNode(true));
+      firstList.append(firstRow);
+      row.append(name, measure, renderAssetPreview(summary, asset, name.textContent));
       assets.append(row);
     }
     packageContent.append(assets);
@@ -224,13 +265,11 @@ export function confirmPlayableExport(root, review, prepare) {
   async function preparePackage() {
     loading = true;
     failed = false;
-    packageStatus.hidden = false;
     packageStatus.textContent = '正在准备导出包并计算实际体积…';
     updateButtons();
     try {
       prepared = await prepare(controller.signal, message => { packageStatus.textContent = message; });
       if (!dialog.open) return;
-      packageStatus.hidden = true;
       renderPackage(prepared);
     } catch (error) {
       if (!controller.signal.aborted) {
@@ -256,11 +295,10 @@ export function confirmPlayableExport(root, review, prepare) {
 
   back.addEventListener('click', () => showStep(step - 1));
   next.addEventListener('click', () => {
-    if (step < 2) {
-      showStep(step + 1);
-      if (step === 2 && !prepared && !loading && !failed) preparation = preparePackage();
-    } else if (failed) {
+    if (failed && step !== 1) {
       preparation = preparePackage();
+    } else if (step < 2) {
+      showStep(step + 1);
     } else if (prepared) {
       dialog.close('confirm');
     }
@@ -277,5 +315,6 @@ export function confirmPlayableExport(root, review, prepare) {
     }, { once: true });
     dialog.showModal();
     heading.focus();
+    preparation = preparePackage();
   });
 }

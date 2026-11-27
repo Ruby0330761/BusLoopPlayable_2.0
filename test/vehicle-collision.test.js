@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { BusLoopGame } from '../src/game-model.js';
+import { GameAudioController } from '../src/audio-controller.js';
 import { checkLayoutDriveOut } from '../src/level-drive-out.js';
 import {
   findCollisionContact,
@@ -339,6 +340,24 @@ test('garage releases vehicles in authored order and waits for the door vehicle 
   assert.equal(game.clickVehicle(1).ok, true);
   assert.equal(game.getVehicle(2).state, 'leaving-garage');
   assert.deepEqual(game.lastEvent.garageReleasedVehicleIds, [2]);
+});
+
+test('a dispatched garage car has the ordinary trip audio while its garage replenishes', () => {
+  const game = new BusLoopGame(createGarageLevel());
+  const audio = new GameAudioController();
+  const played = [];
+  audio.play = (name, clip, signal) => played.push({ name, signal });
+  game.subscribe(state => audio.handleGameEvent(state.lastEvent, state.time, state.vehicles));
+  for (let i = 0; i < 6; i++) game.update(0.1);
+  assert.deepEqual(played.map(event => event.name), ['garage_out']);
+  assert.equal(game.clickVehicle(1).ok, true);
+  assert.equal(played[0].signal.aborted, true);
+  assert.deepEqual(game.lastEvent.garageReleasedVehicleIds, [2]);
+  audio.handleGameEvent(game.lastEvent, game.time + 0.02, game.vehicles);
+  const duringTrip = { type: 'garage-cleared', garageClearedIds: [1, 10] };
+  audio.handleGameEvent(duringTrip, game.time, game.vehicles);
+  assert.deepEqual(played.map(event => event.name), ['garage_out', 'vehicle_tap', 'garage_clear']);
+  assert.notEqual(played.at(-1).signal, played[0].signal);
 });
 
 test('garage remains closed while a parked vehicle blocks its exact door box', () => {

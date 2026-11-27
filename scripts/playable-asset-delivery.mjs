@@ -4,12 +4,15 @@ import { access, mkdir, readFile, rename, unlink, writeFile } from 'node:fs/prom
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
+import { gzipSync, gunzipSync } from 'node:zlib';
+import { encodeVatDeltas, decodeVatDeltas } from '../src/passenger-vat-delta.js';
 import { stripMp3ProductionTags } from './playable-mp3-tags.mjs';
 import { stripUnreferencedFbxDisplayLayers } from './playable-fbx-display-layers.mjs';
 
 export const ASSET_DELIVERY_RULE_VERSION = 'lossless-media-v3';
 const MAX_PNG_BYTES = 8 * 1024 * 1024;
 const codecScript = fileURLToPath(new URL('./playable-lossless-webp.py', import.meta.url));
+const backgroundScript = fileURLToPath(new URL('./playable-mobile-background.py', import.meta.url));
 const exec = promisify(execFile);
 const sha256 = bytes => createHash('sha256').update(bytes).digest('hex');
 const binaryMime = 'application/octet-stream';
@@ -34,8 +37,8 @@ function assetUse(url, mime) {
   return 'static-png';
 }
 
-async function runCodec(python, args, bytes) {
-  const processResult = exec(python, [codecScript, ...args], {
+async function runCodec(python, args, bytes, script = codecScript) {
+  const processResult = exec(python, [script, ...args], {
     encoding: 'buffer', timeout: 35000, maxBuffer: MAX_PNG_BYTES + 1024
   });
   // A failed launch can close stdin before the source is written.
@@ -69,17 +72,26 @@ function probeCodec(python) {
 }
 
 export async function createAssetDelivery(root = process.cwd(), {
+  mobileBackgrounds = false, backgroundUrls = [],
   cacheDir = process.env.PLAYABLE_ASSET_CACHE_DIR ?? path.join(root, 'artifacts', '.playable-asset-cache')
 } = {}) {
   const python = await resolvePython(root);
   const codec = await probeCodec(python);
   const identity = { rules: ASSET_DELIVERY_RULE_VERSION, codec, fbxGzip: process.versions.zlib };
   const childEnv = { PLAYABLE_ASSET_PYTHON: python, PLAYABLE_ASSET_CACHE_DIR: cacheDir };
+  const backgrounds = new Set(backgroundUrls);
+  if (mobileBackgrounds) identity.backgrounds = 'mobile-v2';
+  childEnv.PLAYABLE_MOBILE_BACKGROUNDS = mobileBackgrounds ? '1' : '0';
+  function classify(url, mime) {
+    if (mobileBackgrounds && url === '/assets/unity/models/Idle_boy01_anim_map.rgba16f') return 'vat-delta';
+    if (mobileBackgrounds && backgrounds.has(url) && /^image\/(jpeg|png|webp)$/u.test(mime)) return 'mobile-background';
+    return assetUse(url, mime);
+  }
   let imageQueue = Promise.resolve();
 
   function sourceInfo(url, bytes, mime) {
     const sourceSha256 = sha256(bytes);
-    const use = assetUse(url, mime);
+    const use = classify(url, mime);
     const key = sha256(JSON.stringify([identity, use, mime, sourceSha256]));
     return { sourceSha256, use, cacheFile: path.join(cacheDir, key) };
   }
@@ -119,7 +131,7 @@ export async function createAssetDelivery(root = process.cwd(), {
     if (!codec.exact) return { bytes, reason: codec.unavailable };
     if (bytes.length > MAX_PNG_BYTES) return { bytes, reason: 'png-byte-budget' };
     try {
-      const output = await runCodec(python, [], bytes);
+      const output = await runCodec(python, mobileBackgrounds ? ['--thorough'] : [], bytes);
       const newline = output.indexOf(10);
       if (newline < 0) throw new Error('Missing codec status');
       const { reason } = JSON.parse(output.toString('utf8', 0, newline));
@@ -132,11 +144,29 @@ export async function createAssetDelivery(root = process.cwd(), {
 
   async function select(url, bytes, sourceMime = mimeForPlayableAsset(url)) {
     const { sourceSha256, use, cacheFile } = sourceInfo(url, bytes, sourceMime);
-    const eligible = use === 'mp3' || use === 'static-png' || use === 'fbx';
+    const eligible = ['mp3', 'static-png', 'fbx', 'mobile-background', 'vat-delta'].includes(use);
     const cached = eligible ? await readCache(cacheFile, bytes) : null;
     if (cached) return cached;
 
     let candidate = { bytes, reason: use };
+    if (use === 'vat-delta') {
+      const raw = bytes[0] === 31 && bytes[1] === 139 ? gunzipSync(bytes, { maxOutputLength: 512 * 128 * 8 }) : bytes;
+      if (raw.length === 512 * 128 * 8) {
+        const packed = gzipSync(encodeVatDeltas(raw, 512, 128), { level: 9 });
+        if (!raw.equals(decodeVatDeltas(gunzipSync(packed), 512, 128))) throw new Error('VAT round trip failed.');
+        candidate = { bytes: packed, reason: use };
+      }
+    }
+    if (use === 'mobile-background' && bytes.length <= MAX_PNG_BYTES) {
+      try {
+        const output = await runCodec(python, [], bytes, backgroundScript);
+        const newline = output.indexOf(10);
+        const { rect } = JSON.parse(output.toString('utf8', 0, newline));
+        candidate = { bytes: output.subarray(newline + 1), mime: 'image/webp', reason: use, rect };
+      } catch {
+        candidate = { bytes, reason: 'background-codec-failed' };
+      }
+    }
     if (use === 'mp3') candidate = stripMp3ProductionTags(bytes);
     if (use === 'fbx') candidate = stripUnreferencedFbxDisplayLayers(bytes);
     if (use === 'static-png') {
@@ -161,14 +191,15 @@ export async function createAssetDelivery(root = process.cwd(), {
       sourceBytes: bytes.length, deliveryBytes: selected.length, optimized, reason, cacheHit: false
     };
     if (candidate.removedLayers) result.removedLayers = candidate.removedLayers;
-    if (eligible && reason !== 'webp-codec-failed') await writeCache(cacheFile, result);
+    if (optimized && candidate.rect) result.backgroundRect = candidate.rect;
+    if (eligible && !reason.endsWith('codec-failed')) await writeCache(cacheFile, result);
     return result;
   }
 
   async function estimate(url, filePath, size) {
     const mime = mimeForPlayableAsset(url);
-    const use = assetUse(url, mime);
-    const mayBeCached = use === 'mp3' || use === 'fbx' || (use === 'static-png' && size <= MAX_PNG_BYTES);
+    const use = classify(url, mime);
+    const mayBeCached = ['mp3', 'fbx', 'vat-delta'].includes(use) || (['static-png', 'mobile-background'].includes(use) && size <= MAX_PNG_BYTES);
     if (mayBeCached) return estimateBytes(url, await readFile(filePath), mime);
     return { bytes: size, sourceBytes: size, embeddedBytes: embeddedByteCount(mime, size), cached: false };
   }

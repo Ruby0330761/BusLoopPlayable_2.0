@@ -210,11 +210,10 @@ test('the editor preflight shares the packager inline set and the 5 MB budget', 
 
 test('the checks panel validates channels, guide targets, level data and the install gate', async () => {
   const editor = await read('src/scene-editor.js');
-  for (const title of ['导出命名', '渠道代号', '倒计时配置', '商店链接', '关卡数据', '安装门槛', '引导目标', '素材体积', '单包体积（估算）']) {
+  for (const title of ['交付清单', '倒计时配置', '商店链接', '关卡数据', '安装门槛', '引导目标', '素材体积', '单包体积（估算）']) {
     assert.ok(editor.includes(title), `checks panel lost ${title}`);
   }
-  // Channel codes must be unique or two deliveries resolve to one filename.
-  assert.match(editor, /duplicateChannels\.push/);
+  assert.match(editor, /parseDeliveryNames\(deliveryList\.value/);
   assert.match(editor, /getVehicleGuideHandIssue/);
   assert.match(editor, /state: handIssue \? 'bad'/);
   // A threshold above the fleet can never be reached.
