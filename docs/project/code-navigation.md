@@ -4,6 +4,12 @@ Use this file before code changes. Pick the closest change area, then read only 
 
 ## Change Target Map
 
+Vehicle arrows use main-branch per-vehicle models/clones/outlines: `src/scene-view.js` (`addArrowOutline`, `makeCenteredArrow`, `applyVehicleArrowTuning`, `updateVehicleArrowTuning`), `src/scene-tuning.js` (`vehicleArrow`), `public/assets/unity/models/Arrow_01.fbx`; paired tests `test/game-model.test.js`. Experimental outline instancing was removed on 2026-11-27.
+
+Windows ZIP/check interpreter selection: `scripts/export-playable-package.mjs` (`resolveExportPython`); SVG inline media types: `scripts/package-applovin-single-html.mjs` (`MIME_TYPES`), `src/playable-inline-assets.js`; paired tests `test/playable-export.test.js`. Native package runtime checks include a trusted boost-opening tap before CTA, in `scripts/check-playable-runtime.mjs` / `test/playable-runtime-smoke.test.js`.
+
+Super boost challenge (one-tap opening, adjustable hand speed, global/boarding multiplier, flame overlay): `src/super-boost.js`, `src/main.js`, `src/scene-editor.js`, `src/scene-tuning.js`, `src/styles.css`; paired tests `test/super-boost.test.js`. Localized opening/replay copy uses `src/branding-localization.js` (`resolveBoostGuideCopy`, `resolveReplayEndCardCopy`); result layout uses `src/main.js` (`isReplayEndCardEnabled`, `applyGameOverTuning`, `syncResultInteraction`), `index.html`; tests `test/branding-localization.test.js`, `test/game-model.test.js`. Countdown alarm SVG and layout: `src/countdown{,-view}.js`, `public/assets/applovin/countdown/alarm-clock.svg`, `test/countdown-view.test.js`. The mode takes ownership of the opening hints in `src/scene-view.js`.
+
 | Change area | Start here | Also check |
 | --- | --- | --- |
 | App bootstrap, HUD, input, reset, localStorage tuning, branding image/text positioning and dragging, pre-roll startup, QA API | `src/main.js` | `index.html`, `src/styles.css`, `src/pre-roll.js`, `test/pre-roll.test.js` |

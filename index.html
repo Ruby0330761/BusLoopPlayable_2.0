@@ -14,8 +14,14 @@
         <div id="countdown" class="countdown" role="timer" aria-live="off" hidden>
           <img id="countdown-image" alt="" aria-hidden="true" draggable="false" src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7" />
           <span id="countdown-value" class="countdown-value">00:30</span>
+          <img id="countdown-alarm-icon" class="countdown-alarm-icon" alt="" aria-hidden="true" draggable="false" src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7" hidden />
         </div>
         <div id="countdown-warning" class="countdown-warning" aria-hidden="true" hidden></div>
+        <canvas id="super-boost-flames" class="super-boost-flames" aria-hidden="true" hidden></canvas>
+        <div id="super-boost-guide" class="super-boost-guide" hidden>
+          <div class="super-boost-guide-copy" id="super-boost-guide-copy">TAP TO BOOST!</div>
+          <img id="super-boost-guide-hand" alt="" aria-hidden="true" draggable="false" src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7" />
+        </div>
         <div id="stamina" class="stamina" role="img" hidden>
           <img id="stamina-frame" class="stamina-frame" alt="" draggable="false" />
           <div id="stamina-hearts" class="stamina-hearts" aria-hidden="true"></div>
@@ -48,6 +54,7 @@
         <div id="game-over-overlay" class="game-over-overlay" hidden>
           <div id="game-over-title" class="game-over-title">Game Over</div>
           <img id="game-over-logo" class="game-over-logo" alt="Bus Fever Party! logo" />
+          <p id="game-over-prompt" class="game-over-prompt" hidden>Wanna try again?</p>
         </div>
         <button id="game-over-retry" class="game-over-retry" type="button" aria-label="Retry" hidden>Retry</button>
         <div id="stage-choice-overlay" class="stage-choice-overlay" hidden>

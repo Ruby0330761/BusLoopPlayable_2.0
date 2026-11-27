@@ -24,7 +24,8 @@ export const OVERLAY_ROOT_SELECTORS = Object.freeze([
   '#progress-hud',
   '#speed-toggle',
   '.free-asset-overlay',
-  '.weather-effect-canvas'
+  '.weather-effect-canvas',
+  '#super-boost-flames'
 ]);
 
 // Roots built from many CSS boxes instead of a single image. They are replayed
@@ -699,6 +700,11 @@ export async function drawStageOverlays(context, {
       }
       if (root.id === 'speed-toggle') {
         await drawSpeedTogglePill(context, root, { view, origin, scale, loadImage });
+      }
+      if (root.id === 'countdown' && root.dataset?.alarm === 'true') {
+        const box = toLocalRect(root.getBoundingClientRect(), origin, scale);
+        drawRoundedBox(context, box, styleOf(root, view));
+        drawBorder(context, box, styleOf(root, view));
       }
       drawElementImages(context, root, { view, origin, scale });
       for (const textSelector of OVERLAY_TEXT_SELECTORS) {

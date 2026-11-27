@@ -63,6 +63,29 @@ const STAMINA_INTRO_FIXTURE = NONBLANK_CANVAS_FIXTURE.replace(
   <script>setTimeout(() => { document.querySelector('#stamina-intro').hidden = true; }, 2000);</script></body>`
 );
 
+const BOOST_INTRO_FIXTURE = NONBLANK_CANVAS_FIXTURE.replace('</body>', `
+  <div id="super-boost-guide" style="position:fixed;inset:0;background:#0009;z-index:25">TAP TO BOOST!</div>
+  <button id="speed-toggle" style="position:fixed;left:280px;top:20px;width:90px;height:50px;z-index:26">x1</button>
+  <script>document.querySelector('#speed-toggle').addEventListener('click', event => {
+    if (!event.isTrusted) throw Error('Boost opening requires trusted browser input');
+    document.querySelector('#super-boost-guide').hidden = true;
+    document.querySelector('#speed-toggle').hidden = true;
+  });</script></body>`);
+
+test('runtime smoke taps the boost opening with trusted input before locating the store CTA', { timeout: 30_000 }, async context => {
+  const chrome = await findChromeExecutable();
+  if (!chrome) { context.skip('Chrome/Chromium is unavailable.'); return; }
+  const root = await mkdtemp(path.join(os.tmpdir(), 'runtime-boost-fixture-'));
+  try {
+    const artifactPath = path.join(root, 'fixture.html');
+    await writeFile(artifactPath, BOOST_INTRO_FIXTURE, 'utf8');
+    const report = await checkPlayableRuntimeArtifact({ artifactPath, platform: 'applovin', chrome, timeoutMs: 8_000 });
+    assert.equal(report.conclusion, 'PASS', JSON.stringify(report.checks.filter(check => check.status !== 'pass')));
+    assert.equal(report.ctaCapture.isTrusted, true);
+    assert.equal(report.ctaCapture.target.id, 'cta-button');
+  } finally { await rm(root, { recursive: true, force: true }); }
+});
+
 const MUTED_PRE_ROLL_FIXTURE = NONBLANK_CANVAS_FIXTURE.replace(
   '</body>',
   `<div id="pre-roll-overlay" style="position:fixed;inset:0;background:#000;z-index:20">

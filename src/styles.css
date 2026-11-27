@@ -56,6 +56,46 @@ body { user-select: none; overscroll-behavior: none; }
 }
 .countdown[hidden], .countdown-warning[hidden] { display: none; }
 .countdown img { display: block; width: 100%; height: 100%; }
+.countdown img[hidden] { display: none; }
+.countdown[data-alarm="true"] {
+  background: linear-gradient(180deg, #2d5a8b, #102949);
+  border: 2px solid #ffe062;
+  border-radius: 18px;
+  box-shadow: 0 3px 0 #10223c, inset 0 2px 0 #ffffff33;
+}
+.countdown .countdown-alarm-icon {
+  position: absolute; width: 30%; height: 115%; left: 3%; top: -12%; object-fit: contain;
+}
+.countdown[data-alarm="true"] .countdown-value {
+  left: 35%; right: 5%; top: 12%; bottom: 12%;
+  -webkit-text-stroke: 0; text-shadow: 0 2px 0 #091e39;
+}
+/* Above the playfield, below branding/HUD (6) so logos and titles stay clear. */
+.super-boost-flames { position: absolute; z-index: 5; pointer-events: none; }
+/* Keep the mask below the button, with copy/hand above it. This wrapper must
+   not create a stacking context that traps the hand beneath the button. */
+.super-boost-guide { position: absolute; inset: 0; pointer-events: none; }
+.super-boost-guide::before {
+  content: ''; position: absolute; inset: 0; z-index: 14;
+  background: #071b3c99; pointer-events: auto;
+}
+.super-boost-guide[hidden], .super-boost-flames[hidden] { display: none; }
+.super-boost-guide-copy {
+  position: absolute; z-index: 16; left: var(--boost-guide-x); top: var(--boost-guide-y);
+  transform: translateX(-50%); width: var(--boost-guide-width); padding: 12px 8px;
+  border: 2px solid #ffe062; border-radius: 16px; background: #142f50;
+  color: #fff4b5; font: 900 calc(var(--boost-guide-unit, 1px) * 20)/1.2 'Poppins Branding', Arial, sans-serif;
+  text-align: center; box-shadow: 0 4px 0 #071a32; overflow-wrap: anywhere;
+}
+#super-boost-guide-hand {
+  position: absolute; z-index: 17; width: calc(var(--boost-guide-unit, 1px) * 64); height: auto;
+  transform: scaleX(-1); transform-origin: center;
+  animation: boost-hand-tap var(--boost-hand-duration, .8s) ease-in-out infinite; pointer-events: none;
+}
+.speed-toggle.is-boost-guided { z-index: 15; filter: drop-shadow(0 0 10px #ffe062); }
+.speed-toggle.is-super-boosted { filter: drop-shadow(0 0 8px #ff8c00) drop-shadow(0 0 3px #fff1a1); }
+@keyframes boost-hand-tap { 0%,100% { transform: translate(6px,8px) scale(-1.08,1.08); } 50% { transform: translate(0,0) scale(-.92,.92); } }
+@media (prefers-reduced-motion: reduce) { #super-boost-guide-hand { animation: none; } }
 .countdown-value {
   position: absolute;
   left: 36.5%; right: 7%; top: 24%; bottom: 22%;
@@ -656,6 +696,20 @@ button:hover { transform: translateY(-1px); background: #fff; }
   opacity: 1;
   transform: translate(-50%, -50%) scale(1);
 }
+.game-over-prompt {
+  position: absolute; margin: 0; transform: translateX(-50%);
+  color: #fff; font-weight: 900; line-height: 1.25; text-align: center;
+  overflow-wrap: anywhere; text-shadow: 0 3px 5px #0008;
+  opacity: 0; transition: opacity var(--game-over-logo-appear-duration, .65s) ease;
+}
+.game-over-prompt[hidden] { display: none; }
+.game-over-overlay.is-cta-ready .game-over-prompt { opacity: 1; }
+.game-over-overlay.is-replay-end-card:not(.is-failed) + .game-over-retry {
+  --game-over-retry-background: url('/assets/unity/ui/Main_Prop_GreenBtn.png') center / 100% 100% no-repeat;
+}
+.game-over-overlay.is-replay-end-card:not([hidden]) ~ .cta-button {
+  z-index: 11; animation: none; transform: translate(-50%, -50%);
+}
 /* A failed run needs a way to play again; before this the only exit from the
    failure card was the store button, so a lost player had to reload the ad.
    The pill art ships without lettering and the label is a real text node, so the
@@ -672,6 +726,7 @@ button:hover { transform: translateY(-1px); background: #fff; }
   display: grid;
   place-items: center;
   padding: 0;
+  white-space: nowrap;
   border: 0;
   border-radius: 0;
   /* One declaration so the single-HTML export inlines the pill art once: the

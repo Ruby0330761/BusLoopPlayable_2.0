@@ -12,6 +12,8 @@ import {
   normalizeStorefrontPreview,
   resolveBrandingLocale,
   resolveLocalizedBranding,
+  resolveReplayEndCardCopy,
+  resolveBoostGuideCopy,
   resolveStoreTitle
 } from '../src/branding-localization.js';
 import { SCENE_TUNING } from '../src/scene-tuning.js';
@@ -19,6 +21,30 @@ import { SCENE_TUNING } from '../src/scene-tuning.js';
 const ROOT = process.cwd();
 const mainSource = readFileSync(join(ROOT, 'src', 'main.js'), 'utf8');
 const editorSource = readFileSync(join(ROOT, 'src', 'scene-editor.js'), 'utf8');
+
+test('replay end-card question and both actions follow browser languages with English fallback', () => {
+  assert.deepEqual(resolveReplayEndCardCopy(['en-US']), {
+    locale: 'en', prompt: 'Wanna try again?', retry: 'Retry', playNow: 'Play Now!', direction: 'ltr'
+  });
+  assert.equal(resolveReplayEndCardCopy(['zh-CN']).prompt, '想再试一次吗？');
+  assert.equal(resolveReplayEndCardCopy(['zh-CN']).retry, '重试');
+  assert.equal(resolveReplayEndCardCopy(['es-MX']).retry, 'Reintentar');
+  assert.equal(resolveReplayEndCardCopy(['ar-SA']).direction, 'rtl');
+  assert.equal(resolveReplayEndCardCopy(['th-TH']).locale, 'en');
+  for (const locale of Object.keys(BRANDING_LOCALIZATION)) {
+    const copy = resolveReplayEndCardCopy([locale]);
+    for (const field of ['prompt', 'retry', 'playNow']) assert.ok(copy[field]?.trim(), `${locale}.${field}`);
+  }
+});
+
+test('default boost guide follows browser language while custom copy remains authored', () => {
+  assert.equal(resolveBoostGuideCopy(['zh-CN'], 'TAP TO BOOST!').text, '点击加速！');
+  assert.equal(resolveBoostGuideCopy(['es-MX'], 'Tap to Boost').text, '¡TOCA PARA ACELERAR!');
+  assert.equal(resolveBoostGuideCopy(['ar-SA']).direction, 'rtl');
+  assert.equal(resolveBoostGuideCopy(['th-TH']).text, 'TAP TO BOOST!');
+  assert.equal(resolveBoostGuideCopy(['zh-CN'], 'My custom hint').text, 'My custom hint');
+  for (const locale of Object.keys(BRANDING_LOCALIZATION)) assert.ok(resolveBoostGuideCopy([locale]).text);
+});
 
 test('device language resolution covers the eight shipped store languages', () => {
   assert.equal(resolveBrandingLocale(['en-US']), 'en');

@@ -162,7 +162,7 @@ test('the Christmas background music ships and stays off by default', async () =
   assert.ok(bytes.length < 300_000, 'the loop must stay small enough to inline');
 });
 
-test('background music starts on the first successful tap and never on load', () => {
+test('background music starts on a successful vehicle or boost tap and never on load', () => {
   // Autoplay before a gesture is rejected by every ad platform's browser, and a
   // rejected play is worse than a silent ad. The track therefore has to hang off
   // `result.ok` on the vehicle click, and the controller has to keep it out of
@@ -174,8 +174,10 @@ test('background music starts on the first successful tap and never on load', ()
   assert.match(main, /function startBackgroundMusic\(\)/);
   assert.match(main, /if \(!Number\(bgm\?\.enabled\)\) return;/);
   assert.match(main, /const result = game\.clickVehicle\(vehicleId\);\s*\n\s*if \(result\?\.ok\) \{\s*\n\s*startBackgroundMusic\(\);/);
-  // Starting must never happen at module load: only inside the click handler.
-  assert.equal((main.match(/startBackgroundMusic\(\)/g) ?? []).length, 2, 'declaration + one call site');
+  // Both entry paths require a user action. Boost mode takes over the opening
+  // and starts the clock before the first vehicle is dispatched.
+  assert.equal((main.match(/startBackgroundMusic\(\)/g) ?? []).length, 3, 'declaration + two gesture call sites');
+  assert.match(main, /if \(superBoost\.activate\(\)\) \{[\s\S]*?startBackgroundMusic\(\);/);
 
   // Looping source with its own gain, tracked outside the effect pool.
   assert.match(controller, /source\.loop = true/);

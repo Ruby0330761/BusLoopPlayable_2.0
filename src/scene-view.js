@@ -1661,8 +1661,6 @@ export class SceneView {
     // Same contract for the vehicle-shadow batch.
     this.vehicleShadowMode = null;
     this.vehicleShadowBatch = null;
-    this.arrowShellMode = null;
-    this.arrowShellBatch = null;
     this.pendingBoardingSounds = [];
     this.initialEntryPathStates = new Map();
     this.queueEntryPathStates = new Map();
@@ -5081,15 +5079,6 @@ export class SceneView {
       scale: tuning.outlineScale,
       depthTest: tuning.outlineDepthTest
     });
-    // The 1px `LineSegments` edge costs one draw call per car (81 total) and
-    // covered 0.087% of a 390x844 phone screen in the measured level, while the
-    // outline *shell* already carries the silhouette. Off by default;
-    // `vehicleArrow.outlineEdgesEnabled = 1` brings the wire edge back.
-    if (SCENE_TUNING.vehicleArrow?.outlineEdgesEnabled === 0) {
-      arrow.traverse((child) => {
-        if (child.isLineSegments && child.userData.isArrowOutline) child.visible = false;
-      });
-    }
   }
 
   updateVehicleArrowTuning() {
@@ -5198,106 +5187,6 @@ export class SceneView {
     setObjectOpacity(view.userData.hiddenRoot, hiddenArrowAlpha);
     setObjectOpacity(view.userData.hiddenModelRoot, hiddenModelAlpha);
     view.userData.pickMeshes = vehicle.hiddenRevealed ? view.userData.bodyMeshes : view.userData.hiddenBodyMeshes;
-  }
-
-  // Arrow outline *shells* are the one arrow-layer cost that reaches the GPU as
-  // draw calls: 81 shells measured as ONE shared geometry drawn 81 times. They
-  // collapse into a single InstancedMesh whose instances are the carriers' world
-  // matrices.
-  //
-  // The outline *edges* (`LineSegments`) are deliberately left alone: measured
-  // with them hidden the draw-call count did not move, so batching them would be
-  // code without a saving.
-  ensureArrowShellBatch(requiredCount) {
-    if (SCENE_TUNING.vehicleArrow?.instancedShells === 0) return null;
-    const existing = this.arrowShellBatch;
-    if (existing && existing.capacity >= requiredCount) return existing;
-    let source = null;
-    for (const view of this.vehicleViews?.values?.() ?? []) {
-      view.traverse((node) => {
-        if (!source && node.isMesh && node.userData.isArrowOutline) source = node;
-      });
-      if (source) break;
-    }
-    if (!source) return null;
-    if (existing?.mesh) {
-      this.layoutRoot?.remove(existing.mesh);
-      existing.mesh.dispose?.();
-      existing.material?.dispose?.();
-    }
-    const capacity = Math.max(16, requiredCount);
-    // One shared material: the shells are a flat colour, so `outlineColor` is
-    // resolved once here instead of once per car.
-    const tuning = SCENE_TUNING.vehicleArrow ?? {};
-    const material = new THREE.MeshBasicMaterial({
-      color: tuning.outlineColor ?? 0x171717,
-      side: THREE.DoubleSide,
-      depthWrite: false,
-      depthTest: Boolean(tuning.outlineDepthTest),
-      toneMapped: false
-    });
-    const mesh = new THREE.InstancedMesh(source.geometry, material, capacity);
-    mesh.name = 'Instanced Arrow Outline Shells';
-    mesh.count = 0;
-    mesh.frustumCulled = false;
-    mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
-    mesh.matrixAutoUpdate = false;
-    mesh.renderOrder = source.renderOrder;
-    this.layoutRoot.add(mesh);
-    this.arrowShellBatch = { mesh, capacity, material, scratch: new THREE.Matrix4() };
-    return this.arrowShellBatch;
-  }
-
-  applyArrowShellMode(instanced) {
-    this.arrowShellMode = instanced ? 'instanced' : 'per-object';
-    for (const view of this.vehicleViews?.values?.() ?? []) {
-      view.traverse((node) => {
-        if (!node.isMesh || !node.userData.isArrowOutline) return;
-        node.visible = !instanced;
-      });
-    }
-    if (instanced) return;
-    if (this.arrowShellBatch?.mesh) {
-      this.arrowShellBatch.mesh.visible = false;
-      this.arrowShellBatch.mesh.count = 0;
-    }
-  }
-
-  syncArrowShellBatch() {
-    const instanced = SCENE_TUNING.vehicleArrow?.instancedShells !== 0;
-    if (this.arrowShellMode !== (instanced ? 'instanced' : 'per-object')) {
-      this.applyArrowShellMode(instanced);
-    }
-    if (!instanced) return;
-
-    const carriers = [];
-    for (const view of this.vehicleViews?.values?.() ?? []) {
-      view.traverse((node) => {
-        if (!node.isMesh || !node.userData.isArrowOutline) return;
-        for (let parent = node.parent; parent; parent = parent.parent) {
-          if (!parent.visible || parent.scale.x === 0) return;
-        }
-        carriers.push(node);
-      });
-    }
-    if (!carriers.length) return;
-    const batch = this.ensureArrowShellBatch(carriers.length);
-    if (!batch) return;
-    const { mesh, scratch } = batch;
-    const count = Math.min(carriers.length, batch.capacity);
-    for (let index = 0; index < count; index += 1) {
-      const carrier = carriers[index];
-      carrier.updateWorldMatrix(true, false);
-      scratch.copy(carrier.matrixWorld);
-      mesh.setMatrixAt(index, scratch);
-      // Hidden on every frame: arrows are rebuilt per level, so a carrier made
-      // after the mode switch would otherwise draw on top of its instance.
-      carrier.visible = false;
-    }
-    mesh.count = count;
-    mesh.instanceMatrix.needsUpdate = true;
-    mesh.visible = true;
-    batch.carriers = carriers;
   }
 
   makeVehicleShadow(seats) {
@@ -6315,6 +6204,10 @@ export class SceneView {
 
   updateGuideHand(time = 0, snapshot = this.lastSnapshot) {
     if (!this.guideHand) return;
+    if (Number(SCENE_TUNING.superBoost?.enabled) === 1) {
+      this.guideHand.visible = false;
+      return;
+    }
     if (!Boolean(SCENE_TUNING.visibility?.vehicles ?? 1)) {
       this.guideHand.visible = false;
       return;
@@ -6356,10 +6249,12 @@ export class SceneView {
   }
 
   getFirstClickGuideTuning() {
+    if (Number(SCENE_TUNING.superBoost?.enabled) === 1) return { ...SCENE_TUNING.firstClickGuide, enabled: 0 };
     return mergeStageTuning(SCENE_TUNING.firstClickGuide, this.stageOpening?.firstClickGuide);
   }
 
   getEntryBannerTuning() {
+    if (Number(SCENE_TUNING.superBoost?.enabled) === 1) return { ...SCENE_TUNING.entryBanner, enabled: 0 };
     return mergeStageTuning(SCENE_TUNING.entryBanner, this.stageOpening?.entryBanner);
   }
 
@@ -7158,7 +7053,6 @@ export class SceneView {
   render() {
     this.updateVehicleEntrance();
     this.syncVehicleShadowBatch();
-    this.syncArrowShellBatch();
     this.syncPassengerShadowBatch();
     this.renderer.render(this.scene, this.camera);
   }

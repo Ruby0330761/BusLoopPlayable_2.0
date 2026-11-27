@@ -564,9 +564,47 @@ function commandError(label, code, output) {
   return error;
 }
 
+async function probePythonExecutable(command, prefixArgs = []) {
+  return new Promise((resolve) => {
+    const child = spawn(command, [...prefixArgs, '-c',
+      'import sys, zipfile; assert sys.version_info >= (3, 10); print(sys.executable)'],
+    { windowsHide: true, stdio: ['ignore', 'pipe', 'ignore'] });
+    let output = '';
+    let settled = false;
+    const finish = (value) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      resolve(value);
+    };
+    const timer = setTimeout(() => { child.kill(); finish(null); }, 3000);
+    child.stdout.on('data', (chunk) => { output += chunk; });
+    child.once('error', () => finish(null));
+    child.once('close', (code) => finish(code === 0 && output.trim() ? output.trim() : null));
+  });
+}
+
+export async function resolveExportPython({
+  platform = process.platform, env = process.env, probe = probePythonExecutable
+} = {}) {
+  // Windows often resolves python3 to a Store alias which exits 9009. Probe a
+  // working interpreter and use its real path for every ZIP/check invocation.
+  const explicit = String(env.PLAYABLE_EXPORT_PYTHON ?? '').trim();
+  const candidates = explicit ? [[explicit, []]] : platform === 'win32'
+    ? [['python', []], ['py', ['-3']], ['python3', []]]
+    : [['python3', []], ['python', []]];
+  for (const [command, prefix] of candidates) {
+    const executable = await probe(command, prefix);
+    if (executable) return executable;
+  }
+  throw new Error(explicit
+    ? `PLAYABLE_EXPORT_PYTHON 不可用：${explicit}。需要 Python 3.10+。`
+    : '未找到可用的 Python 3.10+。请安装 Python，或设置 PLAYABLE_EXPORT_PYTHON 指向实际解释器。');
+}
+
 async function run(command, args, { cwd, env = {}, signal, allowExitCodes = [0], label = command } = {}) {
+  const executable = command === 'python3' ? await resolveExportPython() : command;
   await new Promise((resolve, reject) => {
-    const executable = command === 'python3' ? (process.env.PLAYABLE_EXPORT_PYTHON || command) : command;
     const child = spawn(executable, args, {
       cwd,
       env: { ...process.env, ...env },

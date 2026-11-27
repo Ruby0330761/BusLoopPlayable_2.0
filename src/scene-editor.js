@@ -13,6 +13,7 @@ import { detectPlayfieldHorizon, resolveBackgroundHorizon } from './background-a
 import { BUILD_VERSION } from './build-version.js';
 import { BUILD_CHANGELOG, changelogVersions } from './build-changelog.js';
 import { COUNTDOWN_SIREN_ASSET, COUNTDOWN_TIMER_ASSET, normalizeCountdownConfig } from './countdown.js';
+import { normalizeSuperBoostConfig } from './super-boost.js';
 import { BRANDING_LOCALE_OPTIONS, STOREFRONT_PREVIEW_OPTIONS, normalizeStorefrontPreview } from './branding-localization.js';
 import { getStaminaAssetPaths, normalizeStaminaConfig } from './stamina.js';
 import { SPEED_TOGGLE_STYLES, normalizeSpeedToggleStyle } from './speed-toggle.js';
@@ -242,7 +243,7 @@ function editorCategoryForGroup(group) {
   if (/^(?:parkingSpots|vehiclePath|vehicleDeparturePath|vehicleArea)\./.test(path)) return 'vehicle';
   // Sound belongs with the guide stage: the BGM library, its delay/volume
   // controls and the effect groups are all part of setting up an opening beat.
-  if (/^(?:cta|speedToggle|countdown|stamina|installGate|gameOver|vehicleGuideHand|firstClickGuide|entryBanner|weatherEffect|freeAssets|audio)\./.test(path)) return 'guide';
+  if (/^(?:cta|speedToggle|superBoost|countdown|stamina|installGate|gameOver|vehicleGuideHand|firstClickGuide|entryBanner|weatherEffect|freeAssets|audio)\./.test(path)) return 'guide';
   if (path.startsWith('preRoll.')) return 'guide';
   return 'visual';
 }
@@ -810,11 +811,35 @@ const FIELD_GROUPS = [
     ]
   },
   {
+    title: '超强加速挑战',
+    defaultOpen: true,
+    fields: [
+      ['启用超强加速模式', 'superBoost.enabled', 0, 1, 1, null, 'toggle'],
+      ['全局及乘客上车倍率', 'superBoost.multiplier', 1, 6, 0.1],
+      ['开局加速按钮引导', 'superBoost.guideEnabled', 0, 1, 1, null, 'toggle'],
+      ['引导文案（默认或留空自动翻译）', 'superBoost.guideText', 0, 0, 1, null, 'text'],
+      ['引导大小', 'superBoost.guideScale', 0.5, 2, 0.01],
+      ['小手动画速度', 'superBoost.guideSpeed', 0.1, 5, 0.1],
+      ['胜负再试结束页', 'superBoost.replayEndCard', 0, 1, 1, null, 'toggle'],
+      ['结束页提示字号', 'superBoost.promptFontSize', 20, 120, 1],
+      ['结束页提示宽度', 'superBoost.promptWidth', 200, 1000, 1],
+      ['Logo到提示间距', 'superBoost.promptGap', 0, 200, 1],
+      ['提示到按钮间距', 'superBoost.promptButtonGap', 0, 200, 1],
+      ['加速火光效果', 'superBoost.flameEnabled', 0, 1, 1, null, 'toggle'],
+      ['火光强度', 'superBoost.flameIntensity', 0, 1, 0.01],
+      ['火焰高度（画面比例）', 'superBoost.flameHeight', 0.1, 0.6, 0.01]
+    ]
+  },
+  {
     title: '倒计时挑战',
     defaultOpen: true,
     countdown: true,
     fields: [
       ['启用倒计时', 'countdown.enabled', 0, 1, 1, null, 'toggle'],
+      ['使用闹钟图标', 'countdown.iconEnabled', 0, 1, 1, null, 'toggle'],
+      ['闹钟图标缩放', 'countdown.iconScale', 0.5, 2, 0.01],
+      ['图标水平偏移（%）', 'countdown.iconOffsetX', -100, 100, 1],
+      ['图标垂直偏移（%）', 'countdown.iconOffsetY', -100, 100, 1],
       ['倒计时时长（秒）', 'countdown.durationSeconds', 0, 120, 1, null, 'countdown-number'],
       ['临近结束红光', 'countdown.warningEnabled', 0, 1, 1, null, 'toggle'],
       ['红光提前时间（秒）', 'countdown.warningSeconds', 0, 120, 1, null, 'countdown-number'],
@@ -1544,7 +1569,7 @@ const SHELL_PANELS = [
   { id: 'scene', label: '\u573a\u666f', icon: 'M12 3v2M12 19v2M3 12h2M19 12h2M5.6 5.6 7 7M17 17l1.4 1.4M18.4 5.6 17 7M7 17l-1.4 1.4', match: /^(?:camera|lighting|sourceCrop|background|visibility|preview)\./ },
   { id: 'track', label: '\u8f68\u9053', icon: 'M4 6h16v12H4zM8 6v12M16 6v12', match: /^(?:conveyorLayout|conveyorLayouts|spatialConveyor|queueCurves|passengerShadows|effects)\./ },
   { id: 'cars', label: '\u8f66\u8f86', icon: 'M4 15v-2.5l1.8-3.2A2 2 0 0 1 7.5 8h9a2 2 0 0 1 1.7 1.3L20 12.5V15M4 15h16v2.5H4z', match: /^(?:parkingSpots|vehiclePath|vehicleDeparturePath|vehicleArea|passengerMaterial|passengers)\./ },
-  { id: 'guide', label: '\u5f15\u5bfc', icon: 'M9 11V5.5a1.5 1.5 0 0 1 3 0V10M12 10V7.5a1.5 1.5 0 0 1 3 0V12M15 12v-1a1.5 1.5 0 0 1 3 0v4.5A5.5 5.5 0 0 1 12.5 21h-1A5.5 5.5 0 0 1 6 15.5V13a1.5 1.5 0 0 1 3 0v1', match: /^(?:vehicleGuideHand|firstClickGuide|entryBanner|countdown|weatherEffect|freeAssets|preRoll|gameOver|installGate|stamina)\./ },
+  { id: 'guide', label: '\u5f15\u5bfc', icon: 'M9 11V5.5a1.5 1.5 0 0 1 3 0V10M12 10V7.5a1.5 1.5 0 0 1 3 0V12M15 12v-1a1.5 1.5 0 0 1 3 0v4.5A5.5 5.5 0 0 1 12.5 21h-1A5.5 5.5 0 0 1 6 15.5V13a1.5 1.5 0 0 1 3 0v1', match: /^(?:vehicleGuideHand|firstClickGuide|entryBanner|superBoost|countdown|weatherEffect|freeAssets|preRoll|gameOver|installGate|stamina)\./ },
   { id: 'ui', label: '\u754c\u9762', icon: 'M4 5h16v14H4zM4 9h16M9 9v10', match: /^(?:branding|cta|speedToggle|progressHud)\./ },
   { id: 'audio', label: '\u58f0\u97f3', icon: 'M5 9.5h3L12.5 6v12L8 14.5H5zM16 9a4.2 4.2 0 0 1 0 6', match: /^audio\./ },
   { id: 'export', label: '\u5bfc\u51fa', icon: 'M12 16V4M7.5 8.5 12 4l4.5 4.5M4 16v3h16v-3', match: /^exportNaming\./ },
@@ -1565,7 +1590,7 @@ const SHELL_SUBGROUPS = {
   ],
   guide: [
     ['\u5f00\u573a\u5f15\u5bfc', /^(?:vehicleGuideHand|firstClickGuide|entryBanner)\./],
-    ['\u8282\u594f\u4e0e\u5931\u8d25', /^(?:countdown|gameOver|installGate|preRoll|stamina)\./],
+    ['\u8282\u594f\u4e0e\u5931\u8d25', /^(?:superBoost|countdown|gameOver|installGate|preRoll|stamina)\./],
     ['\u6c1b\u56f4\u56fe\u5c42', /^(?:weatherEffect|freeAssets)\./],
   ],
   scene: [
@@ -1676,12 +1701,13 @@ export function createSceneEditor(root, {
   function updateCountdownControls() {
     const countdown = normalizeCountdownConfig(getTuning().countdown);
     let invalid = false;
-    for (const key of ['durationSeconds', 'warningEnabled', 'warningSeconds', 'sirenEnabled', 'sirenVolume', 'timeoutStore', 'offsetX', 'offsetY', 'scale']) {
+    for (const key of ['durationSeconds', 'warningEnabled', 'warningSeconds', 'sirenEnabled', 'sirenVolume', 'timeoutStore', 'offsetX', 'offsetY', 'scale', 'iconEnabled', 'iconScale', 'iconOffsetX', 'iconOffsetY']) {
       const controls = inputs.get(`countdown.${key}`);
       if (!controls) continue;
       const disabled = !countdown.enabled
         || (key === 'warningSeconds' && !countdown.warningEnabled)
-        || (key === 'sirenVolume' && !countdown.sirenEnabled);
+        || (key === 'sirenVolume' && !countdown.sirenEnabled)
+        || (['iconScale', 'iconOffsetX', 'iconOffsetY'].includes(key) && !countdown.iconEnabled);
       controls.row.classList.toggle('is-readonly', disabled);
       (controls.number ?? controls.checkbox).disabled = disabled;
       if (controls.range) controls.range.disabled = disabled;
@@ -2144,7 +2170,7 @@ export function createSceneEditor(root, {
           // `vehiclePath.autoBounds` disables the manual bound sliders, so the
           // row visibility has to be refreshed on the toggle that flips it.
           if (path === 'firstClickGuide.enabled' || path === 'vehiclePath.autoBounds'
-            || path.startsWith('countdown.') || path.startsWith('stamina.')
+            || path.startsWith('countdown.') || path.startsWith('stamina.') || path.startsWith('superBoost.')
             || path.startsWith('installGate.')) sync();
         });
         inputs.set(path, { row, checkbox, step });
@@ -2276,6 +2302,12 @@ export function createSceneEditor(root, {
       color?.addEventListener('change', () => commit(parseInt(color.value.slice(1), 16)));
       inputs.set(path, { row, range, number, color, step });
       section.append(row);
+    }
+    if (group.fields.some(([, path]) => path === 'superBoost.enabled')) {
+      const help = document.createElement('p');
+      help.className = 'editor-camera-status';
+      help.textContent = '开局x1，点击后持续加速并开始真实秒倒计时。小手速度1为默认，越大越快。再试结束页开启时：失败Retry重开，成功Play Now跳商店；文案跟随设备语言，可用品牌语言预览检查。此结束页优先于归零/成功次数自动跳商店。提示跟随Logo，按钮位置和尺寸沿用「失败重试」设置。';
+      section.append(help);
     }
     if (group.countdown || group.stamina) {
       const help = document.createElement('p');
@@ -3824,7 +3856,9 @@ export function createSceneEditor(root, {
       // A profile saved before the skin existed has no `speedToggle.style`, and a
       // hand-edited one may carry a value this build dropped. Either way the
       // select must land on a real option instead of going blank.
-      const value = path.startsWith('countdown.')
+      const value = path.startsWith('superBoost.')
+        ? normalizeSuperBoostConfig(tuning.superBoost)[path.slice('superBoost.'.length)]
+        : path.startsWith('countdown.')
         ? normalizeCountdownConfig(tuning.countdown)[path.slice('countdown.'.length)]
         : path.startsWith('stamina.') ? normalizeStaminaConfig(tuning.stamina)[path.slice('stamina.'.length)]
           : path === 'speedToggle.style' ? normalizeSpeedToggleStyle(getAtPath(tuning, path))

@@ -1,4 +1,5 @@
 export const COUNTDOWN_TIMER_ASSET = '/assets/applovin/countdown/timer-frame.png';
+export const COUNTDOWN_ALARM_ASSET = '/assets/applovin/countdown/alarm-clock.svg';
 // Synthesised two-tone ambulance siren loop. It is only packaged when the
 // countdown siren toggle is on, so an unrelated countdown stays the same size.
 export const COUNTDOWN_SIREN_ASSET = '/assets/applovin/countdown/ambulance-siren.mp3';
@@ -14,6 +15,10 @@ export const DEFAULT_COUNTDOWN_CONFIG = Object.freeze({
   // Jump straight to the store when the clock reaches zero instead of showing
   // the Game Over card. Off by default so old profiles keep the failure flow.
   timeoutStore: 0,
+  iconEnabled: 0,
+  iconScale: 1,
+  iconOffsetX: 0,
+  iconOffsetY: 0,
   offsetX: 0,
   offsetY: 0,
   scale: 1
@@ -38,6 +43,10 @@ export function normalizeCountdownConfig(value = {}) {
     sirenEnabled: Number(source.sirenEnabled ?? 0) === 1 ? 1 : 0,
     sirenVolume: displayNumber(source.sirenVolume ?? 0.35, 0, 1, 0.35),
     timeoutStore: Number(source.timeoutStore ?? 0) === 1 ? 1 : 0,
+    iconEnabled: Number(source.iconEnabled ?? 0) === 1 ? 1 : 0,
+    iconScale: displayNumber(source.iconScale ?? 1, 0.5, 2, 1),
+    iconOffsetX: displayNumber(source.iconOffsetX ?? 0, -100, 100, 0),
+    iconOffsetY: displayNumber(source.iconOffsetY ?? 0, -100, 100, 0),
     offsetX: displayNumber(source.offsetX ?? 0, -1080, 1080, 0),
     offsetY: displayNumber(source.offsetY ?? 0, -2160, 2160, 0),
     scale: displayNumber(source.scale ?? 1, 0.25, 3, 1)

@@ -6,7 +6,7 @@ import {
   getMechanismResourcePaths,
   getMechanismTypesForLevels
 } from './mechanism-resources.js';
-import { COUNTDOWN_SIREN_ASSET, COUNTDOWN_TIMER_ASSET } from './countdown.js';
+import { COUNTDOWN_SIREN_ASSET, COUNTDOWN_TIMER_ASSET, COUNTDOWN_ALARM_ASSET } from './countdown.js';
 import { getStaminaAssetPaths } from './stamina.js';
 import { LEVEL_AUDIO_CONFIG } from './level-audio-config.js';
 import { isPreRollAssetPath, resolvePreRollAsset } from './pre-roll.js';
@@ -73,6 +73,7 @@ export function collectPlayableInlineAssetUrls({
     for (const asset of PROGRESS_HUD_ASSET_PATHS) urls.add(asset);
   }
   if (Number(tuning.countdown?.enabled) === 1) urls.add(COUNTDOWN_TIMER_ASSET);
+  if (Number(tuning.countdown?.enabled) === 1 && Number(tuning.countdown?.iconEnabled) === 1) urls.add(COUNTDOWN_ALARM_ASSET);
   // The siren is a separate ~12 KB clip and only belongs in a build whose clock
   // was explicitly asked to loop it.
   if (Number(tuning.countdown?.enabled) === 1
@@ -83,7 +84,7 @@ export function collectPlayableInlineAssetUrls({
   // The x1/x2 switch is off in most deliveries, and its five bitmaps were ~58 KB
   // of dead weight in every one of them. `enabled` is the same flag the runtime
   // reads to hide the button, so the art follows it.
-  if (Boolean(Number(tuning.speedToggle?.enabled ?? 0))) {
+  if (Boolean(Number(tuning.speedToggle?.enabled ?? 0)) || Number(tuning.superBoost?.enabled) === 1) {
     for (const asset of SPEED_TOGGLE_ASSET_PATHS) urls.add(asset);
   }
   // A session can disable the pre-roll, and the runtime applies that by zeroing

@@ -1123,6 +1123,9 @@ async function runBrowser({
     '--enable-webgl',
     '--hide-scrollbars',
     '--ignore-gpu-blocklist',
+    // The OS can assign a port Chromium normally blocks (for example 4045).
+    // Allow only this check's own local artifact server port.
+    `--explicitly-allowed-ports=${new URL(url).port}`,
     '--mute-audio',
     '--no-default-browser-check',
     '--no-first-run',
@@ -1267,6 +1270,23 @@ async function runBrowser({
       screenshot = Buffer.from(capture.data, 'base64');
     }
     if (exerciseCta) {
+      // A boost-first playable intentionally covers the store CTA until the
+      // player accepts the opening hint. Exercise that real trusted tap before
+      // locating the CTA; do not bypass the overlay through the QA API.
+      const boostTarget = await evaluate(client, `(() => {
+        const guide = document.querySelector('#super-boost-guide');
+        const button = document.querySelector('#speed-toggle');
+        if (!guide || guide.hidden || !button || button.hidden) return null;
+        const rect = button.getBoundingClientRect();
+        const x = rect.left + rect.width / 2, y = rect.top + rect.height / 2;
+        const hit = document.elementFromPoint(x, y);
+        return rect.width > 0 && rect.height > 0 && (hit === button || button.contains(hit)) ? { x, y } : null;
+      })()`);
+      if (boostTarget) {
+        await client.send('Input.dispatchMouseEvent', { type: 'mousePressed', ...boostTarget, button: 'left', clickCount: 1 });
+        await client.send('Input.dispatchMouseEvent', { type: 'mouseReleased', ...boostTarget, button: 'left', clickCount: 1 });
+        await delay(200);
+      }
       const target = await evaluate(client, ctaTargetExpression(ctaSelector));
       if (target?.found) {
         await client.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: target.x, y: target.y });
@@ -1407,7 +1427,7 @@ export async function capturePlayableBackupImage({
     };
   } finally {
     if (server) await new Promise((resolve) => server.close(resolve));
-    await rm(tempRoot, { recursive: true, force: true });
+    await rm(tempRoot, { recursive: true, force: true, maxRetries: 8, retryDelay: 150 });
   }
 }
 
@@ -1607,7 +1627,7 @@ export async function checkPlayableRuntimeArtifact({
     return report;
   } finally {
     if (server) await new Promise((resolve) => server.close(resolve));
-    await rm(tempRoot, { recursive: true, force: true });
+    await rm(tempRoot, { recursive: true, force: true, maxRetries: 8, retryDelay: 150 });
   }
 }
 

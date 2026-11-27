@@ -38,6 +38,34 @@ import {
 const sceneViewSource = readFileSync(join('src', 'scene-view.js'), 'utf8');
 const gameModelSource = readFileSync(join('src', 'game-model.js'), 'utf8');
 
+test('vehicle arrows use the main-branch per-vehicle outline path, including visible edges', () => {
+  const previous = { ...SCENE_TUNING.vehicleArrow };
+  try {
+    // A saved draft from the experimental branch must not hide the master's
+    // individual shells or edges after migration.
+    Object.assign(SCENE_TUNING.vehicleArrow, { instancedShells: 1, outlineEdgesEnabled: 0 });
+    const arrow = new THREE.Group();
+    const shell = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), new THREE.MeshBasicMaterial());
+    shell.userData.isArrowOutline = true;
+    shell.userData.outlineBaseScale = new THREE.Vector3(1, 1, 1);
+    const edge = new THREE.LineSegments(new THREE.BufferGeometry(), new THREE.LineBasicMaterial());
+    edge.userData.isArrowOutline = true;
+    edge.userData.outlineBaseScale = new THREE.Vector3(1, 1, 1);
+    arrow.add(shell, edge);
+    SceneView.prototype.applyVehicleArrowTuning.call({}, arrow, new THREE.Vector3(0.5, 0.5, 1));
+    assert.equal(shell.visible, true);
+    assert.equal(edge.visible, true);
+    assert.equal(arrow.position.y, 0.5 + SCENE_TUNING.vehicleArrow.offsetY);
+    assert.equal(shell.material.color.getHex(), SCENE_TUNING.vehicleArrow.outlineColor);
+    assert.equal(shell.scale.x, SCENE_TUNING.vehicleArrow.outlineScale);
+    assert.equal(SceneView.prototype.syncArrowShellBatch, undefined);
+  } finally {
+    delete SCENE_TUNING.vehicleArrow.instancedShells;
+    delete SCENE_TUNING.vehicleArrow.outlineEdgesEnabled;
+    Object.assign(SCENE_TUNING.vehicleArrow, previous);
+  }
+});
+
 test('shipped ordinary vehicle roofs use passenger paint without changing body triangles or bounds', () => {
   const packedPassenger = readFileSync('public/assets/unity/models/Idle_boy01_vatmesh.bin');
   const passenger = packedPassenger[0] === 31 ? gunzipSync(packedPassenger) : packedPassenger;
@@ -2842,7 +2870,7 @@ test('main thread saves and restores scene tuning from localStorage', () => {
   assert.match(mainSource, /levelSession\.recordSuccessfulVehicle\(vehicleId, gateEnabled \? threshold : Infinity\)/);
   assert.match(mainSource, /const handleVehicleClick = \(vehicleId\) => \{/);
   assert.match(mainSource, /const result = game\.clickVehicle\(vehicleId\)/);
-  assert.match(mainSource, /^\s*if \(result\?\.ok\) \{\r?\n\s*startBackgroundMusic\(\);\r?\n\s*if \(markInstallVehicle\(vehicleId\)\) InstallFullGame\(\);/m);
+  assert.match(mainSource, /if \(markInstallVehicle\(vehicleId\)\) \{\s*if \(isReplayEndCardEnabled\(\)\) showResultOverlay\('You Win!', \{ failed: false \}\);\s*else InstallFullGame\(\);/);
   assert.match(mainSource, /function updateInstallGate\(state\)/);
   assert.match(mainSource, /for \(const vehicle of state\.vehicles \?\? \[\]\)/);
   assert.match(mainSource, /levelSession\.hasCountedVehicle\(vehicle\.id\)/);
@@ -2883,7 +2911,7 @@ test('main thread saves and restores scene tuning from localStorage', () => {
   assert.match(mainSource, /--cta-font-size', scaledPx\(fontSize, uiScale\)/);
   assert.match(mainSource, /--cta-stroke-width', scaledPx\(Math\.max\(0, Number\(cta\.strokeWidth\) \|\| 0\), uiScale\)/);
   assert.match(mainSource, /const stageRect = stage\?\.getBoundingClientRect\(\)/);
-  assert.match(mainSource, /const uiScale = getStageUiScale\(stageWidth, designWidth\)/);
+  assert.match(mainSource, /const uiScale = replay \? Math\.max\(0\.01, Math\.min\(1, stageWidth \/ designWidth, stageHeight \/ designHeight\)\)/);
   assert.match(mainSource, /centerX \* metrics\.positionScaleX/);
   assert.match(mainSource, /centerY \* metrics\.positionScaleY/);
   assert.match(mainSource, /--cta-font-height/);
@@ -3017,7 +3045,7 @@ test('successful operation store redirect uses the baked threshold and remains e
   assert.equal(SCENE_TUNING.installGate.enabled, 0);
   assert.match(editorSource, /installGate\.successfulOperationThreshold/);
   assert.match(mainSource, /SCENE_TUNING\.installGate\?\.successfulOperationThreshold/);
-  assert.match(mainSource, /^\s*if \(result\?\.ok\) \{\r?\n\s*startBackgroundMusic\(\);\r?\n\s*if \(markInstallVehicle\(vehicleId\)\) InstallFullGame\(\);/m);
+  assert.match(mainSource, /if \(markInstallVehicle\(vehicleId\)\) \{\s*if \(isReplayEndCardEnabled\(\)\) showResultOverlay\('You Win!', \{ failed: false \}\);\s*else InstallFullGame\(\);/);
   assert.match(mainSource, /levelSession\.recordSuccessfulVehicle\(vehicleId, gateEnabled \? threshold : Infinity\)/);
   assert.doesNotMatch(mainSource, /INSTALL_GATE_AFTER_SUCCESSFUL_OPERATIONS_ENABLED/);
 });
@@ -3332,7 +3360,7 @@ test('a single-queue level fills every visible queue lane', async () => {
   assert.deepEqual([...usedEntries].sort(), [0, 1], 'both entry points must feed the belt');
 });
 
-function resultCardFixture({ retryEnabled = 0, failed = true } = {}) {
+function resultCardFixture({ retryEnabled = 0, failed = true, replay = false } = {}) {
   const mainSource = readFileSync('src/main.js', 'utf8');
   const start = mainSource.indexOf('  function syncResultInteraction()');
   const end = mainSource.indexOf('  function showResultOverlay(', start);
@@ -3356,7 +3384,7 @@ function resultCardFixture({ retryEnabled = 0, failed = true } = {}) {
       return { syncResultInteraction, handleResultActivation,
         setActive(value) { gameOverActive = value; syncResultInteraction(); } };
     `);
-  const controller = create(overlay, retry, cta, { gameOver: { retryEnabled } },
+  const controller = create(overlay, retry, cta, { gameOver: { retryEnabled }, superBoost: { enabled: replay ? 1 : 0 } },
     () => ({ ctaLabel: 'Download' }), () => storeCalls.push('store'));
   controller.syncResultInteraction();
   const event = (type = 'click', key) => ({ type, key, prevented: false, stopped: false,
@@ -3394,6 +3422,21 @@ test('failure end-card activation waits for the icon, hides Retry and uses one s
   assert.equal(f.attrs.has('role'), false);
   f.controller.handleResultActivation(f.event());
   assert.equal(f.storeCalls.length, 3);
+});
+
+test('boost replay cards expose a single action for either outcome and block background store taps', () => {
+  for (const failed of [true, false]) {
+    const f = resultCardFixture({ replay: true, failed });
+    assert.equal(f.retry.hidden, false);
+    assert.equal(f.retry.disabled, true);
+    assert.equal(f.cta.disabled, true);
+    f.classes.add('is-cta-ready');
+    f.controller.syncResultInteraction();
+    assert.equal(f.retry.disabled, false);
+    f.controller.handleResultActivation(f.event());
+    assert.deepEqual(f.storeCalls, []);
+    assert.equal(f.classes.has('is-tap-to-store'), false);
+  }
 });
 
 test('Retry mode and winning cards do not acquire the failure card store action', () => {

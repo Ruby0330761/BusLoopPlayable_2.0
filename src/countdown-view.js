@@ -1,4 +1,4 @@
-import { COUNTDOWN_TIMER_ASSET, formatCountdownTime, normalizeCountdownConfig } from './countdown.js';
+import { COUNTDOWN_TIMER_ASSET, COUNTDOWN_ALARM_ASSET, formatCountdownTime, normalizeCountdownConfig } from './countdown.js';
 
 // Visible blue-frame bounds in the supplied artwork (bottom is exclusive).
 // The clock extends beyond its panel; the speed art has transparent margins.
@@ -7,10 +7,17 @@ const SPEED_ART = { height: 340, frameTop: 17, frameBottom: 329 };
 // The transparent 1x1 GIF `index.html` uses as a pre-load placeholder.
 const TRANSPARENT_PIXEL_SRC = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7';
 
-export function createCountdownView({ root, image, value, warning, stage, speedButton }) {
+export function createCountdownView({ root, image, icon, value, warning, stage, speedButton }) {
   function render(state, { visible = true } = {}) {
     if (!root) return;
     root.hidden = !state.enabled || !visible;
+    root.dataset.alarm = String(Boolean(state.iconEnabled));
+    if (image) image.hidden = Boolean(state.iconEnabled);
+    if (icon) {
+      icon.hidden = !state.iconEnabled;
+      if (state.enabled && state.iconEnabled && icon.getAttribute('src') !== COUNTDOWN_ALARM_ASSET) icon.src = COUNTDOWN_ALARM_ASSET;
+      icon.style.transform = `translate(${state.iconOffsetX ?? 0}%, ${state.iconOffsetY ?? 0}%) scale(${state.iconScale ?? 1})`;
+    }
     if (image) {
       // `index.html` ships a 1x1 transparent GIF as the placeholder src so the
       // element is never "broken" before the countdown starts. Testing for a
@@ -19,7 +26,7 @@ export function createCountdownView({ root, image, value, warning, stage, speedB
       // Match on the placeholder (or an empty src) instead.
       const currentSrc = image.getAttribute('src') ?? '';
       const needsArtwork = !currentSrc || currentSrc === TRANSPARENT_PIXEL_SRC;
-      if (state.enabled && needsArtwork) image.src = COUNTDOWN_TIMER_ASSET;
+      if (state.enabled && !state.iconEnabled && needsArtwork) image.src = COUNTDOWN_TIMER_ASSET;
       // Removing src makes the element report naturalWidth 0, which every
       // runtime gate reads as "broken image". The host is hidden when the
       // countdown is off, so the last loaded frame is harmless.

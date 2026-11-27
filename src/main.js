@@ -1,4 +1,4 @@
-﻿import './styles.css';
+import './styles.css';
 import { BusLoopGame } from './game-model.js';
 import { PLAYABLE_LEVEL_SEQUENCE, PLAYABLE_STAGES, PLAYABLE_STAGE_CHOICES, ACTIVE_PLAYABLE_SESSION } from './generated-active-level.js';
 import { ACTIVE_SPATIAL_CONVEYOR_PACKAGE } from './generated-active-spatial-conveyor.js';
@@ -21,6 +21,7 @@ import {
 } from './speed-toggle.js';
 import { COUNTDOWN_SIREN_ASSET, createCountdown, normalizeCountdownConfig, validateCountdownConfig } from './countdown.js';
 import { createCountdownView } from './countdown-view.js';
+import { createSuperBoost, createSuperBoostView, normalizeSuperBoostConfig } from './super-boost.js';
 import { createWeatherEffect } from './weather-effect.js';
 import { mountFreeAssetLayers } from './free-asset-layers.js';
 import { mountProgressHud, layoutProgressHud } from './progress-hud.js';
@@ -52,7 +53,9 @@ import { detectPlayfieldHorizon, resolveBackgroundHorizon } from './background-a
 import {
   fitFontSizeToWidth,
   normalizeStorefrontPreview,
-  resolveLocalizedBranding
+  resolveLocalizedBranding,
+  resolveReplayEndCardCopy,
+  resolveBoostGuideCopy
 } from './branding-localization.js';
 
 const EDITOR_ENABLED = import.meta.env.DEV || __REMOTE_EDITOR__;
@@ -111,6 +114,7 @@ const preRollVideo = $('#pre-roll-video');
 const gameOverOverlay = $('#game-over-overlay');const gameOverTitle = $('#game-over-title');
 const gameOverLogo = $('#game-over-logo');
 const gameOverRetryButton = $('#game-over-retry');
+const gameOverPrompt = $('#game-over-prompt');
 const stageChoiceOverlay = $('#stage-choice-overlay');
 const stageChoiceTitle = $('#stage-choice-title');
 const stageChoiceGrid = $('#stage-choice-grid');
@@ -1771,6 +1775,11 @@ function downloadBlob(filename, blob) {
   setTimeout(() => URL.revokeObjectURL(objectUrl), 0);
 }
 
+function isReplayEndCardEnabled() {
+  return Number(SCENE_TUNING.superBoost?.enabled) === 1
+    && Number(SCENE_TUNING.superBoost?.replayEndCard ?? 1) === 1;
+}
+
 function applyGameOverTuning() {
   if (!gameOverOverlay) return;
   const gameOver = SCENE_TUNING.gameOver ?? {};
@@ -1779,13 +1788,34 @@ function applyGameOverTuning() {
   const stageRect = stage?.getBoundingClientRect();
   const stageWidth = stageRect?.width || designWidth;
   const stageHeight = stageRect?.height || designHeight;
-  const uiScale = getStageUiScale(stageWidth, designWidth);
+  const replay = isReplayEndCardEnabled();
+  const uiScale = replay ? Math.max(0.01, Math.min(1, stageWidth / designWidth, stageHeight / designHeight))
+    : getStageUiScale(stageWidth, designWidth);
   const logoX = Number.isFinite(Number(gameOver.logoX)) ? Number(gameOver.logoX) : designWidth / 2;
   const logoY = Number.isFinite(Number(gameOver.logoY)) ? Number(gameOver.logoY) : designHeight * 0.4;
   const logoWidth = Math.max(1, Number(gameOver.logoWidth) || 240);
   const logoHeight = Math.max(1, Number(gameOver.logoHeight) || logoWidth);
   const logoLeft = stageWidth / 2 + (logoX - designWidth / 2) * uiScale;
   const logoTop = stageHeight / 2 + (logoY - designHeight / 2) * uiScale;
+  const replayConfig = normalizeSuperBoostConfig(SCENE_TUNING.superBoost);
+  const copy = resolveReplayEndCardCopy([resolveBrandingCopy().locale]);
+  let promptBottom = logoTop + logoHeight * uiScale / 2;
+  if (gameOverPrompt) {
+    gameOverPrompt.hidden = !replay;
+    gameOverPrompt.textContent = copy.prompt;
+    gameOverPrompt.dir = copy.direction;
+    const promptTop = promptBottom + replayConfig.promptGap * uiScale;
+    Object.assign(gameOverPrompt.style, { left: `${logoLeft}px`, top: `${promptTop}px`,
+      width: `${Math.min(stageWidth * 0.9, replayConfig.promptWidth * uiScale)}px`,
+      fontSize: `${replayConfig.promptFontSize * uiScale}px` });
+    promptBottom = promptTop + (gameOverPrompt.getBoundingClientRect().height || replayConfig.promptFontSize * uiScale * 1.25);
+  }
+  if (gameOverRetryButton) {
+    const label = replay ? (gameOverOverlay.classList.contains('is-failed') ? copy.retry : copy.playNow) : 'Retry';
+    gameOverRetryButton.textContent = label;
+    gameOverRetryButton.setAttribute('aria-label', label);
+    gameOverRetryButton.dir = replay ? copy.direction : 'ltr';
+  }
 
   gameOverOverlay.style.setProperty('--game-over-mask-opacity', String(clampConfigNumber(gameOver.maskOpacity, 0, 1, 0.6)));
   gameOverOverlay.style.setProperty('--game-over-title-font-size', scaledPx(Math.max(1, Number(gameOver.titleFontSize) || 96), uiScale));
@@ -1814,13 +1844,14 @@ function applyGameOverTuning() {
     const renderedWidth = retryWidth * uiScale;
     const renderedHeight = retryHeight * uiScale;
     const left = clampConfigNumber(
-      retryX * (stageWidth / designWidth),
+      replay ? stageWidth / 2 + (retryX - designWidth / 2) * uiScale : retryX * (stageWidth / designWidth),
       renderedWidth / 2,
       stageWidth - renderedWidth / 2,
       stageWidth / 2
     );
     const top = clampConfigNumber(
-      retryY * (stageHeight / designHeight),
+      Math.max(replay ? stageHeight / 2 + (retryY - designHeight / 2) * uiScale : retryY * (stageHeight / designHeight), replay
+        ? promptBottom + replayConfig.promptButtonGap * uiScale + renderedHeight / 2 : 0),
       renderedHeight / 2,
       stageHeight - renderedHeight / 2,
       stageHeight * 0.84
@@ -1838,6 +1869,15 @@ function applyGameOverTuning() {
       '--game-over-retry-font-size',
       scaledPx(clampConfigNumber(retryFontSize, 8, retryHeight * 0.8, RETRY_FONT_SIZE), uiScale)
     );
+    if (replay && !gameOverRetryButton.hidden) {
+      const range = document.createRange();
+      range.selectNodeContents(gameOverRetryButton);
+      const measuredWidth = range.getBoundingClientRect().width;
+      const fontSize = parseFloat(getComputedStyle(gameOverRetryButton).fontSize);
+      gameOverRetryButton.style.setProperty('--game-over-retry-font-size', `${fitFontSizeToWidth({
+        fontSize, measuredWidth, availableWidth: renderedWidth * 0.84
+      })}px`);
+    }
   }
 }
 
@@ -2402,6 +2442,10 @@ async function startRuntime() {
   }
 
   let countdownReady = false;
+  const superBoost = createSuperBoost(SCENE_TUNING.superBoost);
+  const superBoostView = createSuperBoostView({ stage, button: speedToggleButton,
+    guide: $('#super-boost-guide'), copy: $('#super-boost-guide-copy'),
+    hand: $('#super-boost-guide-hand'), canvas: $('#super-boost-flames') });
   let countdownPagePresent = true;
   // Keep legacy profiles within the current bounds for both UI and export.
   SCENE_TUNING.countdown = normalizeCountdownConfig(SCENE_TUNING.countdown);
@@ -2411,6 +2455,7 @@ async function startRuntime() {
       // the deadline terminal. A refused loss (already won/lost) must never
       // still trigger a store jump.
       if (!game.failCountdown()) return;
+      if (isReplayEndCardEnabled()) return;
       if (Number(SCENE_TUNING.countdown?.timeoutStore) !== 1) return;
       // The Game Over card is skipped for this ending, so it cannot be the one
       // that reports the failed challenge to the host.
@@ -2427,7 +2472,7 @@ async function startRuntime() {
     }
   });
   const countdownView = createCountdownView({
-    root: $('#countdown'), image: $('#countdown-image'), value: $('#countdown-value'),
+    root: $('#countdown'), image: $('#countdown-image'), icon: $('#countdown-alarm-icon'), value: $('#countdown-value'),
     warning: $('#countdown-warning'), stage, speedButton: speedToggleButton
   });
   // Guide-stage overlays. Both live inside the stage so they track the phone
@@ -2474,10 +2519,12 @@ async function startRuntime() {
     });
   }
   function isCountdownPaused() {
+    // The boost tap takes over the opening; old vehicle hints must not stop
+    // its clock after it has started.
     return !countdownReady || !platformVisible || document.hidden || !countdownPagePresent
       || spatialEditorActive || Boolean(levelLayoutEditor)
       || sceneEditorRoot?.classList.contains('is-level-layout-editing')
-      || Boolean(preRollController?.isActive()) || Boolean(view?.isVehicleInputLocked?.())
+      || Boolean(preRollController?.isActive()) || (!superBoost.snapshot().enabled && Boolean(view?.isVehicleInputLocked?.()))
       || stageAdvancePending || stageChoiceVisible || staminaView.isIntroActive() || game.isStaminaBusy();
   }
   function paintCountdown() {
@@ -2554,6 +2601,8 @@ async function startRuntime() {
   }
 
   const handleVehicleClick = (vehicleId) => {
+    if (gameOverActive && isReplayEndCardEnabled()) return { ok: false, reason: 'finished' };
+    if (superBoost.snapshot().waiting) return { ok: false, reason: 'boost-opening' };
     if (staminaView.isIntroActive() || game.isStaminaBusy()) return { ok: false, reason: 'stamina-busy' };
     // During the opening guide only the spotlighted car is playable. Locking
     // every car made the highlighted one look broken: the hint said "tap this",
@@ -2565,11 +2614,14 @@ async function startRuntime() {
     const result = game.clickVehicle(vehicleId);
     if (result?.ok) {
       startBackgroundMusic();
-      if (markInstallVehicle(vehicleId)) InstallFullGame();
+      if (markInstallVehicle(vehicleId)) {
+        if (isReplayEndCardEnabled()) showResultOverlay('You Win!', { failed: false });
+        else InstallFullGame();
+      }
       // A hidden reveal also returns ok, but has not dispatched a vehicle.
       if (result.spotIndex != null && game.status === 'playing'
         && !levelSession.shouldOpenStore() && !gameOverActive) {
-        countdown.start({ paused: isCountdownPaused() });
+        if (!superBoost.snapshot().enabled) countdown.start({ paused: isCountdownPaused() });
         paintCountdown();
       }
     }
@@ -2604,6 +2656,7 @@ async function startRuntime() {
     // One measurement for the resize pass: the CTA, branding, countdown, stamina
     // and speed switch all clamp against the same painted bounds.
     const backgroundBounds = view.getBackgroundCanvasBounds();
+    superBoostView.resize(backgroundBounds);
     applyGameOverTuning();
     applyCtaTuning();
     applySpeedToggleTuning(backgroundBounds);
@@ -2676,6 +2729,7 @@ async function startRuntime() {
   // The speed button scales the simulation clock, so every system (vehicle
   // routes, boarding, collisions, conveyor) keeps its relative pace.
   function getSpeedToggleMultiplier() {
+    if (superBoost.snapshot().enabled) return superBoost.snapshot().multiplier;
     const configured = Number(SCENE_TUNING.speedToggle?.multiplier);
     return normalizeSpeedMultiplier(configured, 2);
   }
@@ -2685,6 +2739,7 @@ async function startRuntime() {
     const metrics = getBrandingStageMetrics();
     const uiScale = metrics.uiScale;
     const enabled = Boolean(config.enabled ?? 0);
+    const buttonEnabled = enabled || Boolean(superBoost.snapshot().enabled);
     const style = normalizeSpeedToggleStyle(config.style);
     const width = Math.max(1, Number(config.width) || 105);
     const height = Math.max(1, Number(config.height) || 69);
@@ -2692,7 +2747,7 @@ async function startRuntime() {
     const renderedHeight = height * uiScale;
     const centerX = Number.isFinite(Number(config.x)) ? Number(config.x) : metrics.designWidth * 0.84;
     const centerY = Number.isFinite(Number(config.y)) ? Number(config.y) : metrics.designHeight * 0.14;
-    speedToggleButton.hidden = !enabled;
+    speedToggleButton.hidden = !buttonEnabled;
     // The CSS owns both looks keyed off this attribute; the geometry below stays
     // shared so one position/size field row controls either skin.
     speedToggleButton.dataset.speedStyle = style;
@@ -2755,12 +2810,13 @@ async function startRuntime() {
       top: boundsTop,
       bottom: boundsBottom
     })}px`;
-    if (!enabled) speedToggleBoosted = false;
+    if (!buttonEnabled) speedToggleBoosted = false;
     syncSpeedToggleUi();
   }
   function syncSpeedToggleUi() {
     if (!speedToggleButton) return;
     const style = normalizeSpeedToggleStyle(SCENE_TUNING.speedToggle?.style);
+    const boost = superBoost.snapshot();
     const multiplier = speedToggleBoosted ? getSpeedToggleMultiplier() : 1;
     const label = formatSpeedLabel(multiplier, style);
     speedToggleButton.setAttribute('aria-pressed', String(speedToggleBoosted));
@@ -2770,18 +2826,37 @@ async function startRuntime() {
       // The seed src is a transparent pixel, so a build can ship without the
       // switch art at all. Only a visible switch asks for a real icon: assigning
       // one while the button is `hidden` would fetch art the package dropped.
-      const enabled = Boolean(SCENE_TUNING.speedToggle?.enabled ?? 0);
+      const enabled = Boolean(SCENE_TUNING.speedToggle?.enabled ?? 0) || Boolean(boost.enabled);
       speedToggleIcon.src = enabled
         ? resolveSpeedToggleIcon(style, speedToggleBoosted)
         : SPEED_TOGGLE_SEED_SRC;
     }
   }
   function setSpeedToggleBoosted(boosted) {
+    const boost = superBoost.snapshot();
+    if (boost.enabled) {
+      if (boosted && game.status === 'playing' && countdownReady && !preRollController?.isActive()
+        && !stageChoiceVisible && !gameOverActive && !levelSession.shouldOpenStore()
+        && !spatialEditorActive && !levelLayoutEditor && !staminaView.isIntroActive() && !game.isStaminaBusy()) {
+        if (superBoost.activate()) {
+          view.hideEntryBanner?.();
+          view.recordGuideInteraction?.();
+          countdown.start({ paused: isCountdownPaused() });
+          startBackgroundMusic();
+          platformBridge?.challenge();
+          paintCountdown();
+        }
+      }
+      speedToggleBoosted = superBoost.snapshot().active;
+      syncSpeedToggleUi();
+      return;
+    }
     const enabled = Boolean(SCENE_TUNING.speedToggle?.enabled ?? 1);
     speedToggleBoosted = enabled && Boolean(boosted);
     syncSpeedToggleUi();
   }
   function getTimeScale() {
+    if (superBoost.snapshot().enabled) return superBoost.snapshot().timeScale;
     return resolveTimeScale({ multiplier: getSpeedToggleMultiplier(), boosted: speedToggleBoosted });
   }
   function getIdleSpeedMultiplier() {
@@ -2967,9 +3042,30 @@ async function startRuntime() {
       if (syncEditor) editor.sync();
       return SCENE_TUNING;
     }
+    if (path?.startsWith('superBoost.')) {
+      const previous = superBoost.snapshot();
+      deepMerge(SCENE_TUNING, next);
+      SCENE_TUNING.superBoost = normalizeSuperBoostConfig(SCENE_TUNING.superBoost);
+      superBoost.configure(SCENE_TUNING.superBoost);
+      if (path === 'superBoost.enabled' && SCENE_TUNING.superBoost.enabled && !previous.enabled) {
+        // One switch gives the operator a usable preset; subsequent edits stay
+        // independent, including the timer's duration and artwork adjustments.
+        SCENE_TUNING.countdown.enabled = 1;
+        SCENE_TUNING.countdown.iconEnabled = 1;
+        countdown.configure(SCENE_TUNING.countdown);
+      }
+      if (previous.enabled !== SCENE_TUNING.superBoost.enabled) reset();
+      updateCtaPosition();
+      paintCountdown();
+      syncSpeedToggleUi();
+      syncResultInteraction();
+      saveTuning(SCENE_TUNING, { immediate: true });
+      editor.sync();
+      return SCENE_TUNING;
+    }
     if (path?.startsWith('countdown.')) {
       const previous = normalizeCountdownConfig(SCENE_TUNING.countdown);
-      const settings = validateCountdownConfig(next.countdown);
+      const settings = validateCountdownConfig({ ...SCENE_TUNING.countdown, ...next.countdown });
       deepMerge(SCENE_TUNING, { ...next, countdown: settings });
       countdown.configure(settings);
       saveTuning(SCENE_TUNING, { immediate: true });
@@ -3046,6 +3142,7 @@ async function startRuntime() {
       // The CTA label follows the same language as the caption, so a locale
       // change must re-measure the button instead of waiting for a resize.
       applyCtaTuning();
+      applyGameOverTuning();
       saveTuning(SCENE_TUNING);
       if (syncEditor) editor.sync();
       return SCENE_TUNING;
@@ -3065,6 +3162,7 @@ async function startRuntime() {
       if (syncEditor) editor.sync();
       return SCENE_TUNING;
     }
+    const previousBoostEnabled = superBoost.snapshot().enabled;
     const previousCountdown = normalizeCountdownConfig(SCENE_TUNING.countdown);
     const previousStamina = normalizeStaminaConfig(SCENE_TUNING.stamina);
     const materialOnly = isPassengerMaterialTuningPath(path);
@@ -3082,6 +3180,7 @@ async function startRuntime() {
     const vehicleRouteChanged = /^(vehiclePath\.(?:parkingBounds|autoBounds|boundsPadding|turn)|vehicleDeparturePath\.(?:backDistance|exit|turn)|parkingSpots\.|vehicleArea\.|facing\.parkingSpotYawDegrees)/u.test(path ?? '');
     const colorIndex = getPassengerMaterialColorIndex(path);
     const tuning = view.setTuning(next, { mode: materialOnly ? 'passengerMaterial' : 'full', colorIndex });
+    superBoost.configure(tuning.superBoost);
     if (!materialOnly) {
       if (conveyorStructureChanged || vehicleRouteChanged) game.reset();
       initializeGameQueues({ resetSlots: conveyorStructureChanged });
@@ -3097,7 +3196,8 @@ async function startRuntime() {
     const nextStamina = normalizeStaminaConfig(tuning.stamina);
     SCENE_TUNING.stamina = nextStamina;
     countdown.configure(nextCountdown);
-    if (nextCountdown.enabled !== previousCountdown.enabled
+    if (superBoost.snapshot().enabled !== previousBoostEnabled
+      || nextCountdown.enabled !== previousCountdown.enabled
       || nextCountdown.durationSeconds !== previousCountdown.durationSeconds
       || nextStamina.enabled !== previousStamina.enabled || nextStamina.lives !== previousStamina.lives) reset();
     paintCountdown();
@@ -3303,6 +3403,7 @@ async function startRuntime() {
   // ambulance level keeps its failure card: there the limit punishes wrong
   // taps, it is not the ad's scripted ending.
   function stepLimitedSledJumpOwnsEnding(state) {
+    if (isReplayEndCardEnabled()) return false;
     if (state.lastEvent?.reason !== 'ambulance-exceed-step') return false;
     const stepLimit = (state.vehicles ?? []).reduce((highest, vehicle) => (
       Number.isInteger(vehicle.ambulanceStepLimit)
@@ -3320,6 +3421,7 @@ async function startRuntime() {
   // failed challenge), but drawing Game Over underneath the store jump would
   // contradict it.
   function countdownTimeoutJumpOwnsEnding(state) {
+    if (isReplayEndCardEnabled()) return false;
     return state.lastEvent?.reason === 'challenge-timeout'
       && Number(SCENE_TUNING.countdown?.timeoutStore) === 1;
   }
@@ -3379,6 +3481,10 @@ async function startRuntime() {
       // the board is finished, so the ad opens the store itself instead of
       // parking the player on a win card they would only tap through.
       if (!isInstallGateEnabled(SCENE_TUNING.installGate)) {
+        if (isReplayEndCardEnabled()) {
+          showResultOverlay('You Win!', { failed: false });
+          return;
+        }
         if (!allClearStoreJumped) {
           allClearStoreJumped = true;
           InstallFullGame();
@@ -3390,6 +3496,11 @@ async function startRuntime() {
   }
 
   function advanceToLevel(nextLevel) {
+    if (superBoost.snapshot().enabled) {
+      superBoost.reset();
+      speedToggleBoosted = false;
+      syncSpeedToggleUi();
+    }
     unsubscribeGame();
     allClearStoreJumped = false;
     setActiveLevel(nextLevel);
@@ -3435,6 +3546,9 @@ async function startRuntime() {
       }
       markInstallVehicle(vehicle.id);
     }
+    if (isReplayEndCardEnabled() && state.status === 'playing' && levelSession.shouldOpenStore()) {
+      showResultOverlay('You Win!', { failed: false });
+    }
   }
 
   function queueGameOverTimer(callback, delay) {
@@ -3453,7 +3567,10 @@ async function startRuntime() {
   function syncResultInteraction() {
     if (!gameOverOverlay) return;
     const failed = gameOverOverlay.classList.contains('is-failed');
-    const tapToStore = gameOverActive && failed && !Boolean(SCENE_TUNING.gameOver?.retryEnabled ?? 0);
+    const replay = Number(SCENE_TUNING.superBoost?.enabled) === 1
+      && Number(SCENE_TUNING.superBoost?.replayEndCard ?? 1) === 1;
+    gameOverOverlay.classList.toggle('is-replay-end-card', replay);
+    const tapToStore = !replay && gameOverActive && failed && !Boolean(SCENE_TUNING.gameOver?.retryEnabled ?? 0);
     const ready = tapToStore && !gameOverOverlay.hidden && gameOverOverlay.classList.contains('is-cta-ready');
     gameOverOverlay.classList.toggle('is-tap-to-store', tapToStore);
     gameOverOverlay.tabIndex = ready ? 0 : -1;
@@ -3465,7 +3582,10 @@ async function startRuntime() {
       gameOverOverlay.removeAttribute('aria-label');
     }
     if (gameOverRetryButton) gameOverRetryButton.hidden = !gameOverActive || !failed || tapToStore;
+    if (replay && gameOverRetryButton) gameOverRetryButton.hidden = !gameOverActive;
+    if (gameOverRetryButton) gameOverRetryButton.disabled = gameOverActive && !gameOverOverlay.classList.contains('is-cta-ready');
     if (ctaButton) ctaButton.disabled = gameOverActive && failed;
+    if (replay && ctaButton) ctaButton.disabled = gameOverActive;
   }
 
   function handleResultActivation(event) {
@@ -3492,6 +3612,7 @@ async function startRuntime() {
     gameOverOverlay.classList.remove('is-active', 'is-title-fading', 'is-cta-ready');
     gameOverOverlay.classList.toggle('is-failed', failed);
     syncResultInteraction();
+    if (isReplayEndCardEnabled()) applyGameOverTuning();
     void gameOverOverlay.offsetWidth;
     gameOverOverlay.classList.add('is-active');
     const gameOver = SCENE_TUNING.gameOver ?? {};
@@ -3517,6 +3638,7 @@ async function startRuntime() {
 
   unsubscribeGame = game.subscribe(syncHud);
   function reset() {
+    superBoost.reset();
     endPanel.hidden = true;
     platformBridge?.retry();
     hideGameOver();
@@ -3558,7 +3680,7 @@ async function startRuntime() {
   // start the long-press boost underneath the card.
   gameOverRetryButton?.addEventListener('click', (event) => {
     event.stopPropagation();
-    if (SCENE_TUNING.gameOver?.retryAction === 'store') {
+    if (isReplayEndCardEnabled() ? !gameOverOverlay.classList.contains('is-failed') : SCENE_TUNING.gameOver?.retryAction === 'store') {
       InstallFullGame();
       return;
     }
@@ -3582,6 +3704,14 @@ async function startRuntime() {
     setSpeedToggleBoosted(!speedToggleBoosted);
   });
   canvas.addEventListener('pointerdown', (event) => {
+    if (gameOverActive && isReplayEndCardEnabled()) {
+      event.stopImmediatePropagation();
+      return;
+    }
+    if (superBoost.snapshot().waiting) {
+      event.stopImmediatePropagation();
+      return;
+    }
     if (spatialEditorActive) return;
     if (staminaView.isIntroActive() || game.isStaminaBusy()) {
       event.stopImmediatePropagation();
@@ -3594,6 +3724,7 @@ async function startRuntime() {
     }
   }, { capture: true });
   canvas.addEventListener('pointerdown', () => {
+    if (superBoost.snapshot().enabled) return;
     if (spatialEditorActive) return;
     platformBridge?.challenge();
     audio.unlock();
@@ -3601,6 +3732,7 @@ async function startRuntime() {
     clearTimeout(pressTimer);
     pressTimer = setTimeout(() => {
       if (!pressed) return;
+      if (superBoost.snapshot().enabled) return;
       const configuredSpatialMultiplier = Number(SCENE_TUNING.spatialConveyor?.longPressMultiplier);
       const multiplier = isSpatialConveyorSelection(SCENE_TUNING.conveyorLayout?.selected)
         ? (Number.isFinite(configuredSpatialMultiplier)
@@ -3618,6 +3750,12 @@ async function startRuntime() {
   window.addEventListener('pointerup', release);
   window.addEventListener('pointercancel', release);
   window.addEventListener('blur', release);
+  window.addEventListener('languagechange', () => {
+    applyBrandingTuning(view.getBackgroundCanvasBounds());
+    applyCtaTuning();
+    applyGameOverTuning();
+    syncResultInteraction();
+  });
   if (EDITOR_ENABLED) window.addEventListener('beforeunload', flushTuningSave);
 
   let previous = performance.now();
@@ -3629,7 +3767,8 @@ async function startRuntime() {
     previous = now;
     staminaView.tickIntro({ time: now, paused: isStaminaIntroPaused(),
       ended: game.status !== 'playing' || gameOverActive || levelSession.shouldOpenStore() });
-    if (platformVisible && !spatialEditorActive && !preRollController?.isActive() && !staminaView.isIntroActive()) {
+    if (platformVisible && !spatialEditorActive && !preRollController?.isActive() && !staminaView.isIntroActive()
+      && !superBoost.snapshot().waiting && !gameOverActive) {
       // game.update clamps one call to 0.1s of simulated time, so the scaled
       // time is fed in substeps; otherwise a low-framerate x2 is truncated.
       let remaining = delta * getTimeScale();
@@ -3651,6 +3790,18 @@ async function startRuntime() {
     // Screen-space weather runs on the same clock as the game so a x2 speed
     // toggle also speeds it up, matching what the player perceives.
     weatherEffect.render(delta * getTimeScale());
+    const boostState = superBoost.snapshot();
+    if (boostState.waiting) {
+      const guideCopy = resolveBoostGuideCopy([resolveBrandingCopy().locale], boostState.guideText);
+      boostState.guideText = guideCopy.text;
+      boostState.guideDirection = guideCopy.direction;
+    }
+    superBoostView.render(boostState, {
+      visible: countdownReady && platformVisible && !document.hidden && !preRollController?.isActive()
+        && !spatialEditorActive && !levelLayoutEditor && !stageChoiceVisible && !staminaView.isIntroActive(),
+      playing: game.status === 'playing' && !gameOverActive && !levelSession.shouldOpenStore(),
+      paused: isCountdownPaused(), delta
+    });
     requestAnimationFrame(frame);
   }
   requestAnimationFrame(frame);
@@ -3728,6 +3879,7 @@ async function startRuntime() {
       return speedToggleBoosted;
     },
     timeScale: () => getTimeScale(),
+    superBoost: () => superBoost.snapshot(),
     // QA hook for the audio lifecycle: a headless run has to prove the device
     // volume reaches the graph and that hiding the ad silences it, without a
     // real audio device.

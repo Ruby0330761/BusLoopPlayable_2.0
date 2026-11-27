@@ -62,6 +62,7 @@ const MIME_TYPES = new Map([
   ['.mp4', 'video/mp4'],
   ['.wav', 'audio/wav'],
   ['.png', 'image/png'],
+  ['.svg', 'image/svg+xml'],
   ['.rgba16f', 'application/octet-stream'],
   ['.ttf', 'font/ttf'],
   ['.webp', 'image/webp']
@@ -303,7 +304,7 @@ async function main() {
   // here, otherwise a build with the switch off still pays for the five switch
   // bitmaps. The button is `hidden` in that case, so the CSS url() resolves to
   // the omitted placeholder exactly like every other unused asset.
-  if (!Boolean(Number(SCENE_TUNING.speedToggle?.enabled ?? 0))) {
+  if (!Boolean(Number(SCENE_TUNING.speedToggle?.enabled ?? 0)) && Number(SCENE_TUNING.superBoost?.enabled) !== 1) {
     for (const asset of SPEED_TOGGLE_ASSET_PATHS) realAssetUrls.delete(asset);
   }
   realAssetUrls.delete(jsPath);

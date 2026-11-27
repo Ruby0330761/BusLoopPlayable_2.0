@@ -32,9 +32,29 @@ export const SCENE_TUNING = {
     "sirenEnabled": 0,
     "sirenVolume": 0.35,
     "timeoutStore": 0,
+    "iconEnabled": 0,
+    "iconScale": 1,
+    "iconOffsetX": 0,
+    "iconOffsetY": 0,
     "offsetX": 0,
     "offsetY": 0,
     "scale": 1
+  },
+  "superBoost": {
+    "enabled": 0,
+    "multiplier": 4,
+    "guideEnabled": 1,
+    "guideText": "TAP TO BOOST!",
+    "guideScale": 1,
+    "guideSpeed": 1,
+    "replayEndCard": 1,
+    "promptFontSize": 64,
+    "promptWidth": 850,
+    "promptGap": 24,
+    "promptButtonGap": 24,
+    "flameEnabled": 1,
+    "flameIntensity": 0.8,
+    "flameHeight": 0.28
   },
   "level": {
     "selected": "level33"
@@ -1186,8 +1206,6 @@ export const SCENE_TUNING = {
     }
   },
   "vehicleArrow": {
-    "instancedShells": 1,
-    "outlineEdgesEnabled": 0,
     "offsetX": 0,
     "offsetY": 0.04,
     "offsetZ": 0,

@@ -21,6 +21,7 @@ import {
   PLAYABLE_BRANDING_VARIANTS,
   PLAYABLE_NAMING_PATTERN,
   resolveBrandingSetVariants,
+  resolveExportPython,
   SUPPORTED_PLATFORMS,
   prepareMolocoHtml,
   retargetBrandingVariantHtml,
@@ -35,6 +36,33 @@ import { isValidStoreLink, resolveStoreLink } from '../src/store-links.js';
 const STORE_LINKS = Object.freeze({
   android: 'https://play.google.com/store/apps/details?id=gridplus.busjam.carpuzzle',
   ios: 'https://apps.apple.com/us/app/bus-fever-party/id6746743297'
+});
+
+test('Windows exports select a real Python interpreter before the Store python3 alias', async () => {
+  const attempts = [];
+  const executable = await resolveExportPython({ platform: 'win32', env: {}, probe: async (command, args) => {
+    attempts.push([command, args]);
+    return command === 'python' ? 'C:/Python310/python.exe' : null;
+  } });
+  assert.equal(executable, 'C:/Python310/python.exe');
+  assert.deepEqual(attempts, [['python', []]]);
+  const fallback = [];
+  assert.equal(await resolveExportPython({ platform: 'win32', env: {}, probe: async (command, args) => {
+    fallback.push([command, args]); return command === 'py' ? 'C:/Python311/python.exe' : null;
+  } }), 'C:/Python311/python.exe');
+  assert.deepEqual(fallback, [['python', []], ['py', ['-3']]]);
+});
+
+test('explicit export Python is respected and an invalid override fails clearly', async () => {
+  const env = { PLAYABLE_EXPORT_PYTHON: 'C:/Custom Python/python.exe' };
+  assert.equal(await resolveExportPython({ env, probe: async command => command }), env.PLAYABLE_EXPORT_PYTHON);
+  await assert.rejects(resolveExportPython({ env, probe: async () => null }), /PLAYABLE_EXPORT_PYTHON 不可用/);
+  await assert.rejects(resolveExportPython({ env: {}, probe: async () => null }), /未找到可用的 Python/);
+});
+
+test('the inline packager embeds SVG images with an image MIME type', async () => {
+  const inliner = await readFile(new URL('../scripts/package-applovin-single-html.mjs', import.meta.url), 'utf8');
+  assert.match(inliner, /\['\.svg', 'image\/svg\+xml'\]/);
 });
 
 const EXPORT_NAMING = Object.freeze({

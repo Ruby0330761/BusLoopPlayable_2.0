@@ -39,6 +39,49 @@ export const BRANDING_LOCALIZATION = Object.freeze({
   vi: Object.freeze({ cta: 'Chơi ngay' })
 });
 
+// The boost challenge's replay question and action labels share the existing
+// browser-language resolver. Unsupported languages use English.
+export const REPLAY_END_CARD_LOCALIZATION = Object.freeze({
+  en: { prompt: 'Wanna try again?', retry: 'Retry' },
+  'zh-Hans': { prompt: '想再试一次吗？', retry: '重试' },
+  'zh-Hant': { prompt: '想再試一次嗎？', retry: '重試' },
+  ja: { prompt: 'もう一度挑戦しますか？', retry: 'もう一度' },
+  ko: { prompt: '다시 도전해 볼까요?', retry: '다시 시도' },
+  es: { prompt: '¿Quieres intentarlo de nuevo?', retry: 'Reintentar' },
+  fr: { prompt: 'Envie de réessayer ?', retry: 'Réessayer' },
+  de: { prompt: 'Noch einmal versuchen?', retry: 'Erneut versuchen' },
+  ru: { prompt: 'Хотите попробовать ещё раз?', retry: 'Повторить' },
+  ar: { prompt: 'هل تريد المحاولة مجددًا؟', retry: 'حاول مجددًا' },
+  pt: { prompt: 'Quer tentar de novo?', retry: 'Tentar novamente' },
+  tr: { prompt: 'Tekrar denemek ister misin?', retry: 'Tekrar dene' },
+  it: { prompt: 'Vuoi riprovare?', retry: 'Riprova' },
+  id: { prompt: 'Mau coba lagi?', retry: 'Coba lagi' },
+  vi: { prompt: 'Muốn thử lại không?', retry: 'Thử lại' }
+});
+
+export function resolveReplayEndCardCopy(languages = []) {
+  const locale = resolveBrandingLocale(languages);
+  return { locale, ...REPLAY_END_CARD_LOCALIZATION[locale],
+    playNow: locale === 'en' ? 'Play Now!' : BRANDING_LOCALIZATION[locale].cta,
+    direction: locale === 'ar' ? 'rtl' : 'ltr' };
+}
+
+export const BOOST_GUIDE_LOCALIZATION = Object.freeze({
+  en: 'TAP TO BOOST!', 'zh-Hans': '点击加速！', 'zh-Hant': '點擊加速！',
+  ja: 'タップして加速！', ko: '탭해서 가속!', es: '¡TOCA PARA ACELERAR!',
+  fr: 'TOUCHEZ POUR ACCÉLÉRER !', de: 'TIPPEN ZUM BESCHLEUNIGEN!',
+  ru: 'НАЖМИ, ЧТОБЫ УСКОРИТЬСЯ!', ar: 'اضغط للتسريع!',
+  pt: 'TOQUE PARA ACELERAR!', tr: 'HIZLANMAK İÇİN DOKUN!',
+  it: 'TOCCA PER ACCELERARE!', id: 'KETUK UNTUK MEMPERCEPAT!', vi: 'CHẠM ĐỂ TĂNG TỐC!'
+});
+
+export function resolveBoostGuideCopy(languages = [], authoredText = '') {
+  const locale = resolveBrandingLocale(languages);
+  const authored = String(authoredText ?? '').trim();
+  return { locale, direction: locale === 'ar' ? 'rtl' : 'ltr',
+    text: !authored || /^tap\s+to\s+boost!?$/i.test(authored) ? BOOST_GUIDE_LOCALIZATION[locale] : authored };
+}
+
 // Store titles, transcribed from the requester's sheet
 //「Bus fever party 双端商店title（26/11/10）」— Google and iOS sections.
 //

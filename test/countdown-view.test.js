@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createCountdownView } from '../src/countdown-view.js';
-import { COUNTDOWN_TIMER_ASSET } from '../src/countdown.js';
+import { COUNTDOWN_TIMER_ASSET, COUNTDOWN_ALARM_ASSET } from '../src/countdown.js';
 
 const PLACEHOLDER_SRC = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7';
 
@@ -25,6 +25,24 @@ function fixture(width, height, bounds, speedBounds = null, frame = {}) {
   view.resize(bounds);
   return { view, root, value, warning, attrs };
 }
+
+test('alarm icon is opt-in, uses the supplied SVG and can return to the original frame', () => {
+  const attrs = new Map();
+  const icon = { style: {}, getAttribute: key => attrs.get(key), set src(value) { attrs.set('src', value); } };
+  const image = { getAttribute: () => COUNTDOWN_TIMER_ASSET };
+  const root = { dataset: {}, setAttribute() {} };
+  const view = createCountdownView({ root, icon, image });
+  view.render({ enabled: 0, remaining: 30 });
+  assert.equal(attrs.size, 0);
+  view.render({ enabled: 1, iconEnabled: 1, iconScale: 1.3, iconOffsetX: 5, iconOffsetY: -4, remaining: 30 });
+  assert.equal(attrs.get('src'), COUNTDOWN_ALARM_ASSET);
+  assert.equal(image.hidden, true);
+  assert.equal(icon.hidden, false);
+  assert.equal(icon.style.transform, 'translate(5%, -4%) scale(1.3)');
+  view.render({ enabled: 1, iconEnabled: 0, remaining: 30 });
+  assert.equal(icon.hidden, true);
+  assert.equal(image.hidden, false);
+});
 
 test('timer stays within portrait, landscape and letterboxed content and clears the speed button', () => {
   for (const [width, height, bounds, button] of [
