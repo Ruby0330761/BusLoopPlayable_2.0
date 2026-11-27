@@ -15,11 +15,25 @@ import {
   tintAtlasPixels
 } from '../src/vehicle-color-tint.js';
 import { COLORS } from '../src/level-data.js';
+import { resolveVehiclePaint } from '../src/vehicle-display-colors.js';
 import { COLOR_ATLAS_PATHS } from '../src/color-atlases.js';
+import { createVehiclePaintMaterial } from '../src/vehicle-paint.js';
 
 const ATLAS_DIR = 'public/assets/unity/textures';
 const ATLAS_FILES = readdirSync(ATLAS_DIR);
 const atlasCache = new Map();
+
+test('vehicle panels and glass reproduce the preset swatches without binding a map', () => {
+  for (const colorIndex of [0, 1, 4, 17, 21]) {
+    const { surfaces } = resolveVehiclePaint({ colorIndex, seats: 4 });
+    const material = createVehiclePaintMaterial(surfaces);
+    assert.equal(material.map, null);
+    const shader = { uniforms: {}, vertexShader: '', fragmentShader: '' };
+    material.onBeforeCompile(shader);
+    assert.deepEqual(shader.uniforms.vehiclePaint.value.map(c => '#' + c.getHexString()), surfaces);
+    assert.notEqual(surfaces[0], surfaces[5]);
+  }
+});
 
 /** The shipped atlas PNG for a paint slot, or null when the slot has none. */
 function atlasFileFor(colorIndex) {
@@ -264,15 +278,17 @@ test('every shipped override keeps the hue the level author chose', () => {
   }
 });
 
-test('scene-view tints through the shared model instead of its own copy', () => {
-  // The tint used to live inside scene-view.js with its own HSV maths, which is
-  // how it drifted from the authoring palette. It must stay in the tested module.
-  const source = readFileSync('src/scene-view.js', 'utf8');
-  assert.match(source, /from '\.\/vehicle-color-tint\.js'/, 'scene-view must import the tint model');
-  assert.match(source, /tintAtlasPixels\(/, 'scene-view must call the shared repaint');
-  assert.match(source, /dominantOpaqueColor\(/, 'scene-view must measure the atlas body as its reference');
-  // The old inline HSV replacement is gone.
-  assert.doesNotMatch(source, /const sourceHsv = rgbHue\(source\)/, 'the inline HSV tint must be removed');
+test('four-seat lamps use the original lamp swatches independent of body and detail paint', () => {
+  const paint = { body: '#868d98', highlight: '#fefefe', shadow: '#121212', window: '#263238', detail: '#118877' };
+  for (const [colorIndex, rear, front] of [[0, 'ff5e40', 'fff14b'], [9, 'fd6547', '8ffe90'], [25, 'ff3724', 'ffe77d']]) {
+    const material = createVehiclePaintMaterial(resolveVehiclePaint({ colorOverrides: paint, seats: 4, colorIndex }).surfaces);
+    const shader = { uniforms: {}, vertexShader: '', fragmentShader: '' };
+    material.onBeforeCompile(shader);
+    const swatches = shader.uniforms.vehiclePaint.value.map(color => color.getHexString());
+    assert.deepEqual([swatches[7], swatches[10]], [rear, front]);
+    assert.notEqual(swatches[5], swatches[0]);
+    assert.equal(material.map, null);
+  }
 });
 
 test('a repaint never amplifies the atlas shading', () => {

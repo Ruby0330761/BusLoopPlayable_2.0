@@ -31,7 +31,17 @@ import {
   validateTuning
 } from '../scripts/export-playable-package.mjs';
 import { BASE_RUNTIME_ASSET_PATHS } from '../src/mechanism-resources.js';
+import { buildExportReview, summarizeExportPackage } from '../src/export-review.js';
 import { isValidStoreLink, resolveStoreLink } from '../src/store-links.js';
+import { auditEmbeddedAssets, inlineModule, replaceAssetUrls } from '../scripts/package-applovin-single-html.mjs';
+
+test('export rejects an unregistered embedded payload even without a file path', () => {
+  const art = 'data:image/jpeg;base64,aGVsbG8=';
+  assert.ok(auditEmbeddedAssets(`<img src="${art}">`, [art]).has(art));
+  assert.throws(() => auditEmbeddedAssets(`<script>const unused="${art}"</script>`, []), /清单外/);
+  const large = 'data:image/png;base64,' + Buffer.alloc(4096).toString('base64');
+  assert.throws(() => auditEmbeddedAssets(`"${large}" "${large}"`, [large]), /重复内联/);
+});
 
 const STORE_LINKS = Object.freeze({
   android: 'https://play.google.com/store/apps/details?id=gridplus.busjam.carpuzzle',
@@ -61,8 +71,8 @@ test('explicit export Python is respected and an invalid override fails clearly'
 });
 
 test('the inline packager embeds SVG images with an image MIME type', async () => {
-  const inliner = await readFile(new URL('../scripts/package-applovin-single-html.mjs', import.meta.url), 'utf8');
-  assert.match(inliner, /\['\.svg', 'image\/svg\+xml'\]/);
+  const { mimeForPlayableAsset } = await import('../scripts/playable-asset-delivery.mjs');
+  assert.equal(mimeForPlayableAsset('/assets/applovin/countdown/alarm-clock.svg'), 'image/svg+xml');
 });
 
 const EXPORT_NAMING = Object.freeze({
@@ -84,19 +94,92 @@ const EXPORT_NAMING = Object.freeze({
   }),
 });
 
-// Resolve a dotted tuning path such as `exportNaming.channels.applovin`, the
-// same shape the scene editor's field table uses.
-function hasPath(root, dottedPath) {
-  let cursor = root;
-  for (const segment of dottedPath.split('.')) {
-    if (!cursor || typeof cursor !== 'object' || !Object.hasOwn(cursor, segment)) return false;
-    cursor = cursor[segment];
+test('review lists each channel filename and previews the selected branding set', () => {
+  const tuning = {
+    level: { selected: 'level9' }, parkingSpots: { count: 6 },
+    exportNaming: { ...EXPORT_NAMING, steps: '35/35moves', version: 'N' },
+    branding: { logo: { enabled: 0 } }
+  };
+  const platforms = [['applovin', 'AppLovin', 'HTML'], ['mintegral', 'Mintegral', 'ZIP']];
+  for (const brandingSet of ['bus', 'crowd']) {
+    const options = { brandingSet, platforms };
+    const review = buildExportReview(tuning, options);
+    assert.deepEqual(review.names, [
+      { channel: 'AL', files: [
+        'AC-2607141-Q1V1-N-N-EN-PL-NLY-ZZN-AL-35-N.html',
+        'AC-2607141-Q1V1-N-N-EN-PL-NLY-ZZN-AL-35moves-N.html'
+      ] },
+      { channel: 'MT', files: [
+        'AC_2607141_Q1V1_N_N_EN_PL_NLY_ZZN_MT_35_N.zip',
+        'AC_2607141_Q1V1_N_N_EN_PL_NLY_ZZN_MT_35moves_N.zip'
+      ] }
+    ]);
+    const [art] = PLAYABLE_BRANDING_SETS[brandingSet];
+    assert.deepEqual(review.branding.map(row => row.asset), [art.iconAssets.android, art.iconAssets.ios, art.logoAsset]);
+    assert.deepEqual(review.branding.map(row => row.visible), [true, true, false]);
+    assert.throws(() => buildExportReview({ ...tuning, parkingSpots: { count: 0 } }, options), /车位数量/);
   }
-  return true;
-}
+});
 
-test('export is package-only and does not opt into resource optimization', () => {
+test('package review uses delivered bytes and deduplicates assets across channels', () => {
+  const file = (fileName, bytes, assets) => ({ fileName, bytes, uncompressedBytes: bytes, assetDelivery: { assets } });
+  const first = file('AL.html', 500_001, [
+    { url: '/assets/model.fbx', deliveryBytes: 206_000, deliverySha256: 'model-hash' },
+    { url: '/assets/small.mp3', deliveryBytes: 100_000, sourceBytes: 910_000 }
+  ]);
+  const second = file('GG.zip', 420_002, [
+    { url: '/assets/model.fbx', deliveryBytes: 206_000 },
+    { url: 'backup.jpg', deliveryBytes: 137_000, deliverySha256: 'image-hash', mime: 'image/jpeg' }
+  ]);
+  const review = summarizeExportPackage(
+    { fileName: 'all.zip', bytes: 827_000, artifacts: [first, second] },
+    new Set(['model-hash', 'image-hash'])
+  );
+  assert.equal(review.bytes, 827_000);
+  assert.deepEqual(review.artifacts.map(artifact => artifact.bytes), [500_001, 420_002]);
+  assert.deepEqual(review.assets, [
+    { url: '/assets/model.fbx', bytes: 206_000, preview: { hash: 'model-hash', kind: 'model' } },
+    { url: 'backup.jpg', bytes: 137_000, preview: { hash: 'image-hash', kind: 'image' } }
+  ]);
+  assert.equal(summarizeExportPackage(first).bytes, 500_001);
+});
+
+test('export retains the package-only response contract', () => {
   assert.equal(EXPORT_RESOURCE_MODE, 'package-only');
+});
+
+test('review separates oversized model sources from the delivered assets shown on both pages', () => {
+  const asset = (url, sourceBytes, deliveryBytes) => ({ url, sourceBytes, deliveryBytes });
+  const model = asset('mesh.FBX.BIN', 160_000, 80_000);
+  const texture = asset('anim.rgba16f', 156_000, 156_000);
+  const review = summarizeExportPackage({ artifacts: [
+    { assetDelivery: { assets: [model, texture, asset('limit_vatmesh.bin', 100_000, 100_000)] } },
+    { assetDelivery: { assets: [model, texture, asset('backup.jpg', 137_701, 137_701)] } }
+  ] });
+  assert.deepEqual(review.sourceModels, [{ url: model.url, bytes: model.sourceBytes }]);
+  assert.deepEqual(review.assets, [{ url: texture.url, bytes: 156_000 }, { url: 'backup.jpg', bytes: 137_701 }]);
+});
+
+test('inlining the ordinary models preserves editor paint selection for each seat count', async () => {
+  const models = {
+    4: '/assets/unity/models/Car_001.fbx',
+    6: '/assets/unity/models/Van_001.fbx',
+    10: '/assets/unity/models/Bus_001.fbx'
+  };
+  const assetMap = new Map(Object.values(models).map(url => [
+    url, 'data:application/octet-stream;base64,' + Buffer.from(url).toString('base64')
+  ]));
+  const editor = await import('../src/color-atlases.js');
+  const blackAtlas = editor.COLOR_ATLAS_PATHS[17];
+  assetMap.set(blackAtlas, 'data:image/webp;base64,YXRsYXM=');
+  const source = await readFile(new URL('../src/color-atlases.js', import.meta.url), 'utf8');
+  const packaged = await import('data:text/javascript;base64,' + Buffer.from(replaceAssetUrls(source, assetMap)).toString('base64'));
+  assert.equal(packaged.resolveColorAtlasPaths([])[17], assetMap.get(blackAtlas));
+  for (const [seats, path] of Object.entries(models)) {
+    assert.ok(editor.usesShippedVehicleMesh(path, seats));
+    assert.ok(packaged.usesShippedVehicleMesh(assetMap.get(path), seats));
+    assert.equal(packaged.usesShippedVehicleMesh('data:application/octet-stream;base64,Y3VzdG9t', seats), false);
+  }
 });
 
 test('exporter exposes every supported delivery platform', () => {
@@ -109,6 +192,49 @@ test('exporter exposes every supported delivery platform', () => {
     'moloco',
     'tiktok'
   ]);
+});
+
+test('shared gameplay bundles keep each channel native bridge and CTA', async (t) => {
+  const previous = process.env.PLAYABLE_EXPORT_SHARED_CORE;
+  process.env.PLAYABLE_EXPORT_SHARED_CORE = '1';
+  t.after(() => {
+    if (previous === undefined) delete process.env.PLAYABLE_EXPORT_SHARED_CORE;
+    else process.env.PLAYABLE_EXPORT_SHARED_CORE = previous;
+  });
+  for (const platform of SUPPORTED_PLATFORMS.filter((value) => value !== 'mintegral')) {
+    const calls = [];
+    const html = await inlineModule(
+      '<html><head><script type="module" src="/assets/runtime.js"></script></head></html>',
+      'import { createPlatformBridge } from "__playable_export_platform_bridge__"; globalThis.testCreate = createPlatformBridge;',
+      '/assets/runtime.js', new Map(), platform
+    );
+    assert.doesNotMatch(html, /__playable_export_platform_bridge__/);
+    const sandbox = {
+      console,
+      navigator: { userAgent: 'TikTok Android' },
+      setTimeout: (callback) => { callback(); return 0; },
+      window: {
+        mraid: {
+          getState: () => 'default', isViewable: () => true,
+          addEventListener() {}, open: () => calls.push('mraid')
+        },
+        ALPlayableAnalytics: { trackEvent() {} },
+        ExitApi: { exit: () => calls.push('ExitApi') },
+        FbPlayableAd: { onCTAClick: () => calls.push('FbPlayableAd') },
+        playableSDK: { openAppStore: () => calls.push('playableSDK') }
+      }
+    };
+    runInNewContext(html.match(/<script type="module">([\s\S]*?)<\/script>/)[1], sandbox);
+    const bridge = sandbox.testCreate({ onStart() {} });
+    assert.equal(bridge.platform, platform);
+    bridge.initialize();
+    bridge.ready();
+    bridge.openStore(STORE_LINKS);
+    assert.deepEqual(calls, [{
+      applovin: 'mraid', 'google-ads': 'ExitApi', meta: 'FbPlayableAd',
+      unityads: 'mraid', moloco: 'FbPlayableAd', tiktok: 'playableSDK'
+    }[platform]], platform);
+  }
 });
 
 test('artifact names follow the playable request naming rule for every platform', () => {
@@ -329,13 +455,12 @@ test('Crowd exports one shared Android/iOS package with its own icon and logo', 
     'crowd'
   );
   assert.equal(legacyShortName.branding.text.content, 'Bus Crowd - Traffic Jam');
-  // The Crowd wordmark must sit centred even when a saved editor session left
-  // the draggable x a few pixels off (a 534 shipped once and looked off-centre).
+  // The Crowd caption stays centered under the CTA after it is moved.
   const dragged = createBrandingVariantTuning(
-    { preview: { width: 1080, height: 2160 }, branding: { text: { x: 534, content: 'Bus Crowd' } } },
+    { preview: { width: 1080, height: 2160 }, cta: { x: 600 }, branding: { text: { x: 594, content: 'Bus Crowd' } } },
     'crowd'
   );
-  assert.equal(dragged.branding.text.x, 540);
+  assert.equal(dragged.branding.text.x, 600);
   assert.equal(dragged.branding.text.content, 'Bus Crowd - Traffic Jam');
   // An operator's own line is still product copy and must not be rewritten.
   const authored = createBrandingVariantTuning(
@@ -400,9 +525,9 @@ test('Crowd exports one shared Android/iOS package with its own icon and logo', 
   assert.match(exporter, /export function buildDeliveryFolderName\(/);
   assert.match(exporter, /export function resolveChannelFolder\(/);
   assert.match(exporter, /const deliveryFolder = buildDeliveryFolderName\(/);
-  assert.match(exporter, /`\$\{deliveryFolder\}\.zip`/);
+  assert.match(exporter, /const aggregateName = .*packageLabel/);
   assert.match(exporter, /const label = packageLabel \|\|/);
-  assert.match(exporter, /logoAsset: '\/assets\/main-loading-icon-crowd\.webp'/);
+  assert.equal(PLAYABLE_BRANDING_SETS.crowd[0].logoAsset, '/assets/main-loading-icon-crowd.webp');
   assert.match(vite, /PLAYABLE_BRANDING_SETS = new Set\(\['bus', 'crowd'\]\)/);
   assert.match(vite, /brandingSet,/);
   assert.match(editor, /editor-export-set-select/);
@@ -490,7 +615,7 @@ test('single HTML can be split into a classic packaged entry', () => {
 test('Google Ads packaging captures a real playable backup instead of duplicating a source asset', async () => {
   const exporter = await readFile(new URL('../scripts/export-playable-package.mjs', import.meta.url), 'utf8');
   assert.match(exporter, /platform === 'google-ads'[\s\S]*capturePlayableBackupImage\(\{/);
-  assert.match(exporter, /copyFile\(path\.join\(projectRoot, 'artifacts', 'google-ads-backup\.jpg'\), backupPath\)/);
+  assert.doesNotMatch(exporter, /google-ads-backup\.jpg|cachedBackupImagePath/);
 });
 
 test('UnityAds single-line packaging preserves GLSL line breaks before flattening HTML', async () => {
@@ -594,7 +719,7 @@ test('inliner reuses the initial branding image instead of embedding it again in
   // runtime, so its literal has to come from the document as well.
   // `stage-choice-hand` is the same sprite the 3D guide hand loads by URL, so it
   // has to reuse the document copy too or the payload scan sees the blob twice.
-  assert.match(inliner, /\['branding-icon', 'branding-logo', 'loading-icon', 'stage-choice-hand'\]/);
+  assert.match(inliner, /\['branding-icon', 'branding-logo', 'stage-choice-hand'\]/);
   assert.match(inliner, /reuseDocumentImageAsset\(html, source, assetMap, elementId\)/);
 });
 
@@ -608,10 +733,9 @@ test('packaging and checks include EntryBanner resources only when the tuning or
   // A later stage can enable the banner while the global toggle stays off. Both
   // consumers must consider every request source: the fixed stage sequence, the
   // map picker, and the global toggle.
-  assert.match(inliner, /const stageBannerEnabled = PLAYABLE_STAGES\.some\(/u);
-  assert.match(inliner, /const choiceBannerEnabled = PLAYABLE_STAGE_CHOICES\.some\(/u);
-  assert.match(inliner, /SCENE_TUNING\.entryBanner\?\.enabled \|\| stageBannerEnabled \|\| choiceBannerEnabled/u);
-  assert.match(checker, /PLAYABLE_STAGE_CHOICES/);
+  for (const source of [inliner, checker]) {
+    assert.match(source, /getReachableStageArt\(SCENE_TUNING, PLAYABLE_STAGES, PLAYABLE_STAGE_CHOICES\)/);
+  }
   // Assets follow the reachable set, not just the fixed order, or a picked map
   // would ship with placeholder bytes.
   assert.match(inliner, /PLAYABLE_STAGE_CHOICES, PLAYABLE_ALL_LEVELS/);
@@ -625,13 +749,14 @@ test('packaging and checks include EntryBanner resources only when the tuning or
 });
 
 test('packaging embeds only the selected configured pre-roll MP4', async () => {
-  const [inliner, checker, resources, inlineAssets] = await Promise.all([
+  const [inliner, checker, resources, inlineAssets, assetDelivery] = await Promise.all([
     readFile(new URL('../scripts/package-applovin-single-html.mjs', import.meta.url), 'utf8'),
     readFile(new URL('../scripts/check-applovin-package.mjs', import.meta.url), 'utf8'),
     readFile(new URL('../src/mechanism-resources.js', import.meta.url), 'utf8'),
-    readFile(new URL('../src/playable-inline-assets.js', import.meta.url), 'utf8')
+    readFile(new URL('../src/playable-inline-assets.js', import.meta.url), 'utf8'),
+    readFile(new URL('../scripts/playable-asset-delivery.mjs', import.meta.url), 'utf8')
   ]);
-  assert.match(inliner, /\['\.mp4', 'video\/mp4'\]/);
+  assert.match(assetDelivery, /\['\.mp4', 'video\/mp4'\]/);
   // The packager and the checker must resolve the pre-roll the same way the
   // runtime does, session opt-out included. That rule now lives in the shared
   // inline-asset module, which both the packager and the editor preflight call.
@@ -660,7 +785,7 @@ test('platform packaging strips the development font resource and preserves syst
   assert.match(styles, /'Poppins Branding', Arial, sans-serif/);
   assert.match(inliner, /function stripBundledFontFaces\(css\)/);
   assert.match(inliner, /const packagedCssSource = stripBundledFontFaces\(cssSource\)/);
-  assert.match(inliner, /collectAssetUrls\(packagedCssSource, realAssetUrls\)/);
+  assert.match(inliner, /collectAssetUrls\(\[html, runtimeCss\]\)/);
   assert.equal(BASE_RUNTIME_ASSET_PATHS.some((asset) => /\.(?:eot|otf|ttf|woff2?)$/i.test(asset)), false);
   assert.match(checker, /no (?:bundled|external) font/i);
 });
@@ -676,10 +801,11 @@ test('editor and server expose production-only single-platform and all-platform 
     readFile(new URL('../scripts/start-remote-editor.mjs', import.meta.url), 'utf8'),
     readFile(new URL('../Dockerfile', import.meta.url), 'utf8')
   ]);
-  assert.match(editor, /editor-export-all-button/);
+  assert.doesNotMatch(editor, /editor-export-all-button/);
   assert.match(editor, /\/__playable-export-all/);
-  assert.match(editor, /\\u6b63\\u5728\\u6253\\u5305/);
-  assert.match(editor, /getPlayableExportPayload\(\)[\s\S]*?JSON\.stringify\(all[\s\S]*?\.\.\.exportPayload, platform, brandingSet/);
+  assert.match(editor, /正在下载试玩包/);
+  assert.match(editor, /getPlayableExportPayload\(\)[\s\S]*?JSON\.stringify\(\{ \.\.\.exportPayload,[^\n]*brandingSet, review: true \}\)/);
+  assert.match(editor, /confirmPlayableExport[\s\S]*?exportQueue\.enter\([\s\S]*?signal,[\s\n]*ticket/);
   assert.match(mainSource, /function getPlayableExportPayload\(\)[\s\S]*?levelDocumentBaseRevision/);
   // One stale key makes the server reject the whole export at 0 seconds, so the
   // payload is pruned against the shipped template before it is posted.
@@ -693,6 +819,7 @@ test('editor and server expose production-only single-platform and all-platform 
   assert.match(editor, /\\u672a\\u6267\\u884c\\u672c\\u5730\\u68c0\\u6d4b/);
   assert.match(editor, /\\u65e0\\u6cd5\\u8fde\\u63a5\\u5bfc\\u51fa\\u670d\\u52a1/);
   assert.match(vite, /pathname === '\/__playable-export-all'/);
+  assert.match(vite, /playableExportQueue\.start\(request\.headers\['x-export-ticket'\]/);
   assert.match(vite, /exportAllPlayablePackages/);
   assert.match(vite, /X-Playable-Resource-Mode/);
   assert.match(vite, /X-Playable-Source-Cache/);
@@ -717,7 +844,7 @@ test('editor and server expose production-only single-platform and all-platform 
   assert.match(vite, /pathname === '\/' \|\| pathname\.endsWith\('\.html'\)/);
   assert.match(vite, /Cache-Control', 'no-store'/);
   assert.match(vite, /\[playable-export\] finished route=/);
-  assert.match(vite, /rm\(transientExportRoot, \{ recursive: true, force: true \}\)/);
+  assert.match(vite, /await removeTemporaryExport\(transientExportRoot\)/);
   assert.match(exporter, /checkPlayableRuntimeArtifact\(\{[\s\S]*?signal/);
   assert.match(exporter, /conclusion: 'SKIPPED_LOCAL_CHECKS'/);
   assert.match(exporter, /skipChecks/);
@@ -730,7 +857,7 @@ test('editor and server expose production-only single-platform and all-platform 
   assert.match(exporter, /process\.kill\(-child\.pid, killSignal\)/);
   assert.match(exporter, /mapWithConcurrency\([\s\S]*?platforms[\s\S]*?getExportConcurrency\(platforms\.length\)/);
   assert.match(exporter, /generateWorkspaceSources\(workspace\.workRoot, signal, useSelectedLevel\)/);
-  assert.match(exporter, /prepareWorkspace\(resolvedRoot, safeTuning, levelDocument, useSelectedLevel\)/);
+  assert.match(exporter, /prepareWorkspace\(resolvedRoot, safeTuning, levelDocument, useSelectedLevel, stageArt, preRollEnabled\)/);
   assert.match(exporter, /JSON\.stringify\(levelDocument\)/);
   assert.match(exporter, /PLAYABLE_DIST_DIR: distRoot/);
   assert.match(exporter, /PLAYABLE_INLINE_OUTPUT_FILE: outputPath/);
@@ -744,40 +871,15 @@ test('editor and server expose production-only single-platform and all-platform 
   assert.match(dockerfile, /CMD \["node", "scripts\/start-remote-editor\.mjs"\]/);
 });
 
-test('editor exposes every request naming component and platform channel code', async () => {
+test('delivery list replaces manual naming and uses the Shanghai calendar for package labels', async () => {
   const editor = await readFile(new URL('../src/scene-editor.js', import.meta.url), 'utf8');
-  for (const path of [
-    'requirementCode', 'materialCode', 'iterationCode', 'language', 'format',
-    'designer', 'requester'
-  ]) {
-    assert.match(editor, new RegExp(`exportNaming\\.${path}`));
-  }
-  for (const platform of SUPPORTED_PLATFORMS) {
-    assert.match(editor, new RegExp(`exportNaming\\.channels\\.${platform}`));
-  }
-  assert.match(editor, /control === 'filename'/);
-  assert.match(editor, /isValidExportNamingPart/);
-
-  // A naming row that edits a key the template does not define seats the value
-  // into SCENE_TUNING, and the exporter then rejects the whole payload with
-  // "tuning.exportNaming.<key> is not supported" at 0 seconds. Check every path
-  // the editor's naming group writes against the live template.
-  const { SCENE_TUNING } = await import('../src/scene-tuning.js');
-  const namingPaths = new Set(
-    [...editor.matchAll(/'(exportNaming\.[A-Za-z0-9_.-]+)'/g)].map(([, path]) => path)
-  );
-  assert.ok(namingPaths.size > 0);
-  for (const namingPath of namingPaths) {
-    assert.ok(
-      hasPath(SCENE_TUNING, namingPath),
-      `${namingPath} is edited by the scene editor but missing from src/scene-tuning.js`
-    );
-  }
-  // The retired tail field must not come back: it fails tune validation.
-  assert.equal(hasPath(SCENE_TUNING, 'exportNaming.stamina'), false);
-  assert.equal(hasPath(SCENE_TUNING, 'exportNaming.version'), true);
-  assert.match(editor, /'exportNaming\.version'/);
-  assert.doesNotMatch(editor, /'exportNaming\.stamina'/);
+  assert.doesNotMatch(editor, /shell-naming-grid|editor-export-all-button|editor-complete-export-name/);
+  assert.match(editor, /id="editor-delivery-list"/);
+  assert.match(editor, /class="editor-export-button" type="button" disabled>按清单导出/);
+  const { buildDeliveryPackageLabel } = await import('../scripts/export-playable-package.mjs');
+  const naming = { requirementCode: 'BL-2611254', designer: 'WXJ' };
+  assert.equal(buildDeliveryPackageLabel({ ...naming, now: new Date('2026-11-25T16:00:00Z') }), 'BL-2611254-20261126-WXJ');
+  assert.equal(buildDeliveryPackageLabel({ ...naming, now: new Date('2026-11-25T15:59:59Z') }), 'BL-2611254-20261125-WXJ');
 });
 
 test('scene editor separates controls into keyboard-accessible category tabs', async () => {
@@ -850,6 +952,14 @@ test('applying export tuning rewrites only tuning data and leaves runtime helper
       readFile(new URL('../src/scene-view.js', import.meta.url), 'utf8')
     ]);
     await writeFile(path.join(root, 'src', 'scene-tuning.js'), tuningSource, 'utf8');
+    await writeFile(path.join(root, 'src', 'speed-toggle.js'),
+      await readFile(new URL('../src/speed-toggle.js', import.meta.url)));
+    await writeFile(path.join(root, 'src', 'branding-image-frame.js'),
+      await readFile(new URL('../src/branding-image-frame.js', import.meta.url)));
+    await writeFile(path.join(root, 'src', 'scene-layout.js'),
+      await readFile(new URL('../src/scene-layout.js', import.meta.url)));
+    await writeFile(path.join(root, 'src', 'vehicle-effect-assets.js'),
+      await readFile(new URL('../src/vehicle-effect-assets.js', import.meta.url)));
     await writeFile(path.join(root, 'scripts', 'apply-scene-tuning.mjs'), applyScript, 'utf8');
     await writeFile(path.join(root, 'artifacts', 'scene-tuning.json'), '{ "level": { "selected": "level9" } }\n', 'utf8');
 
@@ -871,6 +981,8 @@ test('applying export tuning rewrites only tuning data and leaves runtime helper
     const { getVehicleAreaPivot } = await import('../src/vehicle-area.js');
     const pivot = getVehicleAreaPivot(rewrittenModule.SCENE_TUNING.vehicleArea);
     assert.equal(rewrittenModule.SCENE_TUNING.level.selected, 'level9');
+    const { SMOKE_TRAIL_DEFAULTS } = await import('../src/vehicle-effect-assets.js');
+    assert.deepEqual(rewrittenModule.SCENE_TUNING.effects.smokeTrail, SMOKE_TRAIL_DEFAULTS);
     assert.equal(typeof pivot.x, 'number');
     assert.equal(typeof pivot.z, 'number');
   } finally {
@@ -1070,7 +1182,7 @@ test('all-platform and single-platform exports publish into channel folders', as
   // Both entry points use the same layout, so a single-channel download and a
   // full set never disagree about where a file belongs.
   assert.match(exporter, /const relativePath = deliveryFolder[\s\S]{0,200}channelFolder/);
-  assert.match(exporter, /const deliveryRoot = path\.join\(bundleRoot, deliveryFolder \|\| 'playable'\)/);
+  assert.match(exporter, /const channelRoot = path\.join\(bundleRoot, folder, item\.channelFolder\)/);
   assert.match(exporter, /await mkdir\(channelRoot, \{ recursive: true \}\)/);
   // The manifest is written beside the archive, never inside the delivery
   // folder: the NAS uploader rejects any file it cannot assign to a channel.
@@ -1095,9 +1207,8 @@ test('a fixed stage sequence that enables the entry banner still ships its art',
   // checking only one of them shipped the six banner sprites as 1-byte
   // octet-stream placeholders, so the banner collapsed to a line of text.
   assert.match(packager, /PLAYABLE_STAGES, PLAYABLE_STAGE_CHOICES, PLAYABLE_ALL_LEVELS/u);
-  assert.match(packager, /PLAYABLE_STAGES\.some\(\(stage\) => stage\?\.opening\?\.entryBanner\?\.enabled\)/u);
-  assert.match(packager, /PLAYABLE_STAGE_CHOICES\.some\(/u);
-  assert.match(packager, /SCENE_TUNING\.entryBanner\?\.enabled \|\| stageBannerEnabled \|\| choiceBannerEnabled/u);
+  assert.match(packager, /getReachableStageArt\(SCENE_TUNING, PLAYABLE_STAGES, PLAYABLE_STAGE_CHOICES\)/);
+  assert.match(packager, /entryBannerEnabled: stageArt\.entryBanners\.length > 0/);
 });
 
 test('delivery variants are told apart by material code, and pre-roll by the trailing tag', async () => {

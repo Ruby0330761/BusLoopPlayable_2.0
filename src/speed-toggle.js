@@ -8,9 +8,11 @@
 // itself is CSS; only the round badge is artwork, and it is square so the runtime
 // can size it from the button box without measuring anything.
 export const SPEED_TOGGLE_STYLES = Object.freeze([
-  { value: 'default', label: '默认（深蓝按钮）' },
-  { value: 'light', label: '浅色胶囊（蓝色圆徽）' }
+  { value: 'light', label: '浅色胶囊（默认）' },
+  { value: 'default', label: '深蓝按钮' }
 ]);
+
+export const DEFAULT_SPEED_TOGGLE_BOUNDS = Object.freeze({ x: 968, y: 244, width: 204, height: 106 });
 
 // The seed `src` for the switch badge. A delivery whose tuning leaves the switch
 // off ships no badge art at all, so the element starts from a transparent pixel
@@ -39,8 +41,6 @@ export function resolveTimeScale({ multiplier = 2, boosted = false } = {}) {
   return boosted ? normalizeSpeedMultiplier(multiplier, 2) : 1;
 }
 
-// An unknown saved style falls back to the original rather than hiding the
-// button: a stale profile must still render a working switch.
 export function normalizeSpeedToggleStyle(value, fallback = 'default') {
   const key = String(value ?? '').trim().toLowerCase();
   return SPEED_TOGGLE_STYLES.some((style) => style.value === key) ? key : fallback;
@@ -56,4 +56,11 @@ export function formatSpeedLabel(multiplier, style = 'default') {
 export function resolveSpeedToggleIcon(style, boosted) {
   const icons = SPEED_TOGGLE_ICON_PATHS[normalizeSpeedToggleStyle(style)];
   return boosted ? icons.boost : icons.normal;
+}
+
+export function getSpeedToggleAssetPaths(config = {}) {
+  if (!config.enabled) return [];
+  const style = normalizeSpeedToggleStyle(config.style);
+  const badges = Object.values(SPEED_TOGGLE_ICON_PATHS[style]);
+  return style === 'light' ? badges : ['/assets/applovin/speed-toggle-bg_q90.webp', ...badges];
 }

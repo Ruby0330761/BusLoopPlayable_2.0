@@ -42,10 +42,8 @@ test('entry banner uses the supplied title/background images and keeps the match
   assert.match(sceneSource, /ENTRY_BANNER_TIMELINE_SECONDS = 1\.45/);
   assert.match(sceneSource, /progress \* ENTRY_BANNER_TIMELINE_SECONDS/);
   assert.match(sceneSource, /banner\.mask\.style\.opacity = String\(maskFade\)/);
-  assert.match(sceneSource, /assets\.hardBackground/);
-  assert.match(sceneSource, /assets\.superHardBackground/);
-  assert.match(sceneSource, /assets\.hardTitle/);
-  assert.match(sceneSource, /assets\.superHardTitle/);
+  assert.match(sceneSource, /getEntryBannerArt\(tuning\)/);
+  assert.match(sceneSource, /banner\.label\.src = art\.label/);
   assert.match(sceneSource, /this\.entryBanner = SCENE_TUNING\.entryBanner\?\.enabled \? this\.createEntryBanner\(\) : null/);
   assert.match(sceneSource, /if \(!this\.entryBanner\) this\.entryBanner = this\.createEntryBanner\(\)/);
   assert.match(sceneSource, /this\.updateEntryBanner\(\)/);
@@ -68,7 +66,7 @@ test('entry banner uses the supplied title/background images and keeps the match
   assert.match(styleSource, /\.entry-banner-overlay\.is-custom \.entry-banner-banner-group[\s\S]*aspect-ratio/);
   assert.match(styleSource, /\.entry-banner-overlay\.is-custom \.entry-banner-arrow-group[\s\S]*display: none/);
   assert.match(sceneSource, /applyEntryBannerPlateAspect/);
-  assert.match(sceneSource, /assets\.stormBanner/);
+  assert.match(sceneSource, /applyEntryBannerPlateAspect\(art\.card\)/);
   // A custom plate must not inherit the layered art's 1.9x component scale: that
   // scale bleeds the band off both edges by design, which ran a phone-width plate
   // past the screen edges. The plate takes `none` instead.

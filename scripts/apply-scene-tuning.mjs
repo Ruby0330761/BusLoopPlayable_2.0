@@ -1,6 +1,7 @@
 import { readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
+import { migrateBrandingIconRadius } from '../src/branding-image-frame.js';
 
 const ROOT = process.cwd();
 const DEFAULT_INPUT = path.join(ROOT, 'artifacts', 'scene-tuning.json');
@@ -68,16 +69,14 @@ async function main() {
   const { input, stripExportMetadata } = parseArgs();
   const current = structuredClone(await importCurrentTuning());
   const patch = JSON.parse(await readFile(input, 'utf8'));
+  migrateBrandingIconRadius(patch.branding?.icon);
   // Conveyor mechanism presentation is shipped from its isolated fixed config.
   // Ignore stale temporary component overrides from older tuning exports.
   delete patch.conveyorVisual;
-  // `vehicleBoardingPulse` was replaced by `vehicleArea.sizeMultiplier`. Tuning
-  // JSON saved before that rename still carries it, and the exporter rejects any
-  // key the current tuning does not declare, so drop it here.
-  delete patch.vehicleBoardingPulse;
+  delete patch.passengerMaterial;
   const next = deepMerge(current, patch);
+  if (next.branding?.loading) next.branding.loading.icon = '';
   delete next.conveyorVisual;
-  delete next.vehicleBoardingPulse;
   if (stripExportMetadata) {
     delete next.exportNaming;
     // `branding.localization.previewLocale` is an editor-only preview switch.

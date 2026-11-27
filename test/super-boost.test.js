@@ -6,6 +6,17 @@ import { createCountdown, COUNTDOWN_ALARM_ASSET } from '../src/countdown.js';
 import { SCENE_TUNING } from '../src/scene-tuning.js';
 import { validateTuning } from '../scripts/export-playable-package.mjs';
 import { collectPlayableInlineAssetUrls } from '../src/playable-inline-assets.js';
+import { GUIDE_HAND_ART, RETRY_BUTTON_ASSET_PATH } from '../src/mechanism-resources.js';
+import { getSpeedToggleAssetPaths } from '../src/speed-toggle.js';
+
+test('boost exports its guide, replay button and active speed skin with the ordinary controls off', () => {
+  const tuning = { superBoost: { enabled: 1 }, speedToggle: { enabled: 0, style: 'light' } };
+  const urls = collectPlayableInlineAssetUrls({ tuning });
+  for (const asset of [GUIDE_HAND_ART, RETRY_BUTTON_ASSET_PATH, ...getSpeedToggleAssetPaths({ enabled: 1, style: 'light' })]) {
+    assert.ok(urls.has(asset), asset);
+  }
+  assert.ok(!urls.has('/assets/applovin/speed-toggle-bg_q90.webp'));
+});
 
 test('legacy mode is inert; one tap latches 4x and reset requires another tap', () => {
   const old = createSuperBoost();

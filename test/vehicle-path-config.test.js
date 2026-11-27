@@ -5,7 +5,7 @@ import { LEVEL_CATALOG } from '../src/level-catalog.js';
 import { BusLoopGame } from '../src/game-model.js';
 import { PLAYABLE_STAGES } from '../src/generated-active-level.js';
 import { mapVehicleAreaBasePoint } from '../src/vehicle-area.js';
-import { buildToStationPoints, buildRoundedPath, evaluatePath } from '../src/vehicle-motion.js';
+import { buildToStationPoints, buildOutStationPoints, buildDepartureForwardPoints, buildRoundedPath, evaluatePath } from '../src/vehicle-motion.js';
 import { createVehicleRouteTransform, migrateVehiclePathTuning, resolveVehiclePathConfig } from '../src/vehicle-path-config.js';
 
 const tuning = () => structuredClone(SCENE_TUNING);
@@ -41,7 +41,7 @@ test('legacy manual bounds survive migration, including zero values, and migrati
   assert.deepEqual(config.station.parkingBounds, old.vehiclePath.parkingBounds);
 });
 
-test('automatic bounds follow the complete field, model size and parking approach lane', () => {
+test('automatic bounds follow vehicle positions with a fixed exit clearance', () => {
   const original = tuning();
   original.vehiclePath.autoBounds = 1;
   const initial = resolveVehiclePathConfig(level, original);
@@ -52,11 +52,11 @@ test('automatic bounds follow the complete field, model size and parking approac
   assert.ok(config.station.parkingBounds.maxX > initial.station.parkingBounds.maxX);
   original.vehicleArea.modelScale *= 2;
   const larger = resolveVehiclePathConfig(expanded, original);
-  assert.ok(larger.station.parkingBounds.maxX > config.station.parkingBounds.maxX);
+  assert.deepEqual(larger.station.parkingBounds, config.station.parkingBounds);
   const rowTuning = tuning();
   rowTuning.vehiclePath.autoBounds = 1;
   const movedRow = resolveVehiclePathConfig(level, rowTuning, { ...SCENE_TUNING.parkingSpots, z: -5 });
-  assert.notEqual(movedRow.station.parkingBounds.maxZ, initial.station.parkingBounds.maxZ);
+  assert.equal(movedRow.station.parkingBounds.maxZ, initial.station.parkingBounds.maxZ);
 });
 
 test('explicit editor spot tuning wins and native source-space values are only fallbacks', () => {
@@ -76,7 +76,7 @@ test('explicit editor spot tuning wins and native source-space values are only f
   close(native.spots[0].yaw, level.vehicleMotion.spotYaw);
 });
 
-test('automatic side lanes keep car-width clearance without adding end-turn room', () => {
+test('automatic side lanes have a fixed clearance plus the editable padding', () => {
   const fixture = {
     key: 'compact-sides',
     vehicles: [{ id: 1, x: 0, z: 0, yaw: 0, seats: 4, collisionSize: { width: 0.4, length: 1 } }]
@@ -88,76 +88,69 @@ test('automatic side lanes keep car-width clearance without adding end-turn room
   };
   settings.vehiclePath = { autoBounds: 1, boundsPadding: 0.1, turnRadius: 0.5 };
   const initial = resolveVehiclePathConfig(fixture, settings);
-  close(initial.station.parkingBounds.minX, -0.5);
-  close(initial.station.parkingBounds.maxX, 0.5);
+  close(initial.station.parkingBounds.minX, -0.6);
+  close(initial.station.parkingBounds.maxX, 0.6);
 
   settings.vehiclePath.turnRadius = 1;
   const widerTurns = resolveVehiclePathConfig(fixture, settings);
   close(widerTurns.station.parkingBounds.minX, initial.station.parkingBounds.minX);
   close(widerTurns.station.parkingBounds.maxX, initial.station.parkingBounds.maxX);
   close(widerTurns.station.parkingBounds.minZ, initial.station.parkingBounds.minZ);
-  assert.ok(widerTurns.station.parkingBounds.maxZ > initial.station.parkingBounds.maxZ);
+  close(widerTurns.station.parkingBounds.maxZ, initial.station.parkingBounds.maxZ);
   assert.deepEqual(widerTurns.spots, initial.spots);
 
   settings.vehiclePath.boundsPadding = 0.2;
   const padded = resolveVehiclePathConfig(fixture, settings);
-  close(padded.station.parkingBounds.minX, -0.6);
-  close(padded.station.parkingBounds.maxX, 0.6);
+  close(padded.station.parkingBounds.minX, -0.7);
+  close(padded.station.parkingBounds.maxX, 0.7);
 });
 
 test('older baked path versions are recalculated even when their input key matches', () => {
   const current = resolveVehiclePathConfig(level, tuning());
   const stale = structuredClone(current);
-  stale.version = 2;
+  stale.version = 3;
   stale.station.parkingBounds.minX -= 10;
   const restored = resolveVehiclePathConfig({ ...level, vehiclePathSnapshot: stale }, tuning());
   assert.deepEqual(restored, current);
 });
 
-test('default bounds hug rotated car outlines on the sides and bottom, leaving room above', () => {
+test('all spots share the incoming top edge and outgoing lane in manual and automatic mode', () => {
   const settings = tuning();
-  settings.vehicleArea = { positionUnitScale: 1, unityToWorldScale: 1,
-    modelScale: 1, modelDepthBySeats: { 4: 1 } };
-  settings.facing.parkingSpotYawDegrees = 0;
-  settings.parkingSpots.z = 2;
-  for (const yaw of [0, 45, 90]) {
-    const fixture = { key: `outline-${yaw}`, vehicles: [
-      { id: 1, x: 0, z: 0, yaw, seats: 4, collisionSize: { width: 0.4, length: 1 } }
-    ] };
-    const config = resolveVehiclePathConfig(fixture, settings);
-    const angle = yaw * Math.PI / 180;
-    const halfX = Math.abs(Math.cos(angle)) * 0.2 + Math.abs(Math.sin(angle)) * 0.5;
-    const halfZ = Math.abs(Math.sin(angle)) * 0.2 + Math.abs(Math.cos(angle)) * 0.5;
-    const b = config.station.parkingBounds;
-    close(b.minX, -halfX - 0.3);
-    close(b.maxX, halfX + 0.3);
-    close(b.minZ, -halfZ - 0.3);
-    // A 4-seat car grows to 1.15 at the bay; both sides of the joining lane
-    // retain the same free space after accounting for that occupied footprint.
-    const parkingNearEdge = 2 - 1.15 / 2;
-    close(b.maxZ - halfZ, parkingNearEdge - b.maxZ);
-    assert.ok(b.maxZ - halfZ > 0.3);
+  Object.assign(settings.vehicleDeparturePath, { y: -1, backDistance: 1.5, exitTargetZOffset: 0.75 });
+  settings.vehiclePath.y = 0.145;
+  for (const autoBounds of [0, 1]) for (const laneZ of [2.8, 3.6]) {
+    settings.vehiclePath.autoBounds = autoBounds;
+    settings.vehiclePath.parkingBounds.maxZ = laneZ;
+    settings.vehicleArea.rotationDegrees = 27;
+    const config = resolveVehiclePathConfig(level, settings);
+    close(config.station.y, config.vehicleArea.y);
+    close(config.departure.y, config.station.y);
+    for (const spot of config.spots) {
+      const arrival = buildToStationPoints({ x: 0, z: laneZ + 0.4, yaw: 0 }, spot, config.station);
+      close(arrival.at(-2).z, laneZ);
+      const reverse = buildOutStationPoints(spot, config.departure);
+      close(reverse[1].z, laneZ);
+      const [start, end] = buildDepartureForwardPoints(reverse.at(-1), config.departure);
+      close(start.z, laneZ);
+      close(end.z, laneZ);
+      close(end.x - start.x, settings.vehicleDeparturePath.exitDistance);
+    }
   }
 });
 
-test('the top lane allows for long parked vehicles and moves with the parking row', () => {
+test('resizing or replacing the car leaves its rounded driving path unchanged', () => {
+  const fixture = { key: 'fixed-route', vehicles: [{ id: 1, x: -1, z: 0, yaw: -90, seats: 4 }] };
   const settings = tuning();
-  settings.vehicleArea = { positionUnitScale: 1, unityToWorldScale: 1,
-    modelScale: 1, modelDepthBySeats: { 4: 1 } };
-  settings.facing.parkingSpotYawDegrees = 0;
-  const fixture = { key: 'row-clearance', vehicles: [
-    { id: 1, x: 0, z: 0, yaw: 0, seats: 4, collisionSize: { width: 0.4, length: 1 } }
-  ] };
-  settings.parkingSpots.z = 2;
-  const initial = resolveVehiclePathConfig(fixture, settings);
-  settings.parkingSpots.z = 1.6;
-  const closer = resolveVehiclePathConfig(fixture, settings);
-  assert.ok(closer.station.parkingBounds.maxZ < initial.station.parkingBounds.maxZ);
-  close(closer.station.parkingBounds.minZ, initial.station.parkingBounds.minZ);
-  close(closer.station.parkingBounds.minX, initial.station.parkingBounds.minX);
-  close(closer.station.parkingBounds.maxX, initial.station.parkingBounds.maxX);
-  assert.ok(closer.station.parkingBounds.maxZ < 1.6 - 1.15 / 2);
-  assert.ok(closer.station.topTurnRadius < initial.station.topTurnRadius);
+  const route = () => {
+    const c = resolveVehiclePathConfig(fixture, settings);
+    return buildRoundedPath(buildToStationPoints(fixture.vehicles[0], c.spots[0], c.station), c.station);
+  };
+  const initial = route();
+  for (const seats of [4, 6, 10]) for (const scale of [0.5, 1, 2.5]) {
+    Object.assign(fixture.vehicles[0], { seats, collisionSize: { width: scale, length: 2 * scale } });
+    Object.assign(settings.vehicleArea, { modelScale: scale, sizeMultiplier: scale });
+    assert.deepEqual(route(), initial);
+  }
 });
 
 test('compact entries delay the first turn and fit the upper turn to the joining gap', () => {

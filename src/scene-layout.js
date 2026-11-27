@@ -33,6 +33,22 @@ function clamp(value, min, max) {
   return Math.min(max, Math.max(min, value));
 }
 
+export function calculateCameraGroundRotation(camera = {}) {
+  const azimuth = (Number(camera.azimuthDegrees) || 0) * Math.PI / 180;
+  const elevation = (Number(camera.elevationDegrees) || 0) * Math.PI / 180;
+  const groundScale = Math.max(0.01, Math.abs(Math.sin(elevation)));
+  const cosine = Math.cos(azimuth);
+  const sine = Math.sin(azimuth);
+  // Undo the baseline ground foreshortening, rotate, then project it again.
+  // This keeps the painted ground turning with the vehicles at any elevation.
+  return {
+    xx: cosine,
+    xy: sine / groundScale,
+    yx: -sine * groundScale,
+    yy: cosine
+  };
+}
+
 export function clampCenteredRectX({ centerX, width, left, right }) {
   const safeCenterX = Number(centerX);
   const safeWidth = Math.max(0, Number(width) || 0);
@@ -169,14 +185,19 @@ export function calculateAutoCameraFit({
   });
   const safeMargin = Math.max(0, Number(margin) || 0);
   const elevation = Math.abs(Number(camera.elevationDegrees) || 0) * Math.PI / 180;
-  // Ground depth is foreshortened by the camera elevation. Keeping this
-  // projection in the fit calculation prevents the queue from forcing an
-  // unnecessarily wide view while retaining the full front-to-back layout.
-  const projectedDepth = (normalized.maxZ - normalized.minZ) * Math.sin(elevation);
+  const azimuth = (Number(camera.azimuthDegrees) || 0) * Math.PI / 180;
+  const width = normalized.maxX - normalized.minX;
+  const depth = normalized.maxZ - normalized.minZ;
+  // Rotate the ground bounds into camera space before applying elevation,
+  // so automatic framing also fits a scene viewed from the side.
+  const sinAzimuth = Math.abs(Math.sin(azimuth));
+  const cosAzimuth = Math.abs(Math.cos(azimuth));
+  const projectedWidth = width * cosAzimuth + depth * sinAzimuth;
+  const projectedDepth = (width * sinAzimuth + depth * cosAzimuth) * Math.sin(elevation);
   return {
     targetX: (normalized.minX + normalized.maxX) / 2,
     targetZ: (normalized.minZ + normalized.maxZ) / 2,
-    fitWidth: Math.min(maxFitWidth, Math.max(minFitWidth, normalized.maxX - normalized.minX + safeMargin * 2)),
+    fitWidth: Math.min(maxFitWidth, Math.max(minFitWidth, projectedWidth + safeMargin * 2)),
     fitHeight: Math.min(maxFitHeight, Math.max(minFitHeight, projectedDepth + safeMargin * 2))
   };
 }

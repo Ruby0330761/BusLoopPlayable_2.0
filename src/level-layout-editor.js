@@ -5,11 +5,8 @@ import {
   GATE_TANGENT_HANDLE_RADIUS,
   LevelEditorModel,
   VEHICLE_PAINT_COLOR_OPTIONS,
-  VEHICLE_COLORS,
   getVehicleColorOption,
   getVehicleDisplayColor,
-  getVehiclePaintColor,
-  getRenderedPaintColor,
   isSpecialVehicle,
   createLevelDocument,
   exportLevelCsv,
@@ -23,6 +20,10 @@ import {
   validateLevelDocument
 } from './level-editor-model.js';
 import { SCENE_TUNING } from './scene-tuning.js';
+import { resolvePassengerBodyColor, resolveVehiclePaint } from './vehicle-display-colors.js';
+import { checkLayoutDriveOut, driveOutLabel } from './level-drive-out.js';
+
+const driveOutMarks = new WeakMap();
 import {
   collisionVehicleSize,
   displayVehicleSize,
@@ -52,16 +53,6 @@ const MECHANISM_NAMES = Object.freeze({
 const WORLD_SCALE = 78;
 const GARAGE_TEXTURE_URL = '/assets/unity/mechanisms/garage/textures/garage-2d.png';
 const CONVEYOR_TEXTURE_URL = '/assets/unity/level-editor/conveyor-belt-2d.png';
-const PASSENGER_QUEUE_COLORS = Object.freeze([
-  '#4EA4FF', '#33F145', '#FF5AC9', '#B53DFF', '#FF3B3C', '#FFD31C',
-  '#FF7B1C', '#23EEFF', '#9C4D3B', '#34B194', '#343AFF', '#26262E',
-  '#F22E14', '#F2F2F2', '#FADB2E', '#D1A861',
-  // Index 16 is the Christmas sled: its authored texture replaces the paint
-  // atlas, so this swatch is only the authoring preview colour.
-  '#C62828',
-  '#333333', '#F5F5F4', '#DE3A3B', '#FFDA24', '#FFFFE3', '#8AFFF1',
-  '#D6FFBD', '#FFBEEA', '#C6C9CD'
-]);
 const DEFAULT_INITIAL_PASSENGER_COUNT = 8;
 const LEVEL_EDITOR_PREVIEW_STORAGE_KEY = 'bus-loop-level-editor-preview-v3';
 const LEVEL_EDITOR_PREVIEW_FORMAT = 'bus-loop-level-editor-preview-v3';
@@ -248,37 +239,22 @@ function selectField(label, path, value, options) {
   return `<label class="level-layout-field"><span>${label}</span><select data-field="${path}">${options.map(([key, text]) => `<option value="${key}" ${String(key) === String(value) ? 'selected' : ''}>${text}</option>`).join('')}</select></label>`;
 }
 
-function vehicleColorField(label, path, value, options = VEHICLE_PAINT_COLOR_OPTIONS) {
+function vehicleColorField(label, path, value, options = VEHICLE_PAINT_COLOR_OPTIONS, mixed = false) {
   const current = options.find((color) => color.id === Number(value)) ?? options[0];
   // The swatch shows the playable's rendered colour, not the atlas's raw paint
   // value, so picking a colour here matches what the car looks like in game.
-  return `<label class="level-layout-field"><span>${label}</span><span class="level-layout-color-select"><span class="level-layout-color-swatch" style="--swatch-color:${getVehicleDisplayColor(current.id)}" aria-hidden="true"></span><select data-field="${path}">${options.map((color) => `<option value="${color.id}" ${color.id === Number(value) ? 'selected' : ''}>${color.id}: ${color.name} / ${color.label}</option>`).join('')}</select></span></label>`;
+  return `<label class="level-layout-field"><span>${label}</span><span class="level-layout-color-select"><span class="level-layout-color-swatch" style="--swatch-color:${getVehicleDisplayColor(current.id)}" aria-hidden="true"></span><select data-field="${path}">${mixed ? '<option value="" selected disabled>混合预设</option>' : ''}${options.map((color) => `<option value="${color.id}" ${!mixed && color.id === Number(value) ? 'selected' : ''}>${color.id}: ${color.name} / ${color.label}</option>`).join('')}</select></span></label>`;
 }
 
-function vehicleOverrideField(label, path, value) {
-  return `<label class="level-layout-field level-layout-color-input"><span>${label}</span><span class="level-layout-color-input-control"><input type="color" data-field="${path}" value="${value}"><code>${value}</code></span></label>`;
-}
-
-function passengerOverrideField(label, region, colorIndex, value) {
-  return `<label class="level-layout-field level-layout-color-input"><span>${label}</span><span class="level-layout-color-input-control"><input type="color" data-passenger-color-region="${region}" data-passenger-color-index="${colorIndex}" value="${value}"><code>${value}</code></span></label>`;
-}
-
-function vehicleBatchOverrideField(label, path, value, mixed = false) {
-  return `<label class="level-layout-field level-layout-color-input"><span>${label}</span><span class="level-layout-color-input-control"><input type="color" data-field="${path}" value="${value}" title="${mixed ? '当前车辆颜色不同，修改后将统一应用' : ''}"><code>${mixed ? '混合值' : value}</code></span></label>`;
-}
-
-function passengerColorOverridesMarkup(document, colorIndex) {
-  const overrides = document.passengerColorOverrides?.[String(colorIndex)] ?? {};
-  // Paint space, same as the vehicle fields these values sync with.
-  const base = overrides.body ?? getVehiclePaintColor(colorIndex);
-  return `<details class="level-layout-color-details"><summary>小人颜色微调</summary>
-    ${passengerOverrideField('小人身体', 'body', colorIndex, base)}
-    ${passengerOverrideField('小人高光', 'highlight', colorIndex, overrides.highlight ?? base)}
-    ${passengerOverrideField('小人阴影', 'shadow', colorIndex, overrides.shadow ?? base)}
-    ${passengerOverrideField('小人车窗', 'window', colorIndex, overrides.window ?? '#263238')}
-    ${passengerOverrideField('小人细节', 'detail', colorIndex, overrides.detail ?? base)}
-    <p class="level-layout-hint">小人颜色会同步到相同颜色的车辆；修改车身颜色也会同步这里。</p>
-  </details>`;
+function vehiclePaintFields(vehicles) {
+  const first = vehicles[0];
+  const body = resolveVehiclePaint(first).body;
+  const mixed = vehicles.some(vehicle => resolveVehiclePaint(vehicle).body !== body);
+  return vehicleColorField('预设颜色', 'colorIndex', first.colorIndex, VEHICLE_PAINT_COLOR_OPTIONS,
+    vehicles.some(vehicle => vehicle.colorIndex !== first.colorIndex))
+    + `<label class="level-layout-field level-layout-color-input"><span>自定义颜色</span>
+      <span class="level-layout-color-input-control"><input type="color" data-field="colorOverrides.body" value="${body}"><code>${mixed ? '混合值' : body}</code></span></label>
+      <button type="button" data-action="reset-vehicle-colors">恢复预设配色</button>`;
 }
 
 function invertHexColor(color) {
@@ -286,40 +262,8 @@ function invertHexColor(color) {
   return `#${(0xFFFFFF ^ value).toString(16).padStart(6, '0')}`;
 }
 
-function vehicleDisplayColor(vehicle) {
-  // The playable draws the atlas through strong lighting and lifts a dark paint
-  // far above its stored value (#3e897d shows as #4cccc0). The board has to show
-  // that lit result, or every override reads darker than the game and the two
-  // never agree. `getRenderedPaintColor` reproduces the measurement for shipped
-  // slots and runs the slot's tone curve for hand-typed paints.
-  const paint = vehicle?.colorOverrides?.body;
-  if (paint) {
-    return getRenderedPaintColor(paint, getVehicleDisplayColor(vehicle?.colorIndex), vehicle?.colorIndex);
-  }
-  return getVehicleDisplayColor(vehicle?.colorIndex);
-}
-
-// Region overrides as the canvas should draw them. Only fields the operator
-// actually set are returned, so a region without an override keeps its derived
-// shading and untouched levels look exactly as before.
-function vehicleRenderedRegions(vehicle) {
-  const overrides = vehicle?.colorOverrides ?? {};
-  const regions = {};
-  const colorIndex = vehicle?.colorIndex;
-  for (const region of ['body', 'highlight', 'shadow', 'window', 'detail']) {
-    const paint = overrides[region];
-    if (!paint) continue;
-    const rendered = getRenderedPaintColor(paint, String(paint).toLowerCase(), colorIndex);
-    if (rendered) regions[region] = rendered;
-  }
-  if (!Object.keys(regions).length) return null;
-  return { ...regions, fallback: getVehicleDisplayColor(colorIndex) };
-}
-
-function passengerColor(colorIndex, document = null) {
-  return document?.passengerColorOverrides?.[String(colorIndex)]?.body
-    ?? PASSENGER_QUEUE_COLORS[colorIndex]
-    ?? '#64748b';
+function passengerColor(colorIndex, document) {
+  return resolvePassengerBodyColor(document, colorIndex);
 }
 
 function passengerColorName(colorIndex) {
@@ -527,18 +471,6 @@ function roundedRectPath(context, x, y, width, height, radius) {
   context.closePath();
 }
 
-function shadeHexColor(color, amount) {
-  const match = /^#([0-9a-f]{6})$/i.exec(String(color ?? ''));
-  if (!match) return color;
-  const value = Number.parseInt(match[1], 16);
-  const channels = [(value >> 16) & 255, (value >> 8) & 255, value & 255];
-  const target = amount >= 0 ? 255 : 0;
-  const weight = Math.abs(amount);
-  return `#${channels
-    .map((channel) => Math.round(channel + (target - channel) * weight).toString(16).padStart(2, '0'))
-    .join('')}`;
-}
-
 // Seat count also drives the silhouette, because the real footprints are only
 // 3% apart (4-seat 0.4716 vs 6-seat 0.486) so a plain coloured block gave the
 // operator no way to tell them apart. The cabin-to-bonnet split is the cue:
@@ -586,22 +518,12 @@ function drawVehicleSeatBadge(context, screen, halfHeight, seats) {
   context.restore();
 }
 
-function drawVehicleSprite(context, vehicle, { width, length, color, inverseColor, selected, regions = null }) {
+function drawVehicleSprite(context, vehicle, { width, length, color, inverseColor, selected, regions }) {
   const w = width;
   const l = length;
   const profile = vehicleCabinProfile(vehicle.seats);
   const bodyRadius = w * profile.bodyRadius;
-  // Region colours arrive already converted to what the playable shows. The
-  // gradient's middle stop IS that colour: `color` has been through the slot's
-  // lighting model, so drawing it untouched is what makes the board match the
-  // game. Darkening the mid stop (it used to be shadeHexColor(color, -0.04))
-  // put a systematic 4% shadow over every car, which is why a white car read
-  // #f5f5f5 on the board while the game showed #ffffff.
-  const highlightColor = regions?.highlight ?? shadeHexColor(color, 0.06);
-  const shadowColor = regions?.shadow ?? shadeHexColor(color, -0.22);
-  const midColor = regions?.body ?? color;
-  const windowColor = regions?.window ?? null;
-  const detailColor = regions?.detail ?? null;
+  const { body: midColor, highlight: highlightColor, shadow: shadowColor, window: glass, detail: detailColor } = regions;
 
   // Below roughly four screen pixels the detailed sprite degenerates into
   // mud, and a dense board redraws on every pointer move. Keep the outline and
@@ -662,7 +584,7 @@ function drawVehicleSprite(context, vehicle, { width, length, color, inverseColo
   // the shape cue for the seat count, since the real footprints are only 3%
   // apart. The lift is small on purpose — a bright roof panel made the car read
   // lighter than its own paint.
-  context.fillStyle = shadeHexColor(color, -0.02);
+  context.fillStyle = midColor;
   roundedRectPath(context, -roofHalfWidth, roofTop, roofHalfWidth * 2, roofLength, w * 0.12);
   context.fill();
   context.strokeStyle = 'rgba(7, 26, 37, .28)';
@@ -672,7 +594,6 @@ function drawVehicleSprite(context, vehicle, { width, length, color, inverseColo
   // Windscreen and rear window: dark bands across the roof ends. They are the
   // strongest "car from above" signal and stay readable at any zoom. An explicit
   // 车窗 override paints them, which is the only place that field shows up.
-  const glass = windowColor ?? 'rgba(22, 33, 45, .9)';
   const screenLength = Math.max(1.8, roofLength * 0.1);
   const taper = w * 0.045;
   context.fillStyle = glass;
@@ -1200,7 +1121,8 @@ function drawCanvas(canvas, model, camera, gesture, garageTexture, conveyorTextu
     const displayYaw = display.canvasYaw(vehicle.yaw);
     context.save();
     context.translate(screen.x, screen.y); context.rotate(displayYaw * Math.PI / 180);
-    const vehicleColor = vehicleDisplayColor(vehicle);
+    const regions = resolveVehiclePaint(vehicle);
+    const vehicleColor = regions.body;
     const inverseColor = vehicle.isHidden ? '#ffffff' : invertHexColor(vehicleColor);
     context.globalAlpha = vehicle.isHidden ? 0.42 : 1;
     drawVehicleSprite(context, vehicle, {
@@ -1209,9 +1131,14 @@ function drawCanvas(canvas, model, camera, gesture, garageTexture, conveyorTextu
       color: vehicleColor,
       inverseColor,
       selected,
-      regions: vehicleRenderedRegions(vehicle)
+      regions
     });
     context.globalAlpha = 1;
+    if (driveOutMarks.get(model)?.has(vehicle.id)) {
+      context.strokeStyle = '#bb252d';
+      context.lineWidth = 3;
+      context.strokeRect(-spriteWidth / 2 - 2, -spriteLength / 2 - 2, spriteWidth + 4, spriteLength + 4);
+    }
     context.restore();
     const yawRadians = displayYaw * Math.PI / 180;
     const halfHeight = spriteLength * Math.abs(Math.cos(yawRadians)) / 2
@@ -1293,7 +1220,7 @@ function drawCanvas(canvas, model, camera, gesture, garageTexture, conveyorTextu
   }
 }
 
-function renderInspector(root, model) {
+function renderInspector(root, model, exitCheck) {
   let selected = model.selected();
   const selectedVehicles = selected.filter((item) => item.seats);
   const isVehicleBatch = selected.length > 1 && selectedVehicles.length === selected.length;
@@ -1305,45 +1232,18 @@ function renderInspector(root, model) {
     selected = [activeContainer];
   }
   if (isVehicleBatch) {
-    const first = selectedVehicles[0];
     const hasSpecialVehicle = selectedVehicles.some(isSpecialVehicle);
-    const colorValue = (vehicle, key) => {
-      const overrides = vehicle.colorOverrides ?? {};
-      // Paint space: these values are written straight back as overrides.
-      const paintColor = getVehiclePaintColor(vehicle.colorIndex);
-      if (key === 'body') return overrides.body ?? paintColor;
-      if (key === 'window') return overrides.window ?? '#263238';
-      return overrides[key] ?? (overrides.body ?? paintColor);
-    };
-    const batchValue = (key) => {
-      const values = selectedVehicles.map((vehicle) => colorValue(vehicle, key));
-      return { value: values[0], mixed: new Set(values).size > 1 };
-    };
-    const body = batchValue('body');
-    const highlight = batchValue('highlight');
-    const shadow = batchValue('shadow');
-    const window = batchValue('window');
-    const detail = batchValue('detail');
     root.innerHTML = `<h3>已选车辆 ${selectedVehicles.length} 辆</h3>
       <p class="level-layout-hint">框选车辆后，修改下面任一参数会统一应用到全部选中车辆；${hasSpecialVehicle ? '选区包含特殊车辆，颜色编辑已禁用。' : '车辆颜色会同步对应小人。'}</p>
       ${hasSpecialVehicle ? '<p class="level-layout-hint">特殊车辆使用专属颜色，不需要手动选择。</p>' : `
-        ${vehicleColorField('基础颜色（同步小人）', 'colorIndex', first.colorIndex)}
-        ${passengerColorOverridesMarkup(model.document, first.colorIndex)}
-        <details class="level-layout-color-details" open><summary>统一调节颜色区域</summary>
-          ${vehicleBatchOverrideField('车身', 'colorOverrides.body', body.value, body.mixed)}
-          ${vehicleBatchOverrideField('高光', 'colorOverrides.highlight', highlight.value, highlight.mixed)}
-          ${vehicleBatchOverrideField('阴影', 'colorOverrides.shadow', shadow.value, shadow.mixed)}
-          ${vehicleBatchOverrideField('车窗', 'colorOverrides.window', window.value, window.mixed)}
-          ${vehicleBatchOverrideField('细节', 'colorOverrides.detail', detail.value, detail.mixed)}
-          <button type="button" data-action="reset-vehicle-colors">恢复选中车辆内置颜色</button>
-        </details>`}`;
+        ${vehiclePaintFields(selectedVehicles)}`}`;
     return;
   }
   if (selected.length !== 1) {
     const validation = validateLevelDocument(model.document);
     root.innerHTML = `<h3>关卡概览</h3>
       <dl class="level-layout-stats"><dt>关卡</dt><dd>${escapeHtml(model.document.key)}</dd><dt>车辆</dt><dd>${model.document.vehicles.length}</dd><dt>乘客</dt><dd>${model.document.passengerQueues.flat().length}</dd><dt>选择</dt><dd>${selected.length}</dd></dl>
-      <div class="level-layout-validation ${validation.valid ? 'is-valid' : 'is-invalid'}">${validation.valid ? '验证通过' : `${validation.errors.length} 个错误`}</div>
+      <div class="level-layout-validation ${!validation.valid ? 'is-invalid' : exitCheck?.status === 'clear' ? 'is-valid' : ''}">${validation.valid ? escapeHtml(exitCheck ? driveOutLabel(exitCheck) : '待验证') : `${validation.errors.length} 个错误`}</div>
       <h3>关卡设置</h3>
       ${numberField('Unity ID', 'document.unityId', model.document.unityId, { min: 1, step: 1 })}
       ${numberField('地图缩放', 'document.mapScale', model.document.mapScale, { min: 0.1, max: 3, step: 0.01 })}
@@ -1366,27 +1266,10 @@ function renderInspector(root, model) {
   const item = selected[0];
   if (item.seats) {
     const specialVehicle = isSpecialVehicle(item);
-    // Every field below is written back as a `colorOverrides` value, so all of
-    // them default to the atlas paint. Defaulting to the rendered colour meant
-    // editing only 车窗 stored the rendered body as an override and repainted a
-    // car the operator had not touched.
-    const baseColor = getVehiclePaintColor(item.colorIndex);
-    const overrides = item.colorOverrides ?? {};
-    const bodyColor = overrides.body ?? baseColor;
     root.innerHTML = `<h3>车辆 #${item.id}</h3>
       ${numberField('X', 'x', item.x)}${numberField('Z', 'z', item.z)}${numberField('旋转', 'yaw', item.yaw, { min: 0, max: 360, step: 1 })}
       ${specialVehicle ? '<p class="level-layout-hint">特殊车辆使用专属颜色，不需要手动选择。</p>' : `
-        ${vehicleColorField('颜色（同步小人）', 'colorIndex', item.colorIndex)}
-        ${passengerColorOverridesMarkup(model.document, item.colorIndex)}
-        <details class="level-layout-color-details" ${Object.keys(overrides).length ? 'open' : ''}><summary>车辆颜色微调</summary>
-          ${vehicleOverrideField('车身', 'colorOverrides.body', bodyColor)}
-          ${vehicleOverrideField('高光', 'colorOverrides.highlight', overrides.highlight ?? bodyColor)}
-          ${vehicleOverrideField('阴影', 'colorOverrides.shadow', overrides.shadow ?? bodyColor)}
-          ${vehicleOverrideField('车窗', 'colorOverrides.window', overrides.window ?? '#263238')}
-          ${vehicleOverrideField('细节', 'colorOverrides.detail', overrides.detail ?? bodyColor)}
-          <p class="level-layout-hint">只保存本车的覆盖颜色；清除后恢复内置贴图。</p>
-          <button type="button" data-action="reset-vehicle-colors">恢复内置颜色</button>
-        </details>`}
+        ${vehiclePaintFields([item])}`}
       ${selectField('座位', 'seats', item.seats, [[4, '4 座'], [6, '6 座'], [10, '10 座']])}
       ${selectField('机制', 'mechanism.type', item.mechanism.type, Object.entries(MECHANISM_NAMES))}
       ${toggleField('隐藏', 'isHidden', item.isHidden)}${toggleField('转向车', 'isTurnVehicle', item.isTurnVehicle)}
@@ -1573,6 +1456,26 @@ export async function createLevelLayoutEditor({
     open: false, activeQueueId: 0, selected: new Set(), colorIndex: 0, addCount: 1,
     mode: 'append', clipboard: [], flowStart: 0, flowVisibleCount: 8, flowTimer: null
   };
+  let checkedModel;
+  let checkedVersion;
+  let checkedScale;
+  let exitCheck;
+  const validateButton = overlay.querySelector('[data-action="validate"]');
+  function checkDepartures() {
+    const area = SCENE_TUNING.vehicleArea;
+    const scale = [area.modelScale, area.sizeMultiplier].join('/');
+    if (model !== checkedModel || model.changeVersion !== checkedVersion || checkedScale !== scale) {
+      exitCheck = checkLayoutDriveOut(model.document, area, baseLevel);
+      checkedModel = model;
+      checkedVersion = model.changeVersion;
+      checkedScale = scale;
+      driveOutMarks.set(model, new Set(exitCheck.status === 'blocked' ? exitCheck.ids : []));
+      validateButton.textContent = exitCheck.status === 'blocked' ? '无法驶出 · ' + exitCheck.ids.length + ' 辆'
+        : exitCheck.status === 'review' ? '驶出需复核' : '验证驶出';
+      validateButton.title = driveOutLabel(exitCheck);
+    }
+    return exitCheck;
+  }
   let passengerSelectionGesture = null;
   let suppressPassengerClickUntil = 0;
   const resizeObserver = new ResizeObserver(() => render());
@@ -1587,9 +1490,10 @@ export async function createLevelLayoutEditor({
     // and the manual renumber button. Flushing here keeps the live scene tuning
     // and the saved guide targets pointing at the same car as the document.
     flushRenumberedIds();
+    if (!gesture) checkDepartures();
     toolbarTitle.textContent = `${model.document.key} 关卡编辑器`;
     drawCanvas(canvas, model, camera, gesture, garageTexture, conveyorTexture, referenceLayer, recognitionPreview());
-    renderInspector(inspector, model);
+    renderInspector(inspector, model, exitCheck);
     renderReferenceInspector(inspector, referenceLayer);
     const activeContainer = model.document.containers.find((item) => item.id === model.activeContainerId);
     const isEditingContainer = model.activeContainerId !== 0 && Boolean(activeContainer);
@@ -2225,7 +2129,11 @@ export async function createLevelLayoutEditor({
     else if (action === 'rebuild') { model.rebuildDepthGraph(); setStatus('深度关系已重算', 'success'); }
     else if (action === 'validate') {
       const result = validateLevelDocument(model.document);
-      setStatus(result.valid ? `验证通过${result.warnings.length ? `，${result.warnings.length} 个提醒` : ''}` : result.errors.join('；'), result.valid ? 'success' : 'error');
+      const exits = checkDepartures();
+      const advisory = result.valid && exits.status !== 'clear';
+      const departureMessage = (advisory ? '可保存和导出。' : '') + driveOutLabel(exits);
+      setStatus([...result.errors, departureMessage, ...result.warnings].join('；'),
+        result.valid ? (advisory ? 'warning' : 'success') : 'error');
     } else if (action === 'enter-container' && selected && !selected.seats) model.enterContainer(selected.id);
     else if (action === 'exit-container') model.exitActiveContainer();
     else if (action === 'refresh-gate') model.refreshActiveGateQueue();
@@ -2511,17 +2419,6 @@ export async function createLevelLayoutEditor({
   });
 
   inspector.addEventListener('change', (event) => {
-    const passengerRegion = event.target.dataset.passengerColorRegion;
-    if (passengerRegion) {
-      const color = event.target.value;
-      if (model.selected().filter((item) => item.seats).length > 1) {
-        model.setSelectedPassengerColorField(passengerRegion, color);
-      } else {
-        model.setPassengerColorOverride(Number(event.target.dataset.passengerColorIndex), passengerRegion, color);
-      }
-      render();
-      return;
-    }
     const queue = event.target.dataset.queue;
     if (queue != null) {
       const colors = event.target.value.split(/[\s,，]+/).filter(Boolean).map(Number).filter(Number.isFinite);

@@ -224,7 +224,7 @@ export function openOfficialLevelsPicker({ owner = readStoredLevelOwner(), onImp
     tabs.innerHTML = chapters.map((chapter) => (
       `<button type="button" class="official-levels__tab" data-chapter="${escapeHtml(chapter.id)}"`
       + ` aria-pressed="${chapter.id === activeChapter ? 'true' : 'false'}">`
-      + `${escapeHtml(chapter.id)} 章 · ${chapter.count}</button>`
+      + `${escapeHtml(chapter.label)} · ${chapter.count}</button>`
     )).join('');
   }
 
@@ -234,10 +234,12 @@ export function openOfficialLevelsPicker({ owner = readStoredLevelOwner(), onImp
     const cached = chapterCache.get(chapterId);
     if (cached) {
       items = cached;
+      root.dataset.state = 'ready';
       paint();
       return;
     }
     root.dataset.state = 'loading';
+    items = [];
     foot.dataset.state = '';
     foot.textContent = `正在读取 ${chapterId} 章关卡…`;
     grid.innerHTML = '<div class="official-levels__empty">加载中…</div>';
@@ -245,11 +247,14 @@ export function openOfficialLevelsPicker({ owner = readStoredLevelOwner(), onImp
       const response = await fetch(`/__official-levels/${encodeURIComponent(chapterId)}`, { cache: 'no-store' });
       const payload = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(payload.error || `HTTP ${response.status}`);
-      items = Array.isArray(payload.items) ? payload.items : [];
-      chapterCache.set(chapterId, items);
+      const loaded = Array.isArray(payload.items) ? payload.items : [];
+      chapterCache.set(chapterId, loaded);
+      if (activeChapter !== chapterId) return;
+      items = loaded;
       root.dataset.state = 'ready';
       paint();
     } catch (error) {
+      if (activeChapter !== chapterId) return;
       root.dataset.state = 'error';
       foot.dataset.state = 'error';
       foot.textContent = `读取 ${chapterId} 章失败：${error.message}`;

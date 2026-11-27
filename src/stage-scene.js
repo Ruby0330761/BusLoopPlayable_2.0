@@ -14,6 +14,11 @@ export function getActiveStageScene() {
   return activeStageScene;
 }
 
+export function resolvePassengerSpeedMultiplier(tuning = SCENE_TUNING) {
+  const value = Number(tuning.conveyorLayout?.passengerSpeedMultiplier ?? 1);
+  return Number.isFinite(value) && value > 0 ? Math.max(0.1, Math.min(5, value)) : 1;
+}
+
 function normalizeSpotCount(value) {
   const count = Math.floor(Number(value));
   return Number.isFinite(count) && count > 0 ? count : null;

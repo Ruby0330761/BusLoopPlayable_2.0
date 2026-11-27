@@ -3,13 +3,19 @@ FROM node:22-bookworm-slim
 ARG TARGETARCH
 
 RUN apt-get update \
-  && apt-get install -y --no-install-recommends ca-certificates chromium-headless-shell ffmpeg fonts-liberation python3 \
+  && apt-get install -y --no-install-recommends ca-certificates chromium-headless-shell ffmpeg fonts-liberation python3-venv \
   && CHROME_PATH="$(command -v chromium-headless-shell || command -v chromium)" \
   && test -n "${CHROME_PATH}" \
   && ln -sf "${CHROME_PATH}" /usr/local/bin/playable-chromium \
   && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
+
+COPY scripts/playable-lossless-requirements.txt scripts/playable-lossless-webp.py ./scripts/
+RUN python3 -m venv /opt/playable-codecs \
+  && /opt/playable-codecs/bin/python -m pip install --no-cache-dir --only-binary=:all: -r scripts/playable-lossless-requirements.txt \
+  && /opt/playable-codecs/bin/python scripts/playable-lossless-webp.py --probe \
+    | grep -F '"exact": true'
 
 COPY package.json package-lock.json ./
 RUN npm ci --include=dev --no-audit --no-fund \
@@ -33,6 +39,7 @@ RUN node -e "const fs=require('node:fs');const path=require('node:path');const a
   && node -e "Promise.all([import('vite'), import('rollup')])"
 
 ENV PLAYABLE_REMOTE_EDITOR=1 \
+    PLAYABLE_ASSET_PYTHON=/opt/playable-codecs/bin/python \
     PLAYABLE_EXPORT_CONCURRENCY=1 \
     PLAYABLE_EXPORT_REMOTE_FAST=1 \
     PLAYABLE_CHROME_BIN=/usr/local/bin/playable-chromium \

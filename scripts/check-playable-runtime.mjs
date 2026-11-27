@@ -1370,7 +1370,8 @@ export async function capturePlayableBackupImage({
   chrome: explicitChrome,
   timeoutMs = DEFAULT_TIMEOUT_MS,
   viewport = DEFAULT_VIEWPORT,
-  quality = 80
+  quality = 80,
+  signal = null
 } = {}) {
   if (!artifactPath) throw new TypeError('artifactPath is required.');
   if (!outputPath) throw new TypeError('outputPath is required.');
@@ -1395,6 +1396,7 @@ export async function capturePlayableBackupImage({
       profileRoot: path.join(tempRoot, 'chrome-profile'),
       timeoutMs: Math.max(3_000, Number(timeoutMs) || DEFAULT_TIMEOUT_MS),
       viewport,
+      signal,
       exerciseCta: false,
       screenshotFormat: 'jpeg',
       screenshotQuality: Math.max(1, Math.min(100, Math.round(Number(quality) || 80)))

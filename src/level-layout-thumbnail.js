@@ -9,7 +9,7 @@
 // the top so the conveyor strip appears above the parked rows, as it does in
 // game.
 
-import { VEHICLE_COLOR_OPTIONS, getVehicleDisplayColor } from './level-editor-model.js';
+import { resolveVehiclePaint } from './vehicle-display-colors.js';
 import { SCENE_TUNING } from './scene-tuning.js';
 import { displayVehicleSize, vehicleAreaTransformFor } from './vehicle-area-transform.js';
 
@@ -27,8 +27,6 @@ const PARKING_DEFAULTS = Object.freeze({
   modelWidth: 0.78, modelDepth: 1.46, scaleX: 0.7, scaleZ: 0.65
 });
 
-const COLOR_BY_ID = new Map(VEHICLE_COLOR_OPTIONS.map((color) => [color.id, color.css]));
-const UNKNOWN_VEHICLE_COLOR = '#8a94a3';
 
 export function resolveVehicleSize(vehicle) {
   const direct = vehicle?.collisionSize;
@@ -45,30 +43,11 @@ export function resolveDisplayVehicleSize(vehicle, area = SCENE_TUNING.vehicleAr
 }
 
 export function resolveVehicleColor(vehicle) {
-  // Authored recolours (the red/green rescue boards, for example) override the
-  // atlas colour; ignoring them painted a red-and-green board pink.
-  const override = vehicle?.colorOverrides?.body;
-  if (typeof override === 'string' && /^#[0-9a-f]{6}$/i.test(override)) return override;
-  // Thumbnails sit next to the playable in reviews, so they show the rendered
-  // colour rather than the atlas's raw paint value.
-  const known = COLOR_BY_ID.has(vehicle?.colorIndex);
-  return known
-    ? getVehicleDisplayColor(vehicle.colorIndex)
-    : (COLOR_BY_ID.get(vehicle?.colorIndex) ?? UNKNOWN_VEHICLE_COLOR);
+  return resolveVehiclePaint(vehicle).body;
 }
 
 function round(value) {
   return Math.round(value * 1000) / 1000;
-}
-
-function lightenHex(color, amount) {
-  const match = /^#([0-9a-f]{6})$/i.exec(String(color ?? ''));
-  if (!match) return color;
-  const value = Number.parseInt(match[1], 16);
-  const channels = [(value >> 16) & 255, (value >> 8) & 255, value & 255];
-  return `#${channels
-    .map((channel) => Math.round(channel + (255 - channel) * amount).toString(16).padStart(2, '0'))
-    .join('')}`;
 }
 
 // Bounds come from the vehicles only. A level's splinePoints sit far away in
@@ -281,10 +260,10 @@ export function renderLevelSvg(level, {
     const classes = [`${className}__car`];
     if (vehicle.isHidden) classes.push(`${className}__car--hidden`);
     if (vehicle.isTurnVehicle) classes.push(`${className}__car--turn`);
-    const color = resolveVehicleColor(vehicle);
+    const paint = resolveVehiclePaint(vehicle);
     return `<g class="${classes.join(' ')}">`
-      + `<polygon points="${vehiclePolygon(vehicle, project, areaTransform)}" fill="${color}" />`
-      + `<polygon points="${vehicleCabinRect(vehicle, project, areaTransform)}" fill="${lightenHex(color, 0.22)}" />`
+      + `<polygon points="${vehiclePolygon(vehicle, project, areaTransform)}" fill="${paint.shadow}" />`
+      + `<polygon points="${vehicleCabinRect(vehicle, project, areaTransform)}" fill="${paint.body}" />`
       + `<polygon points="${vehicleArrowPoints(vehicle, project, areaTransform)}" fill="#ffffff" />`
       + '</g>';
   }).join('');

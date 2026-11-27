@@ -1,4 +1,18 @@
+import { DEPARTURE_STAR_DEFAULTS, DEPARTURE_TRAIL_DEFAULTS, SMOKE_TRAIL_DEFAULTS } from './vehicle-effect-assets.js';
+import { DEFAULT_SPEED_TOGGLE_BOUNDS } from './speed-toggle.js';
 export const SCENE_TUNING = {
+  "iq": {
+    "enabled": 0,
+    "initialScore": 110,
+    "offsetX": 0,
+    "offsetY": 0,
+    "scale": 1
+  },
+  "combo": {
+    "mode": "off",
+    "goldSeconds": 0,
+    "timedSeconds": 6
+  },
   "progressHud": {
     "enabled": 0,
     "nodePercent": 50,
@@ -111,7 +125,9 @@ export const SCENE_TUNING = {
       "y": 2018,
       "width": 180,
       "height": 123,
-      "radius": 30
+      "cornerRadius": 16,
+      "stroke": { "enabled": 1, "color": 16777215, "width": 5.5, "opacity": 1 },
+      "shadow": { "enabled": 1, "color": 0, "opacity": 0.35, "blur": 12, "offsetX": 0, "offsetY": 6 }
     },
     "logo": {
       "enabled": 1,
@@ -120,7 +136,10 @@ export const SCENE_TUNING = {
       "x": 0,
       "y": 2023,
       "width": 230,
-      "height": 123
+      "height": 123,
+      "cornerRadius": 0,
+      "stroke": { "enabled": 0, "color": 16777215, "width": 4, "opacity": 1 },
+      "shadow": { "enabled": 0, "color": 0, "opacity": 0.35, "blur": 12, "offsetX": 0, "offsetY": 6 }
     },
     "text": {
       "enabled": 1,
@@ -132,7 +151,7 @@ export const SCENE_TUNING = {
       "height": 100
     },
     "loading": {
-      "icon": "/assets/applovin/icon_q75.jpg",
+      "icon": "",
       "title": "Bus Fever Party!"
     },
     "localization": {
@@ -146,6 +165,7 @@ export const SCENE_TUNING = {
     }
   },
   "camera": {
+    "azimuthDegrees": 0,
     "elevationDegrees": 61,
     "fovDegrees": 2.2,
     "targetX": 0,
@@ -179,11 +199,8 @@ export const SCENE_TUNING = {
   },
   "speedToggle": {
     "enabled": 0,
-    "style": "default",
-    "x": 916,
-    "y": 118,
-    "width": 210,
-    "height": 138,
+    "style": "light",
+    ...DEFAULT_SPEED_TOGGLE_BOUNDS,
     "multiplier": 2
   },
   "installGate": {
@@ -247,6 +264,7 @@ export const SCENE_TUNING = {
     "groundY": 0.025
   },
   "conveyorLayout": {
+    "passengerSpeedMultiplier": 1,
     "selected": "dualQueue3"
   },
   "spatialConveyor": {
@@ -831,6 +849,11 @@ export const SCENE_TUNING = {
     "spacing": 0.95,
     "y": 0.035,
     "z": 0.55,
+    "opacity": 1,
+    "fillColor": 15264498,
+    "fillOpacity": 0.18,
+    "shadowDistance": 0.04,
+    "shadowOpacity": 0.35,
     "modelWidth": 0.78,
     "modelDepth": 1.46,
     "scaleX": 0.7,
@@ -846,9 +869,8 @@ export const SCENE_TUNING = {
   "vehiclePath": {
     "autoBounds": 1,
     "boundsPadding": 0.1,
-    "enabled": 1,
+    "enabled": 0,
     "showBlocked": 1,
-    "y": 0.145,
     "color": 2160383,
     "opacity": 0.88,
     "lineWidth": 3,
@@ -864,15 +886,12 @@ export const SCENE_TUNING = {
   },
   "vehicleDeparturePath": {
     "enabled": 0,
-    "y": -1,
     "color": 16762967,
     "opacity": 0.88,
     "lineWidth": 3,
-    "fullLoadDelay": 1,
-    "backDistance": 0.5,
+    "fullLoadDelay": 0.65,
     "exitTurnOffsetX": -0.5,
-    "exitTargetX": 4.2,
-    "exitTargetZOffset": 0,
+    "exitDistance": 6,
     "backwardSpeed": 2.5,
     "forwardSpeed": 10,
     "turnRadius": 0.5,
@@ -907,8 +926,12 @@ export const SCENE_TUNING = {
     "modelScale": 0.64,
     "sizeMultiplier": 1
   },
+  "vehicleBoardingPulse": {
+    "scale": 1.09,
+    "speed": 11.7
+  },
   "vehicleGuideHand": {
-    "enabled": 1,
+    "enabled": 0,
     "levelKey": "level36",
     "vehicleId": 1,
     "showAtStart": 1,
@@ -1097,61 +1120,6 @@ export const SCENE_TUNING = {
     "boardingTargetOffsetY": 0,
     "boardingTargetOffsetZ": 0
   },
-  "passengerMaterial": {
-    "mode": "unityTexture",
-    "baseColorStrength": 1.1,
-    "emissionStrength": 0.6,
-    "brightness": 0.99,
-    "roughness": 0.83,
-    "metalness": 0,
-    "solidColors": [35056, 3783936, 13911468, 8858341, 13109513, 14333963, 12541986, 1619180, 6958895, 4868682, 9141423],
-    "colors": [
-      {
-        "emissionColor": 3581695,
-        "baseColor": 14413311
-      },
-      {
-        "emissionColor": 12049816,
-        "baseColor": 16777215
-      },
-      {
-        "emissionColor": 14782156,
-        "baseColor": 14079702
-      },
-      {
-        "emissionColor": 10027263,
-        "baseColor": 15589631
-      },
-      {
-        "emissionColor": 11764868,
-        "baseColor": 14062997
-      },
-      {
-        "emissionColor": 11246988,
-        "baseColor": 16777215
-      },
-      {
-        "emissionColor": 10973810,
-        "baseColor": 16448250
-      },
-      {
-        "emissionColor": 5111807,
-        "baseColor": 16777215
-      },
-      {
-        "emissionColor": 10832458,
-        "baseColor": 16777215
-      },
-      {
-        "emissionColor": 4868682,
-        "baseColor": 16777215
-      },
-      {
-        "emissionColor": 9450129,
-        "baseColor": 16777215
-      }
-    ]
-  },
   "luxuryMaterial": {
     "vehicleBrightness": 2.55,
     "passengerBrightness": 1.9,
@@ -1228,19 +1196,9 @@ export const SCENE_TUNING = {
       "speedMid": 0.59,
       "speedEnd": 0.72
     },
-    "smokeTrail": {
-      "rateOverTime": 25,
-      "lifetimeMin": 0.2,
-      "lifetimeMax": 0.3,
-      "sizeMin": 0.06,
-      "sizeMax": 0.15,
-      "speedScale": 1,
-      "offsetZ": -0.46,
-      "offsetY": 0.08,
-      "spread": 1,
-      "gravity": -0.5,
-      "opacity": 1
-    },
+    "departureStars": { ...DEPARTURE_STAR_DEFAULTS, enabled: 0 },
+    "departureTrail": { ...DEPARTURE_TRAIL_DEFAULTS },
+    "smokeTrail": { ...SMOKE_TRAIL_DEFAULTS },
     "hit": {
       "sizeScale": 2,
       "particleHit2SizeScale": 1,

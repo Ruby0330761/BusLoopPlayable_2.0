@@ -1,3 +1,5 @@
+import { vehicleSurfaceColors } from './vehicle-surface-colors.js';
+
 // Display colours as the playable actually renders them.
 //
 // The authoring palette (`VEHICLE_COLOR_OPTIONS`) stores each atlas's raw body
@@ -68,4 +70,22 @@ export function renderedVehicleColorCss(colorIndex, fallbackCss = FALLBACK_RENDE
 /** Same lookup, returning a lowercase hex string for CSS/canvas consumers. */
 export function renderedVehicleColor(colorIndex, fallbackCss = FALLBACK_RENDERED_COLOR) {
   return renderedVehicleColorCss(colorIndex, fallbackCss).toLowerCase();
+}
+
+const validPaint = (value) => typeof value === 'string' && /^#[0-9a-f]{6}$/i.test(value);
+
+export function resolveVehiclePaint({ colorIndex, colorOverrides = {}, seats }) {
+  const preset = renderedVehicleColor(colorIndex);
+  const body = validPaint(colorOverrides?.body) ? colorOverrides.body.toLowerCase() : preset;
+  const surfaces = vehicleSurfaceColors(colorIndex, body === preset ? null : body);
+  return {
+    body, surfaces,
+    highlight: surfaces[seats === 4 ? 3 : seats === 10 ? 4 : 1],
+    shadow: surfaces[14], window: surfaces[5], detail: surfaces[12]
+  };
+}
+
+export function resolvePassengerBodyColor(level, colorIndex) {
+  const vehicle = level?.vehicles?.find(item => item.colorIndex === colorIndex && validPaint(item.colorOverrides?.body));
+  return vehicle?.colorOverrides.body.toLowerCase() ?? renderedVehicleColor(colorIndex);
 }

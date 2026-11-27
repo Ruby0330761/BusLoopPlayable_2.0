@@ -82,10 +82,7 @@ test('authoring views share one display palette', () => {
   const editor = readFileSync('src/level-layout-editor.js', 'utf8');
   const thumbnail = readFileSync('src/level-layout-thumbnail.js', 'utf8');
   assert.match(editor, /getVehicleDisplayColor/, 'the authoring canvas needs the shared display colour');
-  assert.match(thumbnail, /getVehicleDisplayColor/, 'thumbnails need the shared display colour');
-  // The queue chips are hand-authored CSS strings, so pin that they use the
-  // rendered values rather than the raw atlas bases.
-  assert.match(editor, /#4EA4FF/);
-  assert.match(editor, /#23EEFF/);
+  assert.match(thumbnail, /resolveVehiclePaint/, 'thumbnails need the shared authored paint');
+  assert.match(editor, /return resolvePassengerBodyColor\(document, colorIndex\)/);
   assert.doesNotMatch(editor, /#014853/, 'the raw teal atlas base must not be used as a chip colour');
 });

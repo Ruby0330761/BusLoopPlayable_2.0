@@ -142,6 +142,7 @@ export function mountFreeAssetLayers(host, { config = {}, onLayerDrag = null, in
   function sync() {
     const seen = new Set();
     for (const layer of current.layers) {
+      if (!layer.visible) continue;
       seen.add(layer.id);
       let element = elements.get(layer.id);
       if (!element) {

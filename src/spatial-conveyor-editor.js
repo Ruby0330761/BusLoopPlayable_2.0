@@ -110,7 +110,7 @@ export function createSpatialConveyorEditor({
     <div class="spatial-point-toolbar" role="toolbar" aria-label="立体轨道点位工具"></div>
     <aside class="spatial-point-panel">
       <header>
-        <div><span>SPATIAL PATH</span><h2>${packageData.label || packageData.id}</h2></div>
+        <div><span>SPATIAL PATH</span><h2></h2></div>
         <button class="spatial-point-close" type="button" aria-label="关闭">×</button>
       </header>
       <div class="spatial-point-summary"></div>
@@ -148,6 +148,7 @@ export function createSpatialConveyorEditor({
     </aside>
     <div class="spatial-point-selection-box" hidden></div>
   `;
+  overlay.querySelector('h2').textContent = packageData.label || packageData.id;
   document.body.append(overlay);
 
   const toolbar = overlay.querySelector('.spatial-point-toolbar');

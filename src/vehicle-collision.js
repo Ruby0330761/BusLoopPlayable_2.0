@@ -1,4 +1,8 @@
+import { parkedVehicleSizeMultiplier } from './vehicle-area-transform.js';
+import { SCENE_TUNING } from './scene-tuning.js';
+
 const FORWARD_SCAN_LENGTH = 500;
+const AUTHORED_MODEL_SCALE = 0.64;
 const EPSILON = 0.00001;
 export const CONVEYOR_GAP_GUARD_FACTOR = 1.2;
 
@@ -93,13 +97,22 @@ function getVehiclePose(vehicle) {
   return vehicle;
 }
 
-function boxForVehicle(level, vehicle) {
-  const pose = getVehiclePose(vehicle);
-  return makeBox(pose, pose.yaw, getVehicleCollisionSize(level, vehicle));
+export function getVehicleCollisionScale(level, vehicle) {
+  const area = level.collisionVehicleArea ?? SCENE_TUNING.vehicleArea;
+  const modelScale = Number(area?.modelScale) || AUTHORED_MODEL_SCALE;
+  return parkedVehicleSizeMultiplier(vehicle, area) * modelScale / AUTHORED_MODEL_SCALE;
 }
 
-function extendBoxForward(box, length = FORWARD_SCAN_LENGTH) {
-  const centerOffset = (length - box.size.length) * 0.5;
+function boxForVehicle(level, vehicle) {
+  const pose = getVehiclePose(vehicle);
+  const size = getVehicleCollisionSize(level, vehicle);
+  const factor = getVehicleCollisionScale(level, vehicle);
+  return makeBox(pose, pose.yaw, { width: size.width * factor, length: size.length * factor });
+}
+
+function extendBoxForward(box, startOffset = box.size.length * 0.5) {
+  const length = FORWARD_SCAN_LENGTH;
+  const centerOffset = startOffset + length * 0.5;
   return {
     ...box,
     position: add(box.position, scale(box.forward, centerOffset)),
@@ -124,8 +137,8 @@ function mayBlockUnitySweep(attackerBox, candidateBox) {
   const delta = subtract(candidateBox.position, attackerBox.position);
   const forwardDistance = dot(delta, attackerBox.forward);
   const candidateRadius = Math.hypot(candidateBox.size.width, candidateBox.size.length) * 0.5;
-  const minForward = -attackerBox.size.length * 0.5;
-  const maxForward = FORWARD_SCAN_LENGTH - attackerBox.size.length * 0.5;
+  const minForward = attackerBox.size.length * 0.5;
+  const maxForward = FORWARD_SCAN_LENGTH + minForward;
   if (forwardDistance + candidateRadius < minForward
     || forwardDistance - candidateRadius > maxForward) return false;
   const lateralDistance = Math.max(
@@ -146,6 +159,16 @@ export function boxesOverlap(a, b) {
   return [a.forward, a.right, b.forward, b.right].every((axis) => (
     Math.abs(dot(delta, axis)) <= projectedRadius(a, axis) + projectedRadius(b, axis)
   ));
+}
+
+// Removing a stationary car can only remove edges from this departure graph.
+export function fixedParkingExitGraph(level, vehicles) {
+  const boxes = vehicles.map(vehicle => boxForVehicle(level, vehicle));
+  return new Map(vehicles.map((vehicle, index) => {
+    const sweep = extendBoxForward(boxes[index]);
+    const blockers = vehicles.filter((other, otherIndex) => otherIndex !== index && boxesOverlap(sweep, boxes[otherIndex]));
+    return [vehicle.id, blockers.map(other => other.id)];
+  }));
 }
 
 function isGarageType(value) {
@@ -238,7 +261,7 @@ function createGarageGeometry(level, garage, maximumVehicleSize) {
     scale(forward, garageSize.length * 0.5 + maximumVehicleSize.length * 0.5)
   );
   const door = makeBox(doorPosition, garage.yaw, maximumVehicleSize);
-  return { body, door, out: extendBoxForward(door) };
+  return { body, door, out: extendBoxForward(door, -door.size.length * 0.5) };
 }
 
 function collisionLineOffset(rayStart, ray, linePosition, lineDirection) {
@@ -475,7 +498,8 @@ export class VehicleCollisionContext {
       garage.lastOutVehicleId,
       ...garage.vehicleIds
     ]);
-    return JSON.stringify([game.resetVersion, vehicleState, garageState]);
+    const area = this.level.collisionVehicleArea ?? SCENE_TUNING.vehicleArea;
+    return JSON.stringify([game.resetVersion, area?.modelScale, area?.sizeMultiplier, vehicleState, garageState]);
   }
 
   ensure(game) {
@@ -502,18 +526,19 @@ export class VehicleCollisionContext {
       this.vehicleNodes.set(vehicle.id, node);
     }
 
+    const boxes = new Map(physicalVehicles.map(vehicle => [vehicle.id, boxForVehicle(this.level, vehicle)]));
     for (const attacker of physicalVehicles) {
       // Conveyor vehicles use the belt range resolver below for their own
       // exits. They still need ordinary graph links to non-conveyor vehicles.
       if (conveyorConfig && isConveyorType(attacker.containerType)) continue;
       const attackerNode = this.vehicleNodes.get(attacker.id);
-      const scanBox = extendBoxForward(boxForVehicle(this.level, attacker));
+      const scanBox = extendBoxForward(boxes.get(attacker.id));
       for (const candidate of physicalVehicles) {
         if (candidate.id === attacker.id) continue;
         if (conveyorConfig
           && isConveyorType(attacker.containerType)
           && isConveyorType(candidate.containerType)) continue;
-        if (boxesOverlap(scanBox, boxForVehicle(this.level, candidate))) {
+        if (boxesOverlap(scanBox, boxes.get(candidate.id))) {
           this.graph.link(attackerNode, this.vehicleNodes.get(candidate.id));
         }
       }
@@ -1063,5 +1088,4 @@ export class VehicleCollisionContext {
 export function createVehicleCollisionContext(level) {
   return new VehicleCollisionContext(level);
 }
-
 

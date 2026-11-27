@@ -2844,17 +2844,20 @@
         "speedEnd": 0.72
       },
       "smokeTrail": {
-        "rateOverTime": 25,
-        "lifetimeMin": 0.2,
+        "rateOverTime": 70,
+        "lifetimeMin": 0.15,
         "lifetimeMax": 0.3,
-        "sizeMin": 0.06,
-        "sizeMax": 0.15,
+        "sizeMin": 0.36,
+        "sizeMax": 0.72,
         "speedScale": 1,
         "offsetZ": -0.46,
         "offsetY": 0.08,
-        "spread": 1,
+        "spread": 2.25,
         "gravity": -0.5,
-        "opacity": 1
+        "opacity": 1,
+        "sizeRandomness": 100,
+        "rotationSpeed": 130,
+        "rotationRandomness": 56
       },
       "hit": {
         "sizeScale": 2,

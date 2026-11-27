@@ -1,8 +1,57 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { pruneUnknownTuning } from '../src/tuning-migrations.js';
+import { migrateSmokeTrailCaches, pruneUnknownTuning } from '../src/tuning-migrations.js';
+import { matchesSmokeMigration, migrateAllLevelsSmoke } from '../scripts/migrate-all-levels-smoke.mjs';
+import { createHash } from 'node:crypto';
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
 import { SCENE_TUNING } from '../src/scene-tuning.js';
 import { validateTuning } from '../scripts/export-playable-package.mjs';
+
+test('all cached levels and the preview draft reset smoke once, preserving later user edits', () => {
+  const old = { effects: { smokeTrail: { rateOverTime: 12 }, departureStars: { enabled: 1 } } };
+  const keys = { current: 'active', profiles: 'levels', legacy: 'old', preview: 'draft' };
+  const data = new Map(Object.entries({
+    active: old, old, levels: { profiles: { level2: { tuning: old }, level3: { tuning: old } } },
+    draft: { document: { tuning: old } }
+  }).map(([k, v]) => [k, JSON.stringify(v)]));
+  const storage = { getItem: k => data.get(k), setItem: (k, v) => data.set(k, v) };
+  migrateSmokeTrailCaches(storage, keys);
+  const read = key => JSON.parse(data.get(key));
+  for (const tuning of [read('active'), read('old'), read('draft').document.tuning,
+    ...Object.values(read('levels').profiles).map(entry => entry.tuning)]) {
+    assert.deepEqual(tuning.effects.smokeTrail, SCENE_TUNING.effects.smokeTrail);
+    assert.equal(tuning.effects.departureStars.enabled, 1);
+  }
+  data.set('active', JSON.stringify(old));
+  migrateSmokeTrailCaches(storage, keys);
+  assert.deepEqual(read('active'), old);
+});
+
+test('server reset backs up only overwritten levels and keeps later edits on restart', async t => {
+  const root = await mkdtemp(path.join(tmpdir(), 'busloop-smoke-migration-'));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const levels = path.join(root, 'web-levels');
+  await mkdir(levels);
+  const level = path.join(levels, 'level2.json');
+  const source = JSON.stringify({ key: 'level2', tuning: { effects: { smokeTrail: { rateOverTime: 0 } } } });
+  await writeFile(level, source);
+  await writeFile(path.join(levels, 'level3.json'), '{"key":"level3"}');
+  await migrateAllLevelsSmoke(root);
+  const migrated = JSON.parse(await readFile(level, 'utf8'));
+  assert.deepEqual(migrated.tuning.effects.smokeTrail, SCENE_TUNING.effects.smokeTrail);
+  const hash = bytes => createHash('sha256').update(bytes).digest('hex');
+  const previous = hash(source);
+  const current = hash(await readFile(level));
+  assert.equal(await matchesSmokeMigration(root, 'level2', previous, current), true);
+  assert.equal(await matchesSmokeMigration(root, 'level2', previous, hash('another edit')), false);
+  assert.equal(await readFile(path.join(root, 'web-level-backups/all-levels-smoke-20261123/level2.json'), 'utf8'), source);
+  assert.equal(await readFile(path.join(levels, 'level3.json'), 'utf8'), '{"key":"level3"}');
+  await writeFile(level, source);
+  await migrateAllLevelsSmoke(root);
+  assert.equal(await readFile(level, 'utf8'), source);
+});
 
 test('pruneUnknownTuning drops fields this build no longer defines', () => {
   const template = { parkingSpots: { count: 4, y: 0.035 }, camera: { fovDegrees: 2.2 } };

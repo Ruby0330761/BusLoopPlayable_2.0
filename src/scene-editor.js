@@ -1,4 +1,5 @@
-import { LEVEL_OPTIONS } from './level-catalog.js';
+import { getLevelDefinition, LEVEL_OPTIONS } from './level-catalog.js';
+import { importSpatialConveyorJson } from './spatial-conveyor-json-import.js';
 import {
   isSpatialConveyorSelection,
   refreshSpatialConveyorPackages
@@ -7,17 +8,24 @@ import {
   retargetLevelDocument,
   validateLevelDocument
 } from './level-editor-model.js';
+import { openBackgroundOverview } from './background-overview.js';
 import { LEVEL_1 } from './level-data.js';
 import { isValidStoreLink } from './store-links.js';
+import { parseDeliveryNames } from './export-naming.js';
+import { getVehicleGuideHandIssue } from './vehicle-guide-hand.js';
 import { detectPlayfieldHorizon, resolveBackgroundHorizon } from './background-alignment.js';
-import { BUILD_VERSION } from './build-version.js';
+import { BUILD_VERSION, EDITOR_EDITION_BADGE } from './build-version.js';
+import { brandingBottomInset, brandingRowY } from './branding-image-frame.js';
+import { createBrandingVariantTuning } from './export-branding.js';
+import { buildExportReview, confirmPlayableExport } from './export-review.js';
+import { createEditorExportQueue } from './editor-export-queue.js';
 import { BUILD_CHANGELOG, changelogVersions } from './build-changelog.js';
 import { COUNTDOWN_SIREN_ASSET, COUNTDOWN_TIMER_ASSET, normalizeCountdownConfig } from './countdown.js';
 import { normalizeSuperBoostConfig } from './super-boost.js';
 import { BRANDING_LOCALE_OPTIONS, STOREFRONT_PREVIEW_OPTIONS, normalizeStorefrontPreview } from './branding-localization.js';
 import { getStaminaAssetPaths, normalizeStaminaConfig } from './stamina.js';
 import { SPEED_TOGGLE_STYLES, normalizeSpeedToggleStyle } from './speed-toggle.js';
-import { getExportVariantPlan, isInstallGateEnabled, parseExportVariantValues, syncExportVariantTuning } from './export-variants.js';
+import { isInstallGateEnabled, syncExportVariantTuning } from './export-variants.js';
 import {
   BASE_RUNTIME_ASSET_PATHS,
   PROGRESS_HUD_ASSET_PATHS,
@@ -25,13 +33,10 @@ import {
   getMechanismTypesForLevels
 } from './mechanism-resources.js';
 import { LEVEL_AUDIO_CONFIG } from './level-audio-config.js';
-import { collectPlayableInlineAssetUrls } from './playable-inline-assets.js';
+import { collectPlayableInlineAssetUrls, getReachableStageArt } from './playable-inline-assets.js';
 import { resolveVehiclePathConfig } from './vehicle-path-config.js';
 import {
-  ACTIVE_PLAYABLE_SESSION,
-  PLAYABLE_ALL_LEVELS,
-  PLAYABLE_STAGES,
-  PLAYABLE_STAGE_CHOICES
+  PLAYABLE_ALL_LEVELS
 } from './generated-active-level.js';
 import {
   isForeignLevelOwner,
@@ -128,11 +133,8 @@ const BACKGROUND_OPTIONS = [
   ['/assets/applovin/textures/BG01_split01_Grassland_q60.jpg', 'BG01 \u8349\u5730']
 ];
 
-// `entryBanner.style === 'custom'` plates. Both shipped plates ride with the
-// mechanism; the editor appends every uploaded banner from its own library, so
-// this list only seeds the picker before the first fetch resolves. The empty
-// entry is what the delete action lands on — the runtime then draws the shipped
-// storm plate rather than an empty overlay.
+// Seed the picker before the upload library loads. An empty custom selection
+// uses the built-in storm plate.
 const BANNER_OPTIONS = [
   ['', '\uff08\u672a\u9009\uff0c\u4f7f\u7528\u5185\u7f6e\u98ce\u66b4\u56fe\uff09'],
   ['/assets/unity/mechanisms/entry-banner/sprites/Main_EntryBanner_Storm.webp', '\u98ce\u66b4\u8b66\u544a\uff08\u81ea\u5e26\u6587\u6848\uff09'],
@@ -217,8 +219,8 @@ const IMAGE_UPLOAD_MAX_EDGES = [1600, 1280, 1024, 800, 640];
 function formatKilobytes(bytes) {
   const value = Number(bytes) || 0;
   return value >= 1024 * 1024
-    ? `${(value / 1024 / 1024).toFixed(2)} MB`
-    : `${Math.max(1, Math.round(value / 1024))} KB`;
+    ? `${(value / 1024 / 1024).toFixed(2)} MiB`
+    : `${Math.max(0, Math.round(value / 1024))} KiB`;
 }
 
 const EDITOR_CATEGORIES = [
@@ -290,14 +292,6 @@ export function attachTuningToExportedLevel(raw, levelKey, tuning) {
   if (!sceneTuning) return null;
   if (sceneTuning.level) delete sceneTuning.level.selected;
   return `${JSON.stringify({ ...document, tuning: sceneTuning }, null, 2)}\n`;
-}
-
-function isValidExportNamingPart(value) {
-  const normalized = String(value ?? '').trim();
-  return normalized.length === 0
-    || (normalized.length <= 64
-      && !normalized.includes('..')
-      && /^[A-Za-z0-9_-]+$/.test(normalized));
 }
 
 function isCustomBackgroundAsset(value) {
@@ -614,31 +608,24 @@ function makeEntryBannerComponentFields(label, component) {
   ];
 }
 
+function brandingFrameFields(key, label) {
+  const base = 'branding.' + key + '.';
+  return [
+    [label + ' 圆角 (%)', base + 'cornerRadius', 0, 50, 1],
+    [label + ' 描边', base + 'stroke.enabled', 0, 1, 1, null, 'toggle'],
+    ['描边颜色', base + 'stroke.color', 0, 16777215, 1],
+    ['描边粗细', base + 'stroke.width', 0, 40, 0.5],
+    ['描边透明度', base + 'stroke.opacity', 0, 1, 0.01],
+    [label + ' 阴影', base + 'shadow.enabled', 0, 1, 1, null, 'toggle'],
+    ['阴影颜色', base + 'shadow.color', 0, 16777215, 1],
+    ['阴影透明度', base + 'shadow.opacity', 0, 1, 0.01],
+    ['阴影模糊', base + 'shadow.blur', 0, 100, 1],
+    ['阴影 X 偏移', base + 'shadow.offsetX', -100, 100, 1],
+    ['阴影 Y 偏移', base + 'shadow.offsetY', -100, 100, 1]
+  ];
+}
+
 const FIELD_GROUPS = [
-  {
-    title: '\u5bfc\u51fa\u547d\u540d',
-    defaultOpen: true,
-    fields: [
-      ['\u9700\u6c42\u7f16\u53f7', 'exportNaming.requirementCode', 0, 0, 1, null, 'filename'],
-      ['\u7d20\u6750\u7f16\u53f7', 'exportNaming.materialCode', 0, 0, 1, null, 'filename'],
-      ['\u524d\u8d34/\u8bf1\u5bfc\u7f16\u53f7', 'exportNaming.iterationCode', 0, 0, 1, null, 'filename'],
-      ['\u8bed\u8a00', 'exportNaming.language', 0, 0, 1, null, 'filename'],
-      ['\u683c\u5f0f', 'exportNaming.format', 0, 0, 1, null, 'filename'],
-      ['\u8bbe\u8ba1\u5e08', 'exportNaming.designer', 0, 0, 1, null, 'filename'],
-      ['\u9700\u6c42\u4eba', 'exportNaming.requester', 0, 0, 1, null, 'filename'],
-      ['\u6b65\u6570', 'exportNaming.steps', 0, 0, 1, null, 'variant'],
-      // Reuse the existing tail field for one or more stamina variants. The
-      // exporter expands it into scalar hp names before validating artifacts.
-      ['\u5c3e\u6bb5\u7248\u672c', 'exportNaming.version', 0, 0, 1, null, 'variant'],
-      ['AppLovin \u6e20\u9053', 'exportNaming.channels.applovin', 0, 0, 1, null, 'filename'],
-      ['Google Ads \u6e20\u9053', 'exportNaming.channels.google-ads', 0, 0, 1, null, 'filename'],
-      ['Meta \u6e20\u9053', 'exportNaming.channels.meta', 0, 0, 1, null, 'filename'],
-      ['Mintegral \u6e20\u9053', 'exportNaming.channels.mintegral', 0, 0, 1, null, 'filename'],
-      ['Moloco \u6e20\u9053', 'exportNaming.channels.moloco', 0, 0, 1, null, 'filename'],
-      ['TikTok \u6e20\u9053', 'exportNaming.channels.tiktok', 0, 0, 1, null, 'filename'],
-      ['Unity Ads \u6e20\u9053', 'exportNaming.channels.unityads', 0, 0, 1, null, 'filename']
-    ]
-  },
   {
     title: '\u5173\u5361',
     // Keep the level tools discoverable when the editor first opens. The
@@ -662,7 +649,7 @@ const FIELD_GROUPS = [
       ['Icon Y', 'branding.icon.y', 0, 4320, 1],
       ['Icon \u5bbd\u5ea6', 'branding.icon.width', 16, 2160, 1],
       ['Icon \u9ad8\u5ea6', 'branding.icon.height', 16, 2160, 1],
-      ['Icon \u5706\u89d2', 'branding.icon.radius', 0, 120, 1],
+      ...brandingFrameFields('icon', 'Icon'),
       ['Logo \u7248\u672c', 'branding.logo.asset', 0, 0, 1, BRANDING_LOGO_OPTIONS],
       ['Logo \u663e\u793a', 'branding.logo.enabled', 0, 1, 1, null, 'toggle'],
       ['Logo \u9501\u5b9a', 'branding.logo.locked', 0, 1, 1, null, 'toggle'],
@@ -670,6 +657,7 @@ const FIELD_GROUPS = [
       ['Logo Y', 'branding.logo.y', 0, 4320, 1],
       ['Logo \u5bbd\u5ea6', 'branding.logo.width', 16, 2160, 1],
       ['Logo \u9ad8\u5ea6', 'branding.logo.height', 16, 2160, 1],
+      ...brandingFrameFields('logo', 'Logo'),
       ['\u6587\u672c\u663e\u793a', 'branding.text.enabled', 0, 1, 1, null, 'toggle'],
       ['\u6587\u672c\u9501\u5b9a', 'branding.text.locked', 0, 1, 1, null, 'toggle'],
       ['\u6587\u672c\u5185\u5bb9', 'branding.text.content', 0, 0, 1, null, 'text'],
@@ -706,6 +694,7 @@ const FIELD_GROUPS = [
   {
     title: '\u76f8\u673a',
     fields: [
+      ['\u6c34\u5e73\u65cb\u8f6c', 'camera.azimuthDegrees', -180, 180, 1],
       ['\u4fef\u89d2', 'camera.elevationDegrees', 25, 80, 1],
       ['\u900f\u89c6 FOV', 'camera.fovDegrees', 1, 40, 0.1],
       ['\u76ee\u6807 X', 'camera.targetX', -10, 10, 0.05],
@@ -774,6 +763,26 @@ const FIELD_GROUPS = [
       ['Pulse Scale', 'cta.pulseScale', 1, 1.35, 0.01],
       ['Pulse Speed', 'cta.pulseSpeed', 0.1, 3, 0.01],
       ['Appear Speed', 'cta.appearSpeed', 0.1, 5, 0.01]
+    ]
+  },
+  {
+    title: 'IQ 计分',
+    category: 'guide',
+    fields: [
+      ['启用 IQ 计分', 'iq.enabled', 0, 1, 1, null, 'toggle'],
+      ['初始 IQ', 'iq.initialScore', 0, 9999, 1],
+      ['水平偏移 X', 'iq.offsetX', -1080, 1080, 1],
+      ['垂直偏移 Y', 'iq.offsetY', -2160, 2160, 1],
+      ['整体缩放', 'iq.scale', 0.25, 3, 0.05]
+    ]
+  },
+  {
+    title: 'COMBO 连击',
+    category: 'guide',
+    fields: [
+      ['连击样式', 'combo.mode', 0, 0, 1, [['off', '关闭'], ['gold', '金色 COMBO'], ['timed', '倒计时读条']]],
+      ['连击间隔（秒，0 为不限）', 'combo.goldSeconds', 0, 120, 0.1],
+      ['连击间隔（秒）', 'combo.timedSeconds', 0.1, 120, 0.1]
     ]
   },
   {
@@ -950,57 +959,11 @@ const FIELD_GROUPS = [
     ]
   },
   {
-    title: 'Passenger Material',
-    fields: [
-      ['Mode', 'passengerMaterial.mode', 0, 0, 1, [
-        ['unityTexture', 'Unity Texture'],
-        ['solidColor', 'Solid Color']
-      ]],
-      ['Base Strength', 'passengerMaterial.baseColorStrength', 0, 2, 0.01],
-      ['Emission Strength', 'passengerMaterial.emissionStrength', 0, 5, 0.01],
-      ['Brightness', 'passengerMaterial.brightness', 0, 3, 0.01],
-      ['Roughness', 'passengerMaterial.roughness', 0, 1, 0.01],
-      ['Metalness', 'passengerMaterial.metalness', 0, 1, 0.01],
-      ['Blue Color', 'passengerMaterial.solidColors.0', 0, 16777215, 1],
-      ['Green Color', 'passengerMaterial.solidColors.1', 0, 16777215, 1],
-      ['Pink Color', 'passengerMaterial.solidColors.2', 0, 16777215, 1],
-      ['Purple Color', 'passengerMaterial.solidColors.3', 0, 16777215, 1],
-      ['Red Color', 'passengerMaterial.solidColors.4', 0, 16777215, 1],
-      ['Yellow Color', 'passengerMaterial.solidColors.5', 0, 16777215, 1],
-      ['Orange Color', 'passengerMaterial.solidColors.6', 0, 16777215, 1],
-      ['LightBlue Color', 'passengerMaterial.solidColors.7', 0, 16777215, 1],
-      ['Brown Color', 'passengerMaterial.solidColors.8', 0, 16777215, 1],
-      ['DarkGreen Color', 'passengerMaterial.solidColors.9', 0, 16777215, 1],
-      ['DarkBlue Color', 'passengerMaterial.solidColors.10', 0, 16777215, 1],
-      ['Blue Base', 'passengerMaterial.colors.0.baseColor', 0, 16777215, 1],
-      ['Blue Emission', 'passengerMaterial.colors.0.emissionColor', 0, 16777215, 1],
-      ['Green Base', 'passengerMaterial.colors.1.baseColor', 0, 16777215, 1],
-      ['Green Emission', 'passengerMaterial.colors.1.emissionColor', 0, 16777215, 1],
-      ['Pink Base', 'passengerMaterial.colors.2.baseColor', 0, 16777215, 1],
-      ['Pink Emission', 'passengerMaterial.colors.2.emissionColor', 0, 16777215, 1],
-      ['Purple Base', 'passengerMaterial.colors.3.baseColor', 0, 16777215, 1],
-      ['Purple Emission', 'passengerMaterial.colors.3.emissionColor', 0, 16777215, 1],
-      ['Red Base', 'passengerMaterial.colors.4.baseColor', 0, 16777215, 1],
-      ['Red Emission', 'passengerMaterial.colors.4.emissionColor', 0, 16777215, 1],
-      ['Yellow Base', 'passengerMaterial.colors.5.baseColor', 0, 16777215, 1],
-      ['Yellow Emission', 'passengerMaterial.colors.5.emissionColor', 0, 16777215, 1],
-      ['Orange Base', 'passengerMaterial.colors.6.baseColor', 0, 16777215, 1],
-      ['Orange Emission', 'passengerMaterial.colors.6.emissionColor', 0, 16777215, 1],
-      ['LightBlue Base', 'passengerMaterial.colors.7.baseColor', 0, 16777215, 1],
-      ['LightBlue Emission', 'passengerMaterial.colors.7.emissionColor', 0, 16777215, 1],
-      ['Brown Base', 'passengerMaterial.colors.8.baseColor', 0, 16777215, 1],
-      ['Brown Emission', 'passengerMaterial.colors.8.emissionColor', 0, 16777215, 1],
-      ['DarkGreen Base', 'passengerMaterial.colors.9.baseColor', 0, 16777215, 1],
-      ['DarkGreen Emission', 'passengerMaterial.colors.9.emissionColor', 0, 16777215, 1],
-      ['DarkBlue Base', 'passengerMaterial.colors.10.baseColor', 0, 16777215, 1],
-      ['DarkBlue Emission', 'passengerMaterial.colors.10.emissionColor', 0, 16777215, 1]
-    ]
-  },
-  {
     title: '\u4f20\u9001\u5e26\u9009\u62e9',
     spatialImportAnchor: true,
     fields: [
-      ['Prefab', 'conveyorLayout.selected', 0, 0, 1, CONVEYOR_LAYOUT_OPTIONS]
+      ['Prefab', 'conveyorLayout.selected', 0, 0, 1, CONVEYOR_LAYOUT_OPTIONS],
+      ['小人与车辆移动倍率', 'conveyorLayout.passengerSpeedMultiplier', 0.1, 5, 0.05]
     ]
   },
   {
@@ -1030,7 +993,7 @@ const FIELD_GROUPS = [
     fields: [
       ['\u7acb\u4f53\u8f68\u9053\u5bb9\u91cf', 'spatialConveyor.capacity', 1, 600, 1],
       ['\u521d\u59cb\u6ee1\u4eba', 'spatialConveyor.startFilled', 0, 1, 1, null, 'toggle'],
-      ['\u5e38\u89c4\u961f\u5217\u901f\u5ea6', 'spatialConveyor.normalSpeedMultiplier', 0.1, 5, 0.1],
+      ['常规移动倍率（人和车）', 'spatialConveyor.normalSpeedMultiplier', 0.1, 5, 0.1],
       ['\u957f\u6309\u52a0\u901f\u500d\u7387', 'spatialConveyor.longPressMultiplier', 1, 10, 0.1]
     ]
   },
@@ -1117,7 +1080,12 @@ const FIELD_GROUPS = [
       ['\u8ba1\u6570\u677f\u9ad8', 'seatCountBoard.depth', 0.1, 1.2, 0.01],
       ['\u6570\u5b57\u5927\u5c0f', 'seatCountBoard.textScale', 0.3, 2.5, 0.01],
       ['X \u5c3a\u5bf8', 'parkingSpots.scaleX', 0.25, 3, 0.05],
-      ['Z \u5c3a\u5bf8', 'parkingSpots.scaleZ', 0.25, 3, 0.05]
+      ['Z \u5c3a\u5bf8', 'parkingSpots.scaleZ', 0.25, 3, 0.05],
+      ['车位透明度', 'parkingSpots.opacity', 0, 1, 0.01],
+      ['底色', 'parkingSpots.fillColor', 0, 16777215, 1],
+      ['底色透明度', 'parkingSpots.fillOpacity', 0, 1, 0.01],
+      ['投影距离', 'parkingSpots.shadowDistance', 0, 0.5, 0.005],
+      ['投影透明度', 'parkingSpots.shadowOpacity', 0, 1, 0.01]
     ]
   },
   {
@@ -1127,7 +1095,7 @@ const FIELD_GROUPS = [
       ['自动路径边界', 'vehiclePath.autoBounds', 0, 1, 1, null, 'toggle'],
       ['自动边界留白', 'vehiclePath.boundsPadding', 0, 2, 0.01],
       ['\u663e\u793a\u88ab\u6321\u8f66', 'vehiclePath.showBlocked', 0, 1, 1],
-      ['\u7ebf\u6761\u9ad8\u5ea6', 'vehiclePath.y', 0.02, 0.5, 0.005],
+      ['行驶高度（车辆与路径）', 'vehicleArea.y', -3, 0.5, 0.005],
       ['\u7ebf\u6761\u900f\u660e\u5ea6', 'vehiclePath.opacity', 0.1, 1, 0.01],
       ['\u7ebf\u6761\u7c97\u7ec6', 'vehiclePath.lineWidth', 1, 12, 1],
       ['\u8f6c\u5f2f\u534a\u5f84', 'vehiclePath.turnRadius', 0.05, 1.5, 0.01],
@@ -1136,7 +1104,7 @@ const FIELD_GROUPS = [
       ['\u8fb9\u754c\u5de6 X', 'vehiclePath.parkingBounds.minX', -12, 0, 0.01],
       ['\u8fb9\u754c\u53f3 X', 'vehiclePath.parkingBounds.maxX', 0, 12, 0.01],
       ['\u8fb9\u754c\u4e0b Z', 'vehiclePath.parkingBounds.minZ', -12, 0, 0.01],
-      ['\u8fb9\u754c\u4e0a Z', 'vehiclePath.parkingBounds.maxZ', 0, 12, 0.01]
+      ['上边界 / 驶出线 Z', 'vehiclePath.parkingBounds.maxZ', 0, 12, 0.01]
     ]
   },
   {
@@ -1144,13 +1112,10 @@ const FIELD_GROUPS = [
     fields: [
       ['\u663e\u793a\u8def\u5f84', 'vehicleDeparturePath.enabled', 0, 1, 1],
       ['\u6ee1\u8f7d\u505c\u987f', 'vehicleDeparturePath.fullLoadDelay', 0, 4, 0.05],
-      ['\u79bb\u573a\u9ad8\u5ea6\uff08\u7ebf\u4e0e\u8f66\uff09', 'vehicleDeparturePath.y', -3, 0.5, 0.005],
       ['\u7ebf\u6761\u900f\u660e\u5ea6', 'vehicleDeparturePath.opacity', 0.1, 1, 0.01],
       ['\u7ebf\u6761\u7c97\u7ec6', 'vehicleDeparturePath.lineWidth', 1, 12, 1],
-      ['\u5012\u8f66\u8ddd\u79bb', 'vehicleDeparturePath.backDistance', 0, 2, 0.01],
       ['\u6a2a\u5411\u62d0\u70b9 X', 'vehicleDeparturePath.exitTurnOffsetX', -2, 2, 0.01],
-      ['\u79bb\u573a\u7ec8\u70b9 X', 'vehicleDeparturePath.exitTargetX', -1, 8, 0.05],
-      ['\u79bb\u573a\u7ec8\u70b9 Z \u504f\u79fb', 'vehicleDeparturePath.exitTargetZOffset', -3, 3, 0.05],
+      ['驶出距离', 'vehicleDeparturePath.exitDistance', 0.1, 20, 0.05],
       ['\u5012\u8f66\u901f\u5ea6', 'vehicleDeparturePath.backwardSpeed', 0.5, 8, 0.05],
       ['\u79bb\u573a\u901f\u5ea6', 'vehicleDeparturePath.forwardSpeed', 1, 18, 0.05],
       ['\u8f6c\u5f2f\u534a\u5f84', 'vehicleDeparturePath.turnRadius', 0.05, 1.5, 0.01],
@@ -1171,9 +1136,11 @@ const FIELD_GROUPS = [
       // returns to the authored model size, so the route/spot framing never
       // changes with this slider.
       ['\u8f66\u8f86\u5927\u5c0f\u500d\u6570', 'vehicleArea.sizeMultiplier', 0.5, 2.5, 0.01],
-      ['\u7bad\u5934 X', 'vehicleArrow.offsetX', -0.8, 0.8, 0.01],
-      ['\u7bad\u5934\u9ad8\u5ea6', 'vehicleArrow.offsetY', 0, 0.8, 0.01],
-      ['\u7bad\u5934 Z', 'vehicleArrow.offsetZ', -0.8, 0.8, 0.01],
+      ['上车放大倍率', 'vehicleBoardingPulse.scale', 1, 2, 0.01],
+      ['上车缩放速度', 'vehicleBoardingPulse.speed', 0, 20, 0.1],
+      ['箭头横向（0 居中）', 'vehicleArrow.offsetX', -0.8, 0.8, 0.01],
+      ['箭头离车顶高度', 'vehicleArrow.offsetY', 0, 0.8, 0.01],
+      ['箭头前后（正值靠车头）', 'vehicleArrow.offsetZ', -0.8, 0.8, 0.01],
       ['\u7bad\u5934\u63cf\u8fb9\u8272', 'vehicleArrow.outlineColor', 0, 16777215, 1],
       ['\u7bad\u5934\u63cf\u8fb9\u7c97\u7ec6', 'vehicleArrow.outlineScale', 1, 1.8, 0.01],
       ['\u7bad\u5934\u63cf\u8fb9\u6df1\u5ea6\u6d4b\u8bd5', 'vehicleArrow.outlineDepthTest', 0, 1, 1]
@@ -1302,6 +1269,34 @@ const FIELD_GROUPS = [
     ]
   },
   {
+    title: '满员离场 · 星星粒子',
+    fields: [
+      ['启用星星尾气', 'effects.departureStars.enabled', 0, 1, 1, null, 'toggle'],
+      ['颜色叠加', 'effects.departureStars.color', 0, 16777215, 1],
+      ['发射密度倍率', 'effects.departureStars.rateScale', 0, 4, 0.05],
+      ['星星大小倍率', 'effects.departureStars.sizeScale', 0, 4, 0.01],
+      ['生命周期倍率', 'effects.departureStars.lifetimeScale', 0.1, 4, 0.05],
+      ['漂移速度倍率', 'effects.departureStars.speedScale', 0, 4, 0.05],
+      ['散开倍率', 'effects.departureStars.spreadScale', 0, 4, 0.05],
+      ['不透明度', 'effects.departureStars.opacity', 0, 1, 0.01],
+      ['X偏移', 'effects.departureStars.offsetX', -1.5, 1.5, 0.01],
+      ['Y偏移', 'effects.departureStars.offsetY', -1.5, 1.5, 0.01],
+      ['Z偏移', 'effects.departureStars.offsetZ', -1.5, 1.5, 0.01]
+    ]
+  },
+  {
+    title: '满员离场 · 连续拖尾',
+    fields: [
+      ['颜色叠加', 'effects.departureTrail.color', 0, 16777215, 1],
+      ['透明度', 'effects.departureTrail.opacity', 0, 1, 0.01],
+      ['宽度倍率', 'effects.departureTrail.widthScale', 0, 4, 0.05],
+      ['生命周期倍率', 'effects.departureTrail.lifetimeScale', 0.1, 4, 0.05],
+      ['X偏移', 'effects.departureTrail.offsetX', -1.5, 1.5, 0.01],
+      ['Y偏移', 'effects.departureTrail.offsetY', -1.5, 1.5, 0.01],
+      ['Z偏移', 'effects.departureTrail.offsetZ', -1.5, 1.5, 0.01]
+    ]
+  },
+  {
     title: '\u884c\u9a76\u5c3e\u70df ParticleTrail',
     fields: [
       ['\u6bcf\u79d2\u7c92\u5b50\u6570', 'effects.smokeTrail.rateOverTime', 0, 120, 1],
@@ -1309,10 +1304,13 @@ const FIELD_GROUPS = [
       ['\u5bff\u547d\u4e0a\u9650', 'effects.smokeTrail.lifetimeMax', 0.05, 2, 0.01],
       ['\u521d\u59cb\u5927\u5c0f\u4e0b\u9650', 'effects.smokeTrail.sizeMin', 0.01, 1, 0.01],
       ['\u521d\u59cb\u5927\u5c0f\u4e0a\u9650', 'effects.smokeTrail.sizeMax', 0.01, 1, 0.01],
+      ['粒子大小随机（%）', 'effects.smokeTrail.sizeRandomness', 0, 100, 1],
       ['\u6f02\u79fb\u901f\u5ea6\u500d\u6570', 'effects.smokeTrail.speedScale', 0, 4, 0.05],
       ['\u5c3e\u90e8 Z \u504f\u79fb', 'effects.smokeTrail.offsetZ', -1.5, 1.5, 0.01],
       ['\u9ad8\u5ea6 Y \u504f\u79fb', 'effects.smokeTrail.offsetY', -0.5, 1, 0.01],
       ['\u6563\u5f00\u500d\u6570', 'effects.smokeTrail.spread', 0, 4, 0.05],
+      ['粒子旋转速率（°/秒）', 'effects.smokeTrail.rotationSpeed', -720, 720, 5],
+      ['粒子旋转随机（%）', 'effects.smokeTrail.rotationRandomness', 0, 100, 1],
       ['\u91cd\u529b', 'effects.smokeTrail.gravity', -10, 2, 0.05],
       ['\u4e0d\u900f\u660e\u5ea6', 'effects.smokeTrail.opacity', 0, 1, 0.01]
     ]
@@ -1443,8 +1441,8 @@ function renderEditorHeader({ layoutMode = 'classic' } = {}) {
     return `
     <header class="editor-header">
       <div class="shell-brand">
-        <h2>\u573a\u666f\u8c03\u8282</h2>
-        <span class="editor-kicker">SCENE EDITOR <span class="editor-version">v${BUILD_VERSION}</span></span>
+        <h2>\u573a\u666f\u8c03\u8282 ${EDITOR_EDITION_BADGE}</h2>
+        <span class="editor-kicker"><span class="editor-version">v${BUILD_VERSION}</span></span>
       </div>
       <div class="editor-header-actions">${localeField}${aboutButton}${switchButton}
       </div>
@@ -1455,7 +1453,7 @@ function renderEditorHeader({ layoutMode = 'classic' } = {}) {
     <header class="editor-header">
       <div>
         <span class="editor-kicker">SCENE EDITOR <span class="editor-version">v${BUILD_VERSION}</span></span>
-        <h2>\u573a\u666f\u8c03\u8282</h2>
+        <h2>\u573a\u666f\u8c03\u8282 ${EDITOR_EDITION_BADGE}</h2>
       </div>
       <div class="editor-header-actions">${localeField}${aboutButton}${switchButton}
         <button class="editor-toggle" type="button" aria-label="\u6536\u8d77\u573a\u666f\u7f16\u8f91\u5668" aria-expanded="true">\u00d7</button>
@@ -1482,7 +1480,7 @@ function renderEditorAboutPanel() {
 
 function renderScreenshotSection() {
   return `
-      <details class="editor-section editor-screenshot" open>
+      <details class="editor-section editor-screenshot" data-editor-category="export">
         <summary class="editor-section-summary"><h3>\u622a\u56fe\u51fa\u56fe</h3></summary>
         <label class="editor-screenshot-size">
           <span>\u753b\u9762\u5c3a\u5bf8</span>
@@ -1518,23 +1516,41 @@ function renderExportSection() {
             )).join('')}
           </select>
         </label>
-        <p class="editor-export-set-note" role="note">BL \u53ea\u51fa\u4e00\u5957\u5305\uff08\u5b89\u5353/iOS \u5408\u5e76\uff09\uff1a\u540c\u4e00\u4efd HTML \u6309\u673a\u578b\u81ea\u52a8\u5207\u5bf9\u5e94 Icon \u4e0e\u5546\u5e97\u94fe\u63a5\uff0cLogo \u8ddf\u968f Logo \u7248\u672c\u3002</p>
+        <button class="editor-test-export" type="button">测试导出 AppLovin</button>
+        <div class="editor-delivery-names">
+          <div><label for="editor-delivery-list">交付文件名</label><output aria-live="polite">0 条有效</output></div>
+          <small id="editor-delivery-hint">每行一个完整文件名，自动识别渠道、步数和体力。</small>
+          <textarea id="editor-delivery-list" class="editor-text" rows="4" maxlength="32768" wrap="off" spellcheck="false"
+            aria-describedby="editor-delivery-hint editor-delivery-result"
+            placeholder="BL-2611045-Q465V1-N-N-EN-PL-LGJ-YQY-FB-10moves-N&#10;BL-2611045-Q465V1-N-N-EN-PL-LGJ-YQY-FB-N-5hp"></textarea>
+          <div id="editor-delivery-result" class="editor-delivery-result" hidden></div>
+        </div>
+        <div class="editor-export-naming-blocker" hidden>
+          <span id="editor-export-naming-message" role="status"></span>
+          <button class="editor-export-naming-jump" type="button">去修改</button>
+        </div>
+        <div class="editor-export-actions">
+          <button class="editor-export-button" type="button" disabled>按清单导出</button>
+        </div>
+        <p class="editor-export-status" role="status" aria-live="polite"></p>
+        <div class="editor-export-queue" aria-label="导出队列">
+          <div><strong>导出队列</strong><output>正在连接</output></div>
+          <ol></ol>
+          <button type="button" hidden>取消排队</button>
+        </div>
+        <details class="editor-export-preview"><summary>安全区预览</summary>
         <label class="editor-export-platform">
-          <span>\u6295\u653e\u5e73\u53f0</span>
+          <span>预览渠道</span>
           <select class="editor-export-select">
             ${PLAYABLE_EXPORT_PLATFORMS.map(([id, label, format]) => (
               `<option value="${id}">${label} (${format})</option>`
             )).join('')}
           </select>
         </label>
-        <div class="editor-export-actions">
-          <button class="editor-export-button" type="button">\u5bfc\u51fa\u5f53\u524d\u5e73\u53f0</button>
-          <button class="editor-export-all-button" type="button">\u4e00\u952e\u5bfc\u51fa\u5168\u90e8</button>
-        </div>
-        <p class="editor-export-limit editor-export-variants" role="status" aria-live="polite"></p>
-        <p class="editor-export-limit" role="note">\u6240\u6709\u6e20\u9053\u4e0a\u9650 5 MB\uff1a\u8d85\u8fc7\u7684\u5305\u4e0d\u4f1a\u4e0b\u8f7d\uff0c\u5bfc\u51fa\u4f1a\u76f4\u63a5\u62a5\u9519\u5e76\u5217\u51fa\u5360\u7528\u6700\u5927\u7684\u7d20\u6750\u3002</p>
-        <p class="editor-export-status" role="status" aria-live="polite" aria-atomic="true">\u5c31\u7eea</p>
-        <p class="editor-export-events" role="status" aria-live="polite" aria-atomic="true">\u5bfc\u51fa\u5305\u81ea\u5e26 AppLovin 12 \u4e2a\u6807\u51c6\u4e8b\u4ef6</p>
+        <label class="editor-safe-guide-toggle" title="按检测平台的渠道规则显示，仅供预览">
+          <input type="checkbox" checked />显示平台安全区
+        </label>
+        </details>
       </details>`;
 }
 
@@ -1552,9 +1568,9 @@ function renderClassicEditorTemplate() {
     ${renderEditorAboutPanel()}
     <div class="editor-body">
       <p class="editor-help">\u56fe\u7247\u4e0e\u884c\u8d70\u66f2\u7ebf\u53ef\u5206\u522b\u8c03\u8282\u3002\u53c2\u6570\u6309\u5f53\u524d\u5173\u5361\u5355\u72ec\u4fdd\u5b58\uff0c\u6bcf\u6b21\u8c03\u6574\u4f1a\u81ea\u52a8\u4fdd\u5b58\u3002</p>
-      ${renderScreenshotSection()}
       ${renderCategoryTabs()}
       ${renderExportSection()}
+      ${renderScreenshotSection()}
       <div class="editor-fields"></div>
       ${renderHistoryActions()}
     </div>
@@ -1568,9 +1584,9 @@ const SHELL_PANELS = [
   { id: 'level', label: '\u5173\u5361', icon: 'M5 21V4M5 5h9l-1.2 2.6L14 10H5M5 14h7l-1 2.2L12 18H5', match: /^level\./ },
   { id: 'scene', label: '\u573a\u666f', icon: 'M12 3v2M12 19v2M3 12h2M19 12h2M5.6 5.6 7 7M17 17l1.4 1.4M18.4 5.6 17 7M7 17l-1.4 1.4', match: /^(?:camera|lighting|sourceCrop|background|visibility|preview)\./ },
   { id: 'track', label: '\u8f68\u9053', icon: 'M4 6h16v12H4zM8 6v12M16 6v12', match: /^(?:conveyorLayout|conveyorLayouts|spatialConveyor|queueCurves|passengerShadows|effects)\./ },
-  { id: 'cars', label: '\u8f66\u8f86', icon: 'M4 15v-2.5l1.8-3.2A2 2 0 0 1 7.5 8h9a2 2 0 0 1 1.7 1.3L20 12.5V15M4 15h16v2.5H4z', match: /^(?:parkingSpots|vehiclePath|vehicleDeparturePath|vehicleArea|passengerMaterial|passengers)\./ },
+  { id: 'cars', label: '\u8f66\u8f86', icon: 'M4 15v-2.5l1.8-3.2A2 2 0 0 1 7.5 8h9a2 2 0 0 1 1.7 1.3L20 12.5V15M4 15h16v2.5H4z', match: /^(?:parkingSpots|vehiclePath|vehicleDeparturePath|vehicleArea|passengers)\./ },
   { id: 'guide', label: '\u5f15\u5bfc', icon: 'M9 11V5.5a1.5 1.5 0 0 1 3 0V10M12 10V7.5a1.5 1.5 0 0 1 3 0V12M15 12v-1a1.5 1.5 0 0 1 3 0v4.5A5.5 5.5 0 0 1 12.5 21h-1A5.5 5.5 0 0 1 6 15.5V13a1.5 1.5 0 0 1 3 0v1', match: /^(?:vehicleGuideHand|firstClickGuide|entryBanner|superBoost|countdown|weatherEffect|freeAssets|preRoll|gameOver|installGate|stamina)\./ },
-  { id: 'ui', label: '\u754c\u9762', icon: 'M4 5h16v14H4zM4 9h16M9 9v10', match: /^(?:branding|cta|speedToggle|progressHud)\./ },
+  { id: 'ui', label: '\u754c\u9762', icon: 'M4 5h16v14H4zM4 9h16M9 9v10', match: /^(?:branding|cta|speedToggle|progressHud|combo|iq)\./ },
   { id: 'audio', label: '\u58f0\u97f3', icon: 'M5 9.5h3L12.5 6v12L8 14.5H5zM16 9a4.2 4.2 0 0 1 0 6', match: /^audio\./ },
   { id: 'export', label: '\u5bfc\u51fa', icon: 'M12 16V4M7.5 8.5 12 4l4.5 4.5M4 16v3h16v-3', match: /^exportNaming\./ },
 ];
@@ -1586,7 +1602,7 @@ const SHELL_SUBGROUPS = {
   ],
   cars: [
     ['\u8f66\u8f86\u4e0e\u8f66\u4f4d', /^(?:parkingSpots|vehiclePath|vehicleDeparturePath|vehicleArea)\./],
-    ['\u5c0f\u4eba', /^(?:passengers|passengerMaterial)\./],
+    ['\u5c0f\u4eba', /^passengers\./],
   ],
   guide: [
     ['\u5f00\u573a\u5f15\u5bfc', /^(?:vehicleGuideHand|firstClickGuide|entryBanner)\./],
@@ -1599,7 +1615,7 @@ const SHELL_SUBGROUPS = {
   ],
   ui: [
     ['\u54c1\u724c', /^branding\./],
-    ['\u63a7\u4ef6', /^(?:cta|speedToggle|progressHud)\./],
+    ['\u63a7\u4ef6', /^(?:cta|speedToggle|progressHud|combo|iq)\./],
   ],
   export: [['\u547d\u540d', /^exportNaming\./]],
 };
@@ -1612,7 +1628,7 @@ const SHELL_PANEL_TITLES = {
   guide: ['\u5f15\u5bfc\u4e0e\u6d41\u7a0b', '\u624b\u6307\u63d0\u793a\u3001\u5f00\u573a\u5f15\u5bfc\u3001\u6a2a\u5e45\u3001\u5012\u8ba1\u65f6\u3001\u5929\u6c14\u3001\u524d\u8d34\u3001\u7ed3\u7b97'],
   ui: ['\u754c\u9762\u4e0e\u54c1\u724c', 'Icon/Logo/\u6587\u672c\u3001CTA\u3001\u500d\u901f\u6309\u94ae\u3001\u8fdb\u5ea6\u6761'],
   audio: ['\u58f0\u97f3', '\u97f3\u6548\u5ef6\u8fdf\u3001\u97f3\u91cf\u3001BGM \u5e93'],
-  export: ['\u5bfc\u51fa', '\u547d\u540d\u3001\u622a\u56fe\u3001\u5957\u7cfb\u3001\u4e03\u5e73\u53f0\u4ea4\u4ed8'],
+  export: ['\u5bfc\u51fa', '交付清单与截图'],
 };
 
 function renderShellEditorTemplate() {
@@ -1639,8 +1655,8 @@ function renderShellEditorTemplate() {
       </div>
       <div class="editor-body">
         <div class="editor-fields"></div>
-        ${renderScreenshotSection()}
         ${renderExportSection()}
+        ${renderScreenshotSection()}
         ${renderHistoryActions()}
       </div>
     </section>
@@ -1660,6 +1676,7 @@ export function createSceneEditor(root, {
   defaultTuning = getTuning(),
   setTuning,
   getPlayableExportPayload = () => ({ tuning: getTuning() }),
+  previewExportBranding = () => {},
   clearSavedTuning = () => {},
   saveImportedLevelTuning = () => false,
   captureScreenshot = async () => { throw new Error('\u622a\u56fe\u529f\u80fd\u4e0d\u53ef\u7528'); },
@@ -1667,24 +1684,80 @@ export function createSceneEditor(root, {
   openSpatialPointEditor = async () => {},
   openLevelLayoutEditor = async () => {},
   getCameraPreset = () => null,
-  layoutMode = 'classic'
+  layoutMode = 'classic',
+  studio = null,
+  studioAvailable = false,
+  restartPreview
 }) {
   const defaults = structuredClone(defaultTuning);
   // `shell` is the split layout study; anything else keeps the shipped sidebar
   // byte for byte so a bad shell build can never take the old editor down.
-  const shellLayout = layoutMode === 'shell';
+  const shellLayout = layoutMode === 'shell' || Boolean(studio);
   root.innerHTML = shellLayout ? renderShellEditorTemplate() : renderClassicEditorTemplate();
+  if (studioAvailable) {
+    const selector = document.createElement('select');
+    selector.className = 'editor-layout-select';
+    selector.setAttribute('aria-label', '编辑器布局');
+    selector.title = '编辑器布局';
+    for (const [id, label] of [['studio', '工作台'], ['shell', '分栏布局'], ['classic', '经典布局']]) {
+      selector.add(new Option(label, id, false, id === layoutMode));
+    }
+    root.querySelector('.editor-layout-switch').replaceWith(selector);
+    selector.onchange = () => {
+      const url = new URL(location.href);
+      url.searchParams.set('layout', selector.value);
+      location.assign(url);
+    };
+  }
 
   const fieldsRoot = root.querySelector('.editor-fields');
   const inputs = new Map();
   const exportSetSelect = root.querySelector('.editor-export-set-select');
-  const exportSetNote = root.querySelector('.editor-export-set-note');
+
   const exportSelect = root.querySelector('.editor-export-select');
+  let previewExportSet = false;
+  function refreshExportBranding() {
+    const { branding, storeLinks, preview, cta } = getTuning();
+    previewExportBranding(previewExportSet
+      ? createBrandingVariantTuning({ branding, storeLinks, preview, cta }, exportSetSelect.value)
+      : null, exportSelect.value);
+  }
+  const guideToggle = root.querySelector('.editor-safe-guide-toggle input');
+  const safeGuide = document.createElement('div');
+  safeGuide.className = 'editor-safe-guide';
+  safeGuide.setAttribute('aria-hidden', 'true');
+  safeGuide.innerHTML = '<span></span><span></span>';
+  document.getElementById('stage').append(safeGuide);
+  const guidePreference = 'bus-loop-editor-safe-guide-v1';
+  try { guideToggle.checked = localStorage.getItem(guidePreference) !== 'off'; } catch { /* private mode */ }
+  function updateSafeGuide() {
+    const [platform, label] = PLAYABLE_EXPORT_PLATFORMS.find(([id]) => id === exportSelect.value);
+    safeGuide.dataset.platform = platform;
+    safeGuide.style.setProperty('--safe-bottom', brandingBottomInset(platform, false) + 'px');
+    safeGuide.style.setProperty('--wide-bottom', brandingBottomInset(platform, true) + 'px');
+    safeGuide.hidden = !guideToggle.checked;
+    safeGuide.firstElementChild.textContent = label + ' 顶部保留区';
+    safeGuide.lastElementChild.textContent = label + ' 底部操作区';
+  }
+  exportSelect.addEventListener('change', updateSafeGuide);
+  exportSelect.addEventListener('change', refreshExportBranding);
+  guideToggle.addEventListener('change', () => {
+    updateSafeGuide();
+    try { localStorage.setItem(guidePreference, guideToggle.checked ? 'on' : 'off'); } catch { /* private mode */ }
+  });
+  updateSafeGuide();
   const exportButton = root.querySelector('.editor-export-button');
-  const exportAllButton = root.querySelector('.editor-export-all-button');
+  const testExportButton = root.querySelector('.editor-test-export');
+
+  const deliveryList = root.querySelector('#editor-delivery-list');
+  const deliveryCount = root.querySelector('.editor-delivery-names output');
+  const deliveryResult = root.querySelector('#editor-delivery-result');
+
   const exportStatus = root.querySelector('.editor-export-status');
-  const exportVariantsStatus = root.querySelector('.editor-export-variants');
-  const exportEventsStatus = root.querySelector('.editor-export-events');
+  const exportQueue = createEditorExportQueue(root.querySelector('.editor-export-queue'), PLAYABLE_EXPORT_PLATFORMS);
+  const exportNamingBlocker = root.querySelector('.editor-export-naming-blocker');
+  const exportNamingMessage = exportNamingBlocker.querySelector('[role="status"]');
+  const exportNamingJump = exportNamingBlocker.querySelector('.editor-export-naming-jump');
   const localeSelect = root.querySelector('.editor-locale-select');
   const screenshotSelect = root.querySelector('.editor-screenshot-select');
   const screenshotButton = root.querySelector('.editor-screenshot-button');
@@ -1697,6 +1770,40 @@ export function createSceneEditor(root, {
   const MAX_TUNING_HISTORY = 50;
   let restoringHistory = false;
   let playableExportBusy = false;
+  let shellJumpToField = null;
+
+  function updatePlayableExportButtons() {
+    const names = deliveryList.value;
+    const { entries, errors } = parseDeliveryNames(names, getTuning().exportNaming, exportSetSelect.value);
+    const countLabel = entries.length + ' 条有效';
+    if (deliveryCount.textContent !== countLabel) deliveryCount.textContent = countLabel;
+    const detail = [...errors, ...entries.map(({ line, platform, naming }) => {
+      const label = PLAYABLE_EXPORT_PLATFORMS.find(([id]) => id === platform)[1];
+      const moves = naming.steps === 'N' ? '清关跳转' : parseInt(naming.steps, 10) + ' 次';
+      const stamina = naming.version === 'N' ? '不限体力' : parseInt(naming.version, 10) + ' 体力';
+      return `第 ${line} 行 · ${label} · ${moves} · ${stamina}`;
+    })].join('\n');
+    if (deliveryResult.textContent !== detail) deliveryResult.textContent = detail;
+    deliveryResult.hidden = !detail;
+    deliveryList.setAttribute('aria-invalid', String(Boolean(errors.length)));
+    deliveryList.disabled = playableExportBusy;
+    const handIssue = getVehicleGuideHandIssue(getTuning().vehicleGuideHand, LEVEL_1.key, LEVEL_1.vehicles);
+    for (const path of ['vehicleGuideHand.levelKey', 'vehicleGuideHand.vehicleId']) {
+      const select = inputs.get(path)?.select;
+      const error = handIssue?.path === path ? handIssue.message : '';
+      select?.setAttribute('aria-invalid', String(Boolean(error)));
+      select?.setCustomValidity(error);
+    }
+    const invalidCountdown = [...inputs.values()].some(controls => controls.isCountdownNumber && !controls.updateValidity());
+    const blocker = handIssue;
+    testExportButton.disabled = playableExportBusy || Boolean(blocker) || invalidCountdown;
+    exportButton.disabled = playableExportBusy || !entries.length || Boolean(errors.length || blocker) || invalidCountdown;
+    exportNamingBlocker.hidden = !blocker;
+    const blockerMessage = handIssue?.message || '';
+    if (exportNamingMessage.textContent !== blockerMessage) exportNamingMessage.textContent = blockerMessage;
+    exportNamingJump.dataset.path = blocker?.path ?? '';
+    exportNamingJump.setAttribute('aria-label', handIssue ? '去修改小手提示' : '去修改');
+  }
 
   function updateCountdownControls() {
     const countdown = normalizeCountdownConfig(getTuning().countdown);
@@ -1717,8 +1824,7 @@ export function createSceneEditor(root, {
       }
       if (controls.updateValidity && !controls.updateValidity()) invalid = true;
     }
-    exportButton.disabled = playableExportBusy || invalid;
-    exportAllButton.disabled = playableExportBusy || invalid;
+    updatePlayableExportButtons();
     const countdownErrorMessage = '请先修正「引导 → 倒计时挑战」中的时间配置';
     if (invalid && !playableExportBusy) {
       exportStatus.dataset.state = 'error';
@@ -1744,17 +1850,6 @@ export function createSceneEditor(root, {
 
   function updateExportVariantControls() {
     const tuning = getTuning();
-    for (const [path, enabled] of [
-      ['exportNaming.version', Number(tuning.stamina?.enabled) === 1],
-      ['exportNaming.steps', isInstallGateEnabled(tuning.installGate)]
-    ]) {
-      const controls = inputs.get(path);
-      if (!controls) continue;
-      controls.row.classList.toggle('is-readonly', !enabled);
-      controls.textInput.disabled = !enabled;
-      if (!enabled) controls.textInput.value = 'N';
-      controls.updateValidity();
-    }
     const gateControls = inputs.get('installGate.successfulOperationThreshold');
     if (gateControls) {
       const disabled = !isInstallGateEnabled(tuning.installGate);
@@ -1762,18 +1857,8 @@ export function createSceneEditor(root, {
       gateControls.range.disabled = disabled;
       gateControls.number.disabled = disabled;
     }
-    let valid = true;
-    try {
-      const plan = getExportVariantPlan(tuning);
-      exportVariantsStatus.textContent = `${plan.count}个版本；当前渠道 ${plan.count} 份，全部渠道 ${plan.count * 7} 份。多值用 / 分隔，预览使用第一个值。`;
-    } catch (error) {
-      valid = false;
-      exportVariantsStatus.textContent = error.message;
-    }
-    exportVariantsStatus.dataset.state = valid ? '' : 'error';
-    const invalidCountdown = [...inputs.values()].some(controls => controls.isCountdownNumber && !controls.updateValidity());
-    exportButton.disabled = exportAllButton.disabled = playableExportBusy || !valid || invalidCountdown;
-    return valid;
+    updatePlayableExportButtons();
+    return !exportButton.disabled;
   }
 
   const sameTuning = (left, right) => JSON.stringify(left) === JSON.stringify(right);
@@ -1787,13 +1872,14 @@ export function createSceneEditor(root, {
       : tuning.vehiclePath?.parkingBounds;
     for (const edge of ['minX', 'maxX', 'minZ', 'maxZ']) {
       const controls = inputs.get(`vehiclePath.parkingBounds.${edge}`);
-      controls?.row?.classList.toggle('is-readonly', automatic);
+      const readOnly = automatic && edge !== 'maxZ';
+      controls?.row?.classList.toggle('is-readonly', readOnly);
       if (controls?.range) {
-        controls.range.disabled = automatic;
+        controls.range.disabled = readOnly;
         controls.range.value = String(bounds?.[edge]);
       }
       if (controls?.number) {
-        controls.number.disabled = automatic;
+        controls.number.disabled = readOnly;
         controls.number.value = formatValue(bounds?.[edge], controls.step);
       }
     }
@@ -1816,6 +1902,10 @@ export function createSceneEditor(root, {
     }
     updateHistoryButtons();
     if (/^(vehiclePath|vehicleArea|parkingSpots|facing)\./u.test(path ?? '')) updateVehiclePathBounds(getTuning());
+    if (/^(cta|branding)\./u.test(path ?? '')) {
+      if (previewExportSet) refreshExportBranding();
+      syncBrandingPositions(getTuning());
+    }
     return result;
   }
 
@@ -1825,12 +1915,14 @@ export function createSceneEditor(root, {
     const target = direction === 'undo' ? entry.before : entry.after;
     restoringHistory = true;
     try {
-      setTuning(structuredClone(target), { path: entry.path });
+      setTuning(structuredClone(target), { path: entry.path, restoreSnapshot: true });
+
       if (direction === 'undo') {
-        tuningRedoStack.push({ before: target, after: current, path: entry.path });
+        tuningRedoStack.push({ ...entry, before: target, after: current });
       } else {
-        tuningUndoStack.push({ before: current, after: target, path: entry.path });
+        tuningUndoStack.push({ ...entry, before: current, after: target });
       }
+
       sync({ resetCountdownDrafts: true });
     } finally {
       restoringHistory = false;
@@ -1839,11 +1931,16 @@ export function createSceneEditor(root, {
   }
 
   undoButton.addEventListener('click', () => restoreHistoryEntry(tuningUndoStack.pop(), 'undo'));
+  deliveryList.addEventListener('input', () => { updateExportVariantControls(); shellRefresh?.(); });
   redoButton.addEventListener('click', () => restoreHistoryEntry(tuningRedoStack.pop(), 'redo'));
 
   function setEditorCategory(category, { focus = false } = {}) {
     if (!EDITOR_CATEGORIES.some(([id]) => id === category)) return;
     root.dataset.editorCategory = category;
+    if (!shellLayout) {
+      previewExportSet = category === 'export';
+      refreshExportBranding();
+    }
     for (const tab of categoryTabs) {
       const selected = tab.dataset.editorCategoryTab === category;
       tab.setAttribute('aria-selected', String(selected));
@@ -1870,19 +1967,33 @@ export function createSceneEditor(root, {
   });
 
   exportSetSelect.addEventListener('change', () => {
-    const crowd = exportSetSelect.value === 'crowd';
-    if (exportSetNote) {
-      exportSetNote.textContent = crowd
-        ? 'BFT \u53ea\u51fa\u4e00\u5957\u5305\uff08\u5b89\u5353/iOS \u5408\u5e76\uff09\uff1a\u5bfc\u51fa\u65f6\u81ea\u52a8\u6362 BFT Icon\u3001Logo\u3001BFT \u5546\u5e97\u94fe\u63a5\uff0c\u5e95\u90e8\u6587\u6848\u82e5\u4ecd\u4e3a\u9ed8\u8ba4\u5219\u6539\u4e3a Bus Crowd\u3002'
-        : 'BL \u53ea\u51fa\u4e00\u5957\u5305\uff08\u5b89\u5353/iOS \u5408\u5e76\uff09\uff1a\u540c\u4e00\u4efd HTML \u6309\u673a\u578b\u81ea\u52a8\u5207\u5bf9\u5e94 Icon \u4e0e\u5546\u5e97\u94fe\u63a5\uff0cLogo \u8ddf\u968f Logo \u7248\u672c\u3002';
-    }
+    refreshExportBranding();
+    updateExportVariantControls();
+    shellRefresh?.();
   });
 
-  async function exportPlayable({ all = false } = {}) {
-    if (!updateExportVariantControls()) {
-      [...inputs.values()].find(controls => controls.isVariant && !controls.updateValidity())?.textInput.reportValidity();
-      return;
+  function inlineAssetUrls(tuning) {
+    // The editor preview always runs one stage built from the selected level
+    // (plus Level7 for the Level9 handoff). The baked catalogue entry is a
+    // stale twin of that same stage slot, so shipping it in the estimate
+    // counted every art path twice and reported assets the package drops.
+    const levels = [LEVEL_1];
+    if (LEVEL_1.key === 'level9') {
+      const handoff = PLAYABLE_ALL_LEVELS.find((level) => level?.key === 'level7') ?? getLevelDefinition('level7');
+      if (handoff) levels.push(handoff);
     }
+    return collectPlayableInlineAssetUrls({
+      tuning,
+      levels,
+      spatialSelection: tuning.conveyorLayout?.selected,
+      ...getReachableStageArt(tuning, levels.map(level => ({ level })))
+    });
+  }
+
+  async function exportPlayable(testExport = false) {
+    if (playableExportBusy || root.querySelector('.editor-export-confirm[open]')) return;
+    const deliveryNames = deliveryList.value.trim();
+    if (!testExport && !deliveryNames) { deliveryList.focus(); return; }
     if (!updateCountdownControls()) {
       const invalidCountdownControl = [...inputs.values()]
         .find((controls) => controls.isCountdownNumber && !controls.number.disabled && !controls.updateValidity());
@@ -1891,49 +2002,26 @@ export function createSceneEditor(root, {
       exportStatus.textContent = '导出失败：请先修正倒计时配置';
       return;
     }
-    const invalidNamingControl = [...inputs.values()]
-      .find((controls) => controls.isFilename && !controls.updateValidity());
-    if (invalidNamingControl) {
-      invalidNamingControl.textInput.reportValidity();
-      exportStatus.dataset.state = 'error';
-      exportStatus.textContent = '\u5bfc\u51fa\u5931\u8d25\uff1a\u8bf7\u5148\u4fee\u6b63\u5bfc\u51fa\u547d\u540d\u5b57\u6bb5';
+    if (exportNamingJump.dataset.path) {
+      exportNamingJump.click();
       return;
     }
-    const platform = all ? null : exportSelect.value;
+    if (!testExport) {
+      const { entries, errors } = parseDeliveryNames(deliveryNames, getTuning().exportNaming, exportSetSelect.value);
+      if (!entries.length || errors.length) { deliveryList.focus(); return; }
+    }
     const brandingSet = exportSetSelect.value === 'crowd' ? 'crowd' : 'bus';
-    const brandingSetLabel = brandingSet === 'crowd'
-      ? 'BFT \u5408\u5e76\u4e00\u5957'
-      : 'BL \u5b89\u5353/iOS \u5408\u5e76\u4e00\u5957';
-    const platformLabel = all
-      ? `\u5168\u90e8 7 \u4e2a\u5e73\u53f0 \u00d7 ${brandingSetLabel}`
-      : `${PLAYABLE_EXPORT_PLATFORMS.find(([id]) => id === platform)?.[1] ?? platform}\uff08${brandingSetLabel}\uff09`;
-    const variantCount = getExportVariantPlan(getTuning()).count;
-    const exportLabel = `${platformLabel}，${variantCount}个版本 / ${variantCount * (all ? 7 : 1)}份`;
+    const exportPayload = getPlayableExportPayload() ?? { tuning: structuredClone(getTuning()) };
+    const reviewEndpoint = '/__playable-export-prepared';
+    const headers = { 'Content-Type': 'application/json' };
+    let preparedId = null;
     playableExportBusy = true;
     exportSetSelect.disabled = true;
     exportSelect.disabled = true;
-    exportButton.disabled = true;
-    exportAllButton.disabled = true;
-    exportButton.setAttribute('aria-busy', 'true');
-    exportAllButton.setAttribute('aria-busy', 'true');
-    exportStatus.dataset.state = 'busy';
-    exportStatus.textContent = `\u6b63\u5728\u6253\u5305 ${exportLabel}...`;
-    // The first export of a setup rebuilds every platform (about two minutes
-    // on the one-CPU server) while a repeat of the same setup is much faster.
-    // A live counter keeps that wait legible instead of looking hung.
-    const exportStartedAt = Date.now();
-    const exportElapsedTimer = setInterval(() => {
-      const seconds = Math.round((Date.now() - exportStartedAt) / 1000);
-      exportStatus.textContent = `\u6b63\u5728\u6253\u5305 ${exportLabel}...（已用 ${seconds} 秒）`;
-    }, 1000);
-    try {
-      const exportPayload = getPlayableExportPayload() ?? { tuning: getTuning() };
-      const response = await fetch(all ? '/__playable-export-all' : '/__playable-export', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(all
-          ? { ...exportPayload, brandingSet }
-          : { ...exportPayload, platform, brandingSet })
+    updatePlayableExportButtons();
+    async function fetchExport(endpoint, body, signal, ticket) {
+      const response = await fetch(endpoint, {
+        method: 'POST', headers: ticket ? { ...headers, 'X-Export-Ticket': ticket } : headers, body, signal
       });
       if (!response.ok) {
         const payload = await response.json().catch(() => ({}));
@@ -1951,11 +2039,68 @@ export function createSceneEditor(root, {
           : '';
         throw new Error(`${baseMessage}${detail && !detailAlreadyShown ? `：${detail}` : ''}${durationMessage}`);
       }
+      return response;
+    }
+    async function prepareDeliveryDownload() {
+      const review = buildExportReview(exportPayload.tuning, { brandingSet, platforms: PLAYABLE_EXPORT_PLATFORMS, deliveryNames });
+      const confirmed = await confirmPlayableExport(root, review, async (signal, setStatus) => {
+        let elapsedTimer;
+        try {
+          setStatus('正在加入导出队列…');
+          const ticket = await exportQueue.enter(
+            { level: exportPayload.tuning.level?.selected, platform: 'all' },
+            levelOwnerHeaders(),
+            ahead => setStatus('已排队，前方 ' + ahead + ' 个任务。点击「返回修改」可取消。'),
+            signal
+          );
+          signal.throwIfAborted();
+          const packingSince = Date.now();
+          const message = '正在准备导出包并计算实际体积…';
+          setStatus(message);
+          elapsedTimer = setInterval(() => {
+            setStatus(message + ' 已用 ' + Math.round((Date.now() - packingSince) / 1000) + ' 秒');
+          }, 1000);
+          const response = await fetchExport(
+            '/__playable-export-all',
+            JSON.stringify({ ...exportPayload, deliveryNames, brandingSet, review: true }),
+            signal,
+            ticket
+          );
+          const summary = await response.json();
+          preparedId = summary.id;
+          return summary;
+        } finally {
+          clearInterval(elapsedTimer);
+          exportQueue.finish();
+        }
+      });
+      if (!confirmed) return;
 
+      exportStatus.dataset.state = 'busy';
+      exportStatus.textContent = '正在下载试玩包…';
+      const response = await fetchExport(reviewEndpoint, JSON.stringify({ id: preparedId }));
+      preparedId = null;
+      return response;
+    }
+    async function prepareTestDownload() {
+      exportStatus.dataset.state = 'busy';
+      exportStatus.textContent = '正在准备 AppLovin 测试包…';
+      try {
+        const ticket = await exportQueue.enter(
+          { level: exportPayload.tuning.level?.selected, platform: 'applovin' }, levelOwnerHeaders(),
+          ahead => { exportStatus.textContent = '测试导出排队中，前方 ' + ahead + ' 个任务'; }
+        );
+        exportStatus.textContent = '正在打包 AppLovin 测试 HTML…';
+        return await fetchExport('/__playable-export',
+          JSON.stringify({ ...exportPayload, platform: 'applovin', testExport: true, brandingSet }), undefined, ticket);
+      } finally { exportQueue.finish(); }
+    }
+    try {
+      const exportStartedAt = Date.now();
+      const response = testExport ? await prepareTestDownload() : await prepareDeliveryDownload();
+      if (!response) return;
       const blob = await response.blob();
-      const filename = all || response.headers.get('Content-Type')?.includes('application/zip')
-        ? (downloadFilename(response, 'all').replace(/\.html$/i, '.zip'))
-        : downloadFilename(response, platform);
+      const filename = downloadFilename(response, testExport ? 'applovin' : 'all');
       const objectUrl = URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = objectUrl;
@@ -1979,26 +2124,52 @@ export function createSceneEditor(root, {
       // creeping toward the cap before it is refused.
       const sizeMessage = blob.size > 0 ? `\uff08${formatKilobytes(blob.size)}\uff09` : '';
       exportStatus.textContent = `\u5df2\u4e0b\u8f7d ${filename}${sizeMessage}${checkMessage}${timingMessage}\uff0c\u5f85\u5e73\u53f0\u9a8c\u6536`;
+      if (testExport) exportStatus.textContent = `已下载测试包 ${filename}${sizeMessage}`;
+      refreshPayloadStats?.();
     } catch (error) {
+      if (error.name === 'AbortError') {
+        exportStatus.dataset.state = '';
+        exportStatus.textContent = '已取消排队';
+        return;
+      }
       exportStatus.dataset.state = 'error';
       const message = error instanceof TypeError && /fetch|network|failed to fetch/i.test(error.message)
         ? '\u65e0\u6cd5\u8fde\u63a5\u5bfc\u51fa\u670d\u52a1\uff0c\u8bf7\u786e\u8ba4\u5f53\u524d\u7535\u8111\u53ef\u8bbf\u95ee\u7f16\u8f91\u5668\u5730\u5740'
         : error.message;
       exportStatus.textContent = `\u5bfc\u51fa\u5931\u8d25\uff1a${message}`;
     } finally {
-      clearInterval(exportElapsedTimer);
+      if (preparedId) {
+        void fetch(reviewEndpoint, {
+          method: 'POST', headers, body: JSON.stringify({ id: preparedId, discard: true })
+        }).catch(() => {});
+      }
       exportSetSelect.disabled = false;
       exportSelect.disabled = false;
       playableExportBusy = false;
       updateCountdownControls();
       updateExportVariantControls();
-      exportButton.removeAttribute('aria-busy');
-      exportAllButton.removeAttribute('aria-busy');
     }
   }
 
   exportButton.addEventListener('click', () => exportPlayable());
-  exportAllButton.addEventListener('click', () => exportPlayable({ all: true }));
+  testExportButton.addEventListener('click', () => exportPlayable(true));
+
+  exportNamingJump.addEventListener('click', () => {
+    const path = exportNamingJump.dataset.path;
+    if (path === 'deliveryNames') { deliveryList.focus(); return; }
+    const controls = inputs.get(path);
+    if (!controls) return;
+    if (shellJumpToField) {
+      shellJumpToField(path);
+      return;
+    }
+    const { row, textInput, select } = controls;
+    const section = row.closest('.editor-section');
+    setEditorCategory(section.dataset.editorCategory);
+    section.open = true;
+    row.scrollIntoView({ block: 'center' });
+    (textInput ?? select)?.focus({ preventScroll: true });
+  });
 
   screenshotButton.addEventListener('click', async () => {
     const [width, height] = String(screenshotSelect.value || '720x1280')
@@ -2037,16 +2208,15 @@ export function createSceneEditor(root, {
     if (group.spatialOnly) section.dataset.spatialOnly = 'true';
     if (group.spatialImportAnchor) section.dataset.spatialImportAnchor = 'true';
     section.innerHTML = `<summary class="editor-section-summary"><h3>${group.title}</h3></summary>`;
+
     for (const [label, path, min, max, step, configuredOptions, control] of group.fields) {
       const options = control === 'vehicle-id-select'
         ? getVehicleIdOptions(LEVEL_1.vehicles)
         : configuredOptions;
-      const isColor = /color$/i.test(path) || /^passengerMaterial\.solidColors\.\d+$/.test(path);
+      const isColor = /color$/i.test(path);
       const isToggle = control === 'toggle';
       const isCountdownNumber = control === 'countdown-number';
-      const isFilename = control === 'filename';
-      const isVariant = control === 'variant';
-      const isText = control === 'text' || isFilename || isVariant;
+      const isText = control === 'text';
       const isUrl = control === 'url';
       const row = document.createElement('label');
       row.className = 'editor-field';
@@ -2068,7 +2238,7 @@ export function createSceneEditor(root, {
         ${options ? '' : rangeMarkup}
         ${isColor && !options ? '<input class="editor-color" type="color">' : ''}
         ${isToggle ? `<input class="editor-checkbox" type="checkbox" role="switch" aria-label="${group.title} ${label}">` : ''}
-        ${isText ? `<input class="editor-text" type="text"${isFilename ? ' maxlength="64" pattern="[A-Za-z0-9_-]+" spellcheck="false"' : ''} aria-label="${group.title} ${label}">` : ''}
+        ${isText ? `<input class="editor-text" type="text" aria-label="${group.title} ${label}">` : ''}
         ${isUrl ? `<input class="editor-url" type="url" inputmode="url" spellcheck="false" aria-label="${group.title} ${label}">` : ''}
         ${options || isToggle || isText || isUrl ? '' : `<input class="editor-number" type="number" min="${min}" max="${max}" step="${step}" aria-label="${group.title} ${label}">`}
       `;
@@ -2083,11 +2253,6 @@ export function createSceneEditor(root, {
         textInput.maxLength = 4096;
       }
       const urlInput = row.querySelector('.editor-url');
-      if (isVariant) {
-        textInput.maxLength = 256;
-        textInput.spellcheck = false;
-        textInput.placeholder = path.endsWith('.version') ? '如 3/5/10' : '如 10/20';
-      }
       if (control === 'stamina-number') {
         range.setAttribute('aria-label', `${group.title} ${label}滑条`);
         let livesDirty = false;
@@ -2170,7 +2335,8 @@ export function createSceneEditor(root, {
           // `vehiclePath.autoBounds` disables the manual bound sliders, so the
           // row visibility has to be refreshed on the toggle that flips it.
           if (path === 'firstClickGuide.enabled' || path === 'vehiclePath.autoBounds'
-            || path.startsWith('countdown.') || path.startsWith('stamina.') || path.startsWith('superBoost.')
+            || path === 'iq.enabled' || path.startsWith('countdown.') || path.startsWith('stamina.')
+            || path.startsWith('superBoost.') || path === 'vehicleGuideHand.enabled'
             || path.startsWith('installGate.')) sync();
         });
         inputs.set(path, { row, checkbox, step });
@@ -2178,31 +2344,12 @@ export function createSceneEditor(root, {
         continue;
       }
       if (isText) {
-        const updateValidity = () => {
-          if (isVariant) {
-            const enabled = path.endsWith('.version') ? Number(getTuning().stamina?.enabled) === 1 : isInstallGateEnabled(getTuning().installGate);
-            let message = '';
-            try { parseExportVariantValues(textInput.value, path.endsWith('.version') ? 'stamina' : 'steps', enabled); }
-            catch (error) { message = error.message; }
-            textInput.setAttribute('aria-invalid', String(Boolean(message)));
-            textInput.setCustomValidity(message);
-            return !message;
-          }
-          if (!isFilename) return true;
-          const valid = isValidExportNamingPart(textInput.value);
-          textInput.setAttribute('aria-invalid', String(!valid));
-          textInput.setCustomValidity(valid ? '' : '\u53ef\u7559\u7a7a\uff0c\u6216\u8f93\u5165 1-64 \u4f4d\u82f1\u6587\u5b57\u6bcd\u3001\u6570\u5b57\u3001\u4e2d\u5212\u7ebf\u548c\u4e0b\u5212\u7ebf\uff0c\u4e0d\u80fd\u5305\u542b ..');
-          return valid;
-        };
         textInput.addEventListener('input', () => {
-          updateValidity();
           const next = structuredClone(getTuning());
           setAtPath(next, path, textInput.value);
           commitTuning(next, { path, merge: true });
-          if (isVariant) sync();
         });
-        textInput.addEventListener('blur', updateValidity);
-        inputs.set(path, { row, textInput, isFilename, isVariant, updateValidity });
+        inputs.set(path, { row, textInput });
         section.append(row);
         continue;
       }
@@ -2291,6 +2438,7 @@ export function createSceneEditor(root, {
         if (!Number.isFinite(value)) return;
         const next = structuredClone(getTuning());
         setAtPath(next, path, value);
+        if (path === 'installGate.successfulOperationThreshold') next.installGate.customThresholdEnabled = 1;
         commitTuning(next, { path, merge: true });
         if (range) range.value = String(value);
         number.value = formatValue(value, step);
@@ -2298,7 +2446,7 @@ export function createSceneEditor(root, {
         if (path === 'installGate.successfulOperationThreshold') sync();
       };
       range?.addEventListener('input', () => commit(range.value));
-      number.addEventListener(isColor ? 'change' : 'input', () => commit(number.value));
+      number.addEventListener(isColor || path.startsWith('combo.') ? 'change' : 'input', () => commit(number.value));
       color?.addEventListener('change', () => commit(parseInt(color.value.slice(1), 16)));
       inputs.set(path, { row, range, number, color, step });
       section.append(row);
@@ -2326,13 +2474,49 @@ export function createSceneEditor(root, {
     if (group.fields.some(([, path]) => path === 'installGate.enabled')) {
       const help = document.createElement('p');
       help.className = 'editor-camera-status';
-      help.textContent = '关闭（默认）：消除全部车辆后跳商店；打开：达到下方「成功操作次数」就提前跳。';
+      help.textContent = '关闭时清空关卡后跳商店。可在「导出命名」的步数中填写 35 或 35moves，直接启用对应的跳转次数。';
       section.append(help);
     }
     fieldsRoot.append(section);
   }
 
+  const speedPositionRow = inputs.get('speedToggle.y')?.row;
+  if (speedPositionRow) {
+    const actions = document.createElement('div');
+    actions.className = 'editor-camera-actions';
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.textContent = '默认位置和宽度';
+    const { x, y, width, height } = defaults.speedToggle;
+    button.title = `X ${x}，Y ${y}，宽 ${width}，高 ${height}`;
+    button.addEventListener('click', () => {
+      const next = structuredClone(getTuning());
+      Object.assign(next.speedToggle, { x, y, width, height });
+      commitTuning(next, { path: 'speedToggle.bounds' });
+      sync();
+    });
+    actions.append(button);
+    speedPositionRow.after(actions);
+  }
   const cameraControls = inputs.get('camera.fitWidth');
+  const arrowControls = inputs.get('vehicleArrow.offsetX');
+  if (arrowControls) {
+    const actions = document.createElement('div');
+    actions.className = 'editor-camera-actions';
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.textContent = '套用车顶参考样式';
+    button.addEventListener('click', () => {
+      const next = structuredClone(getTuning());
+      for (const field of ['offsetX', 'offsetY', 'offsetZ', 'outlineColor', 'outlineScale', 'outlineDepthTest']) {
+        next.vehicleArrow[field] = defaults.vehicleArrow[field];
+      }
+      commitTuning(next, { path: 'vehicleArrow' });
+      sync();
+    });
+    actions.append(button);
+    arrowControls.row.closest('.editor-section')?.append(actions);
+  }
   const cameraSection = cameraControls?.row.closest('.editor-section');
   const cameraTools = document.createElement('div');
   cameraTools.className = 'editor-camera-tools';
@@ -2578,6 +2762,7 @@ export function createSceneEditor(root, {
   backgroundTools.className = 'editor-background-tools';
   backgroundTools.innerHTML = `
     <div class="editor-background-actions">
+      <button class="editor-background-overview" type="button">背景总览</button>
       <button class="editor-background-import" type="button">\u6dfb\u52a0\u80cc\u666f</button>
       <button class="editor-background-rename" type="button">修改名称</button>
       <button class="editor-background-delete" type="button">\u5220\u9664\u80cc\u666f</button>
@@ -2597,6 +2782,7 @@ export function createSceneEditor(root, {
   const backgroundStatus = backgroundTools.querySelector('.editor-background-status');
 
   function setBackgroundBusy(busy) {
+    backgroundTools.querySelector('.editor-background-overview').disabled = busy;
     backgroundImportButton.disabled = busy;
     backgroundRenameButton.disabled = busy || !isCustomBackgroundAsset(getTuning().background?.asset);
     backgroundDeleteButton.disabled = busy || !isCustomBackgroundAsset(getTuning().background?.asset);
@@ -2669,6 +2855,13 @@ export function createSceneEditor(root, {
   }
 
   backgroundImportButton.addEventListener('click', () => backgroundFileInput.click());
+  backgroundTools.querySelector('.editor-background-overview').addEventListener('click', () => {
+    openBackgroundOverview({
+      select: backgroundControls.select,
+      refresh: refreshBackgroundOptions,
+      add: () => backgroundFileInput.click()
+    });
+  });
   backgroundRenameButton.addEventListener('click', async () => {
     const current = getTuning().background?.asset;
     if (!isCustomBackgroundAsset(current)) {
@@ -3700,18 +3893,22 @@ export function createSceneEditor(root, {
   spatialSection.innerHTML = `
     <summary class="editor-section-summary"><h3>\u7acb\u4f53\u8f68\u9053\u7f16\u8f91</h3></summary>
     <div class="editor-spatial-actions">
+      <button class="editor-spatial-json-import" type="button">导入 JSON</button>
       <button class="editor-spatial-import" type="button">\u5bfc\u5165 Prefab</button>
       <button class="editor-spatial-refresh" type="button">\u5237\u65b0\u5217\u8868</button>
       <button class="editor-spatial-edit-points" type="button">\u7f16\u8f91\u8f68\u9053\u70b9\u4f4d</button>
       <button class="editor-spatial-open-folder" type="button">\u6253\u5f00\u5b58\u50a8\u6587\u4ef6\u5939</button>
     </div>
     <input class="editor-spatial-file" type="file" accept=".prefab" hidden>
+    <input class="editor-spatial-json-file" type="file" accept=".json,application/json" hidden>
     <p class="editor-spatial-status" aria-live="polite">\u6b63\u5728\u8bfb\u53d6...</p>
   `;
   const spatialImportAnchor = fieldsRoot.querySelector('[data-spatial-import-anchor]');
   spatialImportAnchor.before(spatialSection);
 
   const spatialImportButton = spatialSection.querySelector('.editor-spatial-import');
+  const spatialJsonButton = spatialSection.querySelector('.editor-spatial-json-import');
+  const spatialJsonFile = spatialSection.querySelector('.editor-spatial-json-file');
   const spatialRefreshButton = spatialSection.querySelector('.editor-spatial-refresh');
   const spatialEditPointsButton = spatialSection.querySelector('.editor-spatial-edit-points');
   const spatialOpenFolderButton = spatialSection.querySelector('.editor-spatial-open-folder');
@@ -3720,6 +3917,7 @@ export function createSceneEditor(root, {
 
   function setSpatialBusy(busy) {
     spatialImportButton.disabled = busy;
+    spatialJsonButton.disabled = busy;
     spatialRefreshButton.disabled = busy;
     spatialEditPointsButton.disabled = busy || !isSpatialConveyorSelection(getTuning().conveyorLayout?.selected);
     spatialOpenFolderButton.disabled = busy;
@@ -3772,6 +3970,29 @@ export function createSceneEditor(root, {
   }
 
   spatialImportButton.addEventListener('click', () => spatialFileInput.click());
+  spatialJsonButton.addEventListener('click', () => spatialJsonFile.click());
+  spatialJsonFile.addEventListener('change', async () => {
+    const [file] = spatialJsonFile.files ?? [];
+    if (!file) return;
+    setSpatialBusy(true);
+    let saved;
+    try {
+      spatialStatus.textContent = '正在校验轨道 JSON...';
+      saved = await importSpatialConveyorJson(file);
+      if (!saved) {
+        spatialStatus.textContent = '已取消导入';
+        return;
+      }
+      await refreshSpatialConveyorOptions();
+      if (getTuning().conveyorLayout?.selected === 'spatial:' + saved.id) reloadSelectedSpatialConveyor();
+      spatialStatus.textContent = (saved.replaced ? '已替换 ' : '已新增 ') + saved.id;
+    } catch (error) {
+      spatialStatus.textContent = (saved ? '轨道已保存，刷新列表失败：' : '导入失败：') + error.message;
+    } finally {
+      spatialJsonFile.value = '';
+      setSpatialBusy(false);
+    }
+  });
   spatialEditPointsButton.addEventListener('click', async () => {
     setSpatialBusy(true);
     spatialStatus.textContent = '\u6b63\u5728\u6253\u5f00\u70b9\u4f4d\u7f16\u8f91\u5668...';
@@ -3825,19 +4046,6 @@ export function createSceneEditor(root, {
     }
   });
 
-  function updatePassengerMaterialVisibility(tuning) {
-    const mode = tuning.passengerMaterial?.mode ?? 'unityTexture';
-    for (const [path, controls] of inputs) {
-      if (path.startsWith('passengerMaterial.colors.')) {
-        controls.row.hidden = mode === 'solidColor';
-      } else if (path.startsWith('passengerMaterial.solidColors.')) {
-        controls.row.hidden = mode !== 'solidColor';
-      } else if (path === 'passengerMaterial.baseColorStrength') {
-        controls.row.hidden = mode === 'solidColor';
-      }
-    }
-  }
-
   function updateConveyorLayoutVisibility(tuning) {
     const selected = tuning.conveyorLayout?.selected ?? 'dualQueue2';
     for (const section of fieldsRoot.querySelectorAll('[data-conveyor-layout]')) {
@@ -3850,9 +4058,29 @@ export function createSceneEditor(root, {
     spatialEditPointsButton.disabled = !isSpatialConveyorSelection(selected);
   }
 
+  const brandingPositionPaths = [
+    'cta.y', 'branding.icon.y', 'branding.logo.y', 'branding.text.x', 'branding.text.y'
+  ];
+
+  function syncBrandingPositions(tuning) {
+    const rowY = brandingRowY(tuning.branding, tuning.cta);
+    for (const path of brandingPositionPaths) {
+      const controls = inputs.get(path);
+      if (!controls) continue;
+      const value = path.startsWith('branding.text.') ? getAtPath(tuning, path) : rowY;
+      if (controls.range) controls.range.value = String(value);
+      controls.number.value = formatValue(value, controls.step);
+    }
+  }
+
   function sync({ resetCountdownDrafts = false } = {}) {
     const tuning = getTuning();
+    if (previewExportSet) refreshExportBranding();
     for (const [path, controls] of inputs) {
+      if (brandingPositionPaths.includes(path)) continue;
+      if (path === 'combo.goldSeconds') controls.row.hidden = tuning.combo?.mode !== 'gold';
+      if (path.startsWith('iq.') && path !== 'iq.enabled') controls.row.hidden = !Number(tuning.iq?.enabled);
+      if (path === 'combo.timedSeconds') controls.row.hidden = tuning.combo?.mode !== 'timed';
       // A profile saved before the skin existed has no `speedToggle.style`, and a
       // hand-edited one may carry a value this build dropped. Either way the
       // select must land on a real option instead of going blank.
@@ -3898,7 +4126,8 @@ export function createSceneEditor(root, {
       controls.number.value = formatValue(value, controls.step);
       if (controls.color) controls.color.value = formatColor(value);
     }
-    updatePassengerMaterialVisibility(tuning);
+    syncBrandingPositions(tuning);
+
     updateConveyorLayoutVisibility(tuning);
     updateCountdownControls();
     updateStaminaControls();
@@ -3936,6 +4165,7 @@ export function createSceneEditor(root, {
   // working untouched. The classic layout never reaches this code.
   // -------------------------------------------------------------------------
   let shellRefresh = null;
+  let refreshPayloadStats = null;
 
   function installShellLayout() {
     // The classic editor opens on the 关卡 tab, which leaves every other
@@ -3968,7 +4198,7 @@ export function createSceneEditor(root, {
     function panelFor(section) {
       if (section.classList.contains('editor-screenshot')) return 'export';
       if (section.classList.contains('editor-playable-export')) return 'export';
-      if (section.dataset.conveyorLayout || section.dataset.spatialOnly) return 'track';
+      if (section.dataset.conveyorLayout || section.dataset.spatialOnly || section.classList.contains('editor-spatial-conveyor')) return 'track';
       // The free-asset layers section is built by a custom panel and owns no
       // tuning rows at all, so it cannot vote.
       if (section.querySelector('.editor-free-asset-panel')) return 'guide';
@@ -4008,7 +4238,6 @@ export function createSceneEditor(root, {
     // they would sit outside every panel host and stay visible in all nine.
     const ORPHAN_PANELS = new Map([
       ['editor-level-tools', 'level'],
-      ['editor-spatial-conveyor', 'track'],
     ]);
     function panelForNode(node) {
       if (node.classList.contains('editor-section')) return panelFor(node);
@@ -4028,7 +4257,7 @@ export function createSceneEditor(root, {
     // in the shell template, not children of it. Move them into the list first
     // so a single pass over .editor-fields sees every section; appending here
     // also puts them last inside the 导出 panel, which is the order they run in.
-    for (const selector of ['.editor-screenshot', '.editor-playable-export']) {
+    for (const selector of ['.editor-playable-export', '.editor-screenshot']) {
       const node = root.querySelector(selector);
       if (node && node.parentElement !== fieldsRoot) fieldsRoot.appendChild(node);
     }
@@ -4088,20 +4317,6 @@ export function createSceneEditor(root, {
       for (const section of host.querySelectorAll('.editor-section')) sectionPanel.set(section, panel);
     }
 
-    // The naming block is 16 short codes, one per row. Wrap its rows in a grid
-    // container so the shell CSS can pack them into two columns. The wrapper
-    // goes inside the <details>; putting display:grid on the details element
-    // itself would break its own collapse behaviour.
-    const namingSection = [...allSections].find(
-      (section) => section.querySelector('.editor-field[data-path="exportNaming.requirementCode"]'),
-    );
-    if (namingSection && !namingSection.querySelector('.shell-naming-grid')) {
-      const grid = document.createElement('div');
-      grid.className = 'shell-naming-grid';
-      for (const row of [...namingSection.querySelectorAll('.editor-field')]) grid.appendChild(row);
-      namingSection.appendChild(grid);
-    }
-
     let activePanel = 'track';
     let activeTab = 'facts';
 
@@ -4120,6 +4335,8 @@ export function createSceneEditor(root, {
 
     function setActivePanel(panelId, { focus = false } = {}) {
       activePanel = panelId;
+      previewExportSet = panelId === 'export';
+      refreshExportBranding();
       for (const button of railButtons) {
         const on = button.dataset.shellPanel === panelId;
         button.classList.toggle('is-active', on);
@@ -4149,6 +4366,7 @@ export function createSceneEditor(root, {
 
     for (const button of railButtons) {
       button.addEventListener('click', () => {
+        root.closest('#app')?.classList.remove('studio-inspecting');
         setActivePanel(button.dataset.shellPanel);
         // Picking a panel is a statement that search is over; leaving stale
         // results on screen next to a different panel reads as a bug.
@@ -4240,9 +4458,6 @@ export function createSceneEditor(root, {
     const inspectorBody = root.querySelector('.shell-inspector-body');
     const inspectorTabs = [...root.querySelectorAll('[data-shell-tab]')];
 
-    function formatName(path) {
-      return path.replace(/^exportNaming\./, '').replace(/^channels\./, '渠道 ');
-    }
 
     // The packager caps every delivery at 5 MB, and base64 inflates each inlined
     // asset by a third. The panel used to skip this check because only the
@@ -4251,10 +4466,8 @@ export function createSceneEditor(root, {
     // what catches a 900 KB upload before a two-minute export fails.
     const PLAYABLE_PAYLOAD_BUDGET_BYTES = 5 * 1024 * 1024;
     const PLAYABLE_PAYLOAD_WARN_BYTES = Math.round(PLAYABLE_PAYLOAD_BUDGET_BYTES * 0.8);
-    // The single-file shell (runtime JS + CSS + markup) measured ~0.95 MB on the
-    // shipped Bus build; it is reported separately so the note never pretends
-    // the asset sum is the artifact size.
-    const PLAYABLE_SHELL_BYTES = 950 * 1024;
+    // Measured on the online AppLovin HTML, excluding its embedded data URIs.
+    const PLAYABLE_SHELL_BYTES = 1_102_551;
     const perAssetCaps = [
       ['/assets/editor-backgrounds/', CUSTOM_BACKGROUND_MAX_OUTPUT_BYTES, '背景图'],
       [CUSTOM_PRE_ROLL_ASSET_PREFIX, 2 * 1024 * 1024, '前贴视频'],
@@ -4271,45 +4484,14 @@ export function createSceneEditor(root, {
     let payloadStatsBusy = false;
     let payloadStatsTimer = 0;
 
-    function inlineAssetUrls() {
-      const tuning = getTuning();
-      // The editor preview always runs one stage built from the selected level
-      // (plus Level7 for the Level9 handoff). The baked catalogue entry is a
-      // stale twin of that same stage slot, so shipping it in the estimate
-      // counted every art path twice and reported assets the package drops.
-      const levels = [LEVEL_1];
-      if (LEVEL_1.key === 'level9') {
-        const handoff = PLAYABLE_ALL_LEVELS.find((level) => level?.key === 'level7');
-        if (handoff) levels.push(handoff);
-      }
-      const conveyorLayouts = [...new Set([
-        tuning.conveyorLayout?.selected,
-        ...PLAYABLE_STAGES.map((stage) => stage?.scene?.conveyorLayout),
-        ...PLAYABLE_STAGE_CHOICES.flatMap((choice) => (
-          (choice?.options ?? []).map((option) => option?.scene?.conveyorLayout)
-        ))
-      ].filter(Boolean))];
-      return collectPlayableInlineAssetUrls({
-        tuning,
-        levels,
-        activeSession: ACTIVE_PLAYABLE_SESSION,
-        spatialSelection: tuning.conveyorLayout?.selected,
-        entryBannerEnabled: Boolean(Number(tuning.entryBanner?.enabled)),
-        conveyorLayouts,
-        choiceOptionImages: PLAYABLE_STAGE_CHOICES
-          .flatMap((choice) => choice?.options ?? [])
-          .map((option) => option?.image)
-          .filter(Boolean)
-      });
-    }
-
     // One HTTP round trip per distinct asset set. Sliders fire sync() on every
     // input event, so the request is debounced and skipped while the checks tab
     // is not visible.
     function schedulePayloadStats() {
       if (activeTab !== 'checks') return;
-      const urls = [...inlineAssetUrls()].sort();
-      const key = `${LEVEL_1.key}|${urls.join('\n')}`;
+      const urls = [...inlineAssetUrls(createBrandingVariantTuning(getTuning(), exportSetSelect.value))].sort();
+      const spatialSelection = getTuning().conveyorLayout?.selected;
+      const key = `${LEVEL_1.key}|${spatialSelection}|${urls.join('\n')}`;
       if (payloadStats?.key === key || payloadStatsKey === key) return;
       payloadStatsKey = key;
       clearTimeout(payloadStatsTimer);
@@ -4320,16 +4502,15 @@ export function createSceneEditor(root, {
           const response = await fetch('/__playable-asset-sizes', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ urls })
+            body: JSON.stringify({ urls, spatialSelection, backgroundUrls: [getTuning().background?.asset ?? LEVEL_1.assets.background] })
           });
           const payload = await response.json().catch(() => ({}));
           if (!response.ok) throw new Error(payload.error || `HTTP ${response.status}`);
           const items = Array.isArray(payload.items) ? payload.items : [];
           const rawBytes = items.reduce((sum, item) => sum + (Number(item.bytes) || 0), 0);
-          // Base64 payload cost per file rounded up to a 4-byte group, which is
-          // what the data URI actually adds to the single-file HTML.
+          // Include the MIME prefix and Base64 padding for each delivery asset.
           const base64Bytes = items.reduce(
-            (sum, item) => sum + (Number(item.bytes) ? Math.ceil(Number(item.bytes) / 3) * 4 : 0),
+            (sum, item) => sum + (Number(item.embeddedBytes) || 0),
             0
           );
           payloadStats = {
@@ -4354,17 +4535,12 @@ export function createSceneEditor(root, {
 
     function collectChecks() {
       const tuning = getTuning();
-      let badNames = 0;
-      let firstBadName = '';
+      const { entries, errors } = parseDeliveryNames(deliveryList.value, tuning.exportNaming, exportSetSelect.value);
       let badUrls = 0;
       let firstBadUrl = '';
       let badCountdown = 0;
       let firstBadCountdown = '';
       for (const [path, controls] of inputs) {
-        if (controls.isFilename && controls.updateValidity && !controls.updateValidity()) {
-          badNames += 1;
-          firstBadName ||= path;
-        }
         if (controls.urlInput && controls.urlInput.getAttribute('aria-invalid') === 'true') {
           badUrls += 1;
           firstBadUrl ||= path;
@@ -4375,41 +4551,12 @@ export function createSceneEditor(root, {
         }
       }
 
-      // Export refuses duplicate channel codes, because two channels would
-      // resolve to the same delivery name. Surfacing it here turns a failed
-      // two-minute build into a one-click fix.
-      const channelOwners = new Map();
-      const duplicateChannels = [];
-      for (const [platform] of PLAYABLE_EXPORT_PLATFORMS) {
-        const code = String(tuning.exportNaming?.channels?.[platform] ?? '').trim().toLowerCase();
-        if (!code) continue;
-        if (channelOwners.has(code)) {
-          duplicateChannels.push(`exportNaming.channels.${channelOwners.get(code)} 与 ${platform} 都用 ${code}`);
-        } else {
-          channelOwners.set(code, platform);
-        }
-      }
-
       const vehicles = Array.isArray(LEVEL_1?.vehicles) ? LEVEL_1.vehicles : [];
       const vehicleIds = new Set(vehicles.map((vehicle) => Number(vehicle?.id)).filter(Number.isFinite));
-      const guideIssues = [];
-      let firstGuidePath = '';
       const hand = tuning.vehicleGuideHand ?? {};
-      if (Number(hand.enabled) === 1) {
-        if (hand.levelKey && hand.levelKey !== LEVEL_1.key) {
-          guideIssues.push(`小手提示指向 ${hand.levelKey}，当前关卡是 ${LEVEL_1.key}`);
-          firstGuidePath = 'vehicleGuideHand.levelKey';
-        }
-        if (!vehicleIds.has(Number(hand.vehicleId))) {
-          guideIssues.push(`小手目标车 ${hand.vehicleId ?? '未选'} 不在本关`);
-          firstGuidePath ||= 'vehicleGuideHand.vehicleId';
-        }
-      }
+      const handIssue = getVehicleGuideHandIssue(hand, LEVEL_1.key, vehicles);
       const firstClick = tuning.firstClickGuide ?? {};
-      if (Number(firstClick.enabled) === 1 && !vehicleIds.has(Number(firstClick.vehicleId))) {
-        guideIssues.push(`开场引导目标车 ${firstClick.vehicleId ?? '未选'} 不在本关`);
-        firstGuidePath ||= 'firstClickGuide.vehicleId';
-      }
+      const firstClickIssue = Number(firstClick.enabled) === 1 && !vehicleIds.has(Number(firstClick.vehicleId));
 
       const levelIssues = [];
       let firstLevelPath = '';
@@ -4443,18 +4590,10 @@ export function createSceneEditor(root, {
 
       const checks = [
         {
-          state: badNames ? 'bad' : 'ok',
-          title: '导出命名',
-          note: badNames ? `${badNames} 个片段含非法字符` : '所有命名片段合法（可留空）',
-          path: firstBadName
-        },
-        {
-          state: duplicateChannels.length ? 'bad' : 'ok',
-          title: '渠道代号',
-          note: duplicateChannels.length
-            ? duplicateChannels.join('；')
-            : '七个渠道代号互不重复',
-          path: duplicateChannels.length ? 'exportNaming.channels' : ''
+          state: errors.length ? 'bad' : entries.length ? 'ok' : 'warn',
+          title: '交付清单',
+          note: errors[0] || (entries.length ? entries.length + ' 个有效文件名' : '尚未填写交付文件名'),
+          path: errors.length || !entries.length ? 'deliveryNames' : ''
         },
         {
           state: badCountdown ? 'warn' : 'ok',
@@ -4487,12 +4626,11 @@ export function createSceneEditor(root, {
           path: gateUnreachable ? 'installGate.successfulOperationThreshold' : ''
         },
         {
-          state: guideIssues.length ? 'warn' : 'ok',
+          state: handIssue ? 'bad' : firstClickIssue ? 'warn' : 'ok',
           title: '引导目标',
-          note: guideIssues.length
-            ? guideIssues.join('；')
-            : '引导车辆都存在于本关',
-          path: firstGuidePath
+          note: handIssue?.message
+            ?? (firstClickIssue ? '开场引导目标车不在本关' : Number(hand.enabled) === 1 ? '小手提示已指向本关车辆' : '小手提示已关闭'),
+          path: handIssue?.path ?? (firstClickIssue ? 'firstClickGuide.vehicleId' : '')
         },
         ...describeSizeChecks()
       ];
@@ -4528,7 +4666,7 @@ export function createSceneEditor(root, {
       const { items, rawBytes, base64Bytes, missing } = payloadStats;
       const oversized = items.filter((item) => {
         const cap = perAssetCaps.find(([prefix]) => item.url.startsWith(prefix));
-        return cap && Number(item.bytes) > cap[1];
+        return cap && Number(item.sourceBytes ?? item.bytes) > cap[1];
       });
       const heaviest = items
         .filter((item) => Number(item.bytes) > 0)
@@ -4560,7 +4698,7 @@ export function createSceneEditor(root, {
       }, {
         state: sizeState,
         title: '单包体积（估算）',
-        note: `素材 base64 ${formatKilobytes(base64Bytes)} + 壳约 ${formatKilobytes(PLAYABLE_SHELL_BYTES)}，上限 5 MB`,
+        note: `预计 ${formatKilobytes(estimatedBytes)}（Base64 素材 ${formatKilobytes(base64Bytes)} + 运行代码等约 ${formatKilobytes(PLAYABLE_SHELL_BYTES)}），上限 5 MiB`,
         path: ''
       }];
     }
@@ -4569,26 +4707,25 @@ export function createSceneEditor(root, {
       return String(url ?? '').split('/').pop() || url;
     }
 
-    // Where a check's "fix" actually lives: the panel that owns the section,
-    // and the row to flash. A channel code lives on a specific channel row, but
-    // `exportNaming.channels.applovin` is addressed by its full path, while a
-    // bare `exportNaming.channels` has to fall back to the naming section.
     function panelForPath(path) {
       for (const panel of SHELL_PANELS) {
         if (panel.match.test(path)) return panel.id;
       }
-      return path.startsWith('exportNaming.') ? 'export' : 'scene';
+      return path === 'deliveryNames' ? 'export' : 'scene';
     }
 
     function jumpToField(path) {
+      root.closest('#app')?.classList.remove('studio-inspecting');
+      if (path === 'deliveryNames') {
+        setActivePanel('export');
+        deliveryList.closest('.editor-section').open = true;
+        deliveryList.focus();
+        return;
+      }
       const controls = inputs.get(path);
       const row = controls?.row
         ?? root.querySelector(`.editor-field[data-path="${CSS.escape(path)}"]`);
-      const section = row?.closest('.editor-section')
-        ?? [...root.querySelectorAll('.editor-section')].find(
-          (candidate) => candidate.querySelector('.editor-field[data-path^="exportNaming."]')
-            && path.startsWith('exportNaming.')
-        );
+      const section = row?.closest('.editor-section');
       if (section) {
         setActivePanel(sectionPanel.get(section) ?? panelForPath(path));
         section.open = true;
@@ -4631,9 +4768,9 @@ export function createSceneEditor(root, {
       if (activeTab === 'checks') {
         const checks = collectChecks();
         inspectorBody.innerHTML = `<div class="shell-insp-checks">${checks.map((check, index) => (
-          `<div class="shell-insp-check ${check.state}${check.path ? ' has-jump' : ''}" data-check-index="${index}"${check.path ? ' role="button" tabindex="0"' : ''}><i></i><div><strong>${check.title}</strong><small>${check.note}</small>${check.path ? '<em class="shell-insp-jump-field">去修改</em>' : ''}</div></div>`
+          `<div class="shell-insp-check ${check.state}${check.path ? ' has-jump' : ''}" data-check-index="${index}"${check.path ? ' role="button" tabindex="0"' : ''}><i></i><div><strong>${check.title}</strong><small>${escapeChangelogText(check.note)}</small>${check.path ? '<em class="shell-insp-jump-field">去修改</em>' : ''}</div></div>`
         )).join('')}</div>
-          <p class="shell-insp-note">同一结论也会落在出问题的字段旁：命名片段标红，倒计时时间冲突时导出按钮禁用。点「去修改」直接跳到对应字段。</p>`;
+          `;
         for (const node of inspectorBody.querySelectorAll('.shell-insp-check.has-jump')) {
           const jump = () => {
             const check = checks[Number(node.dataset.checkIndex)];
@@ -4649,20 +4786,16 @@ export function createSceneEditor(root, {
         schedulePayloadStats();
         return;
       }
-      const namingRows = [...inputs.entries()]
-        .filter(([path]) => path.startsWith('exportNaming.'))
-        .map(([path, controls]) => {
-          const value = String(controls.textInput?.value ?? '').trim();
-          return `<div class="shell-insp-kv-row"><span>${formatName(path)}</span><b class="${value ? '' : 'is-empty'}">${value || '未填'}</b></div>`;
-        })
-        .join('');
+      const { entries, errors } = parseDeliveryNames(deliveryList.value, getTuning().exportNaming, exportSetSelect.value);
       inspectorBody.innerHTML = `
-        <div class="shell-insp-kv-row-head"><span>命名片段</span><b>${namingRows.split('is-empty').length - 1} 项未填</b></div>
-        ${namingRows}
+        <div class="shell-insp-kv-row-head"><span>交付清单</span><b>${entries.length} 条有效</b></div>
+        ${errors.map(error => '<p>' + escapeChangelogText(error) + '</p>').join('')}
+        ${entries.map(entry => '<div class="shell-delivery-file">' + escapeChangelogText(entry.fileName) + '</div>').join('')}
         <div class="shell-insp-actions">
           <button type="button" class="shell-insp-jump" data-shell-jump="export">前往导出面板</button>
         </div>`;
       inspectorBody.querySelector('[data-shell-jump]')?.addEventListener('click', () => {
+        root.closest('#app')?.classList.remove('studio-inspecting');
         setActivePanel('export');
         const exportSection = root.querySelector('.editor-playable-export');
         if (exportSection) {
@@ -4677,7 +4810,7 @@ export function createSceneEditor(root, {
         activeTab = tab.dataset.shellTab;
         // Re-opening the panel is the retry gesture for a failed asset-size
         // request; the failure is cached so an automatic refresh cannot loop.
-        if (activeTab === 'checks' && payloadStats?.error) payloadStats = null;
+        if (activeTab === 'checks') payloadStats = null;
         renderInspector();
       });
     }
@@ -4685,12 +4818,19 @@ export function createSceneEditor(root, {
     // ---- shared refresh ---------------------------------------------------
     // sync() runs on every tuning change; the rail badges and the inspector both
     // read tuning-dependent numbers, so they follow it.
+    const refreshStudio = studio?.mountStudio(root, { getTuning, restartPreview, level: () => LEVEL_1 });
     shellRefresh = () => {
       refreshRail();
       renderInspector();
+      refreshStudio?.();
     };
+    refreshPayloadStats = () => {
+      payloadStats = null;
+      renderInspector();
+    };
+    shellJumpToField = jumpToField;
 
-    setActivePanel('track');
+    setActivePanel(studio ? 'level' : 'track');
     refreshRail();
     renderInspector();
   }

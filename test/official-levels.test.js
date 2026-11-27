@@ -149,6 +149,28 @@ test('shipped official levels live outside the persistent artifacts volume', () 
   assert.equal(OFFICIAL_LEVEL_ROOT, path.resolve('official-levels'));
 });
 
+test('live campaign chapters coexist with the original levels and retain import diagnostics', async () => {
+  const chapters = await listOfficialChapters();
+  const imported = new Set();
+  const blocked = [];
+  for (const [id, count] of [['LIVE-A', 268], ['LIVE-B', 36]]) {
+    assert.equal(chapters.find(chapter => chapter.id === id)?.count, count);
+    for (const item of (await readOfficialChapter(id, {chapters})).items) {
+      assert.ok(!imported.has(item.key));
+      imported.add(item.key);
+      assert.notEqual(item.key, officialLevelKey(id.slice(5), item.number, {guide: item.guide}));
+      assert.match(item.displayName, /线上素材/);
+      if (item.status !== 'ready') {
+        assert.ok(item.error);
+        blocked.push([id, item.number]);
+      }
+    }
+    const asset = await readOfficialLevelAsset(id, 'level1.asset', {chapters});
+    assert.ok(imported.has(asset.key));
+  }
+  assert.deepEqual(blocked, [7, 28, 29, 33, 34].map(number => ['LIVE-B', number]));
+});
+
 test('the shared parser still reproduces a stored catalog level exactly', async () => {
   // Guards the extraction refactor: extract-unity-levels.mjs now delegates to
   // unity-level-parser.mjs, and the catalog it writes must not drift.

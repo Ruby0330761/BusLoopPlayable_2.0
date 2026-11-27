@@ -3403,7 +3403,9 @@ const STAGE_1_LEVEL = Object.freeze({
         "hitCircle": "/assets/unity/effects/Circle_01.png",
         "hitRound2": "/assets/applovin/effects/Round_02_q80.webp",
         "hitRound1": "/assets/unity/effects/Round_01.png",
-        "smokeTrail": "/assets/unity/effects/Round_01.png"
+        "smokeTrail": "/assets/unity/effects/DrivingSmoke_6x5.png",
+        "departureStar": "/assets/unity/effects/DepartureStar.png",
+        "departureTrail": "/assets/unity/effects/DepartureTrail.png"
       },
       "vehicleShadowBySeats": {
         "4": "/assets/unity/textures/Car_FakeShadow.png",
@@ -3722,8 +3724,8 @@ const STAGE_1_LEVEL = Object.freeze({
     }
   },
   "vehiclePathSnapshot": {
-    "version": 3,
-    "inputKey": "12759:3158907815:3493070101",
+    "version": 4,
+    "inputKey": "12703:3734819784:470339052",
     "levelKey": "level15",
     "vehicleArea": {
       "unityToWorldScale": 2,
@@ -3779,9 +3781,9 @@ const STAGE_1_LEVEL = Object.freeze({
         "visualZ": 0.55,
         "visualYaw": 16,
         "approachX": -1.6964285714285716,
-        "approachZ": 3.5428571428571427,
+        "approachZ": 3.28,
         "visualApproachX": -2.375,
-        "visualApproachZ": 1.05
+        "visualApproachZ": 1.4180000000000001
       },
       {
         "x": -1.017857142857143,
@@ -3791,9 +3793,9 @@ const STAGE_1_LEVEL = Object.freeze({
         "visualZ": 0.55,
         "visualYaw": 16,
         "approachX": -1.017857142857143,
-        "approachZ": 3.5428571428571427,
+        "approachZ": 3.28,
         "visualApproachX": -1.425,
-        "visualApproachZ": 1.05
+        "visualApproachZ": 1.4180000000000001
       },
       {
         "x": -0.33928571428571436,
@@ -3803,9 +3805,9 @@ const STAGE_1_LEVEL = Object.freeze({
         "visualZ": 0.55,
         "visualYaw": 16,
         "approachX": -0.33928571428571436,
-        "approachZ": 3.5428571428571427,
+        "approachZ": 3.28,
         "visualApproachX": -0.4750000000000001,
-        "visualApproachZ": 1.05
+        "visualApproachZ": 1.4180000000000001
       },
       {
         "x": 0.3392857142857141,
@@ -3815,9 +3817,9 @@ const STAGE_1_LEVEL = Object.freeze({
         "visualZ": 0.55,
         "visualYaw": 16,
         "approachX": 0.3392857142857141,
-        "approachZ": 3.5428571428571427,
-        "visualApproachX": 0.47499999999999964,
-        "visualApproachZ": 1.05
+        "approachZ": 3.28,
+        "visualApproachX": 0.4749999999999997,
+        "visualApproachZ": 1.4180000000000001
       },
       {
         "x": 1.0178571428571428,
@@ -3827,9 +3829,9 @@ const STAGE_1_LEVEL = Object.freeze({
         "visualZ": 0.55,
         "visualYaw": 16,
         "approachX": 1.0178571428571428,
-        "approachZ": 3.5428571428571427,
+        "approachZ": 3.28,
         "visualApproachX": 1.4249999999999998,
-        "visualApproachZ": 1.05
+        "visualApproachZ": 1.4180000000000001
       },
       {
         "x": 1.6964285714285716,
@@ -3839,20 +3841,21 @@ const STAGE_1_LEVEL = Object.freeze({
         "visualZ": 0.55,
         "visualYaw": 16,
         "approachX": 1.6964285714285716,
-        "approachZ": 3.5428571428571427,
+        "approachZ": 3.28,
         "visualApproachX": 2.375,
-        "visualApproachZ": 1.05
+        "visualApproachZ": 1.4180000000000001
       }
     ],
     "station": {
       "turnRadius": 0.5,
       "turnInController": 0.1,
       "turnOutController": 0.25,
+      "exitDistance": 6,
       "parkingBounds": {
-        "minX": -2.645486899993974,
-        "maxX": 2.6667111180671963,
-        "minZ": -3.0560570568146357,
-        "maxZ": 2.661844481390603
+        "minX": -2.8131119,
+        "maxX": 2.8253530000000002,
+        "minZ": -3.0621232000000003,
+        "maxZ": 3.28
       },
       "stationScaleBySeats": {
         "4": 1.15,
@@ -3866,32 +3869,30 @@ const STAGE_1_LEVEL = Object.freeze({
       "hitDuration": 0.5,
       "autoBounds": 1,
       "boundsPadding": 0.1,
-      "enabled": 1,
+      "enabled": 0,
       "showBlocked": 1,
-      "y": 0.145,
       "color": 2160383,
       "opacity": 0.88,
       "lineWidth": 3,
+      "y": 0.035,
       "sideEntryTurnRadius": 0.1,
       "bottomTurnRadius": 0.1,
       "topTurnRadius": 0.5
     },
     "departure": {
       "enabled": 0,
-      "y": -1,
       "color": 16762967,
       "opacity": 0.88,
       "lineWidth": 3,
-      "fullLoadDelay": 1,
-      "backDistance": 0.5,
+      "fullLoadDelay": 0.65,
       "exitTurnOffsetX": -0.5,
-      "exitTargetX": 4.2,
-      "exitTargetZOffset": 0,
+      "exitDistance": 6,
       "backwardSpeed": 2.5,
       "forwardSpeed": 10,
       "turnRadius": 0.5,
       "turnInController": 0.25,
-      "turnOutController": 0.25
+      "turnOutController": 0.25,
+      "y": 0.035
     }
   }
 });

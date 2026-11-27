@@ -151,6 +151,7 @@ function matchesQuery(item, query) {
     // The card shows these as badges, so typing what you see has to find them.
     item.source === 'catalog' ? 'unity' : '',
     item.active ? '当前' : '',
+    item.driveOut?.status === 'blocked' ? '无法驶出' : item.driveOut?.status === 'review' ? '需试玩复核' : '',
     item.error ? '无数据' : ''
   ].filter((value) => value != null && value !== '').join(' ').toLocaleLowerCase();
   return query.toLocaleLowerCase().split(/\s+/u).every((token) => haystack.includes(token));
@@ -161,6 +162,11 @@ function renderCard(item) {
   if (item.owner) badges.push(`<span class="level-overview__badge" data-kind="owner">${escapeHtml(item.owner)}</span>`);
   if (item.source === 'catalog') badges.push('<span class="level-overview__badge" data-kind="catalog">Unity</span>');
   if (item.error) badges.push('<span class="level-overview__badge" data-kind="error">无数据</span>');
+  if (item.driveOut?.status === 'blocked' || item.driveOut?.status === 'review') {
+    const blocked = item.driveOut.status === 'blocked';
+    const ids = item.driveOut.ids.map(id => '#' + id).join('、');
+    badges.push(`<span class="level-overview__badge" data-kind="error" title="${escapeHtml(ids)}">${blocked ? '无法驶出' : '需试玩复核'} · ${item.driveOut.ids.length} 辆</span>`);
+  }
   const thumb = item.svg
     ? item.svg
     : `<div class="level-overview__error">${escapeHtml(item.error ?? '无法读取关卡数据')}</div>`;

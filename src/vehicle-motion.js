@@ -5,6 +5,7 @@ export const UNITY_VEHICLE_MOTION = Object.freeze({
   turnRadius: 0.5,
   turnInController: 0.25,
   turnOutController: 0.25,
+  exitDistance: 6,
   parkingBounds: { minX: -2.1, maxX: 2.1, minZ: -2.7075, maxZ: 1.9675 },
   stationScaleBySeats: { 4: 1.15, 6: 1.1, 10: 1.1 },
   moveOut: { speedBackward: 2.5, speedForward: 10 },
@@ -146,7 +147,8 @@ export function buildToStationPoints(vehicle, spot, motion = UNITY_VEHICLE_MOTIO
   const base = motion.parkingBounds ?? UNITY_VEHICLE_MOTION.parkingBounds;
   const bounds = {
     minX: Math.min(base.minX, vehicle.x - .1), maxX: Math.max(base.maxX, vehicle.x + .1),
-    minZ: Math.min(base.minZ, vehicle.z - .1), maxZ: Math.max(base.maxZ, vehicle.z + .1)
+    minZ: Math.min(base.minZ, vehicle.z - .1),
+    maxZ: vehicle.z > base.maxZ ? vehicle.z + .1 : base.maxZ
   };
   const start = point(vehicle.x, vehicle.z);
   const direction = normalize(forwardFromYaw(vehicle.yaw));
@@ -157,8 +159,8 @@ export function buildToStationPoints(vehicle, spot, motion = UNITY_VEHICLE_MOTIO
     // neighbouring parked cars before the car joins the perimeter.
     boxStart.turnRadius = motion.sideEntryTurnRadius;
   }
-  const boxTL = point(bounds.minX, bounds.maxZ);
-  const boxTR = point(bounds.maxX, bounds.maxZ);
+  const boxTL = point(bounds.minX, base.maxZ);
+  const boxTR = point(bounds.maxX, base.maxZ);
   const boxBL = point(bounds.minX, bounds.minZ);
   const boxBR = point(bounds.maxX, bounds.minZ);
   if (Number.isFinite(motion.bottomTurnRadius)) {
@@ -175,7 +177,11 @@ export function buildToStationPoints(vehicle, spot, motion = UNITY_VEHICLE_MOTIO
   const points = [];
   appendDistinct(points, start);
   appendDistinct(points, boxStart);
-  if (hit?.edge === 1) {
+  if (hit?.edge === 0 && boxStart.z > base.maxZ) {
+    const side = boxStart.x + outBound.x < boxTL.x + boxTR.x ? boxTL : boxTR;
+    appendDistinct(points, point(side.x, boxStart.z));
+    appendDistinct(points, side);
+  } else if (hit?.edge === 1) {
     if (boxStart.x + outBound.x - 2 * boxTL.x > 2 * boxTR.x - boxStart.x - outBound.x) {
       appendDistinct(points, boxBR); appendDistinct(points, boxTR);
     } else {
@@ -211,17 +217,11 @@ export function buildOutStationPoints(spot, motion = UNITY_VEHICLE_MOTION) {
   return [start, boxPosition, add(boxPosition, point(turnOffsetX, 0))];
 }
 
-// The exit run is authored in visual terms: `exitTargetZOffset` moves the
-// endpoint further away from the camera (down the screen) for positive values.
-// Source-space Z runs the opposite way once `vehicleArea.mirrorZ` is applied,
-// so the offset is negated here. Both the actual departure and the editor's
-// preview line must call this so they can never drift apart.
 export function buildDepartureForwardPoints(forwardStart, motion = UNITY_VEHICLE_MOTION) {
-  const targetX = motion.exitTargetX ?? 4.2;
-  const visualDown = motion.exitTargetZOffset ?? 0;
+  const distance = motion.exitDistance ?? UNITY_VEHICLE_MOTION.exitDistance;
   return [
     forwardStart,
-    { x: targetX, z: forwardStart.z - visualDown }
+    point(forwardStart.x + distance, forwardStart.z)
   ];
 }
 
@@ -392,9 +392,15 @@ export const UNITY_HIT_CLIPS = Object.freeze({
   }
 });
 
-export function chooseHitClip(direction) {
-  if (Math.abs(direction.x) > Math.abs(direction.y)) return direction.x < 0 ? 'right' : 'left';
-  return direction.y < 0 ? 'front' : 'back';
+export function chooseHitClip(direction, { mirrorZ = false, yawOffsetDegrees = 0 } = {}) {
+  // Mirroring the formation preserves forward but swaps the rendered car's
+  // left and right. The clip plays in the model's own (yaw-offset) axes.
+  const lateral = mirrorZ ? -direction.x : direction.x;
+  const offset = yawOffsetDegrees * Math.PI / 180;
+  const x = lateral * Math.cos(offset) - direction.y * Math.sin(offset);
+  const z = lateral * Math.sin(offset) + direction.y * Math.cos(offset);
+  if (Math.abs(x) > Math.abs(z)) return x < 0 ? 'right' : 'left';
+  return z < 0 ? 'front' : 'back';
 }
 
 export function sampleHitClip(name, elapsed) {

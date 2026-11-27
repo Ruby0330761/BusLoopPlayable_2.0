@@ -1,6 +1,8 @@
 import { preview } from 'vite';
+import { migrateAllLevelsSmoke } from './migrate-all-levels-smoke.mjs';
 
 const port = Number(process.env.PORT || 5173);
+await migrateAllLevelsSmoke('artifacts');
 const server = await preview({
   clearScreen: false,
   preview: {

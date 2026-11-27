@@ -1,11 +1,17 @@
 import { spawn } from 'node:child_process';
-import { createHash } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { gzipSync } from 'node:zlib';
-import { copyFile, mkdir, mkdtemp, readdir, readFile, rename, rm, stat, unlink, writeFile } from 'node:fs/promises';
+import { copyFile, cp, mkdir, mkdtemp, readdir, readFile, rename, rm, stat, unlink, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { defineConfig } from 'vite';
+import { createPlayableExportQueue } from './scripts/playable-export-queue.mjs';
+import { matchesSmokeMigration } from './scripts/migrate-all-levels-smoke.mjs';
+import { checkLayoutDriveOut } from './src/level-drive-out.js';
+import { MAX_SPATIAL_PACKAGE_BYTES, validateSpatialJsonImport } from './src/spatial-conveyor-json.js';
+import { createTestExportNaming, deliveryBuilds, parseDeliveryNames, validateRequiredExportNaming, validateRequirementCode } from './src/export-naming.js';
+import { summarizeExportPackage } from './src/export-review.js';
 import {
   DEFAULT_OUTPUT_ROOT,
   importSpatialConveyorPrefab
@@ -107,9 +113,10 @@ const PLAYABLE_ASSET_SIZE_ROOTS = Object.freeze([
 ]);
 
 const MAX_PREFAB_BYTES = 12 * 1024 * 1024;
-const MAX_SPATIAL_PACKAGE_BYTES = 4 * 1024 * 1024;
+const activeSpatialWrites = new Set();
 const SPATIAL_BACKUP_ROOT = path.resolve('artifacts', 'spatial-conveyor-backups');
 const PLAYABLE_BUILD_PLATFORM = process.env.PLAYABLE_PLATFORM || 'applovin';
+const PLAYABLE_EXPORT_SHARED_CORE = process.env.PLAYABLE_EXPORT_SHARED_CORE === '1';
 const PLAYABLE_REMOTE_EDITOR = process.env.PLAYABLE_REMOTE_EDITOR === '1';
 const LEVEL_CATALOG_ALIAS = process.env.PLAYABLE_LEVEL_CATALOG_PATH
   ? [{
@@ -118,10 +125,7 @@ const LEVEL_CATALOG_ALIAS = process.env.PLAYABLE_LEVEL_CATALOG_PATH
     }]
   : [];
 const MAX_PLAYABLE_EXPORT_BYTES = 3 * 1024 * 1024;
-// A wedged headless-Chromium check used to leave playableExportInFlight set
-// forever, so every later export answered 409. This ceiling aborts the run and
-// the finally block releases the lock. Comfortably above one full all-platform
-// export, which locally finishes in well under a minute.
+// This deadline starts when packing begins, after any time in the queue.
 const PLAYABLE_EXPORT_TIMEOUT_MS = 10 * 60 * 1000;
 const PLAYABLE_EXPORT_PLATFORMS = new Set([
   'applovin',
@@ -134,7 +138,11 @@ const PLAYABLE_EXPORT_PLATFORMS = new Set([
 ]);
 // Bus Fever uploads split Android/iOS art; Crowd is one package for both stores.
 const PLAYABLE_BRANDING_SETS = new Set(['bus', 'crowd']);
-let playableExportInFlight = false;
+const playableExportQueue = createPlayableExportQueue();
+let pendingPlayableArchive = Promise.resolve();
+const preparedPlayableExports = new Map();
+const PLAYABLE_REVIEW_TTL_MS = 10 * 60 * 1000;
+const MAX_PREPARED_PLAYABLE_EXPORTS = 8;
 
 const FBX_BINARY_IMAGE_BRANCH = `\t\t} else { // Binary Format
 
@@ -704,6 +712,7 @@ async function buildLevelThumbnails() {
       items.push({
         ...item,
         ...summarizeLevel(document),
+        driveOut: checkLayoutDriveOut(document),
         conveyorBeltName: document.conveyorBeltName ?? '',
         mapScale: document.mapScale ?? null,
         svg: renderLevelSvg(document, { width: 240, height: 176, className: 'level-thumb' })
@@ -1462,12 +1471,14 @@ async function listSpatialConveyors() {
     .filter((entry) => entry.isFile() && entry.name.toLowerCase().endsWith('.json'))
     .map(async (entry) => {
       try {
-        const packageData = JSON.parse(await readFile(path.join(DEFAULT_OUTPUT_ROOT, entry.name), 'utf8'));
+        const source = await readFile(path.join(DEFAULT_OUTPUT_ROOT, entry.name), 'utf8');
+        const packageData = JSON.parse(source);
         if (packageData?.kind !== 'spatial' || typeof packageData.id !== 'string') return null;
         return {
           id: packageData.id,
           label: packageData.label || packageData.id,
           value: `spatial:${packageData.id}`,
+          revision: spatialRevision(source),
           filename: entry.name,
           sourceFilename: packageData.source?.filename ?? null,
           pointCount: packageData.path?.points?.length ?? 0
@@ -1515,7 +1526,17 @@ function validateSpatialPackageData(packageData, packageId) {
   }
 }
 
-async function saveSpatialConveyorPackage({ packageData, baseRevision }) {
+async function withSpatialWrite(packageId, write) {
+  if (activeSpatialWrites.has(packageId)) {
+    throw Object.assign(new Error('轨道正在保存，请刷新后重试'), { statusCode: 409 });
+  }
+  activeSpatialWrites.add(packageId);
+  try { return await write(); }
+  finally { activeSpatialWrites.delete(packageId); }
+}
+
+async function saveSpatialConveyorPackage({ packageData, baseRevision, importJson }) {
+  if (importJson) validateSpatialJsonImport(packageData);
   const packageId = validateSpatialPackageId(packageData?.id);
   validateSpatialPackageData(packageData, packageId);
   await mkdir(DEFAULT_OUTPUT_ROOT, { recursive: true });
@@ -1687,6 +1708,51 @@ function playableExportDisposition(fileName) {
   return `attachment; filename="${asciiName}"; filename*=UTF-8''${encodeURIComponent(fileName)}`;
 }
 
+async function removeTemporaryExport(root) {
+  await rm(root, { recursive: true, force: true }).catch(error => {
+    console.warn('[playable-export] Failed to clean temporary export files:', error);
+  });
+}
+
+function archivePlayableExport(root, previewDirectory) {
+  if (PLAYABLE_REMOTE_EDITOR) return;
+  const archived = pendingPlayableArchive.then(() => cp(root, path.resolve('artifacts', 'playable-exports'), {
+    recursive: true, filter: source => source !== previewDirectory
+  }));
+  pendingPlayableArchive = archived.catch(() => {});
+  return archived;
+}
+
+function takePreparedPlayableExport(id) {
+  const prepared = preparedPlayableExports.get(id);
+  if (!prepared) return null;
+  preparedPlayableExports.delete(id);
+  clearTimeout(prepared.timeout);
+  return prepared;
+}
+
+async function sendPlayableArtifact(response, result, startedAt) {
+  const fileName = playableExportFilename(result.fileName, result.format);
+  const file = await readFile(result.filePath);
+  const passedCount = Number(result.checkSummary.passedCount) || 0;
+  const totalCount = Number(result.checkSummary.totalCount) || passedCount;
+  response.statusCode = 200;
+  response.setHeader('Content-Type', result.format === 'zip' ? 'application/zip' : 'text/html; charset=utf-8');
+  response.setHeader('Content-Length', file.byteLength);
+  response.setHeader('Content-Disposition', playableExportDisposition(fileName));
+  response.setHeader('Cache-Control', 'no-store');
+  response.setHeader('X-Content-Type-Options', 'nosniff');
+  response.setHeader('X-Playable-Resource-Mode', result.resourceMode);
+  const checksSkipped = result.checkSummary.conclusion === 'SKIPPED_LOCAL_CHECKS'
+    || result.checkSummary.conclusion === 'EXPORTED_WITHOUT_LOCAL_CHECKS';
+  response.setHeader('X-Playable-Check', checksSkipped
+    ? 'skipped; local checks disabled'
+    : `passed; ${passedCount}/${totalCount}`);
+  response.setHeader('X-Playable-Source-Cache', result.sourceCacheHit ? 'hit' : 'miss');
+  response.setHeader('X-Playable-Export-Duration-Ms', String(Date.now() - startedAt));
+  response.end(file);
+}
+
 function levelExportDisposition(fileName) {
   const asciiName = fileName.replace(/[^A-Za-z0-9._-]/g, '_') || 'level-export';
   return `attachment; filename="${asciiName}"; filename*=UTF-8''${encodeURIComponent(fileName)}`;
@@ -1696,7 +1762,10 @@ export default defineConfig({
   // Export HTML and workspaces are outputs, not editor source. Watching them
   // reloads the page during a batch and aborts its own download request.
   server: {
-    watch: { ignored: ['**/artifacts/playable-exports/**', '**/artifacts/export-builds/**'] }
+    watch: { ignored: [
+      '**/artifacts/playable-exports/**', '**/artifacts/export-builds/**',
+      '**/artifacts/.playable-asset-cache/**', '**/artifacts/.playable-codecs/**'
+    ] }
   },
   optimizeDeps: {
     noDiscovery: true,
@@ -1707,12 +1776,18 @@ export default defineConfig({
     : undefined,
   build: {
     modulePreload: { polyfill: PLAYABLE_BUILD_PLATFORM !== 'mintegral' },
-    outDir: PLAYABLE_REMOTE_EDITOR ? 'server-dist' : 'dist'
+    outDir: PLAYABLE_REMOTE_EDITOR ? 'server-dist' : 'dist',
+    rollupOptions: PLAYABLE_EXPORT_SHARED_CORE
+      ? { external: ['__playable_export_platform_bridge__'] }
+      : undefined
   },
   resolve: {
     alias: [
       ...LEVEL_CATALOG_ALIAS,
-      ...(PLAYABLE_BUILD_PLATFORM === 'applovin' ? [] : [{
+      ...(PLAYABLE_EXPORT_SHARED_CORE ? [{
+          find: './platform-bridge.js',
+          replacement: '__playable_export_platform_bridge__'
+        }] : PLAYABLE_BUILD_PLATFORM === 'applovin' ? [] : [{
           find: './platform-bridge.js',
           replacement: path.resolve('src', 'platform-bridges', `${PLAYABLE_BUILD_PLATFORM}.js`)
         }])
@@ -1724,6 +1799,7 @@ export default defineConfig({
   },
   plugins: [mintegralRuntimeCompatibility(), (() => {
     const configure = (server) => {
+      const mobileBackgrounds = !PLAYABLE_REMOTE_EDITOR && !server.config.isPreview;
       server.middlewares.use('/__playable-level', async (request, response, next) => {
         if (request.method !== 'POST') return next();
         try {
@@ -1989,7 +2065,10 @@ export default defineConfig({
             const body = JSON.parse(await readRequestBody(request, 512 * 1024, 'Asset size request'));
             const urls = Array.isArray(body?.urls) ? body.urls : [];
             if (urls.length > 4000) throw new Error('Too many asset URLs requested.');
-            const items = await Promise.all(urls.map(async (url) => {
+            const { createAssetDelivery, decodeSpatialTexture } = await import('./scripts/playable-asset-delivery.mjs');
+            const backgroundUrls = Array.isArray(body.backgroundUrls) ? body.backgroundUrls : [];
+            const delivery = await createAssetDelivery(process.cwd(), { mobileBackgrounds, backgroundUrls });
+            const estimateAsset = async url => {
               if (typeof url !== 'string' || !url.startsWith('/assets/')) {
                 return { url: String(url ?? ''), bytes: 0, exists: false };
               }
@@ -2007,17 +2086,100 @@ export default defineConfig({
                 }
                 try {
                   const info = await stat(resolved);
-                  return { url, bytes: info.size, exists: info.isFile() };
+                  if (!info.isFile()) return { url, bytes: 0, exists: false };
+                  return { url, exists: true, ...await delivery.estimate(url, resolved, info.size) };
                 } catch (error) {
                   if (error.code !== 'ENOENT') throw error;
                   return { url, bytes: 0, exists: false };
                 }
               }
               return { url, bytes: 0, exists: false };
-            }));
+            };
+            const items = [];
+            for (const url of urls) items.push(await estimateAsset(url));
+            const spatialId = typeof body?.spatialSelection === 'string' && body.spatialSelection.startsWith('spatial:')
+              ? body.spatialSelection.slice('spatial:'.length) : null;
+            if (spatialId) {
+              const { packageData } = await readSpatialConveyorPackage(spatialId);
+              const sources = new Set();
+              for (const slot of ['loopTextureDataUrl', 'exitTextureDataUrl']) {
+                const url = `spatial:${spatialId}/${slot}`;
+                const source = packageData.visual?.material?.[slot];
+                if (sources.has(source)) continue;
+                sources.add(source);
+                const texture = decodeSpatialTexture(source);
+                if (texture) items.push({ url, exists: true, ...await delivery.estimateBytes(url, texture.bytes, texture.mime) });
+              }
+            }
             sendJson(response, 200, { items });
           } catch (error) {
             sendJson(response, error.statusCode ?? 400, { error: error.message });
+          }
+          return;
+        }
+        if (pathname === '/__playable-export-queue') {
+          const ticket = request.headers['x-export-ticket'];
+          try {
+            if (request.method === 'GET') {
+              sendJson(response, 200, playableExportQueue.view(ticket));
+            } else if (request.method === 'POST') {
+              const metadata = JSON.parse(await readRequestBody(request, 2048, 'Export queue'));
+              if (!metadata || !(metadata.platform === 'all' || PLAYABLE_EXPORT_PLATFORMS.has(metadata.platform))) {
+                throw new Error('请选择有效的导出渠道。');
+              }
+              const issued = playableExportQueue.reserve({ ...metadata, owner: readRequestLevelOwner(request) });
+              sendJson(response, 201, { ticket: issued, ...playableExportQueue.view(issued) });
+            } else if (request.method === 'DELETE') {
+              playableExportQueue.cancel(ticket);
+              sendJson(response, 200, {});
+            } else {
+              response.setHeader('Allow', 'GET, POST, DELETE');
+              sendJson(response, 405, { error: '不支持的队列请求。' });
+            }
+          } catch (error) {
+            sendJson(response, error.statusCode ?? 400, { error: error.message });
+          }
+          return;
+        }
+        if (pathname === '/__playable-export-resource' && request.method === 'GET') {
+          const prepared = preparedPlayableExports.get(requestUrl.searchParams.get('id'));
+          const hash = requestUrl.searchParams.get('hash');
+          const mime = prepared?.reviewAssets.files.get(hash);
+          if (!mime) {
+            sendJson(response, 404, { error: '素材预览不存在或已过期。' });
+            return;
+          }
+          try {
+            const bytes = await readFile(path.join(prepared.reviewAssets.directory, hash));
+            response.setHeader('Content-Type', mime);
+            response.setHeader('Content-Length', bytes.length);
+            response.setHeader('X-Content-Type-Options', 'nosniff');
+            response.setHeader('Cache-Control', 'no-store');
+            response.end(bytes);
+          } catch {
+            sendJson(response, 404, { error: '素材预览不存在或已过期。' });
+          }
+          return;
+        }
+        if (pathname === '/__playable-export-prepared' && request.method === 'POST') {
+          let prepared;
+          try {
+            const { id, discard } = JSON.parse(await readRequestBody(request, 1024, 'Prepared playable export'));
+            prepared = takePreparedPlayableExport(id);
+            if (discard) {
+              sendJson(response, 200, {});
+              return;
+            }
+            if (!prepared) {
+              sendJson(response, 410, { error: '导出包准备结果已过期，请重新打开导出确认。' });
+              return;
+            }
+            await archivePlayableExport(prepared.root, prepared.reviewAssets.directory);
+            await sendPlayableArtifact(response, prepared.result, prepared.startedAt);
+          } catch (error) {
+            sendJson(response, 500, { error: error.message });
+          } finally {
+            if (prepared) await removeTemporaryExport(prepared.root);
           }
           return;
         }
@@ -2027,8 +2189,13 @@ export default defineConfig({
             sendJson(response, 405, { error: '仅支持 POST 导出请求。' });
             return;
           }
-          if (playableExportInFlight) {
-            sendJson(response, 409, { error: '已有试玩包正在导出，请稍后重试。' });
+          let releaseExport;
+          try {
+            releaseExport = playableExportQueue.start(request.headers['x-export-ticket'], {
+              owner: readRequestLevelOwner(request), platform: pathname.endsWith('-all') ? 'all' : ''
+            });
+          } catch (error) {
+            sendJson(response, error.statusCode ?? 409, { error: error.message });
             return;
           }
 
@@ -2039,7 +2206,6 @@ export default defineConfig({
           request.once('aborted', abortDisconnectedExport);
           response.once('close', abortDisconnectedExport);
           const exportTimeout = setTimeout(() => exportAbortController.abort(), PLAYABLE_EXPORT_TIMEOUT_MS);
-          playableExportInFlight = true;
           const exportStartedAt = Date.now();
           console.info(`[playable-export] started route=${pathname}`);
           let transientExportRoot = null;
@@ -2079,6 +2245,23 @@ export default defineConfig({
               error.statusCode = 400;
               throw error;
             }
+            let deliveryJobs;
+            const testExport = payload.testExport === true;
+            if (testExport) {
+              if (exportAll || payload.platform !== 'applovin' || payload.deliveryNames !== undefined || payload.review) {
+                throw Object.assign(new TypeError('测试导出仅支持单个 AppLovin HTML。'), { statusCode: 400 });
+              }
+              payload.tuning.exportNaming = createTestExportNaming(payload.tuning, brandingSet);
+            } else if (payload.deliveryNames !== undefined) {
+              const { entries, errors } = parseDeliveryNames(payload.deliveryNames, payload.tuning.exportNaming, brandingSet);
+              if (!exportAll || errors.length || !entries.length) {
+                throw Object.assign(new TypeError(errors[0] || '请通过清单导出并至少填写一行有效文件名。'), { statusCode: 400 });
+              }
+              deliveryJobs = deliveryBuilds(payload.tuning, entries);
+            } else {
+              validateRequiredExportNaming(payload.tuning.exportNaming);
+              validateRequirementCode(payload.tuning.exportNaming?.requirementCode, brandingSet);
+            }
             let levelDocument = null;
             if (payload.levelDocument !== undefined) {
               const selectedLevelKey = payload.tuning.level?.selected;
@@ -2102,30 +2285,36 @@ export default defineConfig({
               levelDocument = payload.levelDocument;
             }
 
-            if (process.env.PLAYABLE_REMOTE_EDITOR === '1') {
-              transientExportRoot = await mkdtemp(path.join(os.tmpdir(), 'bus-loop-remote-export-'));
-            }
+            const review = payload.review === true;
+            transientExportRoot = await mkdtemp(path.join(os.tmpdir(), 'bus-loop-remote-export-'));
+            const reviewAssets = review
+              ? { directory: path.join(transientExportRoot, '.review-previews'), files: new Map() }
+              : null;
             const { exportAllPlayablePackages, exportPlayablePackage } = await import('./scripts/export-playable-package.mjs');
             const { expandExportVariantTunings } = await import('./src/export-variants.js');
             let tuningVariants;
-            try { tuningVariants = expandExportVariantTunings(payload.tuning); }
+            try { tuningVariants = testExport ? [payload.tuning] : deliveryJobs ? deliveryJobs.map(job => job.tuning) : expandExportVariantTunings(payload.tuning); }
             catch (error) { error.statusCode = 400; throw error; }
             const multipleVariants = tuningVariants.length > 1;
-            const result = await (exportAll || multipleVariants ? exportAllPlayablePackages : exportPlayablePackage)({
+            const aggregate = exportAll || multipleVariants;
+            const result = await (aggregate ? exportAllPlayablePackages : exportPlayablePackage)({
+              mobileBackgrounds,
               projectRoot: process.cwd(),
-              ...(exportAll ? {} : multipleVariants ? { platforms: [payload.platform] } : { platform: payload.platform }),
+              ...(deliveryJobs ? { deliveryJobs } :
+                exportAll ? {} : multipleVariants ? { platforms: [payload.platform] } : { platform: payload.platform }),
               tuning: tuningVariants[0],
               ...(multipleVariants ? { tuningVariants } : {}),
               namingOverride: tuningVariants[0].exportNaming,
               useSelectedLevel: true,
               levelDocument,
               brandingSet,
+              reviewAssets,
               signal: exportAbortController.signal,
               // The editor's export action is a packaging/download operation.
               // Platform checks remain available through the CLI, but must not
               // block a user who explicitly asks for the playable artifact.
               skipChecks: true,
-              ...(transientExportRoot ? { outputDir: transientExportRoot } : {})
+              outputDir: transientExportRoot
             });
             if (
               !result?.filePath
@@ -2136,25 +2325,30 @@ export default defineConfig({
               throw new Error('Playable export did not produce an artifact.');
             }
 
-            const fileName = playableExportFilename(result.fileName, result.format);
-            const file = await readFile(result.filePath);
-            const passedCount = Number(result.checkSummary.passedCount) || 0;
-            const totalCount = Number(result.checkSummary.totalCount) || passedCount;
-            response.statusCode = 200;
-            response.setHeader('Content-Type', result.format === 'zip' ? 'application/zip' : 'text/html; charset=utf-8');
-            response.setHeader('Content-Length', file.byteLength);
-            response.setHeader('Content-Disposition', playableExportDisposition(fileName));
-            response.setHeader('Cache-Control', 'no-store');
-            response.setHeader('X-Content-Type-Options', 'nosniff');
-            response.setHeader('X-Playable-Resource-Mode', result.resourceMode);
-            const checksSkipped = result.checkSummary.conclusion === 'SKIPPED_LOCAL_CHECKS'
-              || result.checkSummary.conclusion === 'EXPORTED_WITHOUT_LOCAL_CHECKS';
-            response.setHeader('X-Playable-Check', checksSkipped
-              ? 'skipped; local checks disabled'
-              : `passed; ${passedCount}/${totalCount}`);
-            response.setHeader('X-Playable-Source-Cache', result.sourceCacheHit ? 'hit' : 'miss');
-            response.setHeader('X-Playable-Export-Duration-Ms', String(Date.now() - exportStartedAt));
-            response.end(file);
+            if (review) {
+              if (exportAbortController.signal.aborted) return;
+              if (preparedPlayableExports.size >= MAX_PREPARED_PLAYABLE_EXPORTS) {
+                const oldest = takePreparedPlayableExport(preparedPlayableExports.keys().next().value);
+                await removeTemporaryExport(oldest.root);
+              }
+              const id = randomUUID();
+              const summary = summarizeExportPackage(result, new Set(reviewAssets.files.keys()));
+              const timeout = setTimeout(() => {
+                const expired = takePreparedPlayableExport(id);
+                if (expired) void removeTemporaryExport(expired.root);
+              }, PLAYABLE_REVIEW_TTL_MS);
+              timeout.unref();
+              preparedPlayableExports.set(id, { root: transientExportRoot, result, reviewAssets, startedAt: Date.now(), timeout });
+              transientExportRoot = null;
+              sendJson(response, 200, { id, ...summary });
+            } else {
+              if (testExport) {
+                result.fileName = `${brandingSet === 'crowd' ? 'BFT' : 'BL'}-AppLovin-test-${payload.tuning.level.selected}.html`;
+              } else {
+                await archivePlayableExport(transientExportRoot);
+              }
+              await sendPlayableArtifact(response, result, exportStartedAt);
+            }
           } catch (error) {
             const statusCode = Number.isInteger(error.statusCode) && error.statusCode >= 400 && error.statusCode < 500
               ? error.statusCode
@@ -2173,12 +2367,8 @@ export default defineConfig({
             clearTimeout(exportTimeout);
             request.off('aborted', abortDisconnectedExport);
             response.off('close', abortDisconnectedExport);
-            if (transientExportRoot) {
-              await rm(transientExportRoot, { recursive: true, force: true }).catch((error) => {
-                console.warn('[playable-export] Failed to clean temporary export files:', error);
-              });
-            }
-            playableExportInFlight = false;
+            if (transientExportRoot) await removeTemporaryExport(transientExportRoot);
+            releaseExport();
             console.info(`[playable-export] finished route=${pathname} durationMs=${Date.now() - exportStartedAt}`);
           }
           return;
@@ -2285,7 +2475,14 @@ export default defineConfig({
         }
         const webLevelMatch = pathname.match(/^\/__level-authoring\/(level[1-9]\d*)$/);
         if (webLevelMatch && request.method === 'GET') {
-          try { sendJson(response, 200, await readWebLevelDocument(webLevelMatch[1])); }
+          try {
+            const entry = await readWebLevelDocument(webLevelMatch[1]);
+            const draftRevision = requestUrl.searchParams.get('draftBase');
+            if (draftRevision && await matchesSmokeMigration('artifacts', webLevelMatch[1], draftRevision, entry.revision)) {
+              entry.migratedDraftBase = draftRevision;
+            }
+            sendJson(response, 200, entry);
+          }
           catch (error) { sendJson(response, error.code === 'ENOENT' ? 404 : 400, { error: error.message }); }
           return;
         }
@@ -2389,7 +2586,7 @@ export default defineConfig({
           }
           return;
         }
-        const officialChapterMatch = pathname.match(/^\/__official-levels\/([A-Za-z])\/?$/);
+        const officialChapterMatch = pathname.match(/^\/__official-levels\/((?:LIVE-)?[A-Z])\/?$/i);
         if (officialChapterMatch && request.method === 'GET') {
           try {
             sendJson(response, 200, await readOfficialChapter(officialChapterMatch[1]));
@@ -2398,7 +2595,7 @@ export default defineConfig({
           }
           return;
         }
-        const officialImportMatch = pathname.match(/^\/__official-levels\/([A-Za-z])\/([^/]+)\/import$/);
+        const officialImportMatch = pathname.match(/^\/__official-levels\/((?:LIVE-)?[A-Z])\/([^/]+)\/import$/i);
         if (officialImportMatch && request.method === 'POST') {
           try {
             const owner = requireRequestLevelOwner(request);
@@ -2514,9 +2711,9 @@ export default defineConfig({
         if (packageMatch && request.method === 'PUT') {
           try {
             const packageId = decodeURIComponent(packageMatch[1]);
-            const body = JSON.parse(await readRequestBody(request, MAX_SPATIAL_PACKAGE_BYTES));
+            const body = JSON.parse(await readRequestBody(request, MAX_SPATIAL_PACKAGE_BYTES + 1024, '轨道 JSON'));
             if (body.packageData?.id !== packageId) throw new Error('Package URL and payload id do not match.');
-            const result = await saveSpatialConveyorPackage(body);
+            const result = await withSpatialWrite(packageId, () => saveSpatialConveyorPackage(body));
             sendJson(response, 200, {
               packageData: result.packageData,
               revision: result.revision,
@@ -2532,7 +2729,8 @@ export default defineConfig({
         try {
           const filename = decodePrefabFilename(request);
           const source = await readRequestBody(request, MAX_PREFAB_BYTES);
-          const result = await importSpatialConveyorPrefab({ filename, source });
+          const result = await withSpatialWrite(path.parse(filename).name.trim(),
+            () => importSpatialConveyorPrefab({ filename, source }));
           sendJson(response, 201, {
             item: {
               id: result.conveyorPackage.id,

@@ -25,8 +25,7 @@ globalThis.document ??= {
   createElement: () => ({ getContext: () => null })
 };
 
-// Shipped FBX files come in two forms: Arrow_01 is gzip-compressed, Arrow_06 is
-// plain Kaydara binary. Normalise before handing either to FBXLoader.
+// The runtime unwraps packed FBX before handing it to FBXLoader.
 function readFbxBytes(file) {
   let buffer = readFileSync(file);
   if (buffer[0] === 0x1f && buffer[1] === 0x8b) buffer = zlib.gunzipSync(buffer);

@@ -11,6 +11,21 @@
 
 export const PLAYABLE_SESSION_FORMAT = 'bus-loop-playable-session-v1';
 
+export function createEditorExportSession(tuning) {
+  const levelKey = tuning?.level?.selected;
+  if (!/^level[1-9]\d*$/u.test(levelKey ?? '')) throw new TypeError('编辑器导出缺少有效的当前关卡');
+  return {
+    format: PLAYABLE_SESSION_FORMAT,
+    active: 'editor-current-level',
+    sessions: {
+      'editor-current-level': {
+        stages: (levelKey === 'level9' ? ['level9', 'level7'] : [levelKey])
+          .map(key => ({ id: key, levelKey: key }))
+      }
+    }
+  };
+}
+
 const FIRST_CLICK_GUIDE_KEYS = new Set([
   'enabled',
   'vehicleId',
